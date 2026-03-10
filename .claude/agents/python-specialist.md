@@ -1,6 +1,6 @@
 ---
 name: python-specialist
-model: ollama:qwen2.5-coder:3b
+model: ollama:qwen2.5-coder:7b
 ---
 
 # Python Specialist

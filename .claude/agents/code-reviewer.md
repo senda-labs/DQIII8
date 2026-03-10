@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-model: ollama:qwen2.5-coder:3b
+model: claude-haiku-4-5-20251001
 isolation: worktree
 ---
 

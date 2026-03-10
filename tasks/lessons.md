@@ -12,6 +12,7 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 
 ## jarvis-core
 - [2026-03-10] [hooks] BLOCKED_BASH hace match contra el string completo del comando, incluyendo el mensaje de commit → usar mensajes de commit sin patrones peligrosos en el texto, o añadir contexto de exclusión para comandos git
+- [2026-03-10] [ollama-routing] Claude Code no soporta ollama como modelo nativo. Routing real via http://localhost:11434/api/generate confirmado con curl. Implementar bin/ollama_wrapper.py en Fase 2.
 
 ## leyendas-del-este
 - [2026-03-10] [spanish-dialogue] Em-dash (—) para diálogos, no comillas dobles

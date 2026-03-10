@@ -13,7 +13,7 @@ except Exception:
     data = {}
 
 session = data.get("session_id", "unknown")
-JARVIS  = Path(os.environ.get("JARVIS_ROOT", r"C:\jarvis"))
+JARVIS  = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB      = JARVIS / "database" / "jarvis_metrics.db"
 LESSONS = JARVIS / "tasks" / "lessons.md"
 PROJECTS = JARVIS / "projects"

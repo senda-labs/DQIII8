@@ -12,7 +12,7 @@ try:
 except Exception:
     data = {}
 
-JARVIS  = Path(os.environ.get("JARVIS_ROOT", r"C:\jarvis"))
+JARVIS  = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB      = JARVIS / "database" / "jarvis_metrics.db"
 LESSONS = JARVIS / "tasks" / "lessons.md"
 FLAG    = JARVIS / "tasks" / "audit_pending.flag"

@@ -32,8 +32,9 @@ case "$mode" in
     if [[ -n "$prompt" ]]; then
       exec python3 "$OLLAMA_WRAPPER" "$prompt"
     else
-      exec claude --append-system-prompt \
-        "Eres JARVIS en modo local. Para tareas de código Python (refactoring, debugging, implementación, explicaciones técnicas), ejecuta el siguiente comando de shell y muestra su output al usuario: python3 $OLLAMA_WRAPPER '<prompt>'. Reserva Claude para arquitectura, seguridad y decisiones de alto nivel."
+      cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT" \
+        --append-system-prompt \
+        "Eres JARVIS en modo local. Para código Python simple usa: python3 $OLLAMA_WRAPPER '<prompt>'. Reserva Sonnet para arquitectura y decisiones complejas."
     fi
     ;;
 
@@ -42,9 +43,9 @@ case "$mode" in
     echo "[JARVIS] Modo: review | Modelo: haiku-4-5 | Coste: bajo"
     echo "---"
     if [[ -n "$prompt" ]]; then
-      exec claude --model "$MODEL_HAIKU" -p "$prompt"
+      cd "$JARVIS_ROOT" && exec claude --model "$MODEL_HAIKU" --add-dir "$JARVIS_ROOT" -p "$prompt"
     else
-      exec claude --model "$MODEL_HAIKU"
+      cd "$JARVIS_ROOT" && exec claude --model "$MODEL_HAIKU" --add-dir "$JARVIS_ROOT"
     fi
     ;;
 
@@ -52,21 +53,23 @@ case "$mode" in
   finance)
     echo "[JARVIS] Modo: finance | Modelo: sonnet-4-6 | Coste: normal"
     echo "---"
-    exec claude --model "$MODEL_SONNET" --append-system-prompt \
+    cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT" \
+      --append-system-prompt \
       "Eres JARVIS en modo finance. Especializado en análisis financiero: WACC, DCF, valoración, modelos Excel, gráficos. Responde con rigor cuantitativo."
     ;;
 
   novel|creative)
     echo "[JARVIS] Modo: novel | Modelo: sonnet-4-6 | Coste: normal"
     echo "---"
-    exec claude --model "$MODEL_SONNET" --append-system-prompt \
+    cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT" \
+      --append-system-prompt \
       "Eres JARVIS en modo creativo. Especializado en narrativa, novela xianxia, diálogos y worldbuilding. Usa em-dash (—) para diálogos. Mantén coherencia de tiempo verbal dentro de cada escena."
     ;;
 
   "")
     echo "[JARVIS] Modo: sonnet | Modelo: sonnet-4-6 | Coste: normal"
     echo "---"
-    exec claude --model "$MODEL_SONNET"
+    cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT"
     ;;
 
   *)

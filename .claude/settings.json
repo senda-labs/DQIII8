@@ -1,0 +1,48 @@
+{
+  "env": {
+    "JARVIS_ROOT": "/root/jarvis",
+    "ENABLE_TOOL_SEARCH": "auto",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/session_start.py" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/pre_tool_use.py" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/post_tool_use.py" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/stop.py" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/stop.py" }
+        ]
+      }
+    ]
+  }
+}

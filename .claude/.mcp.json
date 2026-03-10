@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y", "@modelcontextprotocol/server-filesystem",
+        "C:\\jarvis",
+        "C:\\Users\\%USERNAME%\\projects"
+      ],
+      "scope": "user"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" },
+      "scope": "user"
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"],
+      "scope": "user"
+    },
+    "sqlite": {
+      "command": "python",
+      "args": [
+        "C:\\jarvis\\bin\\sqlite_mcp.py",
+        "C:\\jarvis\\database\\jarvis_metrics.db"
+      ],
+      "scope": "user"
+    }
+  }
+}

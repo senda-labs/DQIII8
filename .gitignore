@@ -1,0 +1,39 @@
+# JARVIS .gitignore
+
+# Base de datos (no versionar — demasiado pesada y sensible)
+database/*.db
+database/*.db-wal
+database/*.db-shm
+
+# Worktrees de agentes (efímeros)
+.claude/worktrees/
+
+# Skills cache (se descarga con /skills-sync)
+skills-registry/cache/everything-claude-code/
+skills-registry/cache/awesome-subagents/
+
+# Flags de estado efímeros
+tasks/audit_pending.flag
+tasks/status.md
+
+# Resultados de sesión (rotan)
+tasks/results/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Windows
+Thumbs.db
+desktop.ini
+*.lnk
+
+# Secrets (nunca deben llegar aquí)
+.env
+*.pem
+*.key
+id_rsa
+id_ed25519

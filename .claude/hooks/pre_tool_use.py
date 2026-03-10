@@ -24,10 +24,9 @@ BLOCKED_PATHS = [
 ]
 
 BLOCKED_BASH = [
-    "rm -rf /", "rm -rf C:\\", "format c:",
-    "del /f /s /q c:\\", "DROP TABLE",
-    "DELETE FROM agent_actions", "DROP DATABASE",
-    "> /dev/sda", "mkfs",
+    "rm -rf /", "rm -rf ~", "rm -rf $HOME",
+    "DROP TABLE", "DELETE FROM agent_actions", "DROP DATABASE",
+    "> /dev/sda", "mkfs", "dd if=",
 ]
 
 def deny(reason):
@@ -56,7 +55,7 @@ if tool == "Bash":
 # ── Patch 4: métricas en try/except — nunca bloquean trabajo real ──
 try:
     import sqlite3
-    DB = os.path.join(os.environ.get("JARVIS_ROOT", r"C:\jarvis"),
+    DB = os.path.join(os.environ.get("JARVIS_ROOT", "/root/jarvis"),
                       "database", "jarvis_metrics.db")
     if os.path.exists(DB):
         conn = sqlite3.connect(DB, timeout=2)

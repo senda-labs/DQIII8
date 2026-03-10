@@ -30,7 +30,7 @@ if tool in ("Edit", "Write", "MultiEdit"):
 # ── Patch 5: métricas en try/except — nunca bloquean trabajo real ──
 try:
     import sqlite3
-    DB = os.path.join(os.environ.get("JARVIS_ROOT", r"C:\jarvis"),
+    DB = os.path.join(os.environ.get("JARVIS_ROOT", "/root/jarvis"),
                       "database", "jarvis_metrics.db")
     if os.path.exists(DB):
         success   = 1 if resp.get("exit_code", 0) == 0 else 0

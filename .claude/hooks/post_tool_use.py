@@ -15,6 +15,7 @@ tool    = data.get("tool_name", "")
 inp     = data.get("tool_input", {})
 resp    = data.get("tool_response", {}) or {}
 session = data.get("session_id", "unknown")
+agent   = data.get("agent_id", data.get("agent_name", "unknown"))
 now_ms  = int(time.time() * 1000)
 
 # ── Auto-format Python ──────────────────────────────────────────────
@@ -56,7 +57,7 @@ try:
                 "INSERT INTO error_log "
                 "(session_id,agent_name,error_type,error_message,keywords) "
                 "VALUES (?,?,?,?,?)",
-                (session, "unknown", f"{tool}Error", error_msg, "[]")
+                (session, agent, f"{tool}Error", error_msg, "[]")
             )
         conn.commit()
         conn.close()

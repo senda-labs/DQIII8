@@ -1,48 +1,89 @@
 #!/usr/bin/env bash
-# JARVIS — Comando de entrada
-# Uso:
-#   j             → claude (Sonnet, modo normal)
-#   j local       → claude con contexto ollama para código
-#   j finance     → claude directo (análisis financiero)
-#   j novel       → claude directo (escritura creativa)
+# JARVIS — Comando de entrada con routing de 3 niveles
+#
+# NIVEL 1 — Ollama (gratis)
+#   j local "prompt"   → ollama_wrapper.py directo
+#   j local            → claude con system prompt para delegar código
+#
+# NIVEL 2 — Haiku (barato)
+#   j review "prompt"  → claude haiku con prompt
+#   j review           → claude haiku interactivo
+#
+# NIVEL 3 — Sonnet (potente)
+#   j                  → claude sonnet normal
+#   j finance          → claude sonnet, contexto financiero
+#   j novel            → claude sonnet, contexto xianxia/narrativa
 
 JARVIS_ROOT="${JARVIS_ROOT:-/root/jarvis}"
+OLLAMA_WRAPPER="$JARVIS_ROOT/bin/ollama_wrapper.py"
+MODEL_HAIKU="claude-haiku-4-5-20251001"
 MODEL_SONNET="claude-sonnet-4-6"
-MODEL_LOCAL="qwen2.5-coder:7b (via Ollama)"
 
 mode="${1:-}"
+shift 2>/dev/null
+prompt="$*"
 
 case "$mode" in
+
+  # ── NIVEL 1: Ollama ────────────────────────────────────────────────
   local)
-    echo "Modelo activo: $MODEL_LOCAL  →  tareas de código delegadas a Ollama"
-    echo "Tip: para queries directas → echo 'prompt' | python3 $JARVIS_ROOT/bin/ollama_wrapper.py"
+    echo "[JARVIS] Modo: local | Modelo: qwen2.5-coder:7b | Coste: \$0"
     echo "---"
-    exec claude --append-system-prompt \
-      "Eres JARVIS en modo local. Para tareas de código Python, refactoring, debugging y explicaciones técnicas, delega a Ollama ejecutando: echo '<prompt>' | python3 $JARVIS_ROOT/bin/ollama_wrapper.py  Usa Claude solo para arquitectura, seguridad y decisiones de alto nivel."
+    if [[ -n "$prompt" ]]; then
+      exec python3 "$OLLAMA_WRAPPER" "$prompt"
+    else
+      exec claude --append-system-prompt \
+        "Eres JARVIS en modo local. Para tareas de código Python (refactoring, debugging, implementación, explicaciones técnicas), ejecuta el siguiente comando de shell y muestra su output al usuario: python3 $OLLAMA_WRAPPER '<prompt>'. Reserva Claude para arquitectura, seguridad y decisiones de alto nivel."
+    fi
     ;;
-  finance)
-    echo "Modelo activo: $MODEL_SONNET  →  modo análisis financiero"
+
+  # ── NIVEL 2: Haiku ────────────────────────────────────────────────
+  review)
+    echo "[JARVIS] Modo: review | Modelo: haiku-4-5 | Coste: bajo"
     echo "---"
-    exec claude --append-system-prompt \
+    if [[ -n "$prompt" ]]; then
+      exec claude --model "$MODEL_HAIKU" -p "$prompt"
+    else
+      exec claude --model "$MODEL_HAIKU"
+    fi
+    ;;
+
+  # ── NIVEL 3: Sonnet ───────────────────────────────────────────────
+  finance)
+    echo "[JARVIS] Modo: finance | Modelo: sonnet-4-6 | Coste: normal"
+    echo "---"
+    exec claude --model "$MODEL_SONNET" --append-system-prompt \
       "Eres JARVIS en modo finance. Especializado en análisis financiero: WACC, DCF, valoración, modelos Excel, gráficos. Responde con rigor cuantitativo."
     ;;
+
   novel|creative)
-    echo "Modelo activo: $MODEL_SONNET  →  modo escritura creativa"
+    echo "[JARVIS] Modo: novel | Modelo: sonnet-4-6 | Coste: normal"
     echo "---"
-    exec claude --append-system-prompt \
+    exec claude --model "$MODEL_SONNET" --append-system-prompt \
       "Eres JARVIS en modo creativo. Especializado en narrativa, novela xianxia, diálogos y worldbuilding. Usa em-dash (—) para diálogos. Mantén coherencia de tiempo verbal dentro de cada escena."
     ;;
+
   "")
-    echo "Modelo activo: $MODEL_SONNET"
+    echo "[JARVIS] Modo: sonnet | Modelo: sonnet-4-6 | Coste: normal"
     echo "---"
-    exec claude
+    exec claude --model "$MODEL_SONNET"
     ;;
+
   *)
-    echo "Uso: j [local|finance|novel]"
-    echo "  (sin args)  → Sonnet, modo normal"
-    echo "  local       → Sonnet + delega código a Ollama qwen2.5-coder:7b"
-    echo "  finance     → Sonnet, análisis financiero"
-    echo "  novel       → Sonnet, escritura creativa"
+    echo "Uso: j [modo] [prompt]"
+    echo ""
+    echo "  NIVEL 1 — Gratis (Ollama local)"
+    echo "    j local \"prompt\"   → qwen2.5-coder:7b directo"
+    echo "    j local            → claude con delegación a Ollama"
+    echo ""
+    echo "  NIVEL 2 — Barato (Haiku)"
+    echo "    j review \"prompt\"  → haiku-4-5 con prompt"
+    echo "    j review           → haiku-4-5 interactivo"
+    echo ""
+    echo "  NIVEL 3 — Potente (Sonnet)"
+    echo "    j                  → sonnet-4-6 normal"
+    echo "    j finance          → sonnet-4-6, análisis financiero"
+    echo "    j novel            → sonnet-4-6, escritura creativa"
     exit 1
     ;;
 esac

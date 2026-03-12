@@ -77,6 +77,40 @@ FALLBACK_CHAIN = {
     "pollinations": [],
 }
 
+# ── Routing automático por keywords (classify subcommand) ────────────────────
+# Cada entrada: (tier, provider, model, route_name, keywords)
+# Si múltiples tiers coinciden → gana el más bajo (tier 1 > tier 2 > tier 3)
+ROUTING_TABLE = [
+    (
+        1, "ollama", "qwen2.5-coder:7b", "code_local",
+        [
+            "python", "refactor", "debug", "test", "tests", "git", "commit",
+            "código", "codigo", "función", "funcion", "fix", "bug", "patch",
+            "script", "error traceback", "optimize", "optimiza", "clase",
+            "variable", "loop", "import", "módulo", "modulo",
+        ],
+    ),
+    (
+        2, "groq", "llama-3.3-70b-versatile", "review_groq",
+        [
+            "review", "revisar", "analiz", "análisis", "analisis",
+            "research", "investigar", "evaluar", "compar", "documenta",
+            "explica", "resumen", "summary", "audit",
+        ],
+    ),
+    (
+        3, "claude", "claude-sonnet-4-6", "claude_api",
+        [
+            "wacc", "dcf", "finanz", "valorac", "excel", "valuation",
+            "novel", "xianxia", "capítulo", "capitulo", "scene", "narrativ",
+            "creative", "escritura", "dialogue", "diálogo",
+            "arquitectura", "architecture", "seguridad", "security", "auth",
+            "mobilize", "coordinar", "orchestrat", "multi-agent", "multiagent",
+            "diseño de sistema", "system design",
+        ],
+    ),
+]
+
 TIMEOUT = 120
 DB_PATH = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")) / "database" / "jarvis_metrics.db"
 
@@ -187,13 +221,54 @@ def print_routing_table() -> None:
     for agent, (provider, model) in AGENT_ROUTING.items():
         print(f"  {agent:<20} {provider:<12} {model}")
     print()
+    print("Tiers automáticos (classify):")
+    print(f"  {'Tier':<6} {'Provider':<12} {'Modelo':<30} {'Route'}")
+    print("  " + "-" * 68)
+    for tier, provider, model, route, _ in ROUTING_TABLE:
+        print(f"  {tier:<6} {provider:<12} {model:<30} {route}")
+    print()
     print("Fallback chain: OpenRouter → Groq → llm7.io → Pollinations")
     print()
+
+
+def classify_prompt(prompt: str) -> None:
+    """
+    Determina el tier óptimo para un prompt según keywords.
+    Salida: tier=N provider=X model=Y route=Z
+    Si múltiples tiers coinciden → tier más bajo gana.
+    Default (sin match): tier 1 code_local.
+    """
+    lowered = prompt.lower()
+    matched_tier = None
+
+    for tier, provider, model, route, keywords in ROUTING_TABLE:
+        for kw in keywords:
+            if kw in lowered:
+                if matched_tier is None or tier < matched_tier[0]:
+                    matched_tier = (tier, provider, model, route)
+                break  # ya encontró keyword en este tier, pasa al siguiente
+
+    if matched_tier is None:
+        matched_tier = (1, "ollama", "qwen2.5-coder:7b", "code_local")
+
+    tier, provider, model, route = matched_tier
+    print(f"tier={tier} provider={provider} model={model} route={route}")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    # Subcommand: classify <prompt>
+    if len(sys.argv) >= 2 and sys.argv[1] == "classify":
+        raw = " ".join(sys.argv[2:]).strip()
+        if not raw and not sys.stdin.isatty():
+            raw = sys.stdin.read().strip()
+        if not raw:
+            print("tier=1 provider=ollama model=qwen2.5-coder:7b route=code_local")
+            sys.exit(0)
+        classify_prompt(raw)
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(
         description="JARVIS OpenRouter Wrapper — routing multi-provider con fallback."
     )

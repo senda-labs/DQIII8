@@ -13,7 +13,16 @@ except Exception:
 tool    = data.get("tool_name", "")
 inp     = data.get("tool_input", {})
 session = data.get("session_id", "unknown")
-agent   = data.get("agent_id", data.get("agent_name", "unknown"))
+agent   = data.get("agent_id", data.get("agent_name", ""))
+if not agent:
+    # Fallback: look up /tmp/jarvis_agent_{session_id}.json written by SubagentStart hook
+    _tmp = f"/tmp/jarvis_agent_{session}.json"
+    try:
+        import json as _json
+        with open(_tmp, encoding="utf-8") as _f:
+            agent = _json.load(_f).get("agent_type", "claude-sonnet-4-6")
+    except Exception:
+        agent = "claude-sonnet-4-6"
 
 # ── Patch 4: BLOCKED_PATHS ampliado ────────────────────────────────
 BLOCKED_PATHS = [

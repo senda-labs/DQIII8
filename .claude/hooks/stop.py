@@ -48,6 +48,45 @@ try:
 except Exception:
     pass
 
+
+# ── 0b. Extraer instincts de lessons.md ───────────────────────────
+try:
+    import sqlite3 as _sl3, re as _re
+    if DB.exists() and lessons_added > 0:
+        _diff_lines = [
+            line[1:] for line in result.stdout.splitlines()
+            if line.startswith("+[20") and len(line) > 10
+        ]
+        _kw_pattern = _re.compile(r"^\[[\d-]+\]\s*\[([^\]]+)\]")
+        _ic = _sl3.connect(str(DB), timeout=5)
+        _inserted = 0
+        for _dl in _diff_lines[:3]:  # max 3 instincts per session
+            _m = _kw_pattern.match(_dl.strip())
+            if not _m:
+                continue
+            _kw = _m.group(1).strip().lower()
+            _pat = _dl.strip()
+            _ex = _ic.execute("SELECT id FROM instincts WHERE keyword=?", (_kw,)).fetchone()
+            if _ex:
+                _ic.execute(
+                    "UPDATE instincts SET times_applied=times_applied+1, last_applied=? WHERE keyword=?",
+                    (NOW, _kw)
+                )
+            else:
+                _ic.execute(
+                    "INSERT INTO instincts (keyword, pattern, confidence, source, project, created_at, last_applied)"
+                    " VALUES (?,?,0.5,?,?,?,?)",
+                    (_kw, _pat, "lessons.md",
+                     os.environ.get("JARVIS_PROJECT", "jarvis-core"), NOW, NOW)
+                )
+                _inserted += 1
+        _ic.commit()
+        _ic.close()
+        if _inserted:
+            print(f"[JARVIS] {_inserted} instinct(s) extraidos de lessons.md")
+except Exception:
+    pass
+
 # ── 1. Cerrar sesión en BD ─────────────────────────────────────────
 try:
     import sqlite3

@@ -164,7 +164,7 @@ duration: {_duration_str}
                 capture_output=True, timeout=10
             )
             subprocess.run(
-                ["git", "-C", str(JARVIS), "push", "origin", "main"],
+                ["git", "-C", str(JARVIS), "push", "origin", "master"],
                 capture_output=True, timeout=20
             )
 except Exception:

@@ -51,7 +51,7 @@ En la sección "Última sesión" (crearla si no existe), escribir:
 ```bash
 git -C $JARVIS_ROOT add sessions/ projects/
 git -C $JARVIS_ROOT commit -m "📝 session handover YYYY-MM-DD"
-git -C $JARVIS_ROOT push origin main
+git -C $JARVIS_ROOT push origin master
 ```
 
 ### 5. Feedback al usuario

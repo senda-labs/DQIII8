@@ -1,3 +1,11 @@
+---
+title: hult-finance
+tags: [project, active]
+status: active
+last_updated: 2026-03-12
+agents: [data-analyst, python-specialist]
+model: api
+---
 # hult-finance — Estado del Proyecto
 Última actualización: 2026-03-10
 

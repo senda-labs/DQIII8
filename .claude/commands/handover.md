@@ -22,7 +22,7 @@ El script hace todo sin herramientas adicionales de Claude:
 ## Invocación no-interactiva
 
 ```bash
-claude --dangerously-skip-permissions -p "/handover"
+python3 /root/jarvis/bin/handover.py
 ```
 
 ## Notas

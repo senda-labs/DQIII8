@@ -20,7 +20,6 @@ DB: database/jarvis_metrics.db — every session, action, and error is logged vi
 | Ambiguous → `python3 bin/openrouter_wrapper.py classify "[prompt]"` | auto | — | $0 |
 | Regla: tier más bajo que resuelva la tarea. Subir solo si el inferior falla. | | | |
 
-
 ## Workflow
 1. **Plan** — Enter plan mode for any task with 3+ steps. Write spec to tasks/todo.md.
 2. **Execute** — Exit plan mode when ≤3 concrete steps remain with no open questions.
@@ -35,20 +34,6 @@ DB: database/jarvis_metrics.db — every session, action, and error is logged vi
 - Use `isolation: worktree` for any subagent that writes code.
 - For 3+ parallel agents → use /mobilize protocol (see .claude/commands/mobilize.md).
 - Subagents write results to tasks/results/[agent]-[timestamp].md, never to todo.md.
-
-## Autonomous Execution
-- Bug reports: fix immediately. Point at logs/errors, resolve, verify. Zero hand-holding.
-- If fix requires >3 files or touches architecture → enter plan mode first.
-- Autonomous mode (VPS): execute plans with ≤5 steps and no destructive actions without asking.
-- Destructive actions (delete, drop, force-push) or ambiguous intent → notify user, wait for confirmation.
-
-## Context Window
-- Green (<40%): work normally.
-- Yellow (40-60%): stop loading skills. Unload unused ones.
-- Orange (60-75%): alert in terminal.
-- Red (>75%): trigger /clear-context immediately.
-- After /clear-context: stop.py saves state → 5-line summary → /clear → session_start.py reloads essentials.
-- Every worktree starts with clean context. Orchestrator does NOT share its context with subagents.
 
 ## Delegation (trigger → agent)
 | Trigger keywords | Agent | Isolation |
@@ -76,21 +61,12 @@ DB: database/jarvis_metrics.db — every session, action, and error is logged vi
 - Auto-commit lessons.md + project .md
 - If 7+ days since last /audit → trigger auditor
 
-## Python Standards
-- Formatter: Black (runs automatically via PostToolUse hook — don't run manually).
-- Paths: always pathlib.Path(). Never string concatenation for paths. Use .as_posix() for Windows compat.
-- Encoding: always specify encoding="utf-8" in open().
-- Async: use asyncio for I/O-bound tasks (API calls, file batch ops). Don't async pure CPU work.
-- Imports: stdlib → third-party → local. One blank line between groups.
-
-## Prohibitions (NEVER)
-- NEVER write to .env, secrets, API keys, or any credential file.
-- NEVER modify .claude/settings.json, CLAUDE.md, or database/schema.sql without explicit user request.
-- NEVER delete data from jarvis_metrics.db.
-- NEVER force-push, rebase main, or delete branches without user confirmation.
-- NEVER load a skill from skills-registry/cache/ that hasn't been reviewed (check INDEX.md status).
-- NEVER keep pushing when something breaks. STOP → re-plan → ask if uncertain.
-- NEVER exceed 3 files modified without entering plan mode.
+## Rules
+- Prohibiciones: `.claude/rules/jarvis-prohibitions.md`
+- Python: `.claude/rules/jarvis-python.md`
+- Autonomía: `.claude/rules/jarvis-autonomy.md`
+- Context window: `.claude/rules/jarvis-context-window.md`
+- ECC (coding, git, security, testing…): `.claude/rules/common/` y `.claude/rules/python/`
 
 ## File Map (read on demand, not loaded in context)
 - projects/[name].md → project state, assigned agents, skills combo, next step

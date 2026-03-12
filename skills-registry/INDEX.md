@@ -30,3 +30,26 @@ Proceso: cache/ → revisión Iker → revisión Claude → APROBADA → custom/
 ## Paths
 - Cache: `skills-registry/cache/obsidian-skills/skills/`
 - Custom (producción): `skills-registry/custom/`
+
+## Rules integradas (ECC + JARVIS)
+
+| Rule | Fuente | Status | Conflicto | Notas |
+|------|--------|--------|-----------|-------|
+| common/coding-style | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Inmutabilidad, organización archivos |
+| common/git-workflow | ECC/affaan-m | ⏸ PENDIENTE_REVISION | Leve | Ver nota JARVIS override (atribución commits) |
+| common/agents | ECC/affaan-m | ⏸ PENDIENTE_REVISION | **Sí** | Agentes ECC != JARVIS agents. Override aplicado |
+| common/performance | ECC/affaan-m | ⏸ PENDIENTE_REVISION | **Sí** | Model routing ECC != JARVIS 3-tier. Override aplicado |
+| common/security | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Compatible con jarvis-prohibitions |
+| common/testing | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | 80% coverage, TDD |
+| common/hooks | ECC/affaan-m | ⏸ PENDIENTE_REVISION | Leve | "no dangerously-skip-permissions" — JARVIS lo usa solo en bot |
+| common/patterns | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Repository pattern, skeleton projects |
+| common/development-workflow | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Research→Plan→TDD→Review→Commit |
+| python/coding-style | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | PEP8, type hints — ver jarvis-python para overrides |
+| python/hooks | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Black/ruff auto-format — compatible con PostToolUse JARVIS |
+| python/patterns | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Protocol, dataclasses, async |
+| python/security | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | dotenv, KeyError si falta secret |
+| python/testing | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | pytest, coverage |
+| jarvis-prohibitions | JARVIS | ✅ APROBADA | — | Reglas absolutas JARVIS, máxima prioridad |
+| jarvis-python | JARVIS | ✅ APROBADA | — | Black, pathlib, encoding, async |
+| jarvis-autonomy | JARVIS | ✅ APROBADA | — | Modo VPS, acciones destructivas |
+| jarvis-context-window | JARVIS | ✅ APROBADA | — | Green/Yellow/Orange/Red thresholds |

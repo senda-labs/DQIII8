@@ -60,3 +60,4 @@ Proceso: cache/ → revisión Iker → revisión Claude → APROBADA → custom/
 |-------|--------|--------|--------------|-------|
 | jarvis-multi-provider-routing | git-analysis/jarvis (50 commits) | ⏸ PENDIENTE_REVISION | — | Patrón 3-tier routing: cuándo añadir providers, fallback chain, anti-patrones |
 | jarvis-agent-creation | git-analysis/jarvis (50 commits) | ⏸ PENDIENTE_REVISION | — | Estructura canónica de agentes, modelo correcto por tier, archivos co-cambiados |
+| continuous-learning-v2 | ECC/affaan-m (adaptado) | ✅ APROBADA | Iker | Instincts SQLite + stop.py integration + /instinct-status command |

@@ -101,6 +101,23 @@ CREATE TABLE IF NOT EXISTS audit_reports (
     overall_score       REAL
 );
 
+-- ── Instincts (Continuous Learning v2) ─────────────────────────
+CREATE TABLE IF NOT EXISTS instincts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    keyword         TEXT NOT NULL,
+    pattern         TEXT NOT NULL,
+    confidence      REAL DEFAULT 0.5,
+    times_applied   INTEGER DEFAULT 0,
+    times_successful INTEGER DEFAULT 0,
+    source          TEXT,               -- lessons.md | manual
+    project         TEXT,               -- project scope, NULL=global
+    created_at      TEXT,
+    last_applied    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_instincts_keyword ON instincts(keyword);
+CREATE INDEX IF NOT EXISTS idx_instincts_project ON instincts(project, confidence);
+
 -- ── Patch 3: índices ────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_actions_agent   ON agent_actions(agent_name, timestamp);
 CREATE INDEX IF NOT EXISTS idx_actions_session ON agent_actions(session_id);

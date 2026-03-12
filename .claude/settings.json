@@ -8,7 +8,10 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/session_start.py" }
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/session_start.py"
+          }
         ]
       }
     ],
@@ -16,7 +19,10 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/pre_tool_use.py" }
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/pre_tool_use.py"
+          }
         ]
       }
     ],
@@ -24,7 +30,10 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/post_tool_use.py" }
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/post_tool_use.py"
+          }
         ]
       }
     ],
@@ -32,7 +41,10 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/stop.py" }
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/stop.py"
+          }
         ]
       }
     ],
@@ -40,7 +52,20 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "python3 /root/jarvis/.claude/hooks/stop.py" }
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/stop.py"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/subagent_start.py"
+          }
         ]
       }
     ]

@@ -38,3 +38,13 @@ desktop.ini
 id_rsa
 id_ed25519
 venv/
+# Aider
+.aider.chat.history.md
+.aider.input.history
+.aider*
+
+# Skills cache (repos externos — no versionar)
+skills-registry/cache/
+
+# Logs internos
+database/system_metrics.log

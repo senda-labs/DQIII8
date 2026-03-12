@@ -53,3 +53,10 @@ Proceso: cache/ → revisión Iker → revisión Claude → APROBADA → custom/
 | jarvis-python | JARVIS | ✅ APROBADA | — | Black, pathlib, encoding, async |
 | jarvis-autonomy | JARVIS | ✅ APROBADA | — | Modo VPS, acciones destructivas |
 | jarvis-context-window | JARVIS | ✅ APROBADA | — | Green/Yellow/Orange/Red thresholds |
+
+## Skills auto-generadas desde git history (2026-03-12)
+
+| Skill | Fuente | Status | Aprobada por | Notas |
+|-------|--------|--------|--------------|-------|
+| jarvis-multi-provider-routing | git-analysis/jarvis (50 commits) | ⏸ PENDIENTE_REVISION | — | Patrón 3-tier routing: cuándo añadir providers, fallback chain, anti-patrones |
+| jarvis-agent-creation | git-analysis/jarvis (50 commits) | ⏸ PENDIENTE_REVISION | — | Estructura canónica de agentes, modelo correcto por tier, archivos co-cambiados |

@@ -30,6 +30,21 @@ try:
         1 for line in result.stdout.splitlines()
         if line.startswith("+[20")
     )
+    # Fallback: si no hay cambios en working tree, revisar último commit
+    if lessons_added == 0:
+        last_commit = subprocess.run(
+            ["git", "-C", str(JARVIS), "log", "-1", "--oneline", "--", "tasks/lessons.md"],
+            capture_output=True, text=True, timeout=5
+        )
+        if last_commit.stdout.strip():
+            result2 = subprocess.run(
+                ["git", "-C", str(JARVIS), "diff", "HEAD~1", "HEAD", "--", "tasks/lessons.md"],
+                capture_output=True, text=True, timeout=5
+            )
+            lessons_added = sum(
+                1 for line in result2.stdout.splitlines()
+                if line.startswith("+[20")
+            )
 except Exception:
     pass
 

@@ -1,3 +1,8 @@
+---
+name: content-automator
+model: openrouter/nvidia/nemotron-nano-12b-v2-vl:free
+---
+
 # Agent: content-automator
 
 ## Identity

@@ -2,9 +2,10 @@
 JAL Run v3 -- orquestador del ciclo completo
 """
 
+import os
+import sqlite3
 import subprocess
 import sys
-import sqlite3
 from pathlib import Path
 
 JARVIS = Path("/root/jarvis")
@@ -21,7 +22,7 @@ def get_active_plan() -> tuple:
         conn.close()
         return None, None
     steps = conn.execute("""
-        SELECT step_number, description, executor_instruction
+        SELECT step_number, description, description
         FROM jal_steps
         WHERE objective_id=? AND attempt=? AND status='pending'
         ORDER BY step_number
@@ -117,14 +118,22 @@ def main():
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(executor_prompt, encoding="utf-8")
 
+    # Cargar .env para que OPENROUTER_API_KEY esté disponible en el subproceso
+    env_file = JARVIS / ".env"
+    env = dict(os.environ)
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                env.setdefault(k.strip(), v.strip())
+
     subprocess.run(
-        [
-            "claude",
-            "--model", "claude-sonnet-4-6",
-            "--add-dir", str(JARVIS),
-            "-p", prompt_file.read_text(encoding="utf-8"),
-        ],
+        ["python3", str(JARVIS / "bin" / "openrouter_wrapper.py"),
+         "--model", "qwen/qwen3-coder:free"],
+        input=executor_prompt,
+        text=True,
         cwd=str(JARVIS),
+        env=env,
     )
 
     print("[JAL] 3/3 Evaluando con Critic...")

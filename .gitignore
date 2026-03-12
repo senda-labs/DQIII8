@@ -48,3 +48,5 @@ skills-registry/cache/
 
 # Logs internos
 database/system_metrics.log
+objectives/active/
+objectives/failed/

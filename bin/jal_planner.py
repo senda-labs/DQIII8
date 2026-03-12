@@ -6,13 +6,14 @@ Antes de planificar, consulta el historial de fallos de Claude Code
 para asignar pesos y criticality basados en datos reales.
 """
 
-import sqlite3
 import json
 import os
+import sqlite3
 import sys
-import requests
-from pathlib import Path
+import urllib.error
+import urllib.request
 from datetime import datetime
+from pathlib import Path
 
 JARVIS = Path("/root/jarvis")
 DB     = JARVIS / "database" / "jarvis_metrics.db"
@@ -60,12 +61,42 @@ def get_claude_reliability_context() -> str:
         return "BD no disponible para consulta de historial."
 
 
-def plan_with_claude(obj_content: str, reliability_ctx: str) -> list:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+def _call_openrouter(prompt: str, model: str = "qwen/qwen3-coder:free") -> str:
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
-        print("[PLANNER] ERROR: ANTHROPIC_API_KEY no configurada")
+        print("[PLANNER] ERROR: OPENROUTER_API_KEY no configurada en .env")
         sys.exit(1)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "HTTP-Referer": "https://jarvis.local",
+        "X-Title": "JARVIS",
+    }
+    fallback_chain = [model, "stepfun/step-3.5-flash:free",
+                      "meta-llama/llama-3.3-70b-instruct:free"]
+    for m in fallback_chain:
+        payload = json.dumps({
+            "model": m,
+            "messages": [{"role": "user", "content": prompt}],
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=payload,
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            return data["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as exc:
+            print(f"[PLANNER] {m} -> HTTP {exc.code}, probando fallback...")
+            if exc.code not in (429, 500, 502, 503):
+                raise
+    print("[PLANNER] ERROR: todos los modelos OpenRouter fallaron")
+    sys.exit(1)
 
+
+def plan_with_claude(obj_content: str, reliability_ctx: str) -> list:
     prompt = f"""Eres el planificador de JARVIS, sistema autonomo.
 
 OBJETIVO:
@@ -102,21 +133,7 @@ Responde SOLO con JSON valido, sin texto adicional:
 LIMITES: minimo 2 pasos, maximo 8 pasos.
 CRITICO: criticality=3 solo si el fallo bloquea el objetivo completo."""
 
-    resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json={
-            "model": "claude-sonnet-4-6",
-            "max_tokens": 2000,
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        timeout=30,
-    )
-    raw = resp.json()["content"][0]["text"]
+    raw = _call_openrouter(prompt)
     for d in ["```json", "```"]:
         if d in raw:
             raw = raw.split(d)[1].split("```")[0]

@@ -1,6 +1,6 @@
 ---
 name: git-specialist
-model: ollama:qwen2.5-coder:3b
+model: ollama:qwen2.5-coder:7b
 ---
 
 # Git Specialist

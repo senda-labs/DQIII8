@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-model: claude-haiku-4-5-20251001
+model: groq:llama-3.3-70b-versatile
 isolation: worktree
 ---
 

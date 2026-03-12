@@ -35,20 +35,20 @@ Proceso: cache/ → revisión Iker → revisión Claude → APROBADA → custom/
 
 | Rule | Fuente | Status | Conflicto | Notas |
 |------|--------|--------|-----------|-------|
-| common/coding-style | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Inmutabilidad, organización archivos |
-| common/git-workflow | ECC/affaan-m | ⏸ PENDIENTE_REVISION | Leve | Ver nota JARVIS override (atribución commits) |
-| common/agents | ECC/affaan-m | ⏸ PENDIENTE_REVISION | **Sí** | Agentes ECC != JARVIS agents. Override aplicado |
-| common/performance | ECC/affaan-m | ⏸ PENDIENTE_REVISION | **Sí** | Model routing ECC != JARVIS 3-tier. Override aplicado |
-| common/security | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Compatible con jarvis-prohibitions |
-| common/testing | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | 80% coverage, TDD |
-| common/hooks | ECC/affaan-m | ⏸ PENDIENTE_REVISION | Leve | "no dangerously-skip-permissions" — JARVIS lo usa solo en bot |
-| common/patterns | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Repository pattern, skeleton projects |
-| common/development-workflow | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Research→Plan→TDD→Review→Commit |
-| python/coding-style | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | PEP8, type hints — ver jarvis-python para overrides |
-| python/hooks | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Black/ruff auto-format — compatible con PostToolUse JARVIS |
-| python/patterns | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | Protocol, dataclasses, async |
-| python/security | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | dotenv, KeyError si falta secret |
-| python/testing | ECC/affaan-m | ⏸ PENDIENTE_REVISION | No | pytest, coverage |
+| common/coding-style | ECC/affaan-m | ✅ APROBADA | No | Inmutabilidad, organización archivos |
+| common/git-workflow | ECC/affaan-m | ✅ APROBADA (con override) | Leve | JARVIS NOTE aplicado: atribución Co-Authored-By activa |
+| common/agents | ECC/affaan-m | ✅ APROBADA (con override) | **Sí** | Override aplicado: agentes JARVIS reemplazan tabla ECC |
+| common/performance | ECC/affaan-m | ✅ APROBADA (con override) | **Sí** | Override aplicado: routing 3-tier JARVIS reemplaza Haiku/Sonnet/Opus |
+| common/security | ECC/affaan-m | ✅ APROBADA | No | Compatible con jarvis-prohibitions |
+| common/testing | ECC/affaan-m | ✅ APROBADA | No | 80% coverage, TDD |
+| common/hooks | ECC/affaan-m | ✅ APROBADA | No | "no dangerously-skip-permissions" alineado con jarvis-prohibitions |
+| common/patterns | ECC/affaan-m | ✅ APROBADA | No | Repository pattern, skeleton projects |
+| common/development-workflow | ECC/affaan-m | ✅ APROBADA | No | Research→Plan→TDD→Review→Commit |
+| python/coding-style | ECC/affaan-m | ✅ APROBADA | No | PEP8, type hints — ver jarvis-python para overrides |
+| python/hooks | ECC/affaan-m | ✅ APROBADA | No | Black/ruff auto-format — compatible con PostToolUse JARVIS |
+| python/patterns | ECC/affaan-m | ✅ APROBADA | No | Protocol, dataclasses, async |
+| python/security | ECC/affaan-m | ✅ APROBADA | No | dotenv, KeyError si falta secret |
+| python/testing | ECC/affaan-m | ✅ APROBADA | No | pytest, coverage |
 | jarvis-prohibitions | JARVIS | ✅ APROBADA | — | Reglas absolutas JARVIS, máxima prioridad |
 | jarvis-python | JARVIS | ✅ APROBADA | — | Black, pathlib, encoding, async |
 | jarvis-autonomy | JARVIS | ✅ APROBADA | — | Modo VPS, acciones destructivas |

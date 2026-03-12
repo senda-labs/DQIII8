@@ -18,7 +18,7 @@ DB: database/jarvis_metrics.db — every session, action, and error is logged vi
 | Architecture decisions, security, auth | 3 — paid | Claude API | `claude-sonnet-4-6` |
 | Multi-agent orchestration, /mobilize | 3 — paid | Claude API | `claude-sonnet-4-6` |
 | Ambiguous → `python3 bin/openrouter_wrapper.py classify "[prompt]"` | auto | — | $0 |
-| Regla: usar el tier más bajo que resuelva la tarea. Subir solo si el inferior falla. | | | |
+| Regla: tier más bajo que resuelva la tarea. Subir solo si el inferior falla. | | | |
 
 
 ## Workflow

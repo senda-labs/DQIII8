@@ -7,14 +7,19 @@ Repo: C:\jarvis\ (local) → /home/jarvis/ (VPS).
 DB: database/jarvis_metrics.db — every session, action, and error is logged via hooks.
 
 ## Model Routing
-| Condition | Model |
-|-----------|-------|
-| Python code, refactor, tests, debug, git ops | Ollama local (qwen2.5-coder) |
-| Financial analysis, WACC, DCF, valuation | Claude API |
-| Creative writing, novel, xianxia, narrative | Claude API |
-| Architecture decisions, security, auth | Claude API |
-| Multi-agent orchestration, /mobilize | Claude API |
-| Ambiguous → classify with: `claude -p "local or api? [prompt]"` | Headless classifier |
+| Condition | Tier | Provider | Model |
+|-----------|------|----------|-------|
+| Python, refactor, tests, debug, git ops | 1 — local | Ollama | `qwen2.5-coder:7b` |
+| Code review, analysis, research | 2 — cloud free | Groq | `llama-3.3-70b-versatile` |
+| Video, TTS, subtítulos, media pipeline | 2 — cloud free | OpenRouter | `nemotron:free` |
+| Investigación, documentación general | 2 — cloud free | OpenRouter | `qwen3:free` |
+| Financial analysis, WACC, DCF | 3 — paid | Claude API | `claude-sonnet-4-6` |
+| Creative writing, novel, xianxia | 3 — paid | Claude API | `claude-sonnet-4-6` |
+| Architecture decisions, security, auth | 3 — paid | Claude API | `claude-sonnet-4-6` |
+| Multi-agent orchestration, /mobilize | 3 — paid | Claude API | `claude-sonnet-4-6` |
+| Ambiguous → `python3 bin/openrouter_wrapper.py classify "[prompt]"` | auto | — | $0 |
+| Regla: usar el tier más bajo que resuelva la tarea. Subir solo si el inferior falla. | | | |
+
 
 ## Workflow
 1. **Plan** — Enter plan mode for any task with 3+ steps. Write spec to tasks/todo.md.

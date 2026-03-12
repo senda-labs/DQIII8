@@ -1,3 +1,11 @@
+---
+title: leyendas-del-este
+tags: [project, paused]
+status: paused
+last_updated: 2026-03-12
+agents: [creative-writer]
+model: api
+---
 # leyendas-del-este — Estado del Proyecto
 Última actualización: 2026-03-10
 

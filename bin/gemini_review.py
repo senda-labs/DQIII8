@@ -124,13 +124,22 @@ def run_review(files: list[Path]) -> list[dict]:
             json_start = output.find("{")
             json_end = output.rfind("}") + 1
             if json_start != -1 and json_end > json_start:
-                parsed = json.loads(output[json_start:json_end])
-                parsed["file"] = f.name
-                results.append(parsed)
+                try:
+                    parsed = json.loads(output[json_start:json_end])
+                    parsed["file"] = f.name
+                    results.append(parsed)
+                except json.JSONDecodeError as je:
+                    results.append({
+                        "file": f.name,
+                        "score": None,
+                        "issues": [],
+                        "recommendations": [f"JSON parse error: {je}"],
+                        "raw": output[:500],
+                    })
             else:
                 results.append({
                     "file": f.name,
-                    "score": 0.5,
+                    "score": None,
                     "issues": [],
                     "recommendations": ["No se pudo parsear la respuesta de Gemini"],
                     "raw": output[:500],
@@ -138,14 +147,14 @@ def run_review(files: list[Path]) -> list[dict]:
         except subprocess.TimeoutExpired:
             results.append({
                 "file": f.name,
-                "score": 0.5,
+                "score": None,
                 "issues": [],
                 "recommendations": ["Timeout al revisar el archivo"],
             })
         except Exception as e:
             results.append({
                 "file": f.name,
-                "score": 0.5,
+                "score": None,
                 "issues": [],
                 "recommendations": [f"Error: {e}"],
             })
@@ -159,11 +168,13 @@ def save_report(files: list[Path], results: list[dict]) -> Path:
     ts = now.strftime("%Y%m%d_%H%M%S")
     report_path = REPORTS_DIR / f"gemini_review_{ts}.md"
 
-    avg_score = sum(r.get("score", 0.5) for r in results) / len(results) if results else 0.0
+    valid_scores = [r["score"] for r in results if r.get("score") is not None]
+    avg_score = sum(valid_scores) / len(valid_scores) if valid_scores else None
+    avg_score_display = f"{avg_score:.2f}" if avg_score is not None else "N/A"
 
     lines = [
         f"# Gemini Code Review — {now.strftime('%Y-%m-%d %H:%M')}",
-        f"\n**Score global:** {avg_score:.2f}  |  **Archivos revisados:** {len(results)}\n",
+        f"\n**Score global:** {avg_score_display}  |  **Archivos revisados:** {len(results)}\n",
     ]
     for r in results:
         lines.append(f"\n## {r['file']}  (score: {r.get('score', '?')})")
@@ -185,8 +196,8 @@ def save_report(files: list[Path], results: list[dict]) -> Path:
     report_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"[gemini-review] Reporte guardado: {report_path}")
 
-    # Registrar en BD
-    if DB.exists():
+    # Registrar en BD solo si hay score válido
+    if DB.exists() and avg_score is not None:
         try:
             conn = sqlite3.connect(str(DB), timeout=5)
             conn.execute(
@@ -207,6 +218,8 @@ def save_report(files: list[Path], results: list[dict]) -> Path:
             conn.close()
         except Exception as e:
             print(f"[gemini-review] BD skip: {e}", file=sys.stderr)
+    elif avg_score is None:
+        print("[gemini-review] Score inválido (todos fallbacks) — omitiendo INSERT en BD")
 
     return report_path
 

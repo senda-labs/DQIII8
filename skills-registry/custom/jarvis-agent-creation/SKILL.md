@@ -75,7 +75,7 @@ isolation: worktree  # solo si escribe código que puede romper el repo
 | code-reviewer | groq:llama-3.3-70b-versatile | review, "is this ok", worktree |
 | orchestrator | claude-sonnet-4-6 | /mobilize, coordinate, 3+ domains |
 | content-automator | openrouter/nvidia/nemotron | video, TTS, subtítulos, reels |
-| data-analyst | openrouter/openai/gpt-oss-120b | WACC, DCF, chart, Excel |
+| data-analyst | claude-sonnet-4-6 | WACC, DCF, chart, Excel |
 | creative-writer | openrouter/meta-llama/llama-3.3-70b | chapter, scene, novel, xianxia |
 | auditor | claude-sonnet-4-6 | /audit, "what's failing", metrics |
 | research-analyst | openrouter/stepfun/step-3.5-flash | research, investigar, documentar |

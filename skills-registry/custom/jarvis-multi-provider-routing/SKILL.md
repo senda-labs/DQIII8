@@ -37,8 +37,8 @@ Tier 1 — Local (gratis, sin latencia de red)
 
 Tier 2 — Cloud gratis (latencia baja, rate limits)
   Provider: Groq → llama-3.3-70b-versatile    (review, analysis)
-  Provider: OpenRouter → qwen/qwen3-coder:free  (coding)
-  Provider: OpenRouter → stepfun/step-3.5-flash:free (default)
+  Provider: OpenRouter → qwen3:free             (investigación/documentación)
+  Provider: OpenRouter → nemotron:free          (video/TTS/media)
   Fallback chain: OpenRouter → Groq → llm7.io → Pollinations
 
 Tier 3 — Cloud pagado (máxima capacidad, sin límites)

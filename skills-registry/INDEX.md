@@ -58,6 +58,6 @@ Proceso: cache/ → revisión Iker → revisión Claude → APROBADA → custom/
 
 | Skill | Fuente | Status | Aprobada por | Notas |
 |-------|--------|--------|--------------|-------|
-| jarvis-multi-provider-routing | git-analysis/jarvis (50 commits) | ⏸ PENDIENTE_REVISION | — | Patrón 3-tier routing: cuándo añadir providers, fallback chain, anti-patrones |
-| jarvis-agent-creation | git-analysis/jarvis (50 commits) | ⏸ PENDIENTE_REVISION | — | Estructura canónica de agentes, modelo correcto por tier, archivos co-cambiados |
+| jarvis-multi-provider-routing | git-analysis/jarvis (50 commits) | ✅ APROBADA | Iker | Patrón 3-tier routing: cuándo añadir providers, fallback chain, anti-patrones. Modelos Tier-2 corregidos (nemotron:free, qwen3:free) |
+| jarvis-agent-creation | git-analysis/jarvis (50 commits) | ✅ APROBADA | Iker | Estructura canónica de agentes, modelo correcto por tier, archivos co-cambiados. data-analyst corregido a claude-sonnet-4-6 |
 | continuous-learning-v2 | ECC/affaan-m (adaptado) | ✅ APROBADA | Iker | Instincts SQLite + stop.py integration + /instinct-status command |

@@ -1,3 +1,11 @@
+---
+title: content-automation-faceless
+tags: [project, active]
+status: active
+last_updated: 2026-03-12
+agents: [content-automator, python-specialist, code-reviewer]
+model: api
+---
 # content-automation-faceless — Estado del Proyecto
 
 **Ruta:** `/root/content-automation-faceless/`

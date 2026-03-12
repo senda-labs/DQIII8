@@ -56,7 +56,7 @@ try:
         ).fetchone()
         conn.close()
         if row:
-            audit_info = f"{row[0][:10]} | Score: {row[1]}/10"
+            audit_info = f"{row[0][:10]} | Score: {row[1]}/100"
 except Exception:
     pass
 

@@ -1,3 +1,11 @@
+---
+title: jarvis-core
+tags: [project, active]
+status: active
+last_updated: 2026-03-12
+agents: [orchestrator, python-specialist, code-reviewer]
+model: local
+---
 # jarvis-core — Estado del Proyecto
 Última actualización: 2026-03-10
 

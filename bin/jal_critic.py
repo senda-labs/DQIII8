@@ -260,10 +260,9 @@ def get_telegram_reply(obj_id: str, timeout_s: int = 600) -> tuple[str, int]:
 
 def classify_intent_with_claude(user_text: str, score: float) -> str:
     """
-    Usa Claude headless para clasificar la intencion del usuario.
-    Mas preciso que regex para espanol coloquial.
+    Clasifica la intencion del usuario via OpenRouter.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
         return "clarify"
 
@@ -283,22 +282,25 @@ Score actual: {score:.0%}
 Responde SOLO con una de estas palabras exactas:
 approve | retry_full | retry_critical | audit | next_objective | abandon | clarify"""
 
-    resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json={
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 20,
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        timeout=15,
-    )
-    intent = resp.json()["content"][0]["text"].strip().lower()
-    valid  = {
+    try:
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "HTTP-Referer": "https://jarvis.local",
+                "X-Title": "JARVIS",
+            },
+            json={
+                "model": "stepfun/step-3.5-flash:free",
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=15,
+        )
+        intent = resp.json()["choices"][0]["message"]["content"].strip().lower()
+    except Exception:
+        return "clarify"
+
+    valid = {
         "approve", "retry_full", "retry_critical",
         "audit", "next_objective", "abandon", "clarify",
     }

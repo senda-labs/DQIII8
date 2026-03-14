@@ -31,3 +31,4 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-10] [spanish-dialogue] Em-dash (—) para diálogos, no comillas dobles
 - [2026-03-10] [verb-tense] No mezclar pretérito/presente dentro de la misma escena
 - [2026-03-14] [env-override] config/.env tenía GROQ key caducada con override=True → pipeline ignoraba /root/jarvis/.env → sincronizar ambos .env cuando se rota una key
+- [2026-03-14] [fal-api-key-empty] FAL_API_KEY existía en config/.env pero vacía → pipeline usaba HF como fallback silenciosamente → sincronizar config/.env con jarvis/.env después de añadir cualquier key nueva

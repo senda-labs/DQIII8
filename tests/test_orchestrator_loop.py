@@ -37,10 +37,18 @@ def test_capture_fallback_on_error():
 
 
 def test_capture_fallback_no_error():
-    """capture() infiere success=True si el output no contiene errores."""
-    output = "Todo fue bien. Archivos modificados. Completado."
+    """capture() infiere success=True cuando hay más señales de éxito que de error."""
+    output = "File created successfully. All steps completed and done."
     result = loop.capture(output)
     assert result["success"] is True
+
+
+def test_capture_fallback_no_signals():
+    """capture() devuelve success=False cuando no hay señales reconocibles (ni éxito ni error)."""
+    output = "Todo fue bien. Archivos modificados. Completado."
+    result = loop.capture(output)
+    assert result["success"] is False
+    assert result.get("inferred") is True
 
 
 def test_build_prompt_contains_final_report_marker():

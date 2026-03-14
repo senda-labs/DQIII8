@@ -68,7 +68,12 @@ Medir con time.perf_counter: tiempo de render.
 Guardar métricas en benchmarks/results.json:
 {model_tier, function, lines_of_code, cpu_seconds, memory_peak_mb,
  uses_vectorization: bool, tests_passed: bool}
-Test: dimensiones correctas + PNG válido + RAM <500MB."
+Test: dimensiones correctas + PNG válido + RAM <500MB.
+Después de guardar el PNG, evaluar similitud visual:
+    from src.python.ssim_scorer import score_against_reference
+    result = score_against_reference('output/mandelbrot.png')
+    print(f'SSIM: {result}')
+Incluir en FINAL_REPORT: 'ssim_score': result['score'], 'ssim_quality': result['quality']"
 
 OBJETIVO 2 — Julia set con colormap matemático:
 "Implementar src/python/julia.py.
@@ -76,7 +81,12 @@ Función: render_julia(c=(-0.7+0.27j), w=1080, h=1920) -> np.ndarray
 Colormap HSV implementado desde cero en numpy (sin matplotlib).
 Sin loops Python — todo vectorizado.
 Añadir métricas a benchmarks/results.json.
-Test: imagen no es negra (variance > 1000) + dimensiones + RAM."
+Test: imagen no es negra (variance > 1000) + dimensiones + RAM.
+Después de guardar el PNG, evaluar similitud visual:
+    from src.python.ssim_scorer import score_against_reference
+    result = score_against_reference('output/julia.png')
+    print(f'SSIM: {result}')
+Incluir en FINAL_REPORT: 'ssim_score': result['score'], 'ssim_quality': result['quality']"
 
 OBJETIVO 3 — Perlin noise 2D desde cero:
 "Implementar src/python/perlin.py.
@@ -85,7 +95,12 @@ Función: generate_perlin(w=1080, h=1920, octaves=6) -> np.ndarray
 Optimizar para numpy: usar meshgrid, no doble loop.
 Comparar: medir tiempo con loop puro vs implementación vectorizada.
 Documentar speedup en benchmarks/results.json.
-Test: variance > 500 + suavidad (no pixelado)."
+Test: variance > 500 + suavidad (no pixelado).
+Después de guardar el PNG, evaluar similitud visual:
+    from src.python.ssim_scorer import score_against_reference
+    result = score_against_reference('output/perlin.png')
+    print(f'SSIM: {result}')
+Incluir en FINAL_REPORT: 'ssim_score': result['score'], 'ssim_quality': result['quality']"
 
 OBJETIVO 4 — Kernel C++ con ctypes:
 "Implementar src/cpp/mandelbrot.cpp.
@@ -106,7 +121,12 @@ Combinar los 3 renderers en una sola imagen usando streaming por tiles:
   - RAM máxima en cualquier momento: <500MB
 Guardar output/composite_final.png (1080×1920).
 Medir RAM peak de todo el proceso.
-Test: PNG válido + RAM <500MB durante toda la ejecución."
+Test: PNG válido + RAM <500MB durante toda la ejecución.
+Después de guardar el PNG, evaluar similitud visual:
+    from src.python.ssim_scorer import score_against_reference
+    result = score_against_reference('output/composite_final.png')
+    print(f'SSIM: {result}')
+Incluir en FINAL_REPORT: 'ssim_score': result['score'], 'ssim_quality': result['quality']"
 
 ## Secuencia de lanzamiento por tier
 

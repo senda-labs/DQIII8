@@ -486,7 +486,7 @@ INSTRUCCIONES:
         tier1  → Ollama qwen2.5-coder:7b (local, gratis)
         tier2  → OpenRouter free (via openrouter_wrapper.py)
         tier3  → Claude Code headless (default, Sonnet 4.6)
-        haiku  → Claude Haiku 4.5 via Anthropic API directo
+        haiku  → Claude Haiku 4.5 via CLI OAuth (--model claude-haiku-4-5-20251001)
         """
         dispatch = {
             "tier1": self._execute_ollama,
@@ -614,35 +614,43 @@ INSTRUCCIONES:
         return result.stdout + result.stderr
 
     def _execute_haiku(self, prompt: str, project: str) -> str:
-        """Haiku 4.5: 2-step — Haiku genera el plan, Claude Code lo ejecuta."""
-        import anthropic
+        """Haiku 4.5: 2-step — Haiku genera el plan via CLI OAuth, Claude Code lo ejecuta."""
+        import tempfile
 
-        api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-        if not api_key:
-            print("  [haiku] ANTHROPIC_API_KEY no configurada → fallback tier3")
-            return self._execute_claude(prompt, project)
-
-        # Paso 1: Haiku genera plan/código (sin herramientas)
+        # Paso 1: Haiku genera plan via `claude --model` (OAuth, sin herramientas)
         plan = ""
         plan_quality = "error"
+        planning_prompt = (
+            "Genera un plan detallado y el código completo para la siguiente tarea. "
+            "Sé específico y concreto. No uses herramientas, solo genera texto.\n\n"
+            f"{prompt}\n\n"
+            "Responde con:\n1. Plan paso a paso\n2. Código completo listo para ejecutar"
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, dir="/tmp", encoding="utf-8"
+        ) as f:
+            f.write(planning_prompt)
+            plan_file = f.name
+        os.chmod(plan_file, 0o644)
+
         try:
-            client = anthropic.Anthropic(api_key=api_key)
-            msg = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=4096,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            "Genera un plan detallado y el código completo para la siguiente tarea. "
-                            "Sé específico y concreto. No uses herramientas, solo genera texto.\n\n"
-                            f"{prompt}\n\n"
-                            "Responde con:\n1. Plan paso a paso\n2. Código completo listo para ejecutar"
-                        ),
-                    }
+            result = subprocess.run(
+                [
+                    "su",
+                    "-",
+                    "jarvis",
+                    "-c",
+                    f"export JARVIS_MODE=autonomous; "
+                    f"export JARVIS_ROOT={JARVIS_ROOT}; "
+                    f'claude -p "$(cat {plan_file})" '
+                    f"--model claude-haiku-4-5-20251001 "
+                    f"--output-format text 2>&1",
                 ],
+                capture_output=True,
+                text=True,
+                timeout=300,
             )
-            plan = msg.content[0].text
+            plan = result.stdout.strip()
             if len(plan) > 500:
                 plan_quality = "good"
             elif len(plan) > 100:
@@ -650,7 +658,16 @@ INSTRUCCIONES:
             else:
                 plan_quality = "poor"
         except Exception as e:
-            print(f"  [haiku] API error: {e} → fallback tier3")
+            print(f"  [haiku] CLI error: {e} → fallback tier3")
+            return self._execute_claude(prompt, project)
+        finally:
+            try:
+                os.unlink(plan_file)
+            except Exception:
+                pass
+
+        if not plan or plan_quality == "error":
+            print("  [haiku] Sin plan generado → fallback tier3")
             return self._execute_claude(prompt, project)
 
         # Paso 2: Claude Code ejecuta el plan con herramientas reales

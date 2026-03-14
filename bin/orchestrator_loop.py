@@ -465,6 +465,18 @@ INSTRUCCIONES:
 
     def capture(self, output: str) -> dict:
         """Extrae el FINAL_REPORT del output de Claude Code."""
+
+        def _normalize(report: dict) -> dict:
+            """Normaliza campos de tier-planner y SSIM."""
+            if "planner_quality" not in report:
+                report["planner_quality"] = report.get("qwen_plan_quality") or report.get(
+                    "haiku_plan_quality"
+                )
+            report.setdefault("ssim_score", None)
+            report.setdefault("ssim_quality", None)
+            return report
+
+        # Intento 1: formato estricto con marcadores
         match = re.search(
             r"---FINAL_REPORT---\s*(\{.*?\})\s*---END_REPORT---",
             output,
@@ -472,32 +484,38 @@ INSTRUCCIONES:
         )
         if match:
             try:
-                report = json.loads(match.group(1))
-                # Normalizar planner_quality desde campos de tier específicos
-                if "planner_quality" not in report:
-                    report["planner_quality"] = report.get("qwen_plan_quality") or report.get(
-                        "haiku_plan_quality"
-                    )
-                # Normalize ssim fields
-                report.setdefault("ssim_score", report.get("ssim_score"))
-                report.setdefault("ssim_quality", report.get("ssim_quality"))
-                return report
+                return _normalize(json.loads(match.group(1)))
             except json.JSONDecodeError:
                 pass
 
-        # Fallback: inferir éxito por ausencia de palabras de error
-        has_error = any(w in output.lower() for w in ["error", "traceback", "failed", "exception"])
+        # Intento 2: buscar cualquier JSON con "success" en el output
+        for m in re.findall(r"\{[^{}]*\"success\"[^{}]*\}", output, re.DOTALL):
+            try:
+                data = json.loads(m)
+                if "success" in data:
+                    return _normalize(data)
+            except json.JSONDecodeError:
+                continue
+
+        # Intento 3: inferir éxito por señales en el contenido del output
+        output_lower = output.lower()
+        success_signals = ["successfully", "created", "completed", "pytest", "passed", "✅", "done"]
+        error_signals = ["error", "traceback", "failed", "exception", "timeout"]
+        success_count = sum(1 for s in success_signals if s in output_lower)
+        error_count = sum(1 for e in error_signals if e in output_lower)
+
         return {
-            "success": not has_error,
+            "success": success_count > error_count,
             "files_modified": [],
             "errors_found": [],
             "fixes_applied": [],
             "lessons": [],
             "blocker": None,
-            "next_step": "Revisar output manualmente",
+            "next_step": "Inferred from output signals",
             "planner_quality": None,
             "ssim_score": None,
             "ssim_quality": None,
+            "inferred": True,
         }
 
     def store(self, obj_id: str, project: str, objective: dict, result: dict) -> None:
@@ -535,6 +553,20 @@ INSTRUCCIONES:
         if metrics and isinstance(metrics, dict) and metrics.get("renderer"):
             megapixels = 1080 * 1920 / 1_000_000  # 2.0736 mpx (resolución estándar)
             cpu_s = metrics.get("cpu_seconds")
+
+            # Contar decisiones de permisos de la última hora (proxy del ciclo actual)
+            perm_rows = conn.execute("""
+                SELECT
+                    SUM(CASE WHEN decision='APPROVE' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN decision='DENY'    THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN decision='ESCALATE' THEN 1 ELSE 0 END)
+                FROM permission_decisions
+                WHERE timestamp > datetime('now', '-1 hour')
+                """).fetchone()
+            perm_approvals = perm_rows[0] or 0
+            perm_denials = perm_rows[1] or 0
+            escalations = perm_rows[2] or 0
+
             conn.execute(
                 """
                 INSERT INTO code_metrics
@@ -543,8 +575,10 @@ INSTRUCCIONES:
                      memory_peak_mb, megapixels, cpu_per_megapixel,
                      uses_vectorization, uses_numpy_only, passes_tests,
                      ssim_score, ssim_quality, output_variance,
-                     speedup_vs_python, compiled_ok, success)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                     speedup_vs_python, compiled_ok,
+                     permission_approvals, permission_denials, escalations_needed,
+                     success)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     project,
@@ -565,6 +599,9 @@ INSTRUCCIONES:
                     metrics.get("output_variance"),
                     metrics.get("speedup_vs_python"),
                     1 if metrics.get("compiled_ok") else 0,
+                    perm_approvals,
+                    perm_denials,
+                    escalations,
                     1 if result.get("success") else 0,
                 ),
             )

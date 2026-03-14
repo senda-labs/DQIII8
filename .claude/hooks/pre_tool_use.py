@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 JARVIS Hook — PreToolUse
-v3: Delegación a PermissionAnalyzer + soporte ESCALATE
+v4: PermissionAnalyzer + PresupuestoSesión + Modo Autónomo
 """
 
 import json
@@ -38,7 +38,6 @@ try:
     _analyzer = PermissionAnalyzer()
     result = _analyzer.evaluate(tool, inp)
 except Exception as _e:
-    # Si el analyzer falla, dejar pasar (fail-open para no bloquear trabajo)
     result = {
         "decision": "APPROVE",
         "reason": f"analyzer_error:{_e}",
@@ -54,7 +53,6 @@ if result["decision"] in ("DENY", "ESCALATE"):
     except Exception:
         pass
 
-    escalate_prefix = "🚨 ESCALATE" if result["decision"] == "ESCALATE" else "🔒 DENY"
     print(
         json.dumps(
             {
@@ -72,6 +70,63 @@ if result["decision"] in ("DENY", "ESCALATE"):
         )
     )
     sys.exit(0)
+
+# ── Permission Supervisor ─────────────────────────────────────────────────────
+JARVIS_MODE = os.getenv("JARVIS_MODE", "supervised")
+
+AUTO_APPROVE_TOOLS = {
+    "Read",
+    "Glob",
+    "Grep",
+    "LS",
+    "Write",
+    "Edit",
+    "MultiEdit",
+    "Bash",
+    "WebFetch",
+    "WebSearch",
+}
+
+# Presupuesto de sesión — bloquear si se supera $5 en la última hora
+MAX_SESSION_COST_USD = 5.0
+try:
+    import sqlite3
+
+    _db = os.path.join(
+        os.environ.get("JARVIS_ROOT", "/root/jarvis"), "database", "jarvis_metrics.db"
+    )
+    conn = sqlite3.connect(_db, timeout=10)
+    row = conn.execute(
+        "SELECT COALESCE(SUM(tokens_used),0) FROM agent_actions "
+        "WHERE session_id=? AND timestamp > datetime('now','-1 hour')",
+        (data.get("session_id", ""),),
+    ).fetchone()
+    conn.close()
+    session_tokens = row[0] if row else 0
+    # Sonnet: ~$15/M tokens output — estimación conservadora
+    estimated_cost = (session_tokens / 1_000_000) * 15.0
+    if estimated_cost > MAX_SESSION_COST_USD:
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": (
+                            f"Presupuesto de sesión excedido: "
+                            f"${estimated_cost:.2f} > ${MAX_SESSION_COST_USD}"
+                        ),
+                    }
+                }
+            )
+        )
+        sys.exit(0)
+except Exception:
+    pass  # Si falla el check de presupuesto, no bloquear
+
+# En modo autonomous: auto-aprobar si ya pasó los checks de seguridad
+if JARVIS_MODE == "autonomous" and tool in AUTO_APPROVE_TOOLS:
+    sys.exit(0)  # Aprobación silenciosa
 
 # ── Métricas de acciones (fail-silent) ──────────────────────────────────────
 try:

@@ -168,3 +168,26 @@ CREATE TABLE IF NOT EXISTS permission_decisions (
 
 CREATE INDEX IF NOT EXISTS idx_perm_session_tool
     ON permission_decisions(session_id, tool_name, decision, timestamp);
+
+-- ── OrchestratorLoop — Objetivos de proyecto ────────────────────────────────
+CREATE TABLE IF NOT EXISTS objectives (
+    id               TEXT PRIMARY KEY,   -- UUID corto (8 chars)
+    project          TEXT NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'pending',
+        -- pending | running | completed | failed | blocked
+    objective_text   TEXT NOT NULL,
+    success_criteria TEXT,
+    context_snapshot TEXT,               -- JSON: estado antes de empezar
+    retry_count      INTEGER DEFAULT 0,
+    max_retries      INTEGER DEFAULT 3,
+    token_usage      INTEGER DEFAULT 0,
+    created_at       TEXT NOT NULL,
+    started_at       TEXT,
+    completed_at     TEXT,
+    result_summary   TEXT,               -- JSON: output de capture()
+    lessons_added    TEXT,               -- JSON array de lecciones nuevas
+    error_message    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_objectives_project_status
+    ON objectives(project, status);

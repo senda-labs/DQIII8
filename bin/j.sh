@@ -6,6 +6,8 @@
 #   j --status        → proyecto, modelo activo, ollama ps, tmux sessions
 #   j --audit         → Gemini code review (check-only)
 #   j --classify TEXT → muestra qué tier manejaría el prompt
+#   j --autonomous    → activa JARVIS_MODE=autonomous y lanza claude
+#   j --loop PROJECT [CYCLES] → lanza OrchestratorLoop autónomo
 #
 # Tiers:
 #   local  → Tier 1: Ollama qwen2.5-coder:7b  (gratis, local)
@@ -61,6 +63,19 @@ while [[ $# -gt 0 ]]; do
             shift
             exec python3 "$OR_WRAPPER" classify "$*"
             ;;
+        --autonomous)
+            export JARVIS_MODE=autonomous
+            echo "  [JARVIS] Modo autónomo activado" >&2
+            shift
+            ;;
+        --loop)
+            PROJECT="${2:-content-automation}"
+            CYCLES="${3:-10}"
+            echo "[JARVIS] Lanzando OrchestratorLoop → $PROJECT ($CYCLES ciclos)" >&2
+            JARVIS_MODE=autonomous python3 "$JARVIS_ROOT/bin/orchestrator_loop.py" \
+                --project "$PROJECT" --cycles "$CYCLES"
+            exit 0
+            ;;
         --help|-h)
             cat <<EOF
 JARVIS — 3-tier routing
@@ -69,6 +84,8 @@ JARVIS — 3-tier routing
   j --status              proyecto + modelo + ollama ps + tmux
   j --audit               Gemini code review (check-only)
   j --classify TEXTO      muestra tier para el prompt dado
+  j --autonomous          activa modo autónomo (JARVIS_MODE=autonomous)
+  j --loop PROJECT [N]    lanza OrchestratorLoop para PROJECT, N ciclos (def. 10)
 
 Tiers:
   local   Tier 1 — Ollama $OLLAMA_MODEL (gratis, local)

@@ -22,6 +22,7 @@ JARVIS = Path("/root/jarvis")
 DB = JARVIS / "database" / "jarvis_metrics.db"
 LOG_FILE = JARVIS / "database" / "audit_reports" / "jarvis_bot.log"
 QUEUE_DIR = JARVIS / "objectives" / "queue"
+REFERENCE_IMAGE_PATH = JARVIS / "tasks" / "reference_image.jpg"
 
 # ── Configuración ──────────────────────────────────────────────────────────────
 load_dotenv(JARVIS / ".env")
@@ -467,6 +468,31 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     log.info("/loop finalizado project=%s", project)
 
 
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Guarda la foto enviada como imagen de referencia cuando el caption
+    contiene 'reference' o '/reference'.
+    Uso: enviar una foto con caption 'reference' o '/reference'
+    """
+    if not authorized(update):
+        return
+    caption = (update.message.caption or "").strip().lower()
+    if "reference" not in caption:
+        return
+
+    photo = update.message.photo[-1]  # mayor resolución disponible
+    file = await context.bot.get_file(photo.file_id)
+    await file.download_to_drive(str(REFERENCE_IMAGE_PATH))
+
+    await update.message.reply_text(
+        f"Imagen de referencia guardada.\n"
+        f"El proximo `/loop` la usara como criterio visual.\n"
+        f"Para lanzar: `/loop math-image-generator 5 tier3`",
+        parse_mode="Markdown",
+    )
+    log.info("Reference image saved to %s", REFERENCE_IMAGE_PATH)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
         await update.message.reply_text("No autorizado.")
@@ -535,6 +561,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("reply", cmd_reply_task))
     APP.add_handler(CommandHandler("kill", cmd_kill))
     APP.add_handler(CommandHandler("loop", cmd_loop))
+    APP.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     log.info("Bot en polling. Ctrl+C para detener.")

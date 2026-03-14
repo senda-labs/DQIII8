@@ -1,84 +1,105 @@
 #!/usr/bin/env python3
 """
 JARVIS Hook — PreToolUse
-Patch 4: BLOCKED_PATHS ampliado + métricas en try/except
+v3: Delegación a PermissionAnalyzer + soporte ESCALATE
 """
-import sys, json, time, os
 
+import json
+import os
+import sys
+import time
+
+# ── Parsear input ────────────────────────────────────────────────────────────
 try:
     data = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
 
-tool    = data.get("tool_name", "")
-inp     = data.get("tool_input", {})
+tool = data.get("tool_name", "")
+inp = data.get("tool_input", {})
 session = data.get("session_id", "unknown")
-agent   = data.get("agent_id", data.get("agent_name", ""))
+agent = data.get("agent_id", data.get("agent_name", ""))
+
 if not agent:
-    # Fallback: look up /tmp/jarvis_agent_{session_id}.json written by SubagentStart hook
     _tmp = f"/tmp/jarvis_agent_{session}.json"
     try:
-        import json as _json
         with open(_tmp, encoding="utf-8") as _f:
-            agent = _json.load(_f).get("agent_type", "claude-sonnet-4-6")
+            agent = json.load(_f).get("agent_type", "claude-sonnet-4-6")
     except Exception:
         agent = "claude-sonnet-4-6"
 
-# ── Patch 4: BLOCKED_PATHS ampliado ────────────────────────────────
-BLOCKED_PATHS = [
-    ".env", "secrets", "jarvis_metrics.db",
-    ".claude/settings.json", "CLAUDE.md",
-    "schema.sql", ".git/",
-    "id_rsa", "id_ed25519", ".ssh/",
-]
+# ── Importar PermissionAnalyzer ──────────────────────────────────────────────
+_hooks_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _hooks_dir)
 
-BLOCKED_BASH = [
-    "rm -rf /", "rm -rf ~", "rm -rf $HOME",
-    "DROP TABLE", "DELETE FROM agent_actions", "DROP DATABASE",
-    "> /dev/sda", "mkfs", "dd if=",
-]
+try:
+    from permission_analyzer import PermissionAnalyzer, record_rejection
 
-def deny(reason):
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": f"[JARVIS] {reason}"
-        }
-    }))
+    _analyzer = PermissionAnalyzer()
+    result = _analyzer.evaluate(tool, inp)
+except Exception as _e:
+    # Si el analyzer falla, dejar pasar (fail-open para no bloquear trabajo)
+    result = {
+        "decision": "APPROVE",
+        "reason": f"analyzer_error:{_e}",
+        "risk_level": "LOW",
+        "rule_triggered": None,
+        "suggested_fix": None,
+    }
+
+# ── Manejar DENY / ESCALATE ──────────────────────────────────────────────────
+if result["decision"] in ("DENY", "ESCALATE"):
+    try:
+        record_rejection(tool, inp, result)
+    except Exception:
+        pass
+
+    escalate_prefix = "🚨 ESCALATE" if result["decision"] == "ESCALATE" else "🔒 DENY"
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        f"[PermissionAnalyzer:{result['decision']}] "
+                        f"{result['reason']} | "
+                        f"Risk: {result['risk_level']} | "
+                        f"Fix: {str(result.get('suggested_fix', 'N/A'))[:120]}"
+                    ),
+                }
+            }
+        )
+    )
     sys.exit(0)
 
-# ── Comprobaciones de seguridad ─────────────────────────────────────
-if tool in ("Edit", "Write", "MultiEdit"):
-    path = inp.get("file_path", inp.get("path", ""))
-    for blocked in BLOCKED_PATHS:
-        if blocked in path:
-            deny(f"Escritura bloqueada: '{path}'. Modifica este archivo manualmente si es necesario.")
-
-if tool == "Bash":
-    cmd = inp.get("command", "")
-    for pattern in BLOCKED_BASH:
-        if pattern.lower() in cmd.lower():
-            deny(f"Comando bloqueado: '{cmd[:80]}'")
-
-# ── Patch 4: métricas en try/except — nunca bloquean trabajo real ──
+# ── Métricas de acciones (fail-silent) ──────────────────────────────────────
 try:
     import sqlite3
-    DB = os.path.join(os.environ.get("JARVIS_ROOT", "/root/jarvis"),
-                      "database", "jarvis_metrics.db")
+
+    DB = os.path.join(
+        os.environ.get("JARVIS_ROOT", "/root/jarvis"),
+        "database",
+        "jarvis_metrics.db",
+    )
     if os.path.exists(DB):
-        conn = sqlite3.connect(DB, timeout=2)
+        conn = sqlite3.connect(DB, timeout=10)
         conn.execute(
             "INSERT INTO agent_actions "
-            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms) "
-            "VALUES (?,?,?,?,?,?)",
-            (session, agent, tool,
-             inp.get("file_path", inp.get("command", ""))[:120],
-             tool.lower(), int(time.time() * 1000))
+            "(session_id, agent_name, tool_used, file_path, action_type, start_time_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                session,
+                agent,
+                tool,
+                inp.get("file_path", inp.get("command", ""))[:120],
+                tool.lower(),
+                int(time.time() * 1000),
+            ),
         )
         conn.commit()
         conn.close()
 except Exception:
-    pass  # logging falla silenciosamente
+    pass
 
 sys.exit(0)

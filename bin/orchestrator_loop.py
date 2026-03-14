@@ -310,6 +310,31 @@ INSTRUCCIONES:
         conn.close()
         return obj_id
 
+    def _notify_telegram(self, message: str) -> None:
+        """
+        Envía notificación al bot de Telegram cuando el loop se pausa
+        por ESCALATE o bloqueante humano, o cuando completa con éxito.
+        Requiere TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en .env
+        """
+        import requests
+
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if not token or not chat_id:
+            return
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": f"🤖 *JARVIS OrchestratorLoop*\n\n{message}",
+                    "parse_mode": "Markdown",
+                },
+                timeout=10,
+            )
+        except Exception:
+            pass
+
     def _print_effectiveness(self, project: str) -> None:
         """Imprime métricas históricas del proyecto desde loop_effectiveness."""
         try:
@@ -405,16 +430,42 @@ INSTRUCCIONES:
             status_icon = "✅" if result["success"] else ("⛔" if result.get("blocker") else "🔄")
             print(f"  {status_icon} {result.get('next_step', '')[:60]}")
 
-            # Parar si hay bloqueante humano
+            # Parar si hay bloqueante humano (MEJORA 5: notificar)
             if result.get("blocker"):
                 print(f"\n⚠️  BLOQUEANTE HUMANO: {result['blocker']}")
                 print("  El loop se detiene. Resuelve el bloqueante y relanza.")
+                self._notify_telegram(
+                    f"🛑 *Bloqueante humano* en `{project}`\n"
+                    f"*Ciclo {cycle}:* {result.get('blocker', '')[:200]}\n"
+                    f"*Próximo paso:* {result.get('next_step', '')[:100]}"
+                )
                 break
 
-            # Parar si éxito y sin más pendientes
+            # Parar si hay ESCALATEs en el buzón de rechazos (MEJORA 5)
+            escalates = [
+                r for r in context.get("recent_rejections", [])
+                if r.get("decision") == "ESCALATE"
+            ]
+            if escalates:
+                e = escalates[0]
+                print(f"\n🚨 ESCALATE detectado — loop pausado.")
+                self._notify_telegram(
+                    f"⚠️ *ESCALATE* en proyecto `{project}`\n"
+                    f"Ciclo {cycle}/{max_cycles}\n\n"
+                    f"*Razón:* {e.get('reason', '')[:150]}\n"
+                    f"*Fix sugerido:* {e.get('suggested_fix', 'N/A')[:100]}\n\n"
+                    f"Resuelve y relanza:\n`j --loop {project}`"
+                )
+                break
+
+            # Parar si éxito y sin más pendientes (MEJORA 5: notificar)
             pending = context.get("pending_objectives", [])
             if result["success"] and not pending:
                 print(f"\n✅ Proyecto {project} al día. Loop completado.")
+                self._notify_telegram(
+                    f"✅ *Loop completado* — `{project}`\n"
+                    f"{cycle} ciclo(s) | objetivo cumplido"
+                )
                 break
 
 

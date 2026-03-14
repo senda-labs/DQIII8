@@ -7,7 +7,8 @@
 #   j --audit         → Gemini code review (check-only)
 #   j --classify TEXT → muestra qué tier manejaría el prompt
 #   j --autonomous    → activa JARVIS_MODE=autonomous y lanza claude
-#   j --loop PROJECT [CYCLES] → lanza OrchestratorLoop autónomo
+#   j --loop PROJECT [CYCLES] [TIER] → OrchestratorLoop (tier1/tier2/tier3/haiku)
+#   j --benchmark-report → informe Sonnet comparativo de tiers
 #
 # Tiers:
 #   local  → Tier 1: Ollama qwen2.5-coder:7b  (gratis, local)
@@ -71,9 +72,42 @@ while [[ $# -gt 0 ]]; do
         --loop)
             PROJECT="${2:-content-automation}"
             CYCLES="${3:-10}"
-            echo "[JARVIS] Lanzando OrchestratorLoop → $PROJECT ($CYCLES ciclos)" >&2
+            TIER="tier3"
+            for i in "$@"; do
+                if [[ "$i" == tier* ]]; then
+                    TIER="$i"
+                fi
+            done
+            echo "[JARVIS] Loop → $PROJECT | $CYCLES ciclos | modelo: $TIER" >&2
             JARVIS_MODE=autonomous python3 "$JARVIS_ROOT/bin/orchestrator_loop.py" \
-                --project "$PROJECT" --cycles "$CYCLES"
+                --project "$PROJECT" --cycles "$CYCLES" --tier "$TIER"
+            exit 0
+            ;;
+        --benchmark-report)
+            echo "[JARVIS] Generando informe de benchmark con Sonnet..." >&2
+            REPORT=$(python3 -c "
+import sqlite3, json
+from pathlib import Path
+DB = Path('$JARVIS_ROOT/database/jarvis_metrics.db')
+conn = sqlite3.connect(str(DB))
+results = conn.execute('SELECT * FROM benchmark_results').fetchall()
+conn.close()
+print(json.dumps([list(r) for r in results], indent=2))
+")
+            echo "$REPORT" | claude --headless -p "
+Eres el auditor de JARVIS. Analiza estos resultados de benchmark
+de modelos IA ejecutando tareas de programación de forma autónoma.
+
+DATOS:
+$REPORT
+
+Genera un informe ejecutivo comparando:
+1. Tasa de éxito por tier
+2. Velocidad (duración media por objetivo)
+3. Qué tipos de tareas resuelve mejor cada tier
+4. Recomendación: ¿qué tier usar por defecto para el OrchestratorLoop?
+
+Sé específico y usa los datos reales."
             exit 0
             ;;
         --help|-h)
@@ -85,7 +119,8 @@ JARVIS — 3-tier routing
   j --audit               Gemini code review (check-only)
   j --classify TEXTO      muestra tier para el prompt dado
   j --autonomous          activa modo autónomo (JARVIS_MODE=autonomous)
-  j --loop PROJECT [N]    lanza OrchestratorLoop para PROJECT, N ciclos (def. 10)
+  j --loop PROJECT [N] [TIER]  OrchestratorLoop: tier1/tier2/tier3/haiku (def. tier3)
+  j --benchmark-report         informe Sonnet comparando tiers
 
 Tiers:
   local   Tier 1 — Ollama $OLLAMA_MODEL (gratis, local)

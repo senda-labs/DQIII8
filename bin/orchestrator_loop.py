@@ -335,6 +335,71 @@ INSTRUCCIONES:
         except Exception:
             pass
 
+    def _sync_todo_md(self, project: str) -> None:
+        """
+        Regenera tasks/todo.md desde la tabla objectives de la BD.
+        El OrchestratorLoop es el ÚNICO escritor de tasks/todo.md.
+        Otros agentes escriben resultados SOLO en tasks/results/[agent]-[ts].md.
+        """
+        STATUS_ICON = {
+            "running":   "🔄",
+            "pending":   "⏳",
+            "failed":    "❌",
+            "blocked":   "🚨",
+            "completed": "✅",
+        }
+        try:
+            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            rows = conn.execute(
+                """
+                SELECT id, objective_text, status, retry_count,
+                       success_criteria, created_at
+                FROM objectives
+                WHERE project = ?
+                ORDER BY
+                    CASE status
+                        WHEN 'running'   THEN 1
+                        WHEN 'pending'   THEN 2
+                        WHEN 'failed'    THEN 3
+                        WHEN 'blocked'   THEN 4
+                        WHEN 'completed' THEN 5
+                    END, created_at DESC
+                LIMIT 20
+                """,
+                (project,),
+            ).fetchall()
+            conn.close()
+
+            lines = [
+                f"# tasks/todo.md — {project}",
+                f"_Generado por OrchestratorLoop — "
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M')}_",
+                "_Solo el OrchestratorLoop escribe aquí. "
+                "Otros agentes → tasks/results/_",
+                "",
+            ]
+            for status_group in ("running", "pending", "failed", "blocked", "completed"):
+                group_rows = [r for r in rows if r[2] == status_group]
+                if not group_rows:
+                    continue
+                lines.append(
+                    f"## {STATUS_ICON.get(status_group, '')} {status_group.upper()}"
+                )
+                for r in group_rows:
+                    obj_id, text, status, retries, criteria, _ = r
+                    retry_str = (
+                        f" (intento {retries}/{MAX_RETRIES})" if retries > 0 else ""
+                    )
+                    lines.append(f"- [{obj_id}]{retry_str} {text}")
+                    if criteria:
+                        lines.append(f"  → Criterio: {criteria}")
+                lines.append("")
+
+            todo_path = JARVIS_ROOT / "tasks" / "todo.md"
+            todo_path.write_text("\n".join(lines), encoding="utf-8")
+        except Exception as e:
+            print(f"  [todo.md] sync error: {e}")
+
     def _print_effectiveness(self, project: str) -> None:
         """Imprime métricas históricas del proyecto desde loop_effectiveness."""
         try:
@@ -361,6 +426,9 @@ INSTRUCCIONES:
 
         for cycle in range(1, max_cycles + 1):
             print(f"\n── Ciclo {cycle}/{max_cycles} ──────────────────")
+
+            # Sincronizar todo.md desde BD (único escritor)
+            self._sync_todo_md(project)
 
             # ANALYZE
             context = self.analyze(project)

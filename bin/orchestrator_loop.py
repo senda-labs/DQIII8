@@ -282,10 +282,18 @@ Responde SOLO en JSON:
         text = re.sub(r"```json?|```", "", text).strip()
         return json.loads(text)
 
-    def _post_cycle_evaluation(self, project: str, result: dict, obj_id: str) -> None:
+    def _post_cycle_evaluation(
+        self,
+        project: str,
+        result: dict,
+        obj_id: str,
+        cycle_num: int = 0,
+        model_tier: str = "tier3",
+    ) -> None:
         """
         Evalúa el resultado del ciclo: calcula SSIM del PNG generado y crea
         un objetivo de mejora automáticamente si el score es insuficiente.
+        También envía las imágenes generadas por Telegram.
         """
         if not result.get("success"):
             return
@@ -316,6 +324,30 @@ Responde SOLO en JSON:
                     break
             except Exception:
                 continue
+
+        # Enviar imágenes generadas por Telegram (con o sin SSIM)
+        project_output = Path(f"/root/{project}/output")
+        if project_output.exists():
+            png_files = sorted(
+                project_output.glob("*.png"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )[:3]
+            for png in png_files:
+                ssim_info = ""
+                if ssim_result:
+                    score_val = ssim_result.get("score") or 0
+                    quality = ssim_result.get("quality", "")
+                    ssim_bar = "🟢" if score_val > 0.6 else ("🟡" if score_val > 0.3 else "🔴")
+                    ssim_info = f"\n{ssim_bar} SSIM: {score_val:.4f} ({quality})"
+                safe_stem = png.stem.replace("_", "\\_")
+                caption = (
+                    f"*{safe_stem}* — `{project}`\n"
+                    f"Ciclo {cycle_num} | Tier: {model_tier}"
+                    f"{ssim_info}\n"
+                    f"1080x1920 | Matematica pura"
+                )
+                self._send_image_telegram(str(png), caption)
 
         if not ssim_result:
             return
@@ -812,6 +844,40 @@ INSTRUCCIONES:
         conn.close()
         return obj_id
 
+    def _send_image_telegram(self, image_path: str, caption: str) -> None:
+        """Envía una imagen al chat de Telegram via Bot API (sendPhoto multipart)."""
+        import requests
+
+        token = (os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")).strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+
+        if not token or not chat_id:
+            return
+
+        img = Path(image_path)
+        if not img.exists():
+            print(f"  [img] No existe: {image_path}")
+            return
+
+        try:
+            with open(img, "rb") as f:
+                resp = requests.post(
+                    f"https://api.telegram.org/bot{token}/sendPhoto",
+                    data={
+                        "chat_id": chat_id,
+                        "caption": caption[:1024],
+                        "parse_mode": "Markdown",
+                    },
+                    files={"photo": (img.name, f, "image/png")},
+                    timeout=30,
+                )
+            if resp.status_code == 200:
+                print(f"  [img] Enviada: {img.name}")
+            else:
+                print(f"  [img] Error {resp.status_code}: {resp.text[:100]}")
+        except Exception as e:
+            print(f"  [img] Error: {e}")
+
     def _notify_telegram(self, message: str) -> None:
         """
         Envía notificación al bot de Telegram cuando el loop se pausa
@@ -1031,7 +1097,9 @@ INSTRUCCIONES:
 
             # STORE
             self.store(obj_id, project, objective, result)
-            self._post_cycle_evaluation(project, result, obj_id)
+            self._post_cycle_evaluation(
+                project, result, obj_id, cycle_num=cycle, model_tier=model_tier
+            )
 
             status_icon = "✅" if result["success"] else ("⛔" if result.get("blocker") else "🔄")
             print(f"  {status_icon} {result.get('next_step', '')[:60]}")
@@ -1051,6 +1119,18 @@ INSTRUCCIONES:
                     f"  📝 LOC: {metrics.get('lines_of_code', 0)}\n"
                     f"  🚀 C++ speedup: {metrics.get('speedup_vs_python') or 'N/A'}"
                 )
+                composite = Path(f"/root/{project}/output/composite_final.png")
+                if composite.exists():
+                    ssim_bar2 = "🟢" if ssim > 0.6 else ("🟡" if ssim > 0.3 else "🔴")
+                    self._send_image_telegram(
+                        str(composite),
+                        f"*Compositor\\_final* — Ciclo {cycle}/{max_cycles}\n"
+                        f"{ssim_bar2} SSIM: {ssim:.4f}\n"
+                        f"⏱ {metrics.get('cpu_seconds', 0):.1f}s | "
+                        f"💾 {metrics.get('memory_peak_mb', 0):.0f}MB | "
+                        f"📝 {metrics.get('lines_of_code', 0)} LOC\n"
+                        f"_Generado con matematica pura_",
+                    )
             else:
                 self._notify_telegram(
                     f"⚠️ Ciclo {cycle}/{max_cycles} falló\n"

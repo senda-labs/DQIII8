@@ -154,12 +154,14 @@ class OrchestratorLoop:
         return self._plan_with_groq(context)
 
     def _plan_with_groq(self, context: dict) -> dict:
-        """Llama a Groq para generar un nuevo objetivo cuando no hay pending en BD."""
+        """
+        Llama a Groq para generar un nuevo objetivo cuando no hay pending en BD.
+        Enriquece el prompt con archivos existentes y métricas reales del proyecto.
+        """
         import requests
 
         groq_key = os.getenv("GROQ_API_KEY", "").strip()
         if not groq_key:
-            # Fallback: extraer próximo paso del project.md
             state = context.get("project_state", "")
             for line in state.splitlines():
                 if "próximo paso" in line.lower() or "next step" in line.lower():
@@ -174,18 +176,88 @@ class OrchestratorLoop:
                 "priority": "medium",
             }
 
+        # Leer estado real del proyecto (archivos existentes)
+        project_path = Path(f"/root/{context['project']}")
+        existing_files: list[str] = []
+        if project_path.exists():
+            existing_files = [
+                str(p.relative_to(project_path))
+                for p in project_path.rglob("*.py")
+                if "__pycache__" not in str(p)
+            ]
+            cpp_files = list(project_path.rglob("*.cpp")) + list(project_path.rglob("*.so"))
+            existing_files += [str(p.relative_to(project_path)) for p in cpp_files]
+
+        # Leer métricas del último ciclo completado
+        try:
+            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            last_metrics = conn.execute(
+                """
+                SELECT renderer, lines_of_code, cpu_seconds,
+                       memory_peak_mb, ssim_score, passes_tests,
+                       speedup_vs_python
+                FROM code_metrics
+                WHERE project = ?
+                ORDER BY timestamp DESC LIMIT 3
+                """,
+                (context["project"],),
+            ).fetchall()
+            conn.close()
+        except Exception:
+            last_metrics = []
+
+        metrics_text = (
+            "\n".join(
+                [
+                    f"  - {r[0]}: {r[1]} líneas, {r[2]:.1f}s, "
+                    f"{r[3]:.0f}MB RAM, SSIM={r[4]}, tests={'✅' if r[5] else '❌'}"
+                    for r in last_metrics
+                ]
+            )
+            if last_metrics
+            else "Sin métricas previas"
+        )
+
+        ref_analysis = self._analyze_reference_image()
         recent = context.get("recent_cycles", [])
-        prompt = f"""Eres el director técnico del proyecto JARVIS.
-Analiza este estado del proyecto y determina el siguiente objetivo más impactante.
 
-ESTADO ACTUAL:
-{context.get('project_state', 'No disponible')[:2000]}
+        prompt = f"""Eres el director técnico del proyecto {context['project']}.
 
-LECCIONES APRENDIDAS (errores a evitar):
-{chr(10).join(context.get('lessons', []))}
+ARCHIVOS EXISTENTES EN EL PROYECTO:
+{chr(10).join(existing_files) if existing_files else 'Directorio vacío'}
 
-Responde SOLO en JSON sin explicaciones ni markdown:
-{{"objective": "descripción en 1-2 frases", "success_criteria": "cómo verificar que está hecho", "priority": "high|medium|low"}}"""
+MÉTRICAS DE LOS ÚLTIMOS RENDERERS COMPLETADOS:
+{metrics_text}
+
+OBJETIVOS COMPLETADOS RECIENTEMENTE:
+{json.dumps(self._get_recent_cycles(context['project']), ensure_ascii=False, indent=2)}
+
+ESTADO DEL PROYECTO:
+{context.get('project_state', '')[:1500]}
+
+ANÁLISIS DE IMAGEN DE REFERENCIA:
+{ref_analysis}
+REGLAS DEL PROYECTO math-image-generator:
+- Stack: Python + C++ (ctypes). Sin IA, sin APIs de imagen.
+- RAM máxima: 500MB en cualquier momento
+- Targets: render <30s, C++ speedup >=5x, SSIM >0.5 (objetivo ambicioso)
+- Código: <80 líneas por renderer Python, <120 líneas C++
+
+Basándote en los archivos existentes y las métricas, determina
+el SIGUIENTE objetivo más impactante para mejorar el sistema.
+
+Prioridades (en orden):
+1. Si falta algún renderer (julia, perlin, compositor) → crearlo
+2. Si algún SSIM < 0.3 → mejorar el colormap de ese renderer
+3. Si algún render > 30s → optimizar con C++
+4. Si todos los tests pasan y SSIM > 0.3 → intentar mejorar SSIM
+5. Si SSIM > 0.5 en todos → crear nuevo renderer más complejo
+
+Responde SOLO en JSON:
+{{"objective": "descripción específica en 2-3 frases con métricas target",
+  "success_criteria": "cómo verificar que está hecho",
+  "priority": "high|medium|low",
+  "renderer": "mandelbrot|julia|perlin|cpp|compositor|nuevo"}}"""
 
         if recent:
             prompt += "\n\nCICLOS RECIENTES (NO repetir estos objetivos):\n"
@@ -201,14 +273,89 @@ Responde SOLO en JSON sin explicaciones ni markdown:
             json={
                 "model": GROQ_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 300,
-                "temperature": 0.3,
+                "max_tokens": 400,
+                "temperature": 0.2,
             },
             timeout=30,
         )
         text = resp.json()["choices"][0]["message"]["content"].strip()
         text = re.sub(r"```json?|```", "", text).strip()
         return json.loads(text)
+
+    def _post_cycle_evaluation(self, project: str, result: dict, obj_id: str) -> None:
+        """
+        Evalúa el resultado del ciclo: calcula SSIM del PNG generado y crea
+        un objetivo de mejora automáticamente si el score es insuficiente.
+        """
+        if not result.get("success"):
+            return
+
+        png_files = [f for f in result.get("files_modified", []) if f.endswith(".png")]
+        if not png_files:
+            return
+
+        ssim_result = None
+        for png in png_files:
+            png_path = f"/root/{project}/{png}"
+            try:
+                r = subprocess.run(
+                    [
+                        "python3",
+                        "-c",
+                        f"import sys; sys.path.insert(0, '/root/{project}/src/python');"
+                        f"from ssim_scorer import score_against_reference;"
+                        f"import json; print(json.dumps(score_against_reference('{png_path}')))",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    cwd=f"/root/{project}",
+                )
+                if r.returncode == 0:
+                    ssim_result = json.loads(r.stdout)
+                    break
+            except Exception:
+                continue
+
+        if not ssim_result:
+            return
+
+        score = ssim_result.get("score") or 0
+
+        try:
+            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            conn.execute(
+                "UPDATE objectives SET result_summary=json_set("
+                "COALESCE(result_summary,'{}'), '$.ssim_score', ?) WHERE id=?",
+                (score, obj_id),
+            )
+            if score < 0.4:
+                renderer = (result.get("code_metrics") or {}).get("renderer", "unknown")
+                improvement_text = (
+                    f"Mejorar SSIM del renderer '{renderer}' de {score:.3f} a >0.4. "
+                    f"El PNG actual no se parece suficientemente a la imagen de referencia. "
+                    f"Ajustar el colormap para usar más azules fríos "
+                    f"(#4060a0, #6080c0) y aumentar el contraste a ~255/255."
+                )
+                new_id = str(uuid.uuid4())[:8]
+                conn.execute(
+                    "INSERT INTO objectives "
+                    "(id, project, status, objective_text, success_criteria, "
+                    "created_at, model_tier) VALUES (?,?,?,?,?,datetime('now'),?)",
+                    (
+                        new_id,
+                        project,
+                        "pending",
+                        improvement_text,
+                        "SSIM > 0.4 vs imagen de referencia",
+                        "tier3",
+                    ),
+                )
+                print(f"  🎯 Auto-objetivo creado: mejorar SSIM {renderer} ({score:.3f} → >0.4)")
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"  [post-eval] Error: {e}")
 
     def _analyze_reference_image(self) -> str:
         """
@@ -884,9 +1031,32 @@ INSTRUCCIONES:
 
             # STORE
             self.store(obj_id, project, objective, result)
+            self._post_cycle_evaluation(project, result, obj_id)
 
             status_icon = "✅" if result["success"] else ("⛔" if result.get("blocker") else "🔄")
             print(f"  {status_icon} {result.get('next_step', '')[:60]}")
+
+            # Notificación de progreso por ciclo
+            if result.get("success"):
+                metrics = result.get("code_metrics") or {}
+                ssim = metrics.get("ssim_score") or 0
+                ssim_bar = "🟢" if ssim > 0.5 else ("🟡" if ssim > 0.3 else "🔴")
+                self._notify_telegram(
+                    f"✅ Ciclo {cycle}/{max_cycles} completado\n"
+                    f"*{objective['objective'][:60]}*\n\n"
+                    f"📊 Métricas:\n"
+                    f"  {ssim_bar} SSIM: {ssim:.4f}\n"
+                    f"  ⏱ Render: {metrics.get('cpu_seconds', 0):.1f}s\n"
+                    f"  💾 RAM: {metrics.get('memory_peak_mb', 0):.0f}MB\n"
+                    f"  📝 LOC: {metrics.get('lines_of_code', 0)}\n"
+                    f"  🚀 C++ speedup: {metrics.get('speedup_vs_python') or 'N/A'}"
+                )
+            else:
+                self._notify_telegram(
+                    f"⚠️ Ciclo {cycle}/{max_cycles} falló\n"
+                    f"*{objective['objective'][:60]}*\n"
+                    f"Error: {str(result.get('errors_found', ''))[:100]}"
+                )
 
             # Parar si hay bloqueante humano (MEJORA 5: notificar)
             if result.get("blocker"):

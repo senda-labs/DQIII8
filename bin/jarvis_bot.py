@@ -319,27 +319,51 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not authorized(update):
         await update.message.reply_text("No autorizado.")
         return
-    rows = db_query("""
-        SELECT objective_id, title, status, priority, score_final, current_attempt
-        FROM jal_objectives
-        ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'queue' THEN 1 ELSE 2 END,
-                 started_at DESC
-        LIMIT 5
-        """)
-    if not rows:
-        await update.message.reply_text("No hay objetivos en la BD.")
-        return
-    lines = ["*Ultimos objetivos (jal\\_objectives):*\n"]
-    for obj_id, title, status, priority, score, attempt in rows:
-        emoji = {"active": "[ON]", "queue": "[Q]", "done": "[OK]", "failed": "[X]"}.get(
-            status, "[ ]"
+    args = context.args
+    project = args[0] if args else "math-image-generator"
+
+    try:
+        conn = sqlite3.connect(DB)
+        ranking = conn.execute("SELECT * FROM tier_ranking WHERE model_tier='tier3'").fetchone()
+        metrics = conn.execute(
+            """
+            SELECT renderer, lines_of_code, cpu_seconds,
+                   memory_peak_mb, ssim_score, passes_tests
+            FROM code_metrics
+            WHERE project=?
+            ORDER BY timestamp DESC LIMIT 5
+            """,
+            (project,),
+        ).fetchall()
+        pending = conn.execute(
+            "SELECT COUNT(*) FROM objectives WHERE project=? AND status='pending'",
+            (project,),
+        ).fetchone()[0]
+        conn.close()
+
+        renderers_text = (
+            "\n".join(
+                [
+                    f"  {'✅' if r[5] else '⚠️'} {r[0]}: "
+                    f"{r[1]} LOC | {r[2]:.1f}s | "
+                    f"SSIM {f'{r[4]:.3f}' if r[4] else 'N/A'}"
+                    for r in metrics
+                ]
+            )
+            if metrics
+            else "  Sin datos aún"
         )
-        lines.append(
-            f"{emoji} `{obj_id}` - {title}\n"
-            f"   Estado: {status} | P{priority} | Score: {score:.2f} | Intento {attempt}"
+        score = ranking[8] if ranking else 0
+        await update.message.reply_text(
+            f"📊 *Estado — {project}*\n\n"
+            f"Score: {score}/100\n"
+            f"Objetivos pending: {pending}\n\n"
+            f"*Renderers:*\n{renderers_text}",
+            parse_mode="Markdown",
         )
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
-    log.info("/status consultado")
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+    log.info("/status project=%s", project)
 
 
 async def cmd_score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

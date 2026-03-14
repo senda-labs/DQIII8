@@ -207,3 +207,19 @@ CREATE TABLE IF NOT EXISTS learned_approvals (
 
 CREATE INDEX IF NOT EXISTS idx_learned_approvals_tool
     ON learned_approvals(tool_name, active);
+
+-- ── OrchestratorLoop — Efectividad por proyecto ─────────────────────────────
+CREATE VIEW IF NOT EXISTS loop_effectiveness AS
+SELECT
+    project,
+    COUNT(*)                                                          AS total_cycles,
+    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)            AS successful,
+    SUM(CASE WHEN status = 'failed'    THEN 1 ELSE 0 END)            AS failed,
+    SUM(CASE WHEN status = 'blocked'   THEN 1 ELSE 0 END)            AS escalated,
+    ROUND(
+        100.0 * SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)
+        / COUNT(*), 1
+    )                                                                 AS success_rate_pct,
+    MAX(completed_at)                                                 AS last_activity
+FROM objectives
+GROUP BY project;

@@ -216,21 +216,85 @@ INSTRUCCIONES:
 }}
 ---END_REPORT---"""
 
-    def execute(self, prompt: str, project: str) -> str:
-        """Lanza Claude Code en modo headless."""
+    def execute(self, prompt: str, project: str,
+                model_tier: str = "tier3") -> str:
+        """
+        Lanza el modelo correspondiente al tier.
+        tier1  → Ollama qwen2.5-coder:7b (local, gratis)
+        tier2  → OpenRouter free (via openrouter_wrapper.py)
+        tier3  → Claude Code headless (default, Sonnet 4.6)
+        haiku  → Claude Haiku 4.5 via Anthropic API directo
+        """
+        dispatch = {
+            "tier1": self._execute_ollama,
+            "tier2": self._execute_openrouter,
+            "tier3": self._execute_claude,
+            "haiku": self._execute_haiku,
+        }
+        executor = dispatch.get(model_tier, self._execute_claude)
+        return executor(prompt, project)
+
+    def _execute_claude(self, prompt: str, project: str) -> str:
+        """Tier 3: Claude Code headless — Sonnet 4.6."""
         project_path = Path(f"/root/{project}")
         if not project_path.exists():
-            project_path = Path("/root/jarvis")
-
+            project_path = JARVIS_ROOT
         result = subprocess.run(
             ["claude", "--headless", "-p", prompt],
-            capture_output=True,
-            text=True,
-            cwd=str(project_path),
-            timeout=1800,
+            capture_output=True, text=True,
+            cwd=str(project_path), timeout=1800,
             env={**os.environ, "JARVIS_MODE": "autonomous"},
         )
         return result.stdout + result.stderr
+
+    def _execute_ollama(self, prompt: str, project: str) -> str:
+        """Tier 1: Ollama local via HTTP API."""
+        import requests
+        model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
+        try:
+            resp = requests.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.3, "num_predict": 2000},
+                },
+                timeout=300,
+            )
+            data = resp.json()
+            return data.get("response", "")
+        except Exception as e:
+            return f"[Ollama error] {e}"
+
+    def _execute_openrouter(self, prompt: str, project: str) -> str:
+        """Tier 2: OpenRouter free tier via openrouter_wrapper.py."""
+        wrapper = JARVIS_ROOT / "bin" / "openrouter_wrapper.py"
+        if not wrapper.exists():
+            return "[OpenRouter] wrapper no encontrado en bin/openrouter_wrapper.py"
+        result = subprocess.run(
+            ["python3", str(wrapper), "generate", prompt],
+            capture_output=True, text=True, timeout=300,
+            env={**os.environ},
+        )
+        return result.stdout + result.stderr
+
+    def _execute_haiku(self, prompt: str, project: str) -> str:
+        """Haiku 4.5: Claude más barato via Anthropic API directo."""
+        import anthropic
+        api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+        if not api_key:
+            return "[Haiku] ANTHROPIC_API_KEY no configurada"
+        try:
+            client = anthropic.Anthropic(api_key=api_key)
+            msg = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=4096,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return msg.content[0].text
+        except Exception as e:
+            return f"[Haiku error] {e}"
 
     def capture(self, output: str) -> dict:
         """Extrae el FINAL_REPORT del output de Claude Code."""
@@ -294,17 +358,20 @@ INSTRUCCIONES:
                 for lesson in new_lessons:
                     f.write(f"- [{today}] {lesson}\n")
 
-    def create_objective(self, project: str, text: str, criteria: str) -> str:
-        """Inserta un nuevo objetivo en la BD."""
+    def create_objective(
+        self, project: str, text: str, criteria: str, model_tier: str = "tier3"
+    ) -> str:
+        """Inserta un nuevo objetivo en la BD, incluyendo model_tier."""
         obj_id = str(uuid.uuid4())[:8]
         conn = sqlite3.connect(str(DB_PATH), timeout=10)
         conn.execute(
             """
             INSERT INTO objectives
-                (id, project, status, objective_text, success_criteria, created_at)
-            VALUES (?, ?, 'pending', ?, ?, datetime('now'))
+                (id, project, status, objective_text, success_criteria,
+                 created_at, model_tier)
+            VALUES (?, ?, 'pending', ?, ?, datetime('now'), ?)
             """,
-            (obj_id, project, text, criteria),
+            (obj_id, project, text, criteria, model_tier),
         )
         conn.commit()
         conn.close()
@@ -419,9 +486,10 @@ INSTRUCCIONES:
         except Exception:
             pass
 
-    def run(self, project: str, max_cycles: int = MAX_CYCLES) -> None:
+    def run(self, project: str, max_cycles: int = MAX_CYCLES,
+            model_tier: str = "tier3") -> None:
         """Loop principal del orquestador."""
-        print(f"\n[ORCHESTRATOR] Iniciando loop — proyecto: {project}")
+        print(f"\n[ORCHESTRATOR] Iniciando loop — proyecto: {project} | tier: {model_tier}")
         self._print_effectiveness(project)
 
         for cycle in range(1, max_cycles + 1):
@@ -442,6 +510,7 @@ INSTRUCCIONES:
                 project,
                 objective["objective"],
                 objective.get("success_criteria", ""),
+                model_tier,
             )
 
             # Verificar max_retries
@@ -474,7 +543,7 @@ INSTRUCCIONES:
 
             # EXECUTE Claude Code
             print("  Ejecutando Claude Code (headless)...")
-            output = self.execute(prompt, project)
+            output = self.execute(prompt, project, model_tier)
 
             # CAPTURE
             result = self.capture(output)
@@ -541,9 +610,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="JARVIS OrchestratorLoop")
     parser.add_argument("--project", required=True, help="Nombre del proyecto")
     parser.add_argument(
-        "--cycles", type=int, default=MAX_CYCLES, help=f"Máximo de ciclos (default: {MAX_CYCLES})"
+        "--cycles", type=int, default=MAX_CYCLES,
+        help=f"Máximo de ciclos (default: {MAX_CYCLES})",
+    )
+    parser.add_argument(
+        "--tier",
+        choices=["tier1", "tier2", "tier3", "haiku"],
+        default="tier3",
+        help=(
+            "Modelo a usar: tier1=Ollama local, tier2=OpenRouter free, "
+            "tier3=Claude Sonnet (default), haiku=Claude Haiku 4.5"
+        ),
     )
     args = parser.parse_args()
 
     loop = OrchestratorLoop()
-    loop.run(args.project, args.cycles)
+    loop.run(args.project, args.cycles, args.tier)

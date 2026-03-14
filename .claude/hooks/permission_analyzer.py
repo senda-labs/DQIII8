@@ -79,6 +79,39 @@ AUTO_APPROVE_TOOLS = {
 MAX_SESSION_COST_USD = 5.0
 MAX_SAME_REJECTION = 2  # Tras 2 rechazos idénticos → ESCALATE
 
+# Hints informativos por tipo de denegación (ayudan a Claude a autocorregirse)
+DENIAL_HINTS: dict[str, str] = {
+    "blocked_path:.env": (
+        "Usa os.environ['KEY'] para leer variables temporales. "
+        "O usa export KEY=valor en bash sin tocar el archivo."
+    ),
+    "blocked_path:schema.sql": (
+        "Añade la migración SQL en un archivo nuevo: "
+        "database/migrations/YYYYMMDD_descripcion.sql"
+    ),
+    "blocked_path:CLAUDE.md": (
+        "Las instrucciones del sistema no se modifican desde código. "
+        "El usuario las actualiza manualmente."
+    ),
+    "blocked_path:jarvis_metrics.db": (
+        "Usa INSERT/UPDATE via sqlite3 con el wrapper existente. "
+        "No modificar el archivo de BD directamente."
+    ),
+    "high_risk_pattern": (
+        "Usa rutas relativas específicas en lugar de wildcards. "
+        "O añade el patrón a ALLOWED_DELETIONS si es limpieza de caché."
+    ),
+    "budget_exceeded": (
+        "Dividir el objetivo en subtareas más pequeñas. "
+        "Iniciar nueva sesión con j --autonomous"
+    ),
+    "repeat_rejection": (
+        "Esta acción fue rechazada múltiples veces. "
+        "Cambia de estrategia: usa una herramienta diferente o "
+        "consulta al usuario antes de reintentar."
+    ),
+}
+
 
 class PermissionAnalyzer:
     """Evaluador centralizado de permisos para herramientas de Claude Code."""
@@ -180,9 +213,16 @@ class PermissionAnalyzer:
         rule_triggered: str,
         suggested_fix: str,
     ) -> dict:
+        # Enriquecer reason con hint de autocorrección (MEJORA 3)
+        enriched_reason = reason
+        if rule_triggered:
+            for key, hint in DENIAL_HINTS.items():
+                if key in rule_triggered:
+                    enriched_reason = f"{reason} | Alternativa: {hint}"
+                    break
         return {
             "decision": "DENY",
-            "reason": reason,
+            "reason": enriched_reason,
             "risk_level": risk_level,
             "rule_triggered": rule_triggered,
             "suggested_fix": suggested_fix,

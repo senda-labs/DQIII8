@@ -62,6 +62,13 @@ ALLOWED_DELETIONS = [
     ".ruff_cache",
 ]
 
+# Directorios de proyecto siempre seguros para escritura
+SAFE_PROJECT_DIRS = [
+    "/root/math-image-generator",
+    "/root/content-automation-faceless/output",
+    "/tmp/",
+]
+
 # Herramientas que se auto-aprueban en modo autónomo (tras pasar checks)
 AUTO_APPROVE_TOOLS = {
     "Read",
@@ -102,8 +109,7 @@ DENIAL_HINTS: dict[str, str] = {
         "O añade el patrón a ALLOWED_DELETIONS si es limpieza de caché."
     ),
     "budget_exceeded": (
-        "Dividir el objetivo en subtareas más pequeñas. "
-        "Iniciar nueva sesión con j --autonomous"
+        "Dividir el objetivo en subtareas más pequeñas. " "Iniciar nueva sesión con j --autonomous"
     ),
     "repeat_rejection": (
         "Esta acción fue rechazada múltiples veces. "
@@ -126,7 +132,12 @@ class PermissionAnalyzer:
         _session = session_id or SESSION_ID
         detail = str(inp.get("file_path", inp.get("command", "")))
 
-        # 0. learned_approvals — fast-path para patrones históricamente seguros
+        # 0a. Directorios de proyecto seguros — fast-path sin restricciones
+        if tool in ("Write", "Edit", "MultiEdit", "Bash"):
+            if any(safe in detail for safe in SAFE_PROJECT_DIRS):
+                return self._approve("Directorio de proyecto seguro", "LOW", "safe_project_dir")
+
+        # 0b. learned_approvals — fast-path para patrones históricamente seguros
         if self._is_learned_safe(tool, detail):
             return self._approve("Patrón aprobado por historial", "LOW", "learned_approval")
 
@@ -345,7 +356,9 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
-                SESSION_ID, tool, action_detail,
+                SESSION_ID,
+                tool,
+                action_detail,
                 "APPROVE",
                 result.get("reason", "OK"),
                 result.get("risk_level", "LOW"),

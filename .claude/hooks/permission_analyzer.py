@@ -93,6 +93,10 @@ class PermissionAnalyzer:
         _session = session_id or SESSION_ID
         detail = str(inp.get("file_path", inp.get("command", "")))
 
+        # 0. learned_approvals — fast-path para patrones históricamente seguros
+        if self._is_learned_safe(tool, detail):
+            return self._approve("Patrón aprobado por historial", "LOW", "learned_approval")
+
         # 1. ESCALATE — cierra loops infinitos
         escalate = self._check_repeat_rejections(tool, detail, _session)
         if escalate:
@@ -230,6 +234,28 @@ class PermissionAnalyzer:
             pass
         return None
 
+    def _is_learned_safe(self, tool: str, detail: str) -> bool:
+        """
+        Comprueba si este tool+pattern ya fue aprobado >= 3 veces (active=1).
+        Fast-path antes de todos los checks de seguridad.
+        """
+        try:
+            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            row = conn.execute(
+                """
+                SELECT id FROM learned_approvals
+                WHERE tool_name = ?
+                  AND ? LIKE '%' || pattern || '%'
+                  AND active = 1
+                LIMIT 1
+                """,
+                (tool, detail),
+            ).fetchone()
+            conn.close()
+            return row is not None
+        except Exception:
+            return False
+
     def _check_budget(self, session_id: str) -> dict | None:
         """Bloquea si el coste estimado de la sesión supera MAX_SESSION_COST_USD."""
         try:
@@ -262,9 +288,14 @@ class PermissionAnalyzer:
 
 
 def record_decision(tool: str, inp: dict, result: dict) -> None:
-    """Registra decisiones APPROVE en la BD."""
+    """
+    Registra decisiones APPROVE en la BD.
+    Para aprobaciones LOW risk: auto-aprende el patrón en learned_approvals
+    cuando se ha visto >= 3 veces (activa el registro).
+    """
     if result["decision"] != "APPROVE":
         return
+    action_detail = str(inp.get("file_path", inp.get("command", "")))[:200]
     try:
         conn = sqlite3.connect(str(DB_PATH), timeout=10)
         conn.execute(
@@ -274,14 +305,28 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
-                SESSION_ID,
-                tool,
-                str(inp.get("file_path", inp.get("command", "")))[:200],
+                SESSION_ID, tool, action_detail,
                 "APPROVE",
                 result.get("reason", "OK"),
                 result.get("risk_level", "LOW"),
             ),
         )
+        # Auto-aprendizaje para patrones de bajo riesgo
+        if result.get("risk_level") == "LOW" and result.get("reason") != "learned_approval":
+            pattern = action_detail[:50].strip()
+            if pattern:
+                conn.execute(
+                    """
+                    INSERT INTO learned_approvals
+                        (tool_name, pattern, times_seen, last_seen, active)
+                    VALUES (?, ?, 1, datetime('now'), 0)
+                    ON CONFLICT(tool_name, pattern) DO UPDATE SET
+                        times_seen = times_seen + 1,
+                        last_seen  = datetime('now'),
+                        active     = CASE WHEN times_seen + 1 >= 3 THEN 1 ELSE 0 END
+                    """,
+                    (tool, pattern),
+                )
         conn.commit()
         conn.close()
     except Exception:

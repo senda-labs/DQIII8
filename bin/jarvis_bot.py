@@ -516,6 +516,52 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     asyncio.create_task(_run_and_notify())
 
 
+async def cmd_images(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /images [proyecto]
+    Envía las últimas imágenes generadas del proyecto.
+    """
+    if not authorized(update):
+        return
+
+    args = context.args
+    project = args[0] if args else "math-image-generator"
+    output_dir = Path(f"/root/{project}/output")
+
+    if not output_dir.exists():
+        await update.message.reply_text(f"No hay imágenes en {project} todavía.")
+        return
+
+    png_files = sorted(
+        output_dir.glob("*.png"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )[:5]
+
+    if not png_files:
+        await update.message.reply_text("Sin imágenes generadas.")
+        return
+
+    await update.message.reply_text(
+        f"📸 Enviando {len(png_files)} imágenes de `{project}`...",
+        parse_mode="Markdown",
+    )
+
+    for png in png_files:
+        try:
+            with open(png, "rb") as f:
+                await context.bot.send_photo(
+                    chat_id=update.effective_chat.id,
+                    photo=f,
+                    caption=f"`{png.stem}`\n_{project}_",
+                    parse_mode="Markdown",
+                )
+        except Exception as e:
+            await update.message.reply_text(f"Error enviando {png.name}: {e}")
+
+    log.info("/images project=%s count=%d", project, len(png_files))
+
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Guarda la foto enviada como imagen de referencia cuando el caption
@@ -609,6 +655,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("reply", cmd_reply_task))
     APP.add_handler(CommandHandler("kill", cmd_kill))
     APP.add_handler(CommandHandler("loop", cmd_loop))
+    APP.add_handler(CommandHandler("images", cmd_images))
     APP.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

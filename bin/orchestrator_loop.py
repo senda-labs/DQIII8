@@ -255,7 +255,21 @@ INSTRUCCIONES:
   "fixes_applied": ["correcciones aplicadas"],
   "lessons": ["nuevas lecciones en formato [KEYWORD] causa → solución"],
   "blocker": null | "descripción del bloqueante si lo hay",
-  "next_step": "siguiente paso recomendado"
+  "next_step": "siguiente paso recomendado",
+  "code_metrics": {{
+    "renderer": "mandelbrot|julia|perlin|cpp|compositor",
+    "lines_of_code": <número entero>,
+    "lines_functional": <líneas sin blancos ni comentarios>,
+    "cpu_seconds": <tiempo medido con time.perf_counter>,
+    "memory_peak_mb": <peak medido con tracemalloc>,
+    "uses_vectorization": true|false,
+    "uses_numpy_only": true|false,
+    "passes_tests": true|false,
+    "ssim_score": <score de ssim_scorer o null>,
+    "output_variance": <np.var() del array de píxeles>,
+    "speedup_vs_python": <ratio C++/Python o null>,
+    "compiled_ok": true|false|null
+  }}
 }}
 ---END_REPORT---"""
 
@@ -515,6 +529,46 @@ INSTRUCCIONES:
                 obj_id,
             ),
         )
+
+        # Guardar métricas de benchmark si el agente las reportó
+        metrics = result.get("code_metrics")
+        if metrics and isinstance(metrics, dict) and metrics.get("renderer"):
+            megapixels = 1080 * 1920 / 1_000_000  # 2.0736 mpx (resolución estándar)
+            cpu_s = metrics.get("cpu_seconds")
+            conn.execute(
+                """
+                INSERT INTO code_metrics
+                    (project, model_tier, renderer, objective_id,
+                     lines_of_code, lines_functional, cpu_seconds,
+                     memory_peak_mb, megapixels, cpu_per_megapixel,
+                     uses_vectorization, uses_numpy_only, passes_tests,
+                     ssim_score, ssim_quality, output_variance,
+                     speedup_vs_python, compiled_ok, success)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    project,
+                    objective.get("model_tier", "tier3"),
+                    metrics.get("renderer"),
+                    obj_id,
+                    metrics.get("lines_of_code"),
+                    metrics.get("lines_functional"),
+                    cpu_s,
+                    metrics.get("memory_peak_mb"),
+                    megapixels,
+                    cpu_s / megapixels if cpu_s is not None else None,
+                    1 if metrics.get("uses_vectorization") else 0,
+                    1 if metrics.get("uses_numpy_only") else 0,
+                    1 if metrics.get("passes_tests") else 0,
+                    metrics.get("ssim_score"),
+                    metrics.get("ssim_quality"),
+                    metrics.get("output_variance"),
+                    metrics.get("speedup_vs_python"),
+                    1 if metrics.get("compiled_ok") else 0,
+                    1 if result.get("success") else 0,
+                ),
+            )
+
         conn.commit()
         conn.close()
 

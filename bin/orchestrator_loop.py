@@ -277,19 +277,45 @@ INSTRUCCIONES:
         return executor(prompt, project)
 
     def _execute_claude(self, prompt: str, project: str) -> str:
-        """Tier 3: Claude Code headless — Sonnet 4.6."""
+        """Tier 3: Claude Code headless — Sonnet 4.6, ejecutado como usuario jarvis."""
+        import tempfile
+
         project_path = Path(f"/root/{project}")
         if not project_path.exists():
             project_path = JARVIS_ROOT
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--output-format", "text", "--dangerously-skip-permissions"],
-            capture_output=True,
-            text=True,
-            cwd=str(project_path),
-            timeout=3600,
-            env={**os.environ, "JARVIS_MODE": "autonomous"},
-        )
-        return result.stdout + result.stderr
+
+        # Escribir prompt a archivo temporal legible por jarvis
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, dir="/tmp", encoding="utf-8"
+        ) as f:
+            f.write(prompt)
+            prompt_file = f.name
+        os.chmod(prompt_file, 0o644)
+
+        try:
+            result = subprocess.run(
+                [
+                    "su",
+                    "-",
+                    "jarvis",
+                    "-c",
+                    f"cd {project_path} && "
+                    f'claude -p "$(cat {prompt_file})" '
+                    f"--output-format text "
+                    f"--dangerously-skip-permissions "
+                    f"--add-dir {JARVIS_ROOT} 2>&1",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=900,
+                env={**os.environ, "HOME": "/home/jarvis"},
+            )
+            return result.stdout + result.stderr
+        finally:
+            try:
+                os.unlink(prompt_file)
+            except Exception:
+                pass
 
     def _execute_ollama(self, prompt: str, project: str) -> str:
         """Tier 1: 2-step — Qwen genera el plan, Claude Code lo ejecuta."""

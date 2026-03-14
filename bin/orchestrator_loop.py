@@ -277,7 +277,11 @@ INSTRUCCIONES:
         return executor(prompt, project)
 
     def _execute_claude(self, prompt: str, project: str) -> str:
-        """Tier 3: Claude Code headless — Sonnet 4.6, ejecutado como usuario jarvis."""
+        """
+        Ejecuta Claude Code como usuario jarvis (non-root).
+        Los permisos los gestiona el PermissionAnalyzer via hooks.
+        Sin --dangerously-skip-permissions — el analyzer decide.
+        """
         import tempfile
 
         project_path = Path(f"/root/{project}")
@@ -302,13 +306,17 @@ INSTRUCCIONES:
                     f"cd {project_path} && "
                     f'claude -p "$(cat {prompt_file})" '
                     f"--output-format text "
-                    f"--dangerously-skip-permissions "
                     f"--add-dir {JARVIS_ROOT} 2>&1",
                 ],
                 capture_output=True,
                 text=True,
                 timeout=900,
-                env={**os.environ, "HOME": "/home/jarvis"},
+                env={
+                    **os.environ,
+                    "HOME": "/home/jarvis",
+                    "JARVIS_MODE": "autonomous",
+                    "JARVIS_ROOT": str(JARVIS_ROOT),
+                },
             )
             return result.stdout + result.stderr
         finally:

@@ -248,24 +248,58 @@ INSTRUCCIONES:
         return result.stdout + result.stderr
 
     def _execute_ollama(self, prompt: str, project: str) -> str:
-        """Tier 1: Ollama local via HTTP API."""
+        """Tier 1: 2-step — Qwen genera el plan, Claude Code lo ejecuta."""
         import requests
+
         model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
+
+        # Paso 1: Qwen genera plan/código (sin herramientas)
+        plan = ""
+        plan_quality = "unavailable"
         try:
             resp = requests.post(
                 "http://localhost:11434/api/generate",
                 json={
                     "model": model,
-                    "prompt": prompt,
+                    "prompt": (
+                        "Eres un experto en Python y C++. Genera un plan detallado "
+                        "y el código completo para la siguiente tarea. "
+                        "No uses herramientas. Solo genera texto.\n\n"
+                        f"{prompt}\n\n"
+                        "Responde con:\n1. Plan paso a paso\n2. Código completo listo para ejecutar"
+                    ),
                     "stream": False,
-                    "options": {"temperature": 0.3, "num_predict": 2000},
+                    "options": {"temperature": 0.2, "num_predict": 3000},
                 },
                 timeout=300,
             )
-            data = resp.json()
-            return data.get("response", "")
+            plan = resp.json().get("response", "")
+            if len(plan) > 500:
+                plan_quality = "good"
+            elif len(plan) > 100:
+                plan_quality = "partial"
+            else:
+                plan_quality = "poor"
         except Exception as e:
-            return f"[Ollama error] {e}"
+            print(f"  [tier1] Ollama no disponible: {e} → fallback tier3")
+            return self._execute_claude(prompt, project)
+
+        # Paso 2: Claude Code ejecuta el plan con herramientas reales
+        combined_prompt = (
+            f"{prompt}\n\n"
+            f"--- PLAN GENERADO POR QWEN2.5-CODER ---\n"
+            f"{plan}\n"
+            f"--- FIN DEL PLAN ---\n\n"
+            "Ejecuta el plan anterior usando las herramientas disponibles. "
+            "Cuando termines, incluye en tu respuesta:\n"
+            "---FINAL_REPORT---\n"
+            '{"success": true, "files_modified": [], '
+            '"errors_found": [], "fixes_applied": [], '
+            '"lessons": [], "blocker": null, "next_step": "", '
+            f'"qwen_plan_quality": "{plan_quality}"}}\n'
+            "---END_REPORT---"
+        )
+        return self._execute_claude(combined_prompt, project)
 
     def _execute_openrouter(self, prompt: str, project: str) -> str:
         """Tier 2: OpenRouter free tier via openrouter_wrapper.py."""
@@ -280,21 +314,59 @@ INSTRUCCIONES:
         return result.stdout + result.stderr
 
     def _execute_haiku(self, prompt: str, project: str) -> str:
-        """Haiku 4.5: Claude más barato via Anthropic API directo."""
+        """Haiku 4.5: 2-step — Haiku genera el plan, Claude Code lo ejecuta."""
         import anthropic
+
         api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
         if not api_key:
-            return "[Haiku] ANTHROPIC_API_KEY no configurada"
+            print("  [haiku] ANTHROPIC_API_KEY no configurada → fallback tier3")
+            return self._execute_claude(prompt, project)
+
+        # Paso 1: Haiku genera plan/código (sin herramientas)
+        plan = ""
+        plan_quality = "error"
         try:
             client = anthropic.Anthropic(api_key=api_key)
             msg = client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=4096,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "Genera un plan detallado y el código completo para la siguiente tarea. "
+                        "Sé específico y concreto. No uses herramientas, solo genera texto.\n\n"
+                        f"{prompt}\n\n"
+                        "Responde con:\n1. Plan paso a paso\n2. Código completo listo para ejecutar"
+                    ),
+                }],
             )
-            return msg.content[0].text
+            plan = msg.content[0].text
+            if len(plan) > 500:
+                plan_quality = "good"
+            elif len(plan) > 100:
+                plan_quality = "partial"
+            else:
+                plan_quality = "poor"
         except Exception as e:
-            return f"[Haiku error] {e}"
+            print(f"  [haiku] API error: {e} → fallback tier3")
+            return self._execute_claude(prompt, project)
+
+        # Paso 2: Claude Code ejecuta el plan con herramientas reales
+        combined_prompt = (
+            f"{prompt}\n\n"
+            f"--- PLAN GENERADO POR CLAUDE HAIKU ---\n"
+            f"{plan}\n"
+            f"--- FIN DEL PLAN ---\n\n"
+            "Ejecuta el plan anterior usando las herramientas disponibles. "
+            "Cuando termines, incluye en tu respuesta:\n"
+            "---FINAL_REPORT---\n"
+            '{"success": true, "files_modified": [], '
+            '"errors_found": [], "fixes_applied": [], '
+            '"lessons": [], "blocker": null, "next_step": "", '
+            f'"haiku_plan_quality": "{plan_quality}"}}\n'
+            "---END_REPORT---"
+        )
+        return self._execute_claude(combined_prompt, project)
 
     def capture(self, output: str) -> dict:
         """Extrae el FINAL_REPORT del output de Claude Code."""
@@ -305,7 +377,14 @@ INSTRUCCIONES:
         )
         if match:
             try:
-                return json.loads(match.group(1))
+                report = json.loads(match.group(1))
+                # Normalizar planner_quality desde campos de tier específicos
+                if "planner_quality" not in report:
+                    report["planner_quality"] = (
+                        report.get("qwen_plan_quality")
+                        or report.get("haiku_plan_quality")
+                    )
+                return report
             except json.JSONDecodeError:
                 pass
 
@@ -319,6 +398,7 @@ INSTRUCCIONES:
             "lessons": [],
             "blocker": None,
             "next_step": "Revisar output manualmente",
+            "planner_quality": None,
         }
 
     def store(self, obj_id: str, project: str, objective: dict, result: dict) -> None:
@@ -334,7 +414,7 @@ INSTRUCCIONES:
             UPDATE objectives SET
                 status=?, completed_at=datetime('now'),
                 result_summary=?, lessons_added=?,
-                error_message=?
+                error_message=?, planner_quality=?
             WHERE id=?
             """,
             (
@@ -343,6 +423,7 @@ INSTRUCCIONES:
                 json.dumps(result.get("lessons", []), ensure_ascii=False),
                 result.get("blocker")
                 or (str(result.get("errors_found", [])) if not result["success"] else None),
+                result.get("planner_quality"),
                 obj_id,
             ),
         )

@@ -216,8 +216,7 @@ INSTRUCCIONES:
 }}
 ---END_REPORT---"""
 
-    def execute(self, prompt: str, project: str,
-                model_tier: str = "tier3") -> str:
+    def execute(self, prompt: str, project: str, model_tier: str = "tier3") -> str:
         """
         Lanza el modelo correspondiente al tier.
         tier1  → Ollama qwen2.5-coder:7b (local, gratis)
@@ -241,8 +240,10 @@ INSTRUCCIONES:
             project_path = JARVIS_ROOT
         result = subprocess.run(
             ["claude", "--headless", "-p", prompt],
-            capture_output=True, text=True,
-            cwd=str(project_path), timeout=1800,
+            capture_output=True,
+            text=True,
+            cwd=str(project_path),
+            timeout=1800,
             env={**os.environ, "JARVIS_MODE": "autonomous"},
         )
         return result.stdout + result.stderr
@@ -271,7 +272,7 @@ INSTRUCCIONES:
                     "stream": False,
                     "options": {"temperature": 0.2, "num_predict": 3000},
                 },
-                timeout=300,
+                timeout=600,
             )
             plan = resp.json().get("response", "")
             if len(plan) > 500:
@@ -308,7 +309,9 @@ INSTRUCCIONES:
             return "[OpenRouter] wrapper no encontrado en bin/openrouter_wrapper.py"
         result = subprocess.run(
             ["python3", str(wrapper), "generate", prompt],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True,
+            text=True,
+            timeout=300,
             env={**os.environ},
         )
         return result.stdout + result.stderr
@@ -330,15 +333,17 @@ INSTRUCCIONES:
             msg = client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=4096,
-                messages=[{
-                    "role": "user",
-                    "content": (
-                        "Genera un plan detallado y el código completo para la siguiente tarea. "
-                        "Sé específico y concreto. No uses herramientas, solo genera texto.\n\n"
-                        f"{prompt}\n\n"
-                        "Responde con:\n1. Plan paso a paso\n2. Código completo listo para ejecutar"
-                    ),
-                }],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Genera un plan detallado y el código completo para la siguiente tarea. "
+                            "Sé específico y concreto. No uses herramientas, solo genera texto.\n\n"
+                            f"{prompt}\n\n"
+                            "Responde con:\n1. Plan paso a paso\n2. Código completo listo para ejecutar"
+                        ),
+                    }
+                ],
             )
             plan = msg.content[0].text
             if len(plan) > 500:
@@ -380,9 +385,8 @@ INSTRUCCIONES:
                 report = json.loads(match.group(1))
                 # Normalizar planner_quality desde campos de tier específicos
                 if "planner_quality" not in report:
-                    report["planner_quality"] = (
-                        report.get("qwen_plan_quality")
-                        or report.get("haiku_plan_quality")
+                    report["planner_quality"] = report.get("qwen_plan_quality") or report.get(
+                        "haiku_plan_quality"
                     )
                 # Normalize ssim fields
                 report.setdefault("ssim_score", report.get("ssim_score"))
@@ -498,10 +502,10 @@ INSTRUCCIONES:
         Otros agentes escriben resultados SOLO en tasks/results/[agent]-[ts].md.
         """
         STATUS_ICON = {
-            "running":   "🔄",
-            "pending":   "⏳",
-            "failed":    "❌",
-            "blocked":   "🚨",
+            "running": "🔄",
+            "pending": "⏳",
+            "failed": "❌",
+            "blocked": "🚨",
             "completed": "✅",
         }
         try:
@@ -530,22 +534,17 @@ INSTRUCCIONES:
                 f"# tasks/todo.md — {project}",
                 f"_Generado por OrchestratorLoop — "
                 f"{datetime.now().strftime('%Y-%m-%d %H:%M')}_",
-                "_Solo el OrchestratorLoop escribe aquí. "
-                "Otros agentes → tasks/results/_",
+                "_Solo el OrchestratorLoop escribe aquí. " "Otros agentes → tasks/results/_",
                 "",
             ]
             for status_group in ("running", "pending", "failed", "blocked", "completed"):
                 group_rows = [r for r in rows if r[2] == status_group]
                 if not group_rows:
                     continue
-                lines.append(
-                    f"## {STATUS_ICON.get(status_group, '')} {status_group.upper()}"
-                )
+                lines.append(f"## {STATUS_ICON.get(status_group, '')} {status_group.upper()}")
                 for r in group_rows:
                     obj_id, text, status, retries, criteria, _ = r
-                    retry_str = (
-                        f" (intento {retries}/{MAX_RETRIES})" if retries > 0 else ""
-                    )
+                    retry_str = f" (intento {retries}/{MAX_RETRIES})" if retries > 0 else ""
                     lines.append(f"- [{obj_id}]{retry_str} {text}")
                     if criteria:
                         lines.append(f"  → Criterio: {criteria}")
@@ -575,11 +574,39 @@ INSTRUCCIONES:
         except Exception:
             pass
 
-    def run(self, project: str, max_cycles: int = MAX_CYCLES,
-            model_tier: str = "tier3") -> None:
+    def _warmup_ollama(self) -> bool:
+        """
+        Envía un prompt mínimo a Ollama para cargar el modelo
+        antes de que el loop empiece. Evita timeout en primer ciclo.
+        """
+        import requests
+
+        try:
+            resp = requests.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b"),
+                    "prompt": "hi",
+                    "stream": False,
+                    "options": {"num_predict": 1},
+                },
+                timeout=600,
+            )
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    def run(self, project: str, max_cycles: int = MAX_CYCLES, model_tier: str = "tier3") -> None:
         """Loop principal del orquestador."""
         print(f"\n[ORCHESTRATOR] Iniciando loop — proyecto: {project} | tier: {model_tier}")
         self._print_effectiveness(project)
+
+        if model_tier == "tier1":
+            print("  [Tier1] Calentando Ollama (carga modelo ~60-120s)...")
+            if self._warmup_ollama():
+                print("  [Tier1] Ollama listo")
+            else:
+                print("  [Tier1] Ollama no responde — continuando con fallback")
 
         for cycle in range(1, max_cycles + 1):
             print(f"\n── Ciclo {cycle}/{max_cycles} ──────────────────")
@@ -669,8 +696,7 @@ INSTRUCCIONES:
 
             # Parar si hay ESCALATEs en el buzón de rechazos (MEJORA 5)
             escalates = [
-                r for r in context.get("recent_rejections", [])
-                if r.get("decision") == "ESCALATE"
+                r for r in context.get("recent_rejections", []) if r.get("decision") == "ESCALATE"
             ]
             if escalates:
                 e = escalates[0]
@@ -689,8 +715,7 @@ INSTRUCCIONES:
             if result["success"] and not pending:
                 print(f"\n✅ Proyecto {project} al día. Loop completado.")
                 self._notify_telegram(
-                    f"✅ *Loop completado* — `{project}`\n"
-                    f"{cycle} ciclo(s) | objetivo cumplido"
+                    f"✅ *Loop completado* — `{project}`\n" f"{cycle} ciclo(s) | objetivo cumplido"
                 )
                 break
 
@@ -699,7 +724,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="JARVIS OrchestratorLoop")
     parser.add_argument("--project", required=True, help="Nombre del proyecto")
     parser.add_argument(
-        "--cycles", type=int, default=MAX_CYCLES,
+        "--cycles",
+        type=int,
+        default=MAX_CYCLES,
         help=f"Máximo de ciclos (default: {MAX_CYCLES})",
     )
     parser.add_argument(

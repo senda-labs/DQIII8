@@ -67,7 +67,7 @@ if FLAG.exists():
     try: FLAG.unlink()
     except Exception: pass
 
-model = os.environ.get("JARVIS_MODEL", "qwen2.5-coder:3b (Ollama)")
+model = os.environ.get("JARVIS_MODEL", "qwen2.5-coder:7b (Ollama)")
 
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 JARVIS — {datetime.now().strftime('%Y-%m-%d %H:%M')}

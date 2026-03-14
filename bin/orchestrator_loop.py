@@ -384,6 +384,9 @@ INSTRUCCIONES:
                         report.get("qwen_plan_quality")
                         or report.get("haiku_plan_quality")
                     )
+                # Normalize ssim fields
+                report.setdefault("ssim_score", report.get("ssim_score"))
+                report.setdefault("ssim_quality", report.get("ssim_quality"))
                 return report
             except json.JSONDecodeError:
                 pass
@@ -399,6 +402,8 @@ INSTRUCCIONES:
             "blocker": None,
             "next_step": "Revisar output manualmente",
             "planner_quality": None,
+            "ssim_score": None,
+            "ssim_quality": None,
         }
 
     def store(self, obj_id: str, project: str, objective: dict, result: dict) -> None:
@@ -414,7 +419,8 @@ INSTRUCCIONES:
             UPDATE objectives SET
                 status=?, completed_at=datetime('now'),
                 result_summary=?, lessons_added=?,
-                error_message=?, planner_quality=?
+                error_message=?, planner_quality=?,
+                ssim_score=?, ssim_quality=?
             WHERE id=?
             """,
             (
@@ -424,6 +430,8 @@ INSTRUCCIONES:
                 result.get("blocker")
                 or (str(result.get("errors_found", [])) if not result["success"] else None),
                 result.get("planner_quality"),
+                result.get("ssim_score"),
+                result.get("ssim_quality"),
                 obj_id,
             ),
         )

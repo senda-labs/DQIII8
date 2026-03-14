@@ -93,9 +93,39 @@ class OrchestratorLoop:
 
         return context
 
+    def _get_recent_cycles(self, project: str, limit: int = 3) -> list[dict]:
+        """Obtiene los últimos N ciclos completados para evitar repetir objetivos."""
+        try:
+            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            rows = conn.execute(
+                """
+                SELECT objective_text, status, result_summary
+                FROM objectives
+                WHERE project = ?
+                  AND status IN ('completed', 'failed', 'blocked')
+                ORDER BY completed_at DESC
+                LIMIT ?
+                """,
+                (project, limit),
+            ).fetchall()
+            conn.close()
+            return [
+                {
+                    "objective": r[0],
+                    "status": r[1],
+                    "result": r[2][:100] if r[2] else "",
+                }
+                for r in rows
+            ]
+        except Exception:
+            return []
+
     def plan(self, context: dict) -> dict:
         """Usa Groq para determinar el siguiente objetivo."""
         import requests
+
+        recent = self._get_recent_cycles(context["project"])
+        context["recent_cycles"] = recent  # disponible para build_prompt
 
         groq_key = os.getenv("GROQ_API_KEY", "").strip()
         if not groq_key:
@@ -128,6 +158,11 @@ OBJETIVOS PENDIENTES EN BD:
 
 Responde SOLO en JSON sin explicaciones ni markdown:
 {{"objective": "descripción en 1-2 frases", "success_criteria": "cómo verificar que está hecho", "priority": "high|medium|low"}}"""
+
+        if recent:
+            prompt += "\n\nCICLOS RECIENTES (NO repetir estos objetivos):\n"
+            for c in recent:
+                prompt += f"- [{c['status']}] {c['objective'][:80]}\n"
 
         resp = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",

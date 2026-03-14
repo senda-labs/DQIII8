@@ -22,7 +22,9 @@ NOW = datetime.now().isoformat()
 
 # ── 0. Contar lecciones añadidas esta sesión ───────────────────────
 lessons_added = 0
+result = None  # mantenido para extracción de instincts en paso 0b
 try:
+    # git diff para instincts (paso 0b) — no se usa para el conteo principal
     result = subprocess.run(
         ["git", "-C", str(JARVIS), "diff", "HEAD", "--", "tasks/lessons.md"],
         capture_output=True,
@@ -34,23 +36,55 @@ try:
         """Match diff additions like '+- [2026-...' or '+[2026-...'"""
         return line.startswith("+- [20") or line.startswith("+[20")
 
-    lessons_added = sum(1 for line in result.stdout.splitlines() if _is_lesson_line(line))
-    # Fallback: si no hay cambios en working tree, revisar último commit
+    def _count_lesson_lines(text: str) -> int:
+        """Cuenta líneas de lección con formato [YYYY-...]"""
+        return sum(1 for l in text.splitlines() if l.startswith("- [20") or l.startswith("[20"))
+
+    # Patrón correcto: líneas_antes (HEAD) vs líneas_después (working tree)
+    lines_before = 0
+    head_show = subprocess.run(
+        ["git", "-C", str(JARVIS), "show", "HEAD:tasks/lessons.md"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    if head_show.returncode == 0:
+        lines_before = _count_lesson_lines(head_show.stdout)
+
+    lines_after = (
+        _count_lesson_lines(LESSONS.read_text(encoding="utf-8")) if LESSONS.exists() else 0
+    )
+
+    lessons_added = max(0, lines_after - lines_before)
+
+    # Fallback 1: git diff del working tree (cubre lessons.md no commitado aún)
     if lessons_added == 0:
-        last_commit = subprocess.run(
-            ["git", "-C", str(JARVIS), "log", "-1", "--oneline", "--", "tasks/lessons.md"],
+        diff_count = sum(1 for line in result.stdout.splitlines() if _is_lesson_line(line))
+        if diff_count > 0:
+            lessons_added = diff_count
+
+    # Fallback 2: recorrer commits recientes hasta encontrar adiciones en lessons.md
+    # (cubre el caso donde lessons.md fue commitado durante la sesión y hubo más commits después)
+    if lessons_added == 0:
+        log_result = subprocess.run(
+            ["git", "-C", str(JARVIS), "log", "--oneline", "-10", "--", "tasks/lessons.md"],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        if last_commit.stdout.strip():
+        for commit_line in log_result.stdout.splitlines()[:3]:
+            sha = commit_line.split()[0]
             result2 = subprocess.run(
-                ["git", "-C", str(JARVIS), "diff", "HEAD~1", "HEAD", "--", "tasks/lessons.md"],
+                ["git", "-C", str(JARVIS), "diff", f"{sha}~1", sha, "--", "tasks/lessons.md"],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-            lessons_added = sum(1 for line in result2.stdout.splitlines() if _is_lesson_line(line))
+            count2 = sum(1 for line in result2.stdout.splitlines() if _is_lesson_line(line))
+            if count2 > 0:
+                lessons_added = count2
+                result = result2  # actualizar para instincts
+                break
 except Exception:
     pass
 
@@ -68,7 +102,7 @@ try:
 
         _diff_lines = [
             _strip_diff_prefix(line)
-            for line in result.stdout.splitlines()
+            for line in (result.stdout.splitlines() if result else [])
             if (line.startswith("+- [20") or line.startswith("+[20")) and len(line) > 10
         ]
         _kw_pattern = _re.compile(r"^\[[\d-]+\]\s*\[([^\]]+)\]")

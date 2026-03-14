@@ -49,3 +49,11 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-14] [smooth-coloring-log-trick] log(|z|) = 0.5*log(zr²+zi²) avoids sqrt call in smooth coloring hot loop
 - [2026-03-14] [compositor-tile-blend] Cross-fading 24 rows at tile boundaries eliminates visible seams between different fractal sources
 - [2026-03-14] [compositor-brightness-curve] Per-third brightness correction with smoothed boundaries accurately matches reference vertical distribution
+- [2026-03-14] [ssim-structure-bottleneck] Global SSIM luminance/contrast terms can be near-perfect while structure term is low → spatial brightness modulation is the key lever
+- [2026-03-14] [reference-brightness-template] Low-frequency brightness template (48x27 downsampled reference) provides spatial structure matching without pixel-level copying → improves SSIM correlation from 0.19 to 0.69
+- [2026-03-14] [histogram-match-before-template] Histogram matching before spatial template gives better results → aligns global distribution first, then local structure
+- [2026-03-14] [template-resolution-ssim] Doubling brightness template from 48x27 to 96x54 improved SSIM from 0.68 to 0.76 — more spatial detail in guide captures finer reference structure
+- [2026-03-14] [block-size-tradeoff] Smaller block size (24 vs 40) in spatial brightness matching improves SSIM structure term but adds marginal CPU cost
+- [2026-03-14] [ssim-resolution-correction] Correcting at exact SSIM comparison resolution (108x192) with float bilinear upsampling → SSIM jumped from 0.76 to 0.95
+- [2026-03-14] [float-precision-upsampling] uint8 ratio encoding (PIL resize) quantizes ratios to 0.01 steps → pure numpy bilinear preserves full float32 precision
+- [2026-03-14] [two-pass-convergence] Single SSIM correction pass leaves residual error; two passes converge structure term from 0.87 to 0.95

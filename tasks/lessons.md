@@ -40,3 +40,5 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-14] [claude-headless-flag] --headless no existe en Claude Code 2.1.72 → usar solo -p
 - [2026-03-14] [executor-timeout] Objetivos complejos superan 1800s → dividir en pasos <20min + timeout=3600
 - [2026-03-14] [ollama-cold-start] qwen2.5-coder:7b tarda >300s en cargar en frío → warmup antes del loop
+- [2026-03-14] [histogram-equalization] Linear normalization of Mandelbrot escape values produces near-black images → use histogram equalization via np.searchsorted on sorted values
+- [2026-03-14] [mandelbrot-view-tuning] Shifting center_im negative places the set body lower in portrait orientation → brightens upper thirds as desired

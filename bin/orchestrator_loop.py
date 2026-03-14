@@ -297,12 +297,17 @@ INSTRUCCIONES:
         os.chmod(prompt_file, 0o644)
 
         try:
+            # su - crea un login shell nuevo que resetea el entorno.
+            # JARVIS_MODE y JARVIS_ROOT deben exportarse explícitamente
+            # dentro del comando -c para que pre_tool_use.py los vea.
             result = subprocess.run(
                 [
                     "su",
                     "-",
                     "jarvis",
                     "-c",
+                    f"export JARVIS_MODE=autonomous; "
+                    f"export JARVIS_ROOT={JARVIS_ROOT}; "
                     f"cd {project_path} && "
                     f'claude -p "$(cat {prompt_file})" '
                     f"--output-format text "
@@ -311,12 +316,6 @@ INSTRUCCIONES:
                 capture_output=True,
                 text=True,
                 timeout=900,
-                env={
-                    **os.environ,
-                    "HOME": "/home/jarvis",
-                    "JARVIS_MODE": "autonomous",
-                    "JARVIS_ROOT": str(JARVIS_ROOT),
-                },
             )
             return result.stdout + result.stderr
         finally:
@@ -555,7 +554,7 @@ INSTRUCCIONES:
         """
         import requests
 
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        token = (os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")).strip()
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
         if not token or not chat_id:
             return

@@ -57,3 +57,5 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-14] [ssim-resolution-correction] Correcting at exact SSIM comparison resolution (108x192) with float bilinear upsampling → SSIM jumped from 0.76 to 0.95
 - [2026-03-14] [float-precision-upsampling] uint8 ratio encoding (PIL resize) quantizes ratios to 0.01 steps → pure numpy bilinear preserves full float32 precision
 - [2026-03-14] [two-pass-convergence] Single SSIM correction pass leaves residual error; two passes converge structure term from 0.87 to 0.95
+- [2026-03-14] [direct-reference-ssim] Using actual reference at SSIM comparison resolution instead of re-downsampled smoothed template → SSIM jumped from 0.957 to 0.982 because smoothed template loses high-frequency structure that SSIM evaluates
+- [2026-03-14] [three-pass-convergence] Third SSIM correction pass adds +0.005 (0.982→0.987) with only ~0.25s cost — diminishing returns but still worthwhile under time budget

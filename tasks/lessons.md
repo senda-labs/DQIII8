@@ -32,3 +32,6 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-10] [verb-tense] No mezclar pretérito/presente dentro de la misma escena
 - [2026-03-14] [env-override] config/.env tenía GROQ key caducada con override=True → pipeline ignoraba /root/jarvis/.env → sincronizar ambos .env cuando se rota una key
 - [2026-03-14] [fal-api-key-empty] FAL_API_KEY existía en config/.env pero vacía → pipeline usaba HF como fallback silenciosamente → sincronizar config/.env con jarvis/.env después de añadir cualquier key nueva
+- [2026-03-14] [elevenlabs-key-empty] ELEVENLABS_API_KEY vacía en config/.env → TTS cae a Edge silenciosamente → sincronizar config/.env con jarvis/.env al rotar keys
+- [2026-03-14] [hf-credits-exhausted] HuggingFace 402 cuando créditos agotados → FAL debe ser fallback de HF, no al revés
+- [2026-03-14] [ffmpeg-zoompan-timeout] zoompan en imagen full-res tarda >600s → escalar imagen a 1080×1920 antes del filtro zoompan

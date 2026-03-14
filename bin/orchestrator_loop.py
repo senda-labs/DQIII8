@@ -239,11 +239,11 @@ INSTRUCCIONES:
         if not project_path.exists():
             project_path = JARVIS_ROOT
         result = subprocess.run(
-            ["claude", "-p", prompt],
+            ["claude", "-p", prompt, "--output-format", "text"],
             capture_output=True,
             text=True,
             cwd=str(project_path),
-            timeout=1800,
+            timeout=3600,
             env={**os.environ, "JARVIS_MODE": "autonomous"},
         )
         return result.stdout + result.stderr

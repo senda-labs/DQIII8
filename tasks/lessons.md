@@ -18,15 +18,6 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-10] [spanish-dialogue] Em-dash (—) para diálogos, no comillas dobles
 - [2026-03-10] [verb-tense] No mezclar pretérito/presente dentro de la misma escena
 
-[2026-03-13] [class-name-verification] Antes de ejecutar un pipeline, verificar 
-el nombre exacto de clase con grep -n "^class" antes de importar → evita 4-5 
-intentos fallidos de import.
-
-[2026-03-13] [ast-transformation-risk] Las transformaciones AST automatizadas 
-(list → yield) pueden introducir bugs de referencias (frames.append sin frames 
-definido). Fix: siempre ejecutar test unitario inmediatamente después de cada 
-transformación, no al final de todas.
-
-[2026-03-13] [oom-streaming-pattern] Acumulación de frames en List[np.ndarray] 
-es un OOM garantizado para vídeos largos. Patrón correcto: generadores Python + 
-render_to_dir + ImageSequenceClip por rutas de archivo → pico 54.9MB vs 7.4GB.
+[2026-03-13] [class-name-verification] Importar sin verificar nombre exacto de clase → usar grep -n "^class" antes de importar
+[2026-03-13] [ast-transformation-risk] Transformaciones AST (list→yield) sin test inmediato → ejecutar test unitario después de cada transformación
+[2026-03-13] [oom-streaming-pattern] Acumular frames en List[np.ndarray] causa OOM → usar generadores + render_to_dir + ImageSequenceClip por rutas

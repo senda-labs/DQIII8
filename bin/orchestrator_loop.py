@@ -28,8 +28,25 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 
 class OrchestratorLoop:
 
+    def check_rejections(self) -> list[dict]:
+        """
+        FIX D: Lee el buzón permission_rejection.json y lo vacía tras leer.
+        Permite al loop detectar y reaccionar ante DENYs/ESCALATEs recientes
+        sin esperar al siguiente ciclo completo.
+        """
+        reject_path = JARVIS_ROOT / "tasks" / "permission_rejection.json"
+        if not reject_path.exists():
+            return []
+        try:
+            data = json.loads(reject_path.read_text(encoding="utf-8"))
+            # Vaciar el buzón tras leer (consume el mensaje)
+            reject_path.write_text("[]", encoding="utf-8")
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
+
     def analyze(self, project: str) -> dict:
-        """Lee BD + MD para construir contexto completo del proyecto."""
+        """Lee BD + MD + buzón de rechazos para construir contexto completo."""
         project_md = JARVIS_ROOT / f"projects/{project}.md"
         lessons_md = JARVIS_ROOT / "tasks/lessons.md"
 
@@ -70,6 +87,9 @@ class OrchestratorLoop:
             ]
         except Exception:
             context["pending_objectives"] = []
+
+        # Buzón de rechazos del PermissionAnalyzer
+        context["recent_rejections"] = self.check_rejections()
 
         return context
 

@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """
-JARVIS — PermissionAnalyzer v2
+JARVIS — PermissionAnalyzer v3
 Evaluación centralizada de permisos para hooks pre_tool_use.
 
-Mejoras v2:
-  A — SQLite timeout=10 en todas las conexiones
-  B — ALLOWED_DELETIONS para rutas de caché seguras
-  C — Historial de intentos + ESCALATE para loops infinitos
+v2: SQLite timeout + ALLOWED_DELETIONS + ESCALATE loop
+v3: Dual-channel rejections (BD + JSON buzón) + budget check +
+    autonomous auto-approve + FIX ESCALATE count (DENY+ESCALATE)
 """
 
+import json
 import os
 import re
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 # ── Configuración ───────────────────────────────────────────────────────────
 JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB_PATH = JARVIS_ROOT / "database" / "jarvis_metrics.db"
 SESSION_ID = os.environ.get("CLAUDE_SESSION_ID", "unknown")
-JARVIS_MODE = os.environ.get("JARVIS_MODE", "supervised")  # autonomous | supervised
+JARVIS_MODE = os.environ.get("JARVIS_MODE", "supervised")
 
 # ── Constantes de riesgo ────────────────────────────────────────────────────
 BLOCKED_PATHS = [
@@ -34,22 +35,20 @@ BLOCKED_PATHS = [
     ".ssh/",
 ]
 
-# Patrones regex para comandos destructivos
 HIGH_RISK_PATTERNS = [
     r"rm\s+-rf\s+/",  # rm -rf /anything (includes rm -rf /)
-    r"rm\s+-rf\s+~",  # rm -rf ~
-    r"rm\s+-rf\s+\$HOME",  # rm -rf $HOME
-    r"DROP\s+TABLE",  # SQL destructivo
-    r"DELETE\s+FROM\s+agent_actions",  # borrar métricas JARVIS
+    r"rm\s+-rf\s+~",
+    r"rm\s+-rf\s+\$HOME",
+    r"DROP\s+TABLE",
+    r"DELETE\s+FROM\s+agent_actions",
     r"DROP\s+DATABASE",
-    r">\s+/dev/sda",  # sobreescribir disco
-    r"\bmkfs\b",  # formatear partición
-    r"\bdd\b.*\bif=",  # dd de disco
-    r"chmod\s+777\s+/",  # permisos root inseguros
+    r">\s+/dev/sda",
+    r"\bmkfs\b",
+    r"\bdd\b.*\bif=",
+    r"chmod\s+777\s+/",
     r":\(\)\s*\{.*:\|:.*\}",  # fork bomb
 ]
 
-# Carpetas que se pueden borrar sin riesgo (limpieza de caché)
 ALLOWED_DELETIONS = [
     "node_modules",
     "dist",
@@ -63,27 +62,48 @@ ALLOWED_DELETIONS = [
     ".ruff_cache",
 ]
 
+# Herramientas que se auto-aprueban en modo autónomo (tras pasar checks)
+AUTO_APPROVE_TOOLS = {
+    "Read",
+    "Glob",
+    "Grep",
+    "LS",
+    "Write",
+    "Edit",
+    "MultiEdit",
+    "Bash",
+    "WebFetch",
+    "WebSearch",
+}
+
+MAX_SESSION_COST_USD = 5.0
 MAX_SAME_REJECTION = 2  # Tras 2 rechazos idénticos → ESCALATE
 
 
 class PermissionAnalyzer:
     """Evaluador centralizado de permisos para herramientas de Claude Code."""
 
-    def evaluate(self, tool: str, inp: dict) -> dict:
+    def evaluate(self, tool: str, inp: dict, session_id: str | None = None) -> dict:
         """
         Evalúa si una herramienta puede ejecutarse.
-
-        Returns dict con keys: decision, reason, risk_level,
-        rule_triggered, suggested_fix.
         decision ∈ {APPROVE, DENY, ESCALATE}
+
+        session_id: ID de sesión del evento hook (prioridad sobre variable de entorno).
         """
-        # MEJORA C — ESCALATE check antes que todo (cierra loops infinitos)
+        _session = session_id or SESSION_ID
         detail = str(inp.get("file_path", inp.get("command", "")))
-        escalate = self._check_repeat_rejections(tool, detail)
+
+        # 1. ESCALATE — cierra loops infinitos
+        escalate = self._check_repeat_rejections(tool, detail, _session)
         if escalate:
             return escalate
 
-        # Check paths bloqueados (Write, Edit, MultiEdit)
+        # 2. Budget — bloquear si se supera el presupuesto de sesión
+        budget_deny = self._check_budget(_session)
+        if budget_deny:
+            return budget_deny
+
+        # 3. Paths bloqueados (Write, Edit, MultiEdit)
         if tool in ("Edit", "Write", "MultiEdit"):
             path = inp.get("file_path", inp.get("path", ""))
             for blocked in BLOCKED_PATHS:
@@ -98,16 +118,14 @@ class PermissionAnalyzer:
                         "Editar directamente desde terminal o pedir al usuario.",
                     )
 
-        # MEJORA B — Check comandos de alto riesgo con excepción ALLOWED_DELETIONS
+        # 4. Comandos de alto riesgo con excepción ALLOWED_DELETIONS
         if tool == "Bash":
             cmd = inp.get("command", "")
             for pattern in HIGH_RISK_PATTERNS:
                 if re.search(pattern, cmd, re.IGNORECASE):
-                    # Excepción: rutas seguras de limpieza de caché
                     is_safe_deletion = any(safe in cmd for safe in ALLOWED_DELETIONS)
                     if is_safe_deletion:
-                        break  # Aprobar — es limpieza de caché
-
+                        break
                     if JARVIS_MODE == "autonomous":
                         return self._deny(
                             tool,
@@ -127,11 +145,25 @@ class PermissionAnalyzer:
                             "Este comando es destructivo e irreversible.",
                         )
 
+        # 5. Modo autónomo — auto-aprobar herramientas estándar (tras checks)
+        if JARVIS_MODE == "autonomous" and tool in AUTO_APPROVE_TOOLS:
+            return self._approve("autonomous_mode")
+
+        return self._approve()
+
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _approve(
+        self,
+        reason: str = "OK",
+        risk_level: str = "LOW",
+        rule_triggered: str | None = None,
+    ) -> dict:
         return {
             "decision": "APPROVE",
-            "reason": "OK",
-            "risk_level": "LOW",
-            "rule_triggered": None,
+            "reason": reason,
+            "risk_level": risk_level,
+            "rule_triggered": rule_triggered,
             "suggested_fix": None,
         }
 
@@ -152,26 +184,27 @@ class PermissionAnalyzer:
             "suggested_fix": suggested_fix,
         }
 
-    def _check_repeat_rejections(self, tool: str, detail: str) -> dict | None:
+    def _check_repeat_rejections(
+        self, tool: str, detail: str, session_id: str | None = None
+    ) -> dict | None:
         """
         Si el mismo tool+action_detail ha sido rechazado MAX_SAME_REJECTION
-        veces en esta sesión → devolver ESCALATE en lugar de DENY.
-
-        ESCALATE significa: el OrchestratorLoop debe notificar al usuario
-        humano, no reintentar solo.
+        veces (DENY o ESCALATE) en esta sesión → devolver ESCALATE.
+        FIX C: cuenta tanto DENY como ESCALATE.
         """
+        _session = session_id or SESSION_ID
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)  # MEJORA A
+            conn = sqlite3.connect(str(DB_PATH), timeout=10)
             row = conn.execute(
                 """
                 SELECT COUNT(*) FROM permission_decisions
                 WHERE session_id = ?
                   AND tool_name = ?
                   AND action_detail LIKE ?
-                  AND decision = 'DENY'
+                  AND decision IN ('DENY', 'ESCALATE')
                   AND timestamp > datetime('now', '-2 hours')
                 """,
-                (SESSION_ID, tool, f"%{detail[:50]}%"),
+                (_session, tool, f"%{detail[:50]}%"),
             ).fetchone()
             conn.close()
 
@@ -187,9 +220,9 @@ class PermissionAnalyzer:
                     "risk_level": "HIGH",
                     "rule_triggered": f"repeat_rejection:{count}",
                     "suggested_fix": (
-                        "El OrchestratorLoop debe pausar y notificar "
-                        "al usuario. El agente necesita una estrategia "
-                        "diferente que no requiera esta acción bloqueada. "
+                        "El OrchestratorLoop debe pausar y notificar al usuario. "
+                        "El agente necesita una estrategia diferente que no "
+                        "requiera esta acción bloqueada. "
                         f"Intentos previos: {count}."
                     ),
                 }
@@ -197,12 +230,29 @@ class PermissionAnalyzer:
             pass
         return None
 
-    def _check_budget(self, tool: str, inp: dict) -> dict | None:
-        """Placeholder: verificación de presupuesto de tokens por sesión."""
+    def _check_budget(self, session_id: str) -> dict | None:
+        """Bloquea si el coste estimado de la sesión supera MAX_SESSION_COST_USD."""
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)  # MEJORA A
-            # Future: query sessions table for token budget enforcement
+            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            row = conn.execute(
+                "SELECT COALESCE(SUM(tokens_used),0) FROM agent_actions "
+                "WHERE session_id=? AND timestamp > datetime('now','-1 hour')",
+                (session_id,),
+            ).fetchone()
             conn.close()
+            session_tokens = row[0] if row else 0
+            estimated_cost = (session_tokens / 1_000_000) * 15.0
+            if estimated_cost > MAX_SESSION_COST_USD:
+                return self._deny(
+                    "budget",
+                    f"${estimated_cost:.2f}",
+                    f"Presupuesto de sesión excedido: "
+                    f"${estimated_cost:.2f} > ${MAX_SESSION_COST_USD}",
+                    "HIGH",
+                    "budget_exceeded",
+                    "Dividir el objetivo en subtareas más pequeñas. "
+                    "Iniciar nueva sesión con j --autonomous",
+                )
         except Exception:
             pass
         return None
@@ -216,7 +266,7 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
     if result["decision"] != "APPROVE":
         return
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=10)  # MEJORA A
+        conn = sqlite3.connect(str(DB_PATH), timeout=10)
         conn.execute(
             """
             INSERT INTO permission_decisions
@@ -239,11 +289,30 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
 
 
 def record_rejection(tool: str, inp: dict, result: dict) -> None:
-    """Registra DENY y ESCALATE en la BD."""
+    """
+    Registra DENY y ESCALATE en dos canales:
+    Canal 1 — BD: tabla permission_decisions
+    Canal 2 — JSON buzón: tasks/permission_rejection.json (leído por OrchestratorLoop)
+    FIX A: añadido canal JSON.
+    """
     if result["decision"] not in ("DENY", "ESCALATE"):
         return
+
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "session_id": SESSION_ID,
+        "tool_name": tool,
+        "action_detail": str(inp.get("file_path", inp.get("command", "")))[:200],
+        "decision": result["decision"],
+        "reason": result.get("reason", ""),
+        "risk_level": result.get("risk_level", ""),
+        "rule_triggered": result.get("rule_triggered", ""),
+        "suggested_fix": result.get("suggested_fix", ""),
+    }
+
+    # Canal 1: BD
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=10)  # MEJORA A
+        conn = sqlite3.connect(str(DB_PATH), timeout=10)
         conn.execute(
             """
             INSERT INTO permission_decisions
@@ -254,15 +323,34 @@ def record_rejection(tool: str, inp: dict, result: dict) -> None:
             (
                 SESSION_ID,
                 tool,
-                str(inp.get("file_path", inp.get("command", "")))[:200],
-                result["decision"],
-                result.get("reason", ""),
-                result.get("risk_level", ""),
-                result.get("rule_triggered", ""),
-                result.get("suggested_fix", ""),
+                entry["action_detail"],
+                entry["decision"],
+                entry["reason"],
+                entry["risk_level"],
+                entry["rule_triggered"],
+                entry["suggested_fix"],
             ),
         )
         conn.commit()
         conn.close()
+    except Exception:
+        pass
+
+    # Canal 2: JSON buzón (append al array)
+    try:
+        reject_path = JARVIS_ROOT / "tasks" / "permission_rejection.json"
+        existing: list = []
+        if reject_path.exists():
+            try:
+                existing = json.loads(reject_path.read_text(encoding="utf-8"))
+                if not isinstance(existing, list):
+                    existing = []
+            except Exception:
+                existing = []
+        existing.append(entry)
+        reject_path.write_text(
+            json.dumps(existing, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     except Exception:
         pass

@@ -118,7 +118,11 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
     """
     try:
         proc = await asyncio.create_subprocess_exec(
-            "claude", "--add-dir", str(JARVIS), "-p", description,
+            "claude",
+            "--add-dir",
+            str(JARVIS),
+            "-p",
+            description,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(JARVIS),
@@ -223,10 +227,7 @@ async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         m, s = divmod(elapsed, 60)
         proc = info.get("proc")
         alive = "🟢" if (proc and proc.returncode is None) else "🟡"
-        lines.append(
-            f"{alive} `{tid}` — {m}m{s}s\n"
-            f"   _{info['description'][:60]}_"
-        )
+        lines.append(f"{alive} `{tid}` — {m}m{s}s\n" f"   _{info['description'][:60]}_")
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
@@ -239,9 +240,7 @@ async def cmd_output(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     task_id = context.args[0]
     if task_id not in ACTIVE_TASKS:
-        await update.message.reply_text(
-            f"Tarea `{task_id}` no encontrada.", parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"Tarea `{task_id}` no encontrada.", parse_mode="Markdown")
         return
     info = ACTIVE_TASKS[task_id]
     elapsed = int(time.time() - info["start_time"])
@@ -264,9 +263,7 @@ async def cmd_kill(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     task_id = context.args[0]
     if task_id not in ACTIVE_TASKS:
-        await update.message.reply_text(
-            f"Tarea `{task_id}` no encontrada.", parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"Tarea `{task_id}` no encontrada.", parse_mode="Markdown")
         return
     proc = ACTIVE_TASKS[task_id].get("proc")
     if proc and proc.returncode is None:
@@ -321,15 +318,13 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not authorized(update):
         await update.message.reply_text("No autorizado.")
         return
-    rows = db_query(
-        """
+    rows = db_query("""
         SELECT objective_id, title, status, priority, score_final, current_attempt
         FROM jal_objectives
         ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'queue' THEN 1 ELSE 2 END,
                  started_at DESC
         LIMIT 5
-        """
-    )
+        """)
     if not rows:
         await update.message.reply_text("No hay objetivos en la BD.")
         return
@@ -350,20 +345,19 @@ async def cmd_score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
         await update.message.reply_text("No autorizado.")
         return
-    rows = db_query(
-        """
+    rows = db_query("""
         SELECT s.objective_id, s.attempt, s.evaluated_at, s.score_raw,
                s.score_final, s.converges, s.steps_completed, s.steps_total
         FROM jal_scoring_snapshots s
         ORDER BY s.evaluated_at DESC
         LIMIT 1
-        """
-    )
+        """)
     if not rows:
         await update.message.reply_text("No hay snapshots de scoring.")
         return
-    (obj_id, attempt, evaluated_at, score_raw, score_final, converges,
-     steps_done, steps_total) = rows[0]
+    obj_id, attempt, evaluated_at, score_raw, score_final, converges, steps_done, steps_total = (
+        rows[0]
+    )
     converge_str = "[OK] Converge" if converges else "[~] Sin convergencia"
     text = (
         f"*Ultimo scoring snapshot:*\n\n"
@@ -431,6 +425,48 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     log.info("/run completado target=%s", target)
 
 
+async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /loop [project] [cycles] [tier]
+    Lanza OrchestratorLoop en background y notifica al terminar.
+    Ejemplos: /loop math-image-generator 3 tier3
+              /loop math-image-generator
+    """
+    if not authorized(update):
+        await update.message.reply_text("No autorizado.")
+        return
+
+    args = context.args
+    project = args[0] if args else "math-image-generator"
+    cycles = args[1] if len(args) > 1 else "5"
+    tier = args[2] if len(args) > 2 else "tier3"
+
+    await update.message.reply_text(
+        f"🚀 *OrchestratorLoop* lanzado\n"
+        f"Proyecto: `{project}` | Ciclos: `{cycles}` | Tier: `{tier}`\n"
+        "_Recibirás notificación al completar o si hay un bloqueante._",
+        parse_mode="Markdown",
+    )
+    log.info("/loop project=%s cycles=%s tier=%s", project, cycles, tier)
+
+    cmd = [
+        "python3",
+        str(JARVIS / "bin" / "orchestrator_loop.py"),
+        "--project",
+        project,
+        "--cycles",
+        cycles,
+        "--tier",
+        tier,
+    ]
+    output = run_cmd(cmd, timeout=3600)
+    await send_chunks(
+        update,
+        f"*Loop completado — {project}*\n```\n{output[-3000:]}\n```",
+    )
+    log.info("/loop finalizado project=%s", project)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
         await update.message.reply_text("No autorizado.")
@@ -460,8 +496,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
     result = subprocess.run(
         [
-            "python3", str(JARVIS / "bin" / "openrouter_wrapper.py"),
-            "--model", "stepfun/step-3.5-flash:free",
+            "python3",
+            str(JARVIS / "bin" / "openrouter_wrapper.py"),
+            "--model",
+            "stepfun/step-3.5-flash:free",
         ],
         input=prompt,
         capture_output=True,
@@ -496,6 +534,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("output", cmd_output))
     APP.add_handler(CommandHandler("reply", cmd_reply_task))
     APP.add_handler(CommandHandler("kill", cmd_kill))
+    APP.add_handler(CommandHandler("loop", cmd_loop))
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     log.info("Bot en polling. Ctrl+C para detener.")

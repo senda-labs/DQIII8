@@ -9,6 +9,7 @@ Uso:
     python3 openrouter_wrapper.py --agent research-analyst        # stdin
     python3 openrouter_wrapper.py --list                          # muestra tabla
 """
+
 import argparse
 import json
 import os
@@ -51,29 +52,29 @@ PROVIDERS = {
 
 AGENT_ROUTING = {
     "python-specialist": ("openrouter", "qwen/qwen3-coder:free"),
-    "backend-builder":   ("openrouter", "qwen/qwen3-coder:free"),
-    "git-specialist":    ("groq",       "llama-3.3-70b-versatile"),
-    "research-analyst":  ("openrouter", "stepfun/step-3.5-flash:free"),
-    "auditor":           ("openrouter", "stepfun/step-3.5-flash:free"),
-    "data-analyst":      ("openrouter", "openai/gpt-oss-120b:free"),
-    "code-reviewer":     ("openrouter", "openai/gpt-oss-120b:free"),
-    "creative-writer":   ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
+    "backend-builder": ("openrouter", "qwen/qwen3-coder:free"),
+    "git-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "research-analyst": ("openrouter", "stepfun/step-3.5-flash:free"),
+    "auditor": ("openrouter", "stepfun/step-3.5-flash:free"),
+    "data-analyst": ("openrouter", "openai/gpt-oss-120b:free"),
+    "code-reviewer": ("openrouter", "openai/gpt-oss-120b:free"),
+    "creative-writer": ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
     "content-automator": ("openrouter", "nvidia/nemotron-nano-12b-v2-vl:free"),
-    "default":           ("openrouter", "stepfun/step-3.5-flash:free"),
+    "default": ("openrouter", "stepfun/step-3.5-flash:free"),
 }
 
 # Fallback universal por proveedor (cuando el modelo primario falla)
 FALLBACK_MODELS = {
-    "groq":       ("groq",        "llama-3.3-70b-versatile"),
-    "llm7":       ("llm7",        "gpt-4o-mini"),
-    "pollinations":("pollinations","openai"),
+    "groq": ("groq", "llama-3.3-70b-versatile"),
+    "llm7": ("llm7", "gpt-4o-mini"),
+    "pollinations": ("pollinations", "openai"),
 }
 
 # Cadena de fallback por proveedor primario
 FALLBACK_CHAIN = {
     "openrouter": ["groq", "llm7", "pollinations"],
-    "groq":       ["llm7", "pollinations"],
-    "llm7":       ["pollinations"],
+    "groq": ["llm7", "pollinations"],
+    "llm7": ["pollinations"],
     "pollinations": [],
 }
 
@@ -82,31 +83,93 @@ FALLBACK_CHAIN = {
 # Si múltiples tiers coinciden → gana el más bajo (tier 1 > tier 2 > tier 3)
 ROUTING_TABLE = [
     (
-        1, "ollama", "qwen2.5-coder:7b", "code_local",
+        1,
+        "ollama",
+        "qwen2.5-coder:7b",
+        "code_local",
         [
-            "python", "refactor", "debug", "test", "tests", "git", "commit",
-            "código", "codigo", "función", "funcion", "fix", "bug", "patch",
-            "script", "error traceback", "optimize", "optimiza", "clase",
-            "variable", "loop", "import", "módulo", "modulo",
+            "python",
+            "refactor",
+            "debug",
+            "test",
+            "tests",
+            "git",
+            "commit",
+            "código",
+            "codigo",
+            "función",
+            "funcion",
+            "fix",
+            "bug",
+            "patch",
+            "script",
+            "error traceback",
+            "optimize",
+            "optimiza",
+            "clase",
+            "variable",
+            "loop",
+            "import",
+            "módulo",
+            "modulo",
         ],
     ),
     (
-        2, "groq", "llama-3.3-70b-versatile", "review_groq",
+        2,
+        "groq",
+        "llama-3.3-70b-versatile",
+        "review_groq",
         [
-            "review", "revisar", "analiz", "análisis", "analisis",
-            "research", "investigar", "evaluar", "compar", "documenta",
-            "explica", "resumen", "summary", "audit",
+            "review",
+            "revisar",
+            "analiz",
+            "análisis",
+            "analisis",
+            "research",
+            "investigar",
+            "evaluar",
+            "compar",
+            "documenta",
+            "explica",
+            "resumen",
+            "summary",
+            "audit",
         ],
     ),
     (
-        3, "claude", "claude-sonnet-4-6", "claude_api",
+        3,
+        "claude",
+        "claude-sonnet-4-6",
+        "claude_api",
         [
-            "wacc", "dcf", "finanz", "valorac", "excel", "valuation",
-            "novel", "xianxia", "capítulo", "capitulo", "scene", "narrativ",
-            "creative", "escritura", "dialogue", "diálogo",
-            "arquitectura", "architecture", "seguridad", "security", "auth",
-            "mobilize", "coordinar", "orchestrat", "multi-agent", "multiagent",
-            "diseño de sistema", "system design",
+            "wacc",
+            "dcf",
+            "finanz",
+            "valorac",
+            "excel",
+            "valuation",
+            "novel",
+            "xianxia",
+            "capítulo",
+            "capitulo",
+            "scene",
+            "narrativ",
+            "creative",
+            "escritura",
+            "dialogue",
+            "diálogo",
+            "arquitectura",
+            "architecture",
+            "seguridad",
+            "security",
+            "auth",
+            "mobilize",
+            "coordinar",
+            "orchestrat",
+            "multi-agent",
+            "multiagent",
+            "diseño de sistema",
+            "system design",
         ],
     ),
 ]
@@ -116,6 +179,7 @@ DB_PATH = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")) / "database" / "ja
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
+
 
 def build_request(provider_name: str, model: str, prompt: str):
     """Construye URL, headers y payload para una llamada de chat streaming."""
@@ -131,11 +195,13 @@ def build_request(provider_name: str, model: str, prompt: str):
             headers["Authorization"] = f"Bearer {key}"
     headers.update(cfg["headers_extra"])
 
-    payload = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": True,
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": True,
+        }
+    ).encode("utf-8")
 
     return url, headers, payload
 
@@ -184,9 +250,17 @@ def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, i
     return full_text, len(full_text) // 4, bool(full_text)  # tokens estimados ~4 chars/token
 
 
-def log_to_db(agent: str, model: str, provider: str, tokens: int,
-              duration_ms: int, success: bool, session_id: str = "cli") -> None:
-    """Registra la llamada en agent_actions."""
+def log_to_db(
+    agent: str,
+    model: str,
+    provider: str,
+    tokens: int,
+    duration_ms: int,
+    success: bool,
+    session_id: str = "cli",
+    error_message: str = "",
+) -> None:
+    """Registra la llamada en agent_actions, incluyendo error_message si falla."""
     if not DB_PATH.exists():
         return
     try:
@@ -194,8 +268,8 @@ def log_to_db(agent: str, model: str, provider: str, tokens: int,
         conn.execute(
             "INSERT INTO agent_actions "
             "(session_id, agent_name, tool_used, action_type, model_used, "
-            "tokens_used, duration_ms, success, start_time_ms) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "tokens_used, duration_ms, success, error_message, start_time_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 agent,
@@ -205,6 +279,7 @@ def log_to_db(agent: str, model: str, provider: str, tokens: int,
                 tokens,
                 duration_ms,
                 1 if success else 0,
+                error_message[:500] if error_message else None,
                 int(time.time() * 1000) - duration_ms,
             ),
         )
@@ -257,6 +332,7 @@ def classify_prompt(prompt: str) -> None:
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     # Subcommand: classify <prompt>
     if len(sys.argv) >= 2 and sys.argv[1] == "classify":
@@ -272,14 +348,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="JARVIS OpenRouter Wrapper — routing multi-provider con fallback."
     )
-    parser.add_argument("--agent", "-a", default="default",
-                        help="Agente JARVIS (define modelo y provider)")
-    parser.add_argument("--model", "-m", default=None,
-                        help="Modelo explícito (sobreescribe --agent)")
-    parser.add_argument("--list", "-l", action="store_true",
-                        help="Muestra la tabla de routing y sale")
-    parser.add_argument("prompt", nargs="?", default=None,
-                        help="Prompt (o stdin si no se pasa)")
+    parser.add_argument(
+        "--agent", "-a", default="default", help="Agente JARVIS (define modelo y provider)"
+    )
+    parser.add_argument(
+        "--model", "-m", default=None, help="Modelo explícito (sobreescribe --agent)"
+    )
+    parser.add_argument(
+        "--list", "-l", action="store_true", help="Muestra la tabla de routing y sale"
+    )
+    parser.add_argument("prompt", nargs="?", default=None, help="Prompt (o stdin si no se pasa)")
     args = parser.parse_args()
 
     if args.list:
@@ -312,7 +390,9 @@ def main() -> None:
     # Construir cadena: primario + fallbacks
     chain = [(primary_provider, primary_model)]
     for fallback_provider in FALLBACK_CHAIN.get(primary_provider, []):
-        fb_provider, fb_model = FALLBACK_MODELS.get(fallback_provider, (fallback_provider, "gpt-4o-mini"))
+        fb_provider, fb_model = FALLBACK_MODELS.get(
+            fallback_provider, (fallback_provider, "gpt-4o-mini")
+        )
         chain.append((fb_provider, fb_model))
 
     # Intentar cada proveedor en orden
@@ -322,7 +402,8 @@ def main() -> None:
         text, tokens, ok = stream_response(provider, model, prompt)
         duration_ms = int(time.time() * 1000) - t0
 
-        log_to_db(agent_name, model, provider, tokens, duration_ms, ok)
+        err_msg = "" if ok else f"{provider}/{model} falló — sin respuesta o HTTP error"
+        log_to_db(agent_name, model, provider, tokens, duration_ms, ok, error_message=err_msg)
 
         if ok:
             sys.exit(0)

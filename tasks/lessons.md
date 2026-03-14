@@ -42,3 +42,10 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-14] [ollama-cold-start] qwen2.5-coder:7b tarda >300s en cargar en frío → warmup antes del loop
 - [2026-03-14] [histogram-equalization] Linear normalization of Mandelbrot escape values produces near-black images → use histogram equalization via np.searchsorted on sorted values
 - [2026-03-14] [mandelbrot-view-tuning] Shifting center_im negative places the set body lower in portrait orientation → brightens upper thirds as desired
+- [2026-03-14] [hsv-from-scratch] Implementing HSV→RGB vectorized in numpy requires sector-based masking with 6 cases — adds ~25 lines but avoids matplotlib dependency
+- [2026-03-14] [perlin-permutation-table] Perlin permutation table must be tiled to 512 entries to avoid index-out-of-bounds when xi+1 or yi+1 reaches 255 → use np.tile(perm, 2)
+- [2026-03-14] [perlin-histogram-eq] Histogram equalization on Perlin noise dramatically boosts variance (raw ~800 → equalized ~4400) → always equalize before colormap lookup
+- [2026-03-14] [cpp-vs-numpy-speedup] numpy vectorized Mandelbrot is already fast (~2s for 1080x1920) — need OpenMP + -march=native + algorithmic opts to exceed 5x speedup
+- [2026-03-14] [smooth-coloring-log-trick] log(|z|) = 0.5*log(zr²+zi²) avoids sqrt call in smooth coloring hot loop
+- [2026-03-14] [compositor-tile-blend] Cross-fading 24 rows at tile boundaries eliminates visible seams between different fractal sources
+- [2026-03-14] [compositor-brightness-curve] Per-third brightness correction with smoothed boundaries accurately matches reference vertical distribution

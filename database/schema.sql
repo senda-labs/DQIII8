@@ -151,3 +151,20 @@ FROM error_log e, json_each(e.keywords) je
 WHERE e.keywords IS NOT NULL AND e.keywords != '[]'
 GROUP BY je.value
 ORDER BY frequency DESC;
+
+-- ── PermissionAnalyzer v2 — Historial de decisiones de permisos ─────────────
+CREATE TABLE IF NOT EXISTS permission_decisions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
+    session_id      TEXT    NOT NULL,
+    tool_name       TEXT    NOT NULL,
+    action_detail   TEXT,
+    decision        TEXT    NOT NULL,   -- APPROVE | DENY | ESCALATE
+    reason          TEXT,
+    risk_level      TEXT,               -- LOW | MEDIUM | HIGH | CRITICAL
+    rule_triggered  TEXT,
+    suggested_fix   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_perm_session_tool
+    ON permission_decisions(session_id, tool_name, decision, timestamp);

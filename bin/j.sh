@@ -70,23 +70,18 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         loop)
-            # j loop → arranca Claude Code como usuario jarvis
-            # Propósito: autenticar y operar Claude como non-root
-            # para que --dangerously-skip-permissions funcione
+            # j loop → arranca Claude Code como usuario jarvis (non-root)
+            # PermissionAnalyzer activo via hooks — sin dangerously-skip-permissions
             if [[ "${2:-}" == "" || "${2:-}" == "auth" ]]; then
-                echo "[JARVIS] Arrancando Claude Code como usuario jarvis..."
-                echo "  Para autenticar: ejecuta /login dentro de Claude Code"
-                echo "  Para salir: Ctrl+C o /exit"
-
-                # Exportar variables necesarias para jarvis
-                export JARVIS_ROOT="/root/jarvis"
-                export CLAUDE_CONFIG_DIR="/home/jarvis/.claude"
-
-                # Arrancar Claude Code como jarvis con acceso al proyecto
+                echo "[JARVIS] Claude Code como usuario jarvis (non-root)"
+                echo "  PermissionAnalyzer activo via hooks"
+                echo "  Para autenticar: /login"
                 exec su - jarvis -c "
                     export JARVIS_ROOT='/root/jarvis'
+                    export JARVIS_MODE='autonomous'
                     cd /root/math-image-generator
-                    claude --add-dir /root/jarvis --add-dir /root/math-image-generator
+                    claude --add-dir /root/jarvis \
+                           --add-dir /root/math-image-generator
                 "
             fi
             ;;

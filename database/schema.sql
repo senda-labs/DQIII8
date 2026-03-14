@@ -191,3 +191,19 @@ CREATE TABLE IF NOT EXISTS objectives (
 
 CREATE INDEX IF NOT EXISTS idx_objectives_project_status
     ON objectives(project, status);
+
+-- ── PermissionAnalyzer — Patrones seguros aprendidos ────────────────────────
+CREATE TABLE IF NOT EXISTS learned_approvals (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    project     TEXT NOT NULL DEFAULT '*',
+    tool_name   TEXT NOT NULL,
+    pattern     TEXT NOT NULL,       -- substrng del action_detail aprobado
+    times_seen  INTEGER DEFAULT 1,
+    last_seen   TEXT,
+    approved_by TEXT DEFAULT 'system',  -- 'system' | 'user'
+    active      INTEGER DEFAULT 0,      -- 1 cuando times_seen >= 3
+    UNIQUE(tool_name, pattern)
+);
+
+CREATE INDEX IF NOT EXISTS idx_learned_approvals_tool
+    ON learned_approvals(tool_name, active);

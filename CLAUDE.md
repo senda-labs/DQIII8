@@ -34,6 +34,7 @@ DB: database/jarvis_metrics.db — every session, action, and error is logged vi
 - Use `isolation: worktree` for any subagent that writes code.
 - For 3+ parallel agents → use /mobilize protocol (see .claude/commands/mobilize.md).
 - Subagents write results to tasks/results/[agent]-[timestamp].md, never to todo.md.
+- **Only OrchestratorLoop writes to tasks/todo.md.** It regenerates todo.md from the objectives BD table each cycle. Agents write results ONLY to tasks/results/[agent]-[timestamp].md.
 
 ## Delegation (trigger → agent)
 | Trigger keywords | Agent | Isolation |

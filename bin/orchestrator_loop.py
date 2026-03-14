@@ -182,9 +182,52 @@ Responde SOLO en JSON sin explicaciones ni markdown:
         text = re.sub(r"```json?|```", "", text).strip()
         return json.loads(text)
 
+    def _analyze_reference_image(self) -> str:
+        """
+        Analiza la imagen de referencia y devuelve descripción técnica
+        para incluir en el prompt del generador matemático.
+        """
+        ref_path = JARVIS_ROOT / "tasks/reference_image.jpg"
+        if not ref_path.exists():
+            return ""
+        try:
+            result = subprocess.run(
+                ["python3", str(JARVIS_ROOT / "bin/analyze_reference.py"), str(ref_path)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                palette_str = ", ".join(
+                    f"{c['hex']} ({c['weight']*100:.0f}%)" for c in data["palette"]
+                )
+                return f"""
+IMAGEN DE REFERENCIA — Análisis técnico:
+  Paleta dominante: {palette_str}
+  Temperatura de color: {data['color_temperature']}
+  Distribución vertical (brillo):
+    - Tercio superior: {data['distribution']['top_third_brightness']:.0f}/255
+    - Tercio medio:    {data['distribution']['middle_third_brightness']:.0f}/255
+    - Tercio inferior: {data['distribution']['bottom_third_brightness']:.0f}/255
+  Complejidad textural:
+    - Superior: {data['texture']['top_complexity']:.1f} (mayor = más detalle)
+    - Medio:    {data['texture']['middle_complexity']:.1f}
+    - Inferior: {data['texture']['bottom_complexity']:.1f}
+  Contraste tonal: {data['tonal']['contrast']:.0f}/255
+
+USA ESTOS DATOS para parametrizar el generador matemático:
+- Ajusta los colormaps para usar la paleta dominante
+- Distribuye la complejidad vertical según los valores de textura
+- El contraste del output debe aproximarse a {data['tonal']['contrast']:.0f}
+"""
+        except Exception:
+            return ""
+
     def build_prompt(self, objective: dict, context: dict) -> str:
         """Construye el prompt para Claude Code con formato estructurado."""
         lessons_text = "\n".join(context.get("lessons", []))
+        ref_analysis = self._analyze_reference_image()
         return f"""=== JARVIS ORCHESTRATOR — OBJETIVO ACTUAL ===
 
 PROYECTO: {context['project']}
@@ -197,7 +240,7 @@ ESTADO DEL PROYECTO:
 
 LECCIONES A TENER EN CUENTA (errores pasados):
 {lessons_text}
-
+{ref_analysis}
 INSTRUCCIONES:
 1. Ejecuta el objetivo descrito arriba
 2. Verifica que se cumple el criterio de éxito

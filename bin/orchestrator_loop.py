@@ -76,17 +76,29 @@ class OrchestratorLoop:
         try:
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
             rows = conn.execute(
-                "SELECT id, objective_text, status, retry_count "
+                "SELECT id, objective_text, status, retry_count, success_criteria "
                 "FROM objectives WHERE project=? AND status IN "
                 "('pending','failed') ORDER BY created_at LIMIT 5",
                 (project,),
             ).fetchall()
             conn.close()
             context["pending_objectives"] = [
-                {"id": r[0], "text": r[1], "status": r[2], "retries": r[3]} for r in rows
+                {
+                    "id": r[0],
+                    "text": r[1],
+                    "status": r[2],
+                    "retries": r[3],
+                    "criteria": r[4] or "",
+                }
+                for r in rows
             ]
         except Exception:
             context["pending_objectives"] = []
+
+        # Si hay pending en BD → señal para plan() de usar el primero directamente
+        if context["pending_objectives"]:
+            context["use_seeded_objective"] = True
+            context["next_seeded_objective"] = context["pending_objectives"][0]
 
         # Buzón de rechazos del PermissionAnalyzer
         context["recent_rejections"] = self.check_rejections()
@@ -121,11 +133,29 @@ class OrchestratorLoop:
             return []
 
     def plan(self, context: dict) -> dict:
-        """Usa Groq para determinar el siguiente objetivo."""
-        import requests
+        """
+        Determina el siguiente objetivo.
+        Prioridad: (1) objetivos pre-sembrados en BD → (2) Groq → (3) fallback.
+        """
+        # Cargar ciclos recientes para build_prompt (siempre, independiente del path)
+        context["recent_cycles"] = self._get_recent_cycles(context["project"])
 
-        recent = self._get_recent_cycles(context["project"])
-        context["recent_cycles"] = recent  # disponible para build_prompt
+        # Fast-path: usar objetivo pending de la BD directamente
+        if context.get("use_seeded_objective"):
+            obj = context["next_seeded_objective"]
+            print(f"  [plan] Usando objetivo pre-sembrado [{obj['id']}]")
+            return {
+                "objective": obj["text"],
+                "success_criteria": obj.get("criteria", ""),
+                "priority": "high",
+                "objective_id": obj["id"],  # ID existente → no crear nuevo en BD
+            }
+
+        return self._plan_with_groq(context)
+
+    def _plan_with_groq(self, context: dict) -> dict:
+        """Llama a Groq para generar un nuevo objetivo cuando no hay pending en BD."""
+        import requests
 
         groq_key = os.getenv("GROQ_API_KEY", "").strip()
         if not groq_key:
@@ -144,6 +174,7 @@ class OrchestratorLoop:
                 "priority": "medium",
             }
 
+        recent = context.get("recent_cycles", [])
         prompt = f"""Eres el director técnico del proyecto JARVIS.
 Analiza este estado del proyecto y determina el siguiente objetivo más impactante.
 
@@ -152,9 +183,6 @@ ESTADO ACTUAL:
 
 LECCIONES APRENDIDAS (errores a evitar):
 {chr(10).join(context.get('lessons', []))}
-
-OBJETIVOS PENDIENTES EN BD:
-{json.dumps(context.get('pending_objectives', []), ensure_ascii=False, indent=2)}
 
 Responde SOLO en JSON sin explicaciones ni markdown:
 {{"objective": "descripción en 1-2 frases", "success_criteria": "cómo verificar que está hecho", "priority": "high|medium|low"}}"""
@@ -788,13 +816,23 @@ INSTRUCCIONES:
             objective = self.plan(context)
             print(f"  Objetivo: {objective['objective'][:80]}...")
 
-            # Crear registro en BD
-            obj_id = self.create_objective(
-                project,
-                objective["objective"],
-                objective.get("success_criteria", ""),
-                model_tier,
-            )
+            # Crear o reusar registro en BD
+            seeded_id = objective.get("objective_id")
+            if seeded_id:
+                # Objetivo pre-sembrado: actualizar a 'running', no crear nuevo
+                obj_id = seeded_id
+                conn = sqlite3.connect(str(DB_PATH), timeout=10)
+                conn.execute("UPDATE objectives SET status='running' WHERE id=?", (obj_id,))
+                conn.commit()
+                conn.close()
+                print(f"  [run] Retomando objetivo [{obj_id}] (pre-sembrado)")
+            else:
+                obj_id = self.create_objective(
+                    project,
+                    objective["objective"],
+                    objective.get("success_criteria", ""),
+                    model_tier,
+                )
 
             # Verificar max_retries
             conn = sqlite3.connect(str(DB_PATH), timeout=10)

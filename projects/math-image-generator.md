@@ -56,77 +56,62 @@ para llegar a una solución que pase todos los tests?
     target: tier3/haiku deberían resolver en 1-2 ciclos
     target: tier1/tier2 pueden necesitar 3-5 ciclos
 
-## Los 5 objetivos del benchmark (idénticos para cada tier)
+## Los 8 objetivos granulares (<20 min cada uno)
 
-OBJETIVO 1 — Mandelbrot mínimo y correcto:
-"Implementar src/python/mandelbrot.py.
-Función: render_mandelbrot(w=1080, h=1920, max_iter=256) -> np.ndarray
-Usar SOLO aritmética numpy — cero loops Python.
-Guardar output/mandelbrot.png.
-Medir con tracemalloc: peak RAM debe ser <500MB.
-Medir con time.perf_counter: tiempo de render.
-Guardar métricas en benchmarks/results.json:
-{model_tier, function, lines_of_code, cpu_seconds, memory_peak_mb,
- uses_vectorization: bool, tests_passed: bool}
-Test: dimensiones correctas + PNG válido + RAM <500MB.
-Después de guardar el PNG, evaluar similitud visual:
-    from src.python.ssim_scorer import score_against_reference
-    result = score_against_reference('output/mandelbrot.png')
-    print(f'SSIM: {result}')
-Incluir en FINAL_REPORT: 'ssim_score': result['score'], 'ssim_quality': result['quality']"
+OBJETIVO 1a — render_mandelbrot() sin tests:
+"Crear src/python/mandelbrot.py con UNA sola función:
+    render_mandelbrot(w=1080, h=1920, max_iter=256) -> np.ndarray
+Usar SOLO aritmética numpy (cero loops Python). Escala de grises.
+Guardar output/mandelbrot.png con PIL.Image.fromarray().
+NO añadir métricas, NO añadir tests. Solo la función + el PNG."
 
-OBJETIVO 2 — Julia set con colormap matemático:
-"Implementar src/python/julia.py.
-Función: render_julia(c=(-0.7+0.27j), w=1080, h=1920) -> np.ndarray
-Colormap HSV implementado desde cero en numpy (sin matplotlib).
-Sin loops Python — todo vectorizado.
-Añadir métricas a benchmarks/results.json.
-Test: imagen no es negra (variance > 1000) + dimensiones + RAM.
-Después de guardar el PNG, evaluar similitud visual:
-    from src.python.ssim_scorer import score_against_reference
-    result = score_against_reference('output/julia.png')
-    print(f'SSIM: {result}')
-Incluir en FINAL_REPORT: 'ssim_score': result['score'], 'ssim_quality': result['quality']"
+OBJETIVO 1b — test_mandelbrot.py:
+"Crear tests/test_mandelbrot.py con pytest. Importar render_mandelbrot.
+3 asserts: shape == (1920, 1080), dtype uint8, PNG existe en disco.
+Ejecutar: python3 -m pytest tests/test_mandelbrot.py -v
+Todos deben pasar en verde."
 
-OBJETIVO 3 — Perlin noise 2D desde cero:
-"Implementar src/python/perlin.py.
-Ken Perlin's original algorithm — sin librerías de noise.
-Función: generate_perlin(w=1080, h=1920, octaves=6) -> np.ndarray
-Optimizar para numpy: usar meshgrid, no doble loop.
-Comparar: medir tiempo con loop puro vs implementación vectorizada.
-Documentar speedup en benchmarks/results.json.
-Test: variance > 500 + suavidad (no pixelado).
-Después de guardar el PNG, evaluar similitud visual:
-    from src.python.ssim_scorer import score_against_reference
-    result = score_against_reference('output/perlin.png')
-    print(f'SSIM: {result}')
-Incluir en FINAL_REPORT: 'ssim_score': result['score'], 'ssim_quality': result['quality']"
+OBJETIVO 2a — render_julia() en escala de grises:
+"Crear src/python/julia.py con UNA sola función:
+    render_julia(c=(-0.7+0.27j), w=1080, h=1920) -> np.ndarray
+Sin colormap — solo escala de grises uint8.
+Guardar output/julia_gray.png.
+NO colormap, NO tests, NO métricas. Solo función + PNG."
 
-OBJETIVO 4 — Kernel C++ con ctypes:
-"Implementar src/cpp/mandelbrot.cpp.
-Función C: void render_mandelbrot_c(float* out, int w, int h, int max_iter)
-Compilar: gcc -O3 -march=native -shared -fPIC -o src/cpp/libmandelbrot.so
-Wrapper Python: src/python/mandelbrot_cpp.py via ctypes.
-Medir speedup vs implementación Python pura.
-Target: ≥5x speedup.
-Si el modelo usa SIMD intrinsics (SSE/AVX) → bonus metric: simd_used=true
-Documentar en benchmarks/results.json."
+OBJETIVO 2b — colormap HSV en julia.py:
+"Editar src/python/julia.py. Añadir colormap HSV implementado en numpy:
+    hue = iters / max_iter
+    R = (sin(hue * 2π) * 127 + 128).astype(uint8)  (y análogo para G, B)
+Guardar output/julia.png como imagen RGB.
+Test inline: assert np.array(Image.open('output/julia.png')).var() > 1000"
 
-OBJETIVO 5 — Compositor final <500MB:
-"Implementar src/python/compositor.py.
-Combinar los 3 renderers en una sola imagen usando streaming por tiles:
-  - Procesar la imagen en tiles de 1080×192 (10 tiles verticales)
-  - Cada tile: mandelbrot(tile) * 0.4 + julia(tile) * 0.4 + perlin(tile) * 0.2
-  - Liberar memoria del tile antes del siguiente
-  - RAM máxima en cualquier momento: <500MB
-Guardar output/composite_final.png (1080×1920).
-Medir RAM peak de todo el proceso.
-Test: PNG válido + RAM <500MB durante toda la ejecución.
-Después de guardar el PNG, evaluar similitud visual:
-    from src.python.ssim_scorer import score_against_reference
-    result = score_against_reference('output/composite_final.png')
-    print(f'SSIM: {result}')
-Incluir en FINAL_REPORT: 'ssim_score': result['score'], 'ssim_quality': result['quality']"
+OBJETIVO 3a — Perlin noise base (doble loop Python):
+"Crear src/python/perlin.py con generate_perlin(w=1080, h=1920, octaves=6).
+Implementar Ken Perlin original — puede usar doble loop Python.
+Guardar output/perlin.png. Medir tiempo con perf_counter.
+Solo correctitud. Optimización en objetivo 3b."
+
+OBJETIVO 3b — Vectorizar Perlin con meshgrid:
+"Reescribir src/python/perlin.py usando np.meshgrid sin doble loop.
+Comparar tiempo vs loop puro (guardado en benchmarks/results.json):
+    {'perlin_loop_s': X, 'perlin_vectorized_s': Y, 'speedup': X/Y}
+Test: np.var(img) > 500."
+
+OBJETIVO 4 — Kernel C++ libmandelbrot.so:
+"Crear src/cpp/mandelbrot.cpp:
+    void render_mandelbrot_c(float* out, int w, int h, int max_iter)
+Compilar: gcc -O3 -march=native -shared -fPIC -o src/cpp/libmandelbrot.so src/cpp/mandelbrot.cpp
+Crear src/python/mandelbrot_cpp.py con ctypes wrapper.
+Medir speedup vs Python puro. Añadir a benchmarks/results.json:
+    {'cpp_speedup': N, 'simd_used': false}"
+
+OBJETIVO 5 — Compositor por tiles <500MB:
+"Crear src/python/compositor.py.
+Procesar en tiles de 1080×192 (10 tiles). Por cada tile:
+    tile = mandelbrot_tile*0.4 + julia_tile*0.4 + perlin_tile*0.2
+    del tile  # liberar memoria
+Guardar output/composite_final.png. Medir RAM peak con tracemalloc.
+Test: PNG válido + peak_mb < 500."
 
 ## Secuencia de lanzamiento por tier
 

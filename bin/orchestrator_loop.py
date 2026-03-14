@@ -239,7 +239,7 @@ INSTRUCCIONES:
         if not project_path.exists():
             project_path = JARVIS_ROOT
         result = subprocess.run(
-            ["claude", "-p", prompt, "--output-format", "text"],
+            ["claude", "-p", prompt, "--output-format", "text", "--dangerously-skip-permissions"],
             capture_output=True,
             text=True,
             cwd=str(project_path),

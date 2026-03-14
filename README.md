@@ -1,112 +1,121 @@
-# JARVIS
+# JARVIS — AI Orchestration System
 
-Sistema de orquestación sobre Claude Code. Comando: `j`.
+> Multi-agent orchestration system built on Claude Code.
+> Routes tasks between local models and Claude API based on cost and complexity.
+> Self-improving via SQLite metrics + auditor agent.
 
----
-
-## Instalación en Windows (Fase 0)
-
-### 1. Prerrequisitos
-
-```powershell
-# Verificar que tienes todo:
-python --version       # ≥ 3.10
-node --version         # ≥ 18 (para MCPs via npx)
-git --version
-ollama list            # debe mostrar qwen2.5-coder
-```
-
-### 2. Copiar el repo
-
-```powershell
-# Opción A: git clone
-git clone https://github.com/[tuusuario]/jarvis C:\jarvis
-
-# Opción B: copiar manualmente desde este ZIP
-# Descomprimir en C:\jarvis\
-```
-
-### 3. Inicializar la base de datos
-
-```powershell
-cd C:\jarvis\database
-python -c "
-import sqlite3
-conn = sqlite3.connect('jarvis_metrics.db')
-with open('schema.sql') as f:
-    conn.executescript(f.read())
-conn.close()
-print('BD inicializada')
-"
-```
-
-### 4. Instalar dependencias Python opcionales
-
-```powershell
-pip install black          # auto-format en PostToolUse hook
-pip install win10toast     # notificaciones nativas Windows (opcional)
-```
-
-### 5. Registrar el comando `j`
-
-Añadir a tu PowerShell profile (`notepad $PROFILE`):
-
-```powershell
-# Copiar contenido de bin\profile_snippet.ps1
-```
-
-Recargar: `. $PROFILE`
-
-### 6. Configurar variables de entorno
-
-En PowerShell o en Variables de entorno de Windows:
-
-```powershell
-$env:GITHUB_TOKEN = "ghp_tu_token_aqui"
-# (ANTHROPIC_API_KEY se gestiona internamente por Claude Code)
-```
-
-### 7. Test de Fase 0
-
-```powershell
-j --status           # debe mostrar proyecto y modelo sin errores
-j                    # debe abrir Claude Code con Ollama
-# En Claude Code:
-/mcp                 # debe mostrar los 4 MCPs conectados
-```
-
----
-
-## Estructura
+## Architecture
 
 ```
-C:\jarvis\
-├── CLAUDE.md                    ← Constitución del sistema (98 líneas)
-├── .claude\
-│   ├── settings.json            ← Hooks declarados
-│   ├── .mcp.json                ← 4 MCPs: filesystem, github, fetch, sqlite
-│   ├── agents\                  ← 4 agentes activos (Fase 1)
-│   └── hooks\                   ← 5 scripts Python
-├── projects\                    ← Estado de cada proyecto
-├── tasks\                       ← lessons.md, todo.md, results/
-├── database\                    ← jarvis_metrics.db + schema.sql
-├── skills-registry\             ← INDEX.md + cache/
-└── bin\
-    ├── j.ps1                    ← Comando principal
-    ├── sqlite_mcp.py            ← MCP SQLite local
-    └── profile_snippet.ps1      ← Añadir a $PROFILE
+j command
+    │
+    ▼
+bin/openrouter_wrapper.py classify  ──→  tier=1|2|3
+    │
+    ├── Tier 1 (local)   → Ollama  qwen2.5-coder:7b   python, debug, git
+    ├── Tier 2 (free)    → Groq    llama-3.3-70b       review, research
+    └── Tier 3 (paid)    → Claude  sonnet-4-6          arch, finance, creative
+              │
+              ▼
+       Agent dispatcher
+              │
+    ┌─────────┴──────────┐
+    │                    │
+ Subagent            Worktree
+ (direct)            (isolated)
+    │                    │
+    └────────┬───────────┘
+             │
+        jarvis_metrics.db  ←  hooks (pre/post/stop)
+             │
+        /audit (7-day cycle)
 ```
 
----
+## Quick Start
 
-## Fases de implementación
+**Prerequisites:** Python 3.11+, Node.js 18+, Claude Code
 
-| Fase | Dónde | Objetivo |
-|------|-------|----------|
-| **0** | Local | `j` funciona, Ollama, 4 MCPs, BD inicializada |
-| **1** | Local | CLAUDE.md + 4 agentes + hooks completos |
-| **2** | Local | BD recibiendo métricas, lessons.md auto-update |
-| **3** | VPS | Provisionar VPS, Docker, j.sh, tmux, SSH keys |
-| **4** | VPS | Worktrees, /mobilize, Agent Teams, Ollama 7b+ |
-| **5** | VPS | Skills sync + revisión, auditor, primera auditoría |
-| **6** | VPS | Más agentes (métricas guían cuándo), CI/CD headless |
+```bash
+git clone https://github.com/ikermartiinsv-eng/jarvis
+cd jarvis
+cp .env.example .env   # fill your API keys
+bash bin/j.sh          # launch
+```
+
+## Model Routing
+
+| Task type | Tier | Provider | Model | Cost |
+|-----------|------|----------|-------|------|
+| Python, debug, refactor, git | 1 | Ollama (local) | qwen2.5-coder:7b | $0 |
+| Code review, research, analysis | 2 | Groq | llama-3.3-70b-versatile | $0 |
+| Video, TTS, subtitles | 2 | OpenRouter | nemotron:free | $0 |
+| Finance, docs | 2 | OpenRouter | qwen3:free | $0 |
+| Architecture, security, auth | 3 | Claude API | claude-sonnet-4-6 | Subscription |
+| Financial analysis, WACC, DCF | 3 | Claude API | claude-sonnet-4-6 | Subscription |
+| Creative writing, novel | 3 | Claude API | claude-sonnet-4-6 | Subscription |
+| /mobilize, multi-agent | 3 | Claude API | claude-sonnet-4-6 | Subscription |
+
+**Rule:** use the lowest tier that solves the task. Escalate only when lower tier fails.
+
+```bash
+python3 bin/openrouter_wrapper.py classify "refactor this function"
+# → tier=1 provider=ollama model=qwen2.5-coder:7b
+```
+
+## Agents
+
+| Agent | Trigger | Isolation |
+|-------|---------|-----------|
+| orchestrator | /mobilize, 3+ domains | worktree |
+| python-specialist | traceback, .py, refactor, debug | — |
+| git-specialist | commit, branch, PR, merge | — |
+| code-reviewer | review, after feature | worktree |
+| content-automator | video, TTS, ElevenLabs, pipeline | — |
+| data-analyst | WACC, DCF, chart, Excel | — |
+| creative-writer | chapter, scene, novel, xianxia | — |
+| auditor | /audit, metrics report | — |
+
+## Stack
+
+Python · FastAPI · SQLite · Claude Code · OpenRouter · Groq · Ollama
+
+## Project Structure
+
+```
+jarvis/
+├── CLAUDE.md                    # System constitution (rules, routing, workflow)
+├── bin/
+│   ├── j.sh                     # Main entry point (flag-based CLI)
+│   ├── openrouter_wrapper.py    # Tier-2 routing + classify command
+│   ├── ollama_wrapper.py        # Tier-1 local model wrapper
+│   └── gemini_review.py         # Background code review via Gemini
+├── .claude/
+│   ├── agents/                  # Agent definitions (8 specialized agents)
+│   ├── hooks/                   # Lifecycle hooks: pre_tool_use, post_tool_use, stop
+│   ├── rules/                   # Rule files loaded per context
+│   └── commands/                # Slash command definitions (/audit, /mobilize...)
+├── database/
+│   ├── jarvis_metrics.db        # SQLite: sessions, actions, instincts, audits
+│   ├── schema.sql               # DB schema
+│   └── audit_reports/           # /audit output logs
+├── projects/                    # Per-project state + next step
+├── tasks/
+│   ├── todo.md                  # Active tasks (orchestrator only)
+│   ├── lessons.md               # Self-improvement log
+│   └── results/                 # Agent output files
+├── skills-registry/
+│   ├── INDEX.md                 # Approved skills catalog
+│   └── custom/                  # SKILL.md files for reusable patterns
+└── sessions/                    # Session handover notes (auto-generated)
+```
+
+## Self-Improvement Loop
+
+1. Every session → hooks log actions to `jarvis_metrics.db`
+2. Corrections → appended to `tasks/lessons.md` as instincts
+3. Every 7 days → `/audit` generates health report + score
+4. Instincts → extracted to `instincts` table → used in future sessions
+
+## Environment Variables
+
+See `.env.example` for the full list of required variables.

@@ -126,6 +126,21 @@ try:
 except Exception:
     pass
 
+# ── 2b. Git push después del auto-commit ──────────────────────────
+try:
+    result = subprocess.run(
+        ["git", "push", "origin", "master"],
+        cwd=str(JARVIS),
+        capture_output=True,
+        timeout=30
+    )
+    if result.returncode == 0:
+        print("[stop] git push OK")
+    else:
+        print(f"[stop] git push failed: {result.stderr.decode()[:100]}")
+except Exception as e:
+    print(f"[stop] git push error: {e}")
+
 # ── 3. Auto-handover si sesión duró 15+ minutos ───────────────────
 try:
     import sqlite3, time as _time

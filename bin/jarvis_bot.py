@@ -429,7 +429,8 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     /loop [project] [cycles] [tier]
-    Lanza OrchestratorLoop en background y notifica al terminar.
+    Lanza OrchestratorLoop en background (asyncio.create_task) y notifica al terminar.
+    El bot sigue respondiendo mientras el loop corre.
     Ejemplos: /loop math-image-generator 3 tier3
               /loop math-image-generator
     """
@@ -442,30 +443,53 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cycles = args[1] if len(args) > 1 else "5"
     tier = args[2] if len(args) > 2 else "tier3"
 
+    chat_id = update.effective_chat.id
+
     await update.message.reply_text(
-        f"🚀 *OrchestratorLoop* lanzado\n"
+        f"🚀 *OrchestratorLoop* lanzado en background\n"
         f"Proyecto: `{project}` | Ciclos: `{cycles}` | Tier: `{tier}`\n"
-        "_Recibirás notificación al completar o si hay un bloqueante._",
+        f"_Te notificaré cuando termine. Puedes cerrar el chat._",
         parse_mode="Markdown",
     )
     log.info("/loop project=%s cycles=%s tier=%s", project, cycles, tier)
 
-    cmd = [
-        "python3",
-        str(JARVIS / "bin" / "orchestrator_loop.py"),
-        "--project",
-        project,
-        "--cycles",
-        cycles,
-        "--tier",
-        tier,
-    ]
-    output = run_cmd(cmd, timeout=3600)
-    await send_chunks(
-        update,
-        f"*Loop completado — {project}*\n```\n{output[-3000:]}\n```",
-    )
-    log.info("/loop finalizado project=%s", project)
+    async def _run_and_notify() -> None:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "python3",
+                str(JARVIS / "bin" / "orchestrator_loop.py"),
+                "--project",
+                project,
+                "--cycles",
+                cycles,
+                "--tier",
+                tier,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                cwd=str(JARVIS),
+                env={**os.environ, "JARVIS_MODE": "autonomous"},
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=7200)
+            output = stdout.decode("utf-8", errors="replace") if stdout else ""
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"*Loop completado — {project}*\n```\n{output[-3000:]}\n```",
+                parse_mode="Markdown",
+            )
+        except asyncio.TimeoutError:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"⚠️ *Loop timeout* (>2h) — {project}\nVerifica el VPS manualmente.",
+                parse_mode="Markdown",
+            )
+        except Exception as e:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"❌ *Loop error* — {project}\n`{str(e)[:200]}`",
+                parse_mode="Markdown",
+            )
+
+    asyncio.create_task(_run_and_notify())
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

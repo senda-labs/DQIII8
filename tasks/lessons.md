@@ -35,3 +35,8 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-14] [elevenlabs-key-empty] ELEVENLABS_API_KEY vacía en config/.env → TTS cae a Edge silenciosamente → sincronizar config/.env con jarvis/.env al rotar keys
 - [2026-03-14] [hf-credits-exhausted] HuggingFace 402 cuando créditos agotados → FAL debe ser fallback de HF, no al revés
 - [2026-03-14] [ffmpeg-zoompan-timeout] zoompan en imagen full-res tarda >600s → escalar imagen a 1080×1920 antes del filtro zoompan
+
+## math-image-generator
+- [2026-03-14] [claude-headless-flag] --headless no existe en Claude Code 2.1.72 → usar solo -p
+- [2026-03-14] [executor-timeout] Objetivos complejos superan 1800s → dividir en pasos <20min + timeout=3600
+- [2026-03-14] [ollama-cold-start] qwen2.5-coder:7b tarda >300s en cargar en frío → warmup antes del loop

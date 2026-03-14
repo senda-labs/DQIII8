@@ -310,9 +310,29 @@ INSTRUCCIONES:
         conn.close()
         return obj_id
 
+    def _print_effectiveness(self, project: str) -> None:
+        """Imprime métricas históricas del proyecto desde loop_effectiveness."""
+        try:
+            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            row = conn.execute(
+                "SELECT total_cycles, successful, failed, escalated, "
+                "success_rate_pct FROM loop_effectiveness WHERE project=?",
+                (project,),
+            ).fetchone()
+            conn.close()
+            if row and row[0]:
+                print(
+                    f"  📊 Historial: {row[0]} ciclos | "
+                    f"✅ {row[1]} | ❌ {row[2]} | 🚨 {row[3]} | "
+                    f"Tasa éxito: {row[4]}%"
+                )
+        except Exception:
+            pass
+
     def run(self, project: str, max_cycles: int = MAX_CYCLES) -> None:
         """Loop principal del orquestador."""
         print(f"\n[ORCHESTRATOR] Iniciando loop — proyecto: {project}")
+        self._print_effectiveness(project)
 
         for cycle in range(1, max_cycles + 1):
             print(f"\n── Ciclo {cycle}/{max_cycles} ──────────────────")

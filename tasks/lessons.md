@@ -30,3 +30,4 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 ## leyendas-del-este
 - [2026-03-10] [spanish-dialogue] Em-dash (—) para diálogos, no comillas dobles
 - [2026-03-10] [verb-tense] No mezclar pretérito/presente dentro de la misma escena
+- [2026-03-14] [env-override] config/.env tenía GROQ key caducada con override=True → pipeline ignoraba /root/jarvis/.env → sincronizar ambos .env cuando se rota una key

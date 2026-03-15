@@ -355,4 +355,15 @@ try:
 except Exception:
     pass
 
+# ── 6. Sync context-mode events → agent_actions ───────────────────
+try:
+    import sys as _sys
+
+    _sys.path.insert(0, str(JARVIS))
+    from bin.observe_events import sync_context_mode_events
+
+    sync_context_mode_events(project_dir=str(JARVIS))
+except Exception as _oe:
+    print(f"[observe_events] sync skipped: {_oe}")
+
 sys.exit(0)

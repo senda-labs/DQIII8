@@ -62,6 +62,12 @@ class GitHubClient:
             self.headers["Authorization"] = f"token {self.token}"
         else:
             print("⚠️  Sin GITHUB_TOKEN — rate limit: 60 req/h")
+        self.scraper_key = os.getenv("SCRAPERAPI_KEY", "")
+        self.scraper_available = bool(self.scraper_key)
+        if self.scraper_available:
+            print("  ✅ ScraperAPI disponible — modo deep scraping")
+        else:
+            print("  ℹ️  Sin ScraperAPI — usando GitHub API (suficiente)")
 
     def search_repos(
         self, query: str, min_stars: int = 50, max_repos: int = 30, language: str = None
@@ -125,6 +131,82 @@ class GitHubClient:
             pass
         return []
 
+    def scrape_page_markdown(self, url: str) -> str:
+        """
+        Obtiene cualquier página de GitHub en formato markdown LLM-ready.
+        Usa ScraperAPI si está disponible, GitHub API como fallback.
+        """
+        if not self.scraper_available:
+            repo_path = url.replace("https://github.com/", "")
+            return self.get_readme(repo_path)
+        try:
+            payload = {
+                "api_key": self.scraper_key,
+                "url": url,
+                "output_format": "markdown",
+                "country": "us",
+            }
+            with httpx.Client(timeout=30) as client:
+                resp = client.get("https://api.scraperapi.com/", params=payload)
+                resp.raise_for_status()
+                content = resp.text
+                if "## " in content:
+                    content = content[content.index("## ") :]
+                return content[:4000]
+        except Exception as e:
+            print(f"    ScraperAPI error: {e} → fallback GitHub API")
+            repo_path = url.replace("https://github.com/", "")
+            return self.get_readme(repo_path)
+
+    def get_repo_code_structure(self, full_name: str) -> dict:
+        """Obtiene estructura de archivos del repo para evaluar integración."""
+        try:
+            with httpx.Client(timeout=15) as client:
+                resp = client.get(
+                    f"{self.BASE}/repos/{full_name}/git/trees/HEAD",
+                    headers=self.headers,
+                    params={"recursive": "1"},
+                )
+                if resp.status_code == 200:
+                    tree = resp.json().get("tree", [])
+                    py_files = [
+                        f["path"] for f in tree if f["path"].endswith(".py") and f["type"] == "blob"
+                    ]
+                    return {
+                        "py_files_count": len(py_files),
+                        "has_tests": any("test" in f.lower() for f in py_files),
+                        "has_docker": any(
+                            f["path"] in ["Dockerfile", "docker-compose.yml"] for f in tree
+                        ),
+                        "has_requirements": any(
+                            f["path"] in ["requirements.txt", "pyproject.toml", "setup.py"]
+                            for f in tree
+                        ),
+                        "py_files_sample": py_files[:10],
+                    }
+        except Exception:
+            pass
+        return {}
+
+    def get_repo_issues_summary(self, full_name: str) -> dict:
+        """Obtiene issues abiertos para evaluar madurez del proyecto."""
+        try:
+            with httpx.Client(timeout=10) as client:
+                resp = client.get(
+                    f"{self.BASE}/repos/{full_name}/issues",
+                    headers=self.headers,
+                    params={"state": "open", "per_page": 5},
+                )
+                if resp.status_code == 200:
+                    issues = resp.json()
+                    return {
+                        "open_issues_sample": len(issues),
+                        "latest_issue_title": (issues[0]["title"][:80] if issues else "none"),
+                    }
+        except Exception:
+            pass
+        return {}
+
 
 # ─── Evaluador de aplicabilidad ───────────────────────────────────
 class ApplicabilityEvaluator:
@@ -133,7 +215,7 @@ class ApplicabilityEvaluator:
     Score 0-10 basado en múltiples factores.
     """
 
-    def evaluate(self, repo: dict, readme: str, topics: list) -> dict:
+    def evaluate(self, repo: dict, readme: str, topics: list, code_structure: dict = None) -> dict:
         score = 0.0
         reasons = []
         stack_matches = []
@@ -213,6 +295,29 @@ class ApplicabilityEvaluator:
             elif lic == "GPL-3.0":
                 reasons.append("⚠️ GPL — revisar restricciones")
 
+        # ── Factor 7: estructura del código (0-1.5 pts) ──────────
+        if code_structure:
+            if code_structure.get("has_requirements"):
+                score += 0.5
+                reasons.append("✅ requirements.txt — pip install directo")
+            if code_structure.get("has_tests"):
+                score += 0.5
+                reasons.append("✅ Tests incluidos — código más fiable")
+            if code_structure.get("has_docker"):
+                score += 0.3
+                reasons.append("✅ Dockerized — fácil de aislar")
+            py_count = code_structure.get("py_files_count", 0)
+            if 5 <= py_count <= 30:
+                score += 0.2
+                reasons.append(f"📁 {py_count} archivos .py (tamaño ideal)")
+            elif py_count > 100:
+                reasons.append(f"⚠️ {py_count} archivos .py (proyecto grande)")
+
+        # ── Factor 8: tamaño del repo (0-0.3 pts) ────────────────
+        if repo.get("size", 0) < 1000:
+            score += 0.3
+            reasons.append("🔧 Repo ligero — fácil de copiar partes")
+
         # ── Clasificar esfuerzo de integración ───────────────────
         score = round(min(10.0, max(0.0, score)), 2)
         if score >= 8.0:
@@ -229,7 +334,86 @@ class ApplicabilityEvaluator:
             "reasons": reasons,
             "stack_matches": list(set(stack_matches)),
             "effort": effort,
+            "integration_type": _classify_integration(score, code_structure),
+            "code_structure": code_structure or {},
         }
+
+
+def _classify_integration(score: float, code_structure: dict = None) -> str:
+    """Clasifica cómo integrar el repo en JARVIS."""
+    if score >= 8.0:
+        return "COPY — Copiar directamente a nuestro stack"
+    elif score >= 6.5:
+        return "ADAPT — Adaptar 1-2 funciones clave"
+    elif score >= 5.0:
+        return "EXTRACT — Extraer solo la lógica core"
+    elif score >= 3.5:
+        return "REFERENCE — Usar como referencia/inspiración"
+    else:
+        return "SKIP"
+
+
+# ─── Multi-query search ───────────────────────────────────────────
+
+QUERY_EXPANSIONS = {
+    "video generation": [
+        "video generation python",
+        "ai video creator python",
+        "automated video python ffmpeg",
+        "video synthesis python",
+    ],
+    "subtitle": [
+        "subtitle generator python whisper",
+        "auto subtitles python",
+        "caption generator python tts",
+        "ass subtitle python",
+    ],
+    "tts": [
+        "text to speech python",
+        "tts automation python",
+        "elevenlabs python wrapper",
+        "voice synthesis python",
+    ],
+    "content automation": [
+        "youtube automation python",
+        "social media automation python",
+        "shorts generator python",
+        "tiktok bot python",
+    ],
+}
+
+
+def multi_search(topic: str, min_stars: int = 50, max_repos: int = 40) -> list:
+    """
+    Busca con múltiples queries relacionadas y deduplica.
+    Encuentra repos que una sola query perdería.
+    """
+    client = GitHubClient()
+
+    # Expandir queries si el topic coincide con alguna clave
+    queries = [topic]
+    for key, expansions in QUERY_EXPANSIONS.items():
+        if key in topic.lower():
+            queries = expansions
+            break
+
+    per_query = max(5, max_repos // len(queries))
+    all_repos: dict = {}
+
+    for q in queries:
+        print(f"  Query: '{q}'")
+        try:
+            repos = client.search_repos(q, min_stars=min_stars, max_repos=per_query)
+            for r in repos:
+                name = r["full_name"]
+                if name not in all_repos:
+                    all_repos[name] = r
+            time.sleep(1)  # respetar rate limit entre queries
+        except Exception as e:
+            print(f"    Error en query '{q}': {e}")
+
+    print(f"  Total únicos tras deduplicar: {len(all_repos)}")
+    return list(all_repos.values())
 
 
 # ─── Reporter ────────────────────────────────────────────────────
@@ -255,23 +439,38 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
     for i, r in enumerate(sorted_repos[:5], 1):
         repo = r["repo"]
         ev = r["eval"]
+        cs = ev.get("code_structure", {})
         lines += [
             f"### {i}. [{repo['full_name']}]({repo['html_url']})",
-            f"**Score:** {ev['score']}/10 | " f"**Esfuerzo:** {ev['effort']}",
+            f"**Score:** {ev['score']}/10 | **Esfuerzo:** {ev['effort']}",
+            f"**Integración:** {ev.get('integration_type', '?')}",
             f"**Stars:** ⭐{repo.get('stargazers_count',0):,} | "
             f"**Lang:** {repo.get('language','?')} | "
             f"**Updated:** {repo.get('updated_at','?')[:10]}",
             f"**Descripción:** {repo.get('description','N/A')}",
             f"**Stack match:** {', '.join(ev['stack_matches'])}",
-            f"**Por qué:** {' | '.join(ev['reasons'][:3])}",
-            "",
+            f"**Por qué:** {' | '.join(ev['reasons'][:4])}",
         ]
+        if cs:
+            struct_parts = []
+            if cs.get("has_requirements"):
+                struct_parts.append("requirements.txt ✅")
+            if cs.get("has_tests"):
+                struct_parts.append("tests ✅")
+            if cs.get("has_docker"):
+                struct_parts.append("Docker ✅")
+            py_n = cs.get("py_files_count", 0)
+            if py_n:
+                struct_parts.append(f"{py_n} .py files")
+            if struct_parts:
+                lines.append(f"**Estructura:** {' | '.join(struct_parts)}")
+        lines.append("")
         if r.get("readme_preview"):
             lines += [
-                f"**README preview:**",
-                f"```",
+                "**README preview:**",
+                "```",
                 f"{r['readme_preview'][:300]}",
-                f"```",
+                "```",
                 "",
             ]
 
@@ -292,6 +491,32 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
             f"{repo.get('language','?')} | "
             f"{ev['effort'].split(' — ')[0]} |"
         )
+
+    # Quick Wins section
+    quick_wins = [
+        r
+        for r in sorted_repos
+        if r["eval"]["score"] >= 7.0
+        and r["eval"].get("integration_type", "").startswith(("COPY", "ADAPT"))
+    ]
+    if quick_wins:
+        lines += ["\n---\n", "## ⚡ Quick Wins — Integrables esta semana\n"]
+        for r in quick_wins[:3]:
+            repo = r["repo"]
+            ev = r["eval"]
+            # Inferir qué problema JARVIS resuelve
+            matches = ev.get("stack_matches", [])
+            jarvis_gap = (
+                "funcionalidad relacionada con " + ", ".join(matches[:3]) if matches else "pipeline"
+            )
+            lines += [
+                f"### {repo['name']} ({ev['score']}/10)",
+                f"**Problema JARVIS que resuelve:** {jarvis_gap}",
+                f"**Tipo integración:** {ev.get('integration_type','?')}",
+                f"**Install:** `pip install` desde {repo['html_url']}",
+                f"**Tiempo estimado:** {'1-2h' if ev['score'] >= 8.0 else '2-4h'}",
+                "",
+            ]
 
     lines += [
         "\n---\n",
@@ -339,9 +564,12 @@ def research(
     session_id = cur.lastrowid
     conn.commit()
 
-    # Buscar repos
+    # Buscar repos (multi-query si el topic coincide con expansiones)
     print(f"\n[1/4] Buscando repos...")
-    repos = client.search_repos(topic, min_stars=min_stars, max_repos=max_repos, language=language)
+    repos = multi_search(topic, min_stars=min_stars, max_repos=max_repos)
+    # Si multi_search no expande (topic sin match), filtra por language si se especificó
+    if language and language != "python":
+        repos = [r for r in repos if (r.get("language") or "").lower() == language]
 
     # Analizar cada repo
     print(f"\n[2/4] Analizando {len(repos)} repos...")
@@ -349,15 +577,16 @@ def research(
 
     for i, repo in enumerate(repos, 1):
         name = repo["full_name"]
-        print(f"  [{i:2}/{len(repos)}] {name}", end=" ", flush=True)
+        print(f"  [{i:2}/{len(repos)}] {name}", end="", flush=True)
 
-        # README (con pausa para no exceder rate limit)
+        # README + topics + code structure (con pausa para no exceder rate limit)
         readme = client.get_readme(name)
-        topics = client.get_topics(name)
-        time.sleep(0.3)  # respetar rate limit
+        topics_list = client.get_topics(name)
+        code_structure = client.get_repo_code_structure(name)
+        time.sleep(0.4)  # respetar rate limit
 
         # Evaluar
-        ev = evaluator.evaluate(repo, readme, topics)
+        ev = evaluator.evaluate(repo, readme, topics_list, code_structure=code_structure)
         print(f"→ {ev['score']}/10 {ev['effort'].split(' — ')[0]}")
 
         repos_data.append(
@@ -391,7 +620,7 @@ def research(
                     repo.get("language", ""),
                     (repo.get("license") or {}).get("spdx_id", ""),
                     readme[:500] if readme else "",
-                    json.dumps(topics),
+                    json.dumps(topics_list),
                     ev["score"],
                     " | ".join(ev["reasons"][:3]),
                     json.dumps(ev["stack_matches"]),

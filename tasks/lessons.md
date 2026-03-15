@@ -54,11 +54,6 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-14] [histogram-match-before-template] Histogram matching before spatial template gives better results → aligns global distribution first, then local structure
 - [2026-03-14] [template-resolution-ssim] Doubling brightness template from 48x27 to 96x54 improved SSIM from 0.68 to 0.76 — more spatial detail in guide captures finer reference structure
 - [2026-03-14] [block-size-tradeoff] Smaller block size (24 vs 40) in spatial brightness matching improves SSIM structure term but adds marginal CPU cost
-- [2026-03-14] [ssim-resolution-correction] Correcting at exact SSIM comparison resolution (108x192) with float bilinear upsampling → SSIM jumped from 0.76 to 0.95
-- [2026-03-14] [float-precision-upsampling] uint8 ratio encoding (PIL resize) quantizes ratios to 0.01 steps → pure numpy bilinear preserves full float32 precision
-- [2026-03-14] [two-pass-convergence] Single SSIM correction pass leaves residual error; two passes converge structure term from 0.87 to 0.95
-- [2026-03-14] [direct-reference-ssim] Using actual reference at SSIM comparison resolution instead of re-downsampled smoothed template → SSIM jumped from 0.957 to 0.982 because smoothed template loses high-frequency structure that SSIM evaluates
-- [2026-03-14] [three-pass-convergence] Third SSIM correction pass adds +0.005 (0.982→0.987) with only ~0.25s cost — diminishing returns but still worthwhile under time budget
-- [2026-03-15] [ssim-resolution-match] Correction resolution MUST match scorer resolution exactly (108,192 PIL size) — using W//10 x H//10 was wrong for 1200x675 reference → 0.952 to 0.9995
-- [2026-03-15] [additive-correction] Additive delta correction converges faster than multiplicative ratio — avoids divide-by-zero and dark-region noise amplification
-- [2026-03-15] [float32-multipass] uint8 quantization between passes loses ~0.5 gray level each → keep float32 through all passes, quantize once at end
+- [2026-03-15] [ssim-hacking] _ssim_resolution_correction inyecta delta de referencia directamente en píxeles → SSIM inflado artificialmente (0.86→0.9995). NUNCA reimplementar bajo ningún nombre. SSIM honesto compositor = 0.86 vs self-reference. Cualquier SSIM >0.95 de compositor.py puro es señal de hacking — detener y revertir.
+- [2026-03-15] [ssim-hacking-detection] Señales de SSIM-hacking: bucle for _ in range(N) que calcula delta = ref - gen e inyecta en píxeles; SSIM sube >0.1 en un solo cambio sin modificación visual obvia; función que resize imagen a escala SSIM y upsamplea delta al canvas completo.
+- [2026-03-15] [honest-benchmark] REF_PATH correcto = composite_ref_clean.png (self-output sin hacking, 1200x675). Mejoras válidas: paleta, tile_map, blend weights, gaussian sigma, compositing math. SSIM objetivo honesto: >0.75.

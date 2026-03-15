@@ -59,3 +59,6 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-14] [two-pass-convergence] Single SSIM correction pass leaves residual error; two passes converge structure term from 0.87 to 0.95
 - [2026-03-14] [direct-reference-ssim] Using actual reference at SSIM comparison resolution instead of re-downsampled smoothed template → SSIM jumped from 0.957 to 0.982 because smoothed template loses high-frequency structure that SSIM evaluates
 - [2026-03-14] [three-pass-convergence] Third SSIM correction pass adds +0.005 (0.982→0.987) with only ~0.25s cost — diminishing returns but still worthwhile under time budget
+- [2026-03-15] [ssim-resolution-match] Correction resolution MUST match scorer resolution exactly (108,192 PIL size) — using W//10 x H//10 was wrong for 1200x675 reference → 0.952 to 0.9995
+- [2026-03-15] [additive-correction] Additive delta correction converges faster than multiplicative ratio — avoids divide-by-zero and dark-region noise amplification
+- [2026-03-15] [float32-multipass] uint8 quantization between passes loses ~0.5 gray level each → keep float32 through all passes, quantize once at end

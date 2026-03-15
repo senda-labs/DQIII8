@@ -16,6 +16,9 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-14] [bible-cache] Groq devuelve Bible cacheada en tests → borrar /tmp/bible_cache antes de test real
 - [2026-03-14] [ci-deps] CI falla con ModuleNotFoundError → instalar numpy/pillow/groq en ci.yml antes de pytest
 
+- [2026-03-15] [github-scorer-gpu] Score refleja calidad de código, no compatibilidad de infra → siempre penalizar GPU/CUDA en VPS CPU-only; imaginAIry 8.3→1.0 tras añadir Factor GPU
+- [2026-03-15] [gpu-keyword-false-positive] "gpu" en GPU_KEYWORDS matchea "no gpu required" → evaluar CPU_PHRASES primero y usar cpu_confirmed como short-circuit antes de GPU_KEYWORDS
+
 ## hult-finance
 - [2026-03-10] [matplotlib-export] Guardar .png antes de insertar en PPT → no insertar figura directamente
 

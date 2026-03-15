@@ -41,7 +41,56 @@ JARVIS_STACK = {
         "generation",
     ],
     "avoid": ["javascript", "typescript", "react", "node", "java", "c++", "rust", "unity"],
+    "hardware": {
+        "available": ["cpu", "vps", "linux"],
+        "unavailable": ["gpu", "cuda", "vram", "nvidia", "tensorflow-gpu", "torch+cuda"],
+    },
+    "python_min": "3.9",
+    "python_max": "3.12",
 }
+
+# Keywords que indican requisito de GPU — penalización severa en VPS CPU-only
+GPU_KEYWORDS = [
+    "cuda",
+    "gpu",
+    "vram",
+    "nvidia",
+    "torch.cuda",
+    "stable diffusion",
+    "diffusers",
+    "pytorch gpu",
+    "accelerate",
+    "tensorflow-gpu",
+    "rife",
+    "ncnn",
+    "requires gpu",
+    "gpu required",
+    "graphics card",
+    "video card",
+]
+
+# Keywords que indican versión de Python bloqueada
+PYTHON_EXCLUSIVE = [
+    "python 3.10 only",
+    "python 3.10 required",
+    "not supported on 3.11",
+    "requires python 3.10",
+    "3.10 only",
+    "python 3.9 only",
+    "requires python 3.9",
+]
+
+# Keywords que confirman compatibilidad CPU — boost
+CPU_PHRASES = [
+    "cpu only",
+    "no gpu required",
+    "pure python",
+    "without gpu",
+    "cpu-based",
+    "no cuda",
+    "cpu inference",
+    "runs on cpu",
+]
 
 
 # ─── GitHub API client ────────────────────────────────────────────
@@ -318,6 +367,25 @@ class ApplicabilityEvaluator:
             score += 0.3
             reasons.append("🔧 Repo ligero — fácil de copiar partes")
 
+        # ── Factor 9: confirmación CPU-only (evaluar primero) ────
+        cpu_confirmed = any(p in all_text for p in CPU_PHRASES)
+        if cpu_confirmed:
+            score += 1.5
+            reasons.append("✅ CPU-only confirmado — compatible con VPS")
+
+        # ── Factor 10: requisito GPU — penalización severa ────────
+        # cpu_confirmed short-circuits: "no gpu required" no activa GPU penalty
+        gpu_blocked = (not cpu_confirmed) and any(kw in all_text for kw in GPU_KEYWORDS)
+        if gpu_blocked:
+            score -= 4.0
+            reasons.append("🚫 Requiere GPU/CUDA — incompatible con VPS CPU-only")
+
+        # ── Factor 11: versión Python exclusiva ───────────────────
+        python_locked = any(kw in all_text for kw in PYTHON_EXCLUSIVE)
+        if python_locked:
+            score -= 2.0
+            reasons.append("⚠️ Python version exclusiva — riesgo de incompatibilidad")
+
         # ── Clasificar esfuerzo de integración ───────────────────
         score = round(min(10.0, max(0.0, score)), 2)
         if score >= 8.0:
@@ -334,15 +402,21 @@ class ApplicabilityEvaluator:
             "reasons": reasons,
             "stack_matches": list(set(stack_matches)),
             "effort": effort,
-            "integration_type": _classify_integration(score, code_structure),
+            "gpu_blocked": gpu_blocked,
+            "python_locked": python_locked,
+            "integration_type": _classify_integration(score, code_structure, gpu_blocked),
             "code_structure": code_structure or {},
         }
 
 
-def _classify_integration(score: float, code_structure: dict = None) -> str:
+def _classify_integration(
+    score: float, code_structure: dict = None, gpu_blocked: bool = False
+) -> str:
     """Clasifica cómo integrar el repo en JARVIS."""
+    if gpu_blocked:
+        return "REFERENCE — GPU requerida, no viable en VPS actual"
     if score >= 8.0:
-        return "COPY — Copiar directamente a nuestro stack"
+        return "COPY — Integración directa posible"
     elif score >= 6.5:
         return "ADAPT — Adaptar 1-2 funciones clave"
     elif score >= 5.0:
@@ -492,11 +566,36 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
             f"{ev['effort'].split(' — ')[0]} |"
         )
 
-    # Quick Wins section
+    # GPU-blocked section
+    gpu_blocked_repos = [r for r in sorted_repos if r["eval"].get("gpu_blocked")]
+    if gpu_blocked_repos:
+        lines += ["\n---\n", "## ⛔ Bloqueados por hardware (GPU/CUDA requerido)\n"]
+        lines.append("*Guardar para cuando el VPS tenga GPU:*\n")
+        lines += [
+            "| Repo | Score adj. | Stars | Por qué bloqueado |",
+            "|------|-----------|-------|-------------------|",
+        ]
+        for r in gpu_blocked_repos:
+            repo = r["repo"]
+            ev = r["eval"]
+            gpu_reason = next(
+                (reason for reason in ev["reasons"] if "GPU" in reason or "CUDA" in reason),
+                "GPU requerida",
+            )
+            lines.append(
+                f"| [{repo['name']}]({repo['html_url']}) | "
+                f"{ev['score']} | "
+                f"⭐{repo.get('stargazers_count',0):,} | "
+                f"{gpu_reason} |"
+            )
+        lines.append("")
+
+    # Quick Wins section (exclude gpu-blocked repos)
     quick_wins = [
         r
         for r in sorted_repos
         if r["eval"]["score"] >= 7.0
+        and not r["eval"].get("gpu_blocked")
         and r["eval"].get("integration_type", "").startswith(("COPY", "ADAPT"))
     ]
     if quick_wins:

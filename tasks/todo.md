@@ -1,12 +1,3 @@
-# JARVIS — Active Tasks
-
-_This file is written exclusively by the orchestrator._
-
-## In Progress
-(none)
-
-## Queued
-(none)
-
-## Done
-(none)
+# tasks/todo.md — math-image-generator
+_Generado por OrchestratorLoop — 2026-03-15 01:00_
+_Solo el OrchestratorLoop escribe aquí. Otros agentes → tasks/results/_

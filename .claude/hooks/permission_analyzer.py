@@ -338,6 +338,31 @@ class PermissionAnalyzer:
 # ── Funciones standalone (usadas por pre_tool_use.py) ───────────────────────
 
 
+def _notify_telegram_activation(tool_name: str, pattern: str) -> None:
+    """Fire-and-forget Telegram alert when a pattern auto-activates at times_seen=3."""
+    try:
+        import requests
+        from dotenv import load_dotenv
+
+        load_dotenv(str(JARVIS_ROOT / ".env"))
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+        if not token or not chat_id:
+            return
+        msg = (
+            "🔓 *Auto-aprobación activada*\n"
+            f"`{tool_name}` → `{pattern[:80]}`\n"
+            "Vistas: 3 veces. Activa para futuros usos."
+        )
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
+            timeout=5,
+        )
+    except Exception:
+        pass  # never block the pipeline
+
+
 def record_decision(tool: str, inp: dict, result: dict) -> None:
     """
     Registra decisiones APPROVE en la BD.
@@ -380,6 +405,14 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
                     """,
                     (tool, pattern),
                 )
+                # Notify if this upsert just auto-activated the pattern (times_seen=3)
+                row = conn.execute(
+                    "SELECT times_seen, active FROM learned_approvals "
+                    "WHERE tool_name=? AND pattern=?",
+                    (tool, pattern),
+                ).fetchone()
+                if row and row[0] == 3 and row[1] == 1:
+                    _notify_telegram_activation(tool, pattern)
         conn.commit()
         conn.close()
     except Exception:

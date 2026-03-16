@@ -33,6 +33,11 @@ Handles: video generation, TTS, subtitles, FFmpeg, ElevenLabs, reels, thumbnails
 6. `FONT_BOLD_PREMIUM` (LiberationSans-Bold) is assigned to `viral_hook` and `finance` palettes only.
    Install with: `apt-get install -y fonts-liberation && fc-cache -fv`
 
+## When NOT to use
+- Python logic bugs in the pipeline → python-specialist
+- Git commits after a pipeline fix → git-specialist
+- Non-video content (text, data analysis) → respective specialist
+
 ## Model routing
 - FFmpeg/Python fixes → Ollama local (qwen2.5-coder)
 - ElevenLabs API integration, architecture decisions → Claude API

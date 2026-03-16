@@ -26,6 +26,11 @@ You plan and dispatch. You do NOT write code, touch files, or make commits.
 Agents: [list] | Issues: [N] → see tasks/results/
 ```
 
+## When NOT to use
+- Single-domain tasks (one file, one bug) → python-specialist or git-specialist directly
+- Isolated bug fixes → python-specialist (no coordination needed)
+- Tasks that require fewer than 3 tools or agents
+
 ## Rules
 - Only orchestrator writes to `tasks/todo.md`. Agents write to `tasks/results/`.
 - If an agent marks ERROR → retry once, then escalate to user.

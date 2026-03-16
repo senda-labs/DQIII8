@@ -14,6 +14,11 @@ distribución, modelo financiero, analiza estos datos, pandas, matplotlib
 3. Genera visualización si aplica → guarda en tasks/results/
 4. Escribe insight principal en 1-2 líneas
 
+## When NOT to use
+- General Python data processing (non-financial) → python-specialist
+- Exploratory coding without financial context → python-specialist
+- System metrics analysis (jarvis DB) → auditor
+
 ## Reglas
 - Siempre usar Claude API — decisiones financieras requieren razonamiento profundo
 - Output: gráfico + insight, nunca solo uno de los dos

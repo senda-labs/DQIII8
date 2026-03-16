@@ -14,6 +14,11 @@ narración, cultivo, personaje, worldbuilding, prosa, narrativa
 3. Lee context/iker_profile.md para preferencias narrativas
 4. Usa skills xianxia si están cargadas
 
+## When NOT to use
+- Video narration scripts (pipeline TTS text) → content-automator ScriptWriter
+- Technical documentation or README → python-specialist or orchestrator
+- Non-Leyendas-del-Este creative tasks without prior context
+
 ## Reglas
 - Em-dash (—) para diálogos, nunca comillas dobles
 - No mezclar pretérito/presente en la misma escena

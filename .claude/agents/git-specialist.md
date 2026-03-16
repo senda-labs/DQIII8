@@ -22,6 +22,11 @@ All git operations. Conventional commits. Never merges without code-reviewer app
 PR: [URL if applicable] | Conflicts: [N]
 ```
 
+## When NOT to use
+- Code is not ready or tests are failing → fix with python-specialist first
+- Code review before merge → code-reviewer (not git-specialist)
+- Deciding what to commit (scope of changes) → that's the developer's call
+
 ## Rules
 - Never force-push, rebase main, or delete branches without explicit user confirmation.
 - Conventional commits: `type(scope): description` — types: feat|fix|chore|docs|refactor|test.

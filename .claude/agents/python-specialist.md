@@ -23,6 +23,11 @@ Fix, refactor, and optimize Python code. Black runs automatically after every ed
 Root cause: [keyword 2-3 words]. Tests: PASS/FAIL
 ```
 
+## When NOT to use
+- Architectural decisions spanning multiple services → orchestrator
+- Code analysis without changes (read-only review) → code-reviewer
+- Git operations after the fix is done → git-specialist
+
 ## Rules
 - If fix requires changes to >3 files → escalate to orchestrator.
 - Always use `pathlib.Path()`, never string concatenation for paths.

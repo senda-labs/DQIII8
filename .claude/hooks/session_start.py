@@ -79,8 +79,14 @@ try:
     if DB.exists():
         _vc = _vsl3.connect(str(DB), timeout=2)
         _vrows = _vc.execute(
-            "SELECT subject, predicate, object FROM vault_memory "
-            "WHERE project=? OR project='' ORDER BY last_seen DESC LIMIT 8",
+            "SELECT subject, predicate, object, entry_type FROM vault_memory "
+            "WHERE project=? OR project='' "
+            "ORDER BY CASE entry_type "
+            "  WHEN 'adr' THEN 1 "
+            "  WHEN 'project_state' THEN 2 "
+            "  WHEN 'lesson' THEN 3 "
+            "  WHEN 'checkpoint' THEN 4 "
+            "  ELSE 5 END, last_seen DESC LIMIT 8",
             (project,),
         ).fetchall()
         _vc.close()

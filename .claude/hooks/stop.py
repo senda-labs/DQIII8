@@ -233,6 +233,51 @@ try:
 except Exception:
     pass
 
+# ── 0d. Intelligence Loop — boost/decay instinct confidence ───────
+try:
+    import sqlite3 as _isl3
+    import re as _ire
+
+    if DB.exists():
+        _ic = _isl3.connect(str(DB), timeout=5)
+        _instincts = _ic.execute(
+            "SELECT id, keyword, confidence, times_applied, last_applied FROM instincts"
+        ).fetchall()
+        if _instincts:
+            # Build vault corpus (all entries as searchable text)
+            _vault_corpus = " ".join(
+                f"{r[0]} {r[1]} {r[2]}"
+                for r in _ic.execute(
+                    "SELECT subject, predicate, object FROM vault_memory"
+                ).fetchall()
+            ).lower()
+            _now_dt = datetime.now()
+            _updated = 0
+            for _iid, _kw, _iconf, _tapplied, _last_applied in _instincts:
+                _iconf = _iconf or 0.5
+                _root = _kw.split("-")[0].lower()
+                # Boost: keyword root appears 2+ times in vault_memory
+                _matches = len(_ire.findall(r"\b" + _ire.escape(_root) + r"\b", _vault_corpus))
+                if _matches >= 2:
+                    _iconf = min(0.95, _iconf + 0.05)
+                    _updated += 1
+                # Decay: applied at least once but not seen in 30 days
+                if _tapplied and _tapplied > 0 and _last_applied:
+                    try:
+                        _lap = datetime.fromisoformat(_last_applied)
+                        if (_now_dt - _lap).days > 30:
+                            _iconf = max(0.10, _iconf - 0.03)
+                            _updated += 1
+                    except Exception:
+                        pass
+                _ic.execute("UPDATE instincts SET confidence=? WHERE id=?", (_iconf, _iid))
+            _ic.commit()
+            _ic.close()
+            if _updated:
+                print(f"[JARVIS] intelligence loop: {_updated} instinct(s) updated")
+except Exception:
+    pass
+
 # ── 1. Cerrar sesión en BD ─────────────────────────────────────────
 try:
     import sqlite3

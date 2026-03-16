@@ -82,6 +82,37 @@ WHERE success_rate < 0.8 OR errors_caused > 0 OR approved_by = 'pending'
 ORDER BY errors_caused DESC;
 ```
 
+**ADR-003 tripwire — errors without instinct coverage (sqlite-vec activation signal):**
+```sql
+SELECT
+    el.error_type,
+    COUNT(*) as occurrences,
+    MAX(el.timestamp) as last_seen,
+    GROUP_CONCAT(DISTINCT el.agent_name) as agents
+FROM error_log el
+WHERE el.resolved = 0
+  AND NOT EXISTS (
+      SELECT 1 FROM instincts i
+      WHERE lower(el.error_type) LIKE '%' || lower(i.keyword) || '%'
+         OR lower(i.keyword) LIKE '%' || lower(el.error_type) || '%'
+  )
+GROUP BY el.error_type
+ORDER BY occurrences DESC
+LIMIT 10;
+```
+
+Report the count as `vector_false_negatives`. If count > 3 in a 7-day period:
+- Add a CRITICAL recommendation: "ADR-003 activation criterion approaching — review sqlite-vec plan"
+- Update `decisions/jarvis-core/ADR-003-vector-memory-strategy.md` with the observed false negatives
+
+Also report current instinct health:
+```sql
+SELECT COUNT(*) as instinct_count,
+       ROUND(AVG(confidence), 2) as avg_confidence,
+       SUM(CASE WHEN confidence < 0.3 THEN 1 ELSE 0 END) as low_confidence_count
+FROM instincts;
+```
+
 ### 1.5. Check ADR compliance
 
 Run: `python3 bin/adr-check.py` (if the script exists)

@@ -25,6 +25,11 @@ Critical: [N] | Suggestions: [N]
 Top issue: [description] → [file]:[line]
 ```
 
+## When NOT to use
+- Writing or fixing code → python-specialist
+- Architectural decisions → orchestrator
+- Reviewing code mid-implementation (review after completion, not during)
+
 ## Rules
 - Never modify the code being reviewed.
 - Reference exact file:line for every issue.

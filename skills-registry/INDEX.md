@@ -19,7 +19,7 @@
 | Proyecto | Skills cargadas |
 |----------|----------------|
 | jarvis-core | obsidian-markdown, obsidian-bases |
-| content-automation | obsidian-markdown |
+| content-automation | obsidian-markdown, fal-ai-media |
 | hult-finance | obsidian-markdown, defuddle |
 | leyendas-del-este | obsidian-markdown |
 
@@ -61,3 +61,13 @@ Proceso: cache/ → revisión Iker → revisión Claude → APROBADA → custom/
 | jarvis-multi-provider-routing | git-analysis/jarvis (50 commits) | ✅ APROBADA | Iker | Patrón 3-tier routing: cuándo añadir providers, fallback chain, anti-patrones. Modelos Tier-2 corregidos (nemotron:free, qwen3:free) |
 | jarvis-agent-creation | git-analysis/jarvis (50 commits) | ✅ APROBADA | Iker | Estructura canónica de agentes, modelo correcto por tier, archivos co-cambiados. data-analyst corregido a claude-sonnet-4-6 |
 | continuous-learning-v2 | ECC/affaan-m (adaptado) | ✅ APROBADA | Iker | Instincts SQLite + stop.py integration + /instinct-status command |
+
+## Skills P2a — ECC segunda revisión (2026-03-16)
+
+| Skill | Fuente | Status | Aprobada por | Notas |
+|-------|--------|--------|--------------|-------|
+| security-review | ECC/affaan-m (adaptado Python/SQLite) | ✅ APROBADA | Iker | OWASP checklist JARVIS-adaptado: secrets, SQL injection, shell safety, hook safety |
+| verification-loop | ECC/affaan-m (adaptado Black/pytest) | ✅ APROBADA | Iker | Pipeline post-código: black → ruff → mypy → pytest → security scan → diff |
+| tdd-workflow | ECC/affaan-m (adaptado pytest) | ✅ APROBADA | Iker | TDD con pytest: RED→GREEN→REFACTOR, fixtures SQLite in-memory, smoke tests CLI |
+| fal-ai-media | ECC/affaan-m (adaptado content-automation) | ✅ APROBADA | Iker | flux-general + negative_prompt + reference_image_url + Seedance video + costes |
+| strategic-compact | ECC/affaan-m (adaptado JARVIS) | ✅ APROBADA | Iker | Compactar en boundaries lógicos, no mid-task; complementa jarvis-context-window.md |

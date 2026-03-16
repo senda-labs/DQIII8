@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-03-16T05:52:21.514806+00:00",
+  "adrs_checked": 2,
+  "invariants_total": 8,
+  "invariants_passed": 8,
+  "invariants_failed": 0,
+  "status": "PASS",
+  "adrs": [
+    {
+      "number": "ADR-001",
+      "title": "Image-First Video Pipeline",
+      "project": "content-automation",
+      "invariants_count": 5
+    },
+    {
+      "number": "ADR-002",
+      "title": "3-Tier Model Routing",
+      "project": "jarvis-core",
+      "invariants_count": 3
+    }
+  ],
+  "results": [
+    {
+      "id": "ADR-001-I1",
+      "adr": "ADR-001",
+      "passed": true,
+      "checked_files": [
+        "backend/services/visual_matcher.py"
+      ],
+      "violations": []
+    },
+    {
+      "id": "ADR-001-I2",
+      "adr": "ADR-001",
+      "passed": true,
+      "checked_files": [
+        "backend/services/visual_matcher.py"
+      ],
+      "violations": []
+    },
+    {
+      "id": "ADR-001-I3",
+      "adr": "ADR-001",
+      "passed": true,
+      "checked_files": [
+        "backend/services/scene_director.py"
+      ],
+      "violations": []
+    },
+    {
+      "id": "ADR-001-I4",
+      "adr": "ADR-001",
+      "passed": true,
+      "checked_files": [
+        "backend/services/scene_director.py"
+      ],
+      "violations": []
+    },
+    {
+      "id": "ADR-001-I5",
+      "adr": "ADR-001",
+      "passed": true,
+      "checked_files": [
+        "backend/services/scene_director.py"
+      ],
+      "violations": []
+    },
+    {
+      "id": "ADR-002-I2",
+      "adr": "ADR-002",
+      "passed": true,
+      "checked_files": [
+        ".claude/agents/python-specialist.md"
+      ],
+      "violations": []
+    },
+    {
+      "id": "ADR-002-I3",
+      "adr": "ADR-002",
+      "passed": true,
+      "checked_files": [
+        ".claude/agents/orchestrator.md"
+      ],
+      "violations": []
+    },
+    {
+      "id": "ADR-002-I4",
+      "adr": "ADR-002",
+      "passed": true,
+      "checked_files": [
+        ".claude/agents/python-specialist.md",
+        ".claude/agents/git-specialist.md",
+        ".claude/agents/code-reviewer.md",
+        ".claude/agents/orchestrator.md",
+        ".claude/agents/auditor.md"
+      ],
+      "violations": []
+    }
+  ],
+  "failures": []
+}

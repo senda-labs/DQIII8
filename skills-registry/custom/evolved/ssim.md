@@ -1,43 +1,58 @@
-# Skill: ssim (auto-evolved)
+# Skill: ssim-scoring
 
-**Generada:** 2026-03-16  
-**Fuente:** /evolve — 4 instincts agrupados  
-**Proyectos:** jarvis-core  
-**Confianza media:** 0.50  
-**Total aplicado:** 123x  
-**Status:** PENDIENTE_REVISION  
+**Generada:** 2026-03-16
+**Fuente:** /evolve — 4 instincts agrupados
+**Proyectos:** jarvis-core
+**Confianza media:** 0.50
+**Total aplicado:** 123x
+**Status:** APROBADA
 
 ## Descripcion
 
-Skill auto-generada desde instincts consolidados sobre `ssim`. Revisar patrones, consolidar en reglas accionables y cambiar status a APROBADA.
+Reglas para implementar y validar SSIM honesto en el compositor de video.
+Cubre deteccion de hacking, coincidencia de resoluciones y el lever estructural clave.
 
-## Patrones aprendidos
+## Reglas consolidadas
 
-### `ssim-hacking` — conf: 50%, aplicado: 54x
+### R1 — Prohibicion absoluta: delta-injection
+Ningun codigo puede calcular `delta = ref - gen` e inyectarlo en pixeles antes
+de medir SSIM. Esto infla artificialmente el score (0.86 → 0.9995) sin mejora
+visual real. Si una funcion hace resize+delta+upsample, es SSIM-hacking. Eliminar
+y revertir inmediatamente.
 
-[2026-03-15] [ssim-hacking] _ssim_resolution_correction inyecta delta de referencia directamente en píxeles → SSIM inflado artificialmente (0.86→0.9995). NUNCA reimplementar bajo ningún nombre. SSIM honesto compositor = 0.86 vs self-reference. Cualquier SSIM >0.95 de compositor.py puro es señal de hacking — detener y revertir.
+```python
+# PROHIBIDO — nunca reimplementar bajo ningun nombre
+# delta = reference_img - generated_img
+# generated_img += delta * factor
+```
 
-### `ssim-hacking-detection` — conf: 50%, aplicado: 54x
+### R2 — Resolucion de correccion == resolucion del scorer
+La resolucion usada para calcular SSIM debe ser exactamente la misma que usa el
+scorer (`108x192` en PIL para canvas 1080x1920). Usar `W//10 x H//10` para un
+canvas de 1200x675 da resolucion incorrecta. Pasar siempre las dimensiones del
+scorer como parametro, no calcularlas en la funcion de correccion.
 
-[2026-03-15] [ssim-hacking-detection] Señales de SSIM-hacking: bucle for _ in range(N) que calcula delta = ref - gen e inyecta en píxeles; SSIM sube >0.1 en un solo cambio sin modificación visual obvia; función que resize imagen a escala SSIM y upsamplea delta al canvas completo.
+### R3 — Diagnostico de hacking por anomalia de salto
+Si el SSIM sube > 0.1 en un solo cambio sin modificacion visual obvia, es senal
+de hacking. SSIM honesto del compositor puro = ~0.86. Cualquier SSIM > 0.95 desde
+`compositor.py` puro (sin modelo externo) es sospechoso — detener y revisar.
 
-### `ssim-resolution-match` — conf: 50%, aplicado: 9x
-
-[2026-03-15] [ssim-resolution-match] Correction resolution MUST match scorer resolution exactly (108,192 PIL size) — using W//10 x H//10 was wrong for 1200x675 reference → 0.952 to 0.9995
-
-### `ssim-structure-bottleneck` — conf: 50%, aplicado: 6x
-
-[2026-03-14] [ssim-structure-bottleneck] Global SSIM luminance/contrast terms can be near-perfect while structure term is low → spatial brightness modulation is the key lever
-
-## Reglas consolidadas (pendiente revision)
-
-> TODO: Sintetizar los patrones anteriores en 3-5 reglas concretas.
-> Eliminar redundancias. Anadir ejemplos de codigo si aplica.
+### R4 — El lever real es el termino estructural
+Los terminos de luminancia y contraste globales pueden ser casi perfectos mientras
+el termino de estructura (S) es bajo. El gain real de SSIM viene de modular el
+brillo espacialmente (matching de patrones locales), no de ajustar brillo/contraste
+globales.
 
 ## Anti-patrones
 
-> TODO: Listar que NO hacer segun los instincts.
+- `_ssim_resolution_correction` o cualquier variante que inyecte delta en pixeles
+- Funciones `for _ in range(N)` que acumulen deltas iterativamente en la imagen
+- Resize a escala SSIM + upsample del delta al canvas completo
+- Argumentar que SSIM > 0.95 es "correcto" si compositor.py no tiene modelo generativo
+- Calcular resolucion de correccion con `W//10` sin verificar contra scorer resolution
 
 ## Cuando NO usar esta skill
 
-> TODO: Casos limite donde esta skill no aplica.
+- Cuando el SSIM lo calcula un modelo externo (VMAF, LPIPS) — sus rangos son distintos
+- Para SSIM entre imagenes de referencia externa (no compositor → self-reference)
+- Si el canal de color es diferente (grayscale vs RGB normalizado) — los umbrales cambian

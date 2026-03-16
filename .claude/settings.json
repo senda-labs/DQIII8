@@ -2,7 +2,8 @@
   "env": {
     "JARVIS_ROOT": "/root/jarvis",
     "ENABLE_TOOL_SEARCH": "auto",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50"
   },
   "hooks": {
     "SessionStart": [

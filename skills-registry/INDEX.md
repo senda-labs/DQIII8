@@ -71,4 +71,4 @@ Proceso: cache/ → revisión Iker → revisión Claude → APROBADA → custom/
 | tdd-workflow | ECC/affaan-m (adaptado pytest) | ✅ APROBADA | Iker | TDD con pytest: RED→GREEN→REFACTOR, fixtures SQLite in-memory, smoke tests CLI |
 | fal-ai-media | ECC/affaan-m (adaptado content-automation) | ✅ APROBADA | Iker | flux-general + negative_prompt + reference_image_url + Seedance video + costes |
 | strategic-compact | ECC/affaan-m (adaptado JARVIS) | ✅ APROBADA | Iker | Compactar en boundaries lógicos, no mid-task; complementa jarvis-context-window.md |
-| evolved/ssim | /evolve auto (4 instincts) | ⏳ PENDIENTE_REVISION | — | Revisar + mover a custom/ + status APROBADA |
+| evolved/ssim | /evolve auto (4 instincts) | ✅ APROBADA | Iker | R1-R4: delta-injection prohibida, resolucion scorer exacta, anomalia >0.1 = hacking, lever estructural |

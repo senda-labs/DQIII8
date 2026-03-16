@@ -82,13 +82,28 @@ WHERE success_rate < 0.8 OR errors_caused > 0 OR approved_by = 'pending'
 ORDER BY errors_caused DESC;
 ```
 
+### 1.5. Check ADR compliance
+
+Run: `python3 bin/adr-check.py` (if the script exists)
+Read: `decisions/adr-compliance.json`
+
+Count:
+- `violations`: ADR rules currently broken
+- `warnings`: borderline compliance issues
+
+If `decisions/adr-compliance.json` does not exist or `bin/adr-check.py` is missing,
+set `adr_violations = 0` and note "ADR check not available" in the report.
+
 ### 2. Compute overall score
 
 Score 0-100 based on:
-- Global success rate (weight 40%)
-- Unresolved errors ratio (weight 30%)
+- Global success rate (weight 35%)
+- Unresolved errors ratio (weight 25%)
 - Hook blocks / total actions (weight 20%)
 - Sessions with lessons_added > 0 (weight 10%)
+- ADR compliance: `10 - (adr_violations * 3)`, min 0 (weight 10%)
+
+> ADR penalty: each violation costs 3 points from the ADR component (max loss = 10 pts).
 
 ### 3. Write the report
 
@@ -130,6 +145,13 @@ File: `database/audit_reports/audit-YYYY-MM-DD-HH.md`
 
 ### Skill Issues
 [list or "None detected"]
+
+### ADR Compliance
+| Status | Violations | Warnings |
+|--------|-----------|---------|
+| OK/FAIL | N | N |
+
+[list violations with ADR number and rule broken, or "None"]
 
 ## Hook Blocks
 [table or "None"]

@@ -141,6 +141,98 @@ try:
 except Exception:
     pass
 
+# ── 0c. Vault Memory extraction (sesión ≥ 10 min) ────────────────
+try:
+    import sqlite3 as _vsl3
+    import json as _vjson
+    import time as _vtime
+
+    if DB.exists():
+        _vconn = _vsl3.connect(str(DB), timeout=3)
+        _vrow = _vconn.execute(
+            "SELECT MIN(start_time_ms) FROM agent_actions WHERE session_id=?", (session,)
+        ).fetchone()
+        _vconn.close()
+        _vfirst_ms = _vrow[0] if _vrow and _vrow[0] else None
+        _vdur_min = ((_vtime.time() * 1000 - _vfirst_ms) / 60000) if _vfirst_ms else 0
+
+        if _vdur_min >= 10:
+            # Collect modified files from git diff
+            _vdiff = subprocess.run(
+                ["git", "-C", str(JARVIS), "diff", "--stat", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            _vfiles = [
+                l.split("|")[0].strip()
+                for l in _vdiff.stdout.splitlines()
+                if "|" in l and not l.strip().startswith("Bin")
+            ][:10]
+
+            # Collect new lessons from earlier diff (result variable from step 0)
+            _vnew_lessons = []
+            if result:
+                _vnew_lessons = [
+                    l[1:].strip()
+                    for l in result.stdout.splitlines()
+                    if (l.startswith("+- [20") or l.startswith("+[20")) and len(l) > 10
+                ][:5]
+
+            if _vfiles or _vnew_lessons:
+                _vprompt = (
+                    "Extract 3-5 factual triples from this dev session.\n\n"
+                    f"Files modified: {', '.join(_vfiles) or 'none'}\n"
+                    f"New lessons: {' | '.join(_vnew_lessons) or 'none'}\n\n"
+                    "Output ONLY a JSON array (no markdown fences):\n"
+                    '[{"subject": "...", "predicate": "...", "object": "..."}]\n\n'
+                    "Examples:\n"
+                    '{"subject": "visual_matcher", "predicate": "uses_model", "object": "fal-ai/flux-pro/kontext"}\n'
+                    '{"subject": "orchestrator", "predicate": "fixed_bug", "object": "asyncio_nested_loop"}\n\n'
+                    "Rules: subject=file/component name, predicate=verb, object=value/status. Max 5 triples."
+                )
+                _venv = os.environ.copy()
+                _venv.pop("CLAUDECODE", None)
+                _vres = subprocess.run(
+                    ["claude", "-p", _vprompt, "--model", "claude-haiku-4-5-20251001"],
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                    env=_venv,
+                )
+                if _vres.returncode == 0:
+                    _vraw = _vres.stdout.strip()
+                    for _vfence in ["```json", "```"]:
+                        if _vfence in _vraw:
+                            _vraw = _vraw.split(_vfence)[1].split("```")[0].strip()
+                            break
+                    _vs = _vraw.find("[")
+                    _ve = _vraw.rfind("]")
+                    if _vs != -1 and _ve != -1:
+                        _vfacts = _vjson.loads(_vraw[_vs : _ve + 1])
+                        _vproject = os.environ.get("JARVIS_PROJECT", "jarvis-core")
+                        _vic = _vsl3.connect(str(DB), timeout=5)
+                        _vcnt = 0
+                        for _vf in _vfacts[:5]:
+                            _subj = str(_vf.get("subject", ""))[:100]
+                            _pred = str(_vf.get("predicate", ""))[:100]
+                            _obj = str(_vf.get("object", ""))[:200]
+                            if _subj and _pred and _obj:
+                                _vic.execute(
+                                    "INSERT INTO vault_memory (subject, predicate, object, project) "
+                                    "VALUES (?, ?, ?, ?) "
+                                    "ON CONFLICT(subject, predicate, object) DO UPDATE SET "
+                                    "times_seen = times_seen + 1, last_seen = datetime('now')",
+                                    (_subj, _pred, _obj, _vproject),
+                                )
+                                _vcnt += 1
+                        _vic.commit()
+                        _vic.close()
+                        if _vcnt:
+                            print(f"[JARVIS] {_vcnt} vault fact(s) extracted")
+except Exception:
+    pass
+
 # ── 1. Cerrar sesión en BD ─────────────────────────────────────────
 try:
     import sqlite3

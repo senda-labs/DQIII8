@@ -88,6 +88,28 @@ try:
 except Exception:
     pass
 
+# ── 0a-supplement. Sumar implicit lessons capturadas por post_tool_use ──
+try:
+    import sqlite3 as _vls3
+
+    if DB.exists():
+        _vc = _vls3.connect(str(DB), timeout=2)
+        _start_row = _vc.execute(
+            "SELECT MIN(start_time_ms) FROM agent_actions WHERE session_id=?",
+            (session,),
+        ).fetchone()
+        if _start_row and _start_row[0]:
+            _start_iso = datetime.fromtimestamp(_start_row[0] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+            _vault_count = _vc.execute(
+                "SELECT COUNT(*) FROM vault_memory"
+                " WHERE source='post_tool_use' AND created_at >= ?",
+                (_start_iso,),
+            ).fetchone()[0]
+            lessons_added += _vault_count or 0
+        _vc.close()
+except Exception:
+    pass
+
 
 # ── 0b. Extraer instincts de lessons.md ───────────────────────────
 try:

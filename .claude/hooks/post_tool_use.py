@@ -36,7 +36,16 @@ try:
         os.environ.get("JARVIS_ROOT", "/root/jarvis"), "database", "jarvis_metrics.db"
     )
     if os.path.exists(DB):
-        success = 1 if resp.get("exit_code", 0) == 0 else 0
+        # Detect failure via exit_code (Bash) OR type/is_error/error (other tools)
+        _exit_code = resp.get("exit_code")
+        if _exit_code is not None:
+            success = 1 if _exit_code == 0 else 0
+        else:
+            success = (
+                0
+                if (resp.get("type") == "error" or resp.get("is_error") or resp.get("error"))
+                else 1
+            )
         error_msg = (resp.get("stderr") or resp.get("error") or "")[:500]
         content = inp.get("new_content", inp.get("content", ""))
         bytes_wr = len(content.encode("utf-8", errors="replace")) if content else 0
@@ -63,7 +72,13 @@ try:
                 "INSERT INTO error_log "
                 "(session_id,agent_name,error_type,error_message,keywords) "
                 "VALUES (?,?,?,?,?)",
-                (session, agent, f"{tool}Error", stored_error or f"{tool} failed", "[]"),
+                (
+                    session,
+                    agent,
+                    f"{tool}Error",
+                    stored_error or f"{tool} failed",
+                    json.dumps([agent, tool]),
+                ),
             )
         conn.commit()
         conn.close()
@@ -77,7 +92,12 @@ try:
 
     _PENDING = f"/tmp/jarvis_pending_{session[:8]}.json"
     _fpath = inp.get("file_path", inp.get("path", ""))
-    _ok = resp.get("exit_code", 0) == 0
+    _exit_c = resp.get("exit_code")
+    _ok = (
+        (_exit_c == 0)
+        if _exit_c is not None
+        else not (resp.get("type") == "error" or resp.get("is_error") or resp.get("error"))
+    )
     _err = (resp.get("stderr") or resp.get("error") or "")[:200]
     _pend: dict = {}
     if os.path.exists(_PENDING):
@@ -117,6 +137,24 @@ try:
                 )
                 _vc.commit()
                 _vc.close()
+                # Mark matching error_log entry as resolved (separate connection so vault commit is safe)
+                try:
+                    _vc2 = _ics.connect(_db_path, timeout=2)
+                    _vc2.execute(
+                        "UPDATE error_log SET resolved=1, resolution=?"
+                        " WHERE id=(SELECT id FROM error_log"
+                        "  WHERE session_id=? AND error_type=? AND resolved=0"
+                        "  ORDER BY id DESC LIMIT 1)",
+                        (
+                            f"auto-fixed by {tool} on {os.path.basename(_fpath)}",
+                            session,
+                            _fail["error_type"],
+                        ),
+                    )
+                    _vc2.commit()
+                    _vc2.close()
+                except Exception:
+                    pass
 except Exception:
     pass
 

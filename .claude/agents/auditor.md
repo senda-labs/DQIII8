@@ -169,6 +169,11 @@ INSERT INTO audit_reports (
 Report: database/audit_reports/audit-[timestamp].md
 ```
 
+## When NOT to use
+- Debugging a single error or task (use python-specialist instead)
+- Mid-session metrics check (run at session end or via `/audit` explicitly)
+- Architecture decisions — auditor observes, does not design
+
 ## Rules
 - Always run ALL queries before writing the report -- never partial audits.
 - If `agent_name = 'unknown'`, note it in recommendations: hooks are not capturing agent identity.

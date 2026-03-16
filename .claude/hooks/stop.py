@@ -219,8 +219,8 @@ try:
                             _obj = str(_vf.get("object", ""))[:200]
                             if _subj and _pred and _obj:
                                 _vic.execute(
-                                    "INSERT INTO vault_memory (subject, predicate, object, project) "
-                                    "VALUES (?, ?, ?, ?) "
+                                    "INSERT INTO vault_memory (subject, predicate, object, project, entry_type) "
+                                    "VALUES (?, ?, ?, ?, 'lesson') "
                                     "ON CONFLICT(subject, predicate, object) DO UPDATE SET "
                                     "times_seen = times_seen + 1, last_seen = datetime('now')",
                                     (_subj, _pred, _obj, _vproject),

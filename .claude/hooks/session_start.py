@@ -96,16 +96,33 @@ except Exception:
 
 model = os.environ.get("JARVIS_MODEL", "qwen2.5-coder:7b (Ollama)")
 
+# ── Personality Mode ────────────────────────────────────────────────
+_mode = ""
+try:
+    _mode_file = Path("/tmp/jarvis_mode.txt")
+    if _mode_file.exists():
+        _mode = _mode_file.read_text(encoding="utf-8").strip()
+except Exception:
+    pass
+
+_MODE_BEHAVIORS = {
+    "coder": "MODO CODER: codigo primero, prosa minima, Black siempre, show diffs.",
+    "analyst": "MODO ANALYST: tablas, metricas, verificar numeros, sin especulacion.",
+    "creative": "MODO CREATIVE: narrativa, espanol literario, sin formato tecnico.",
+}
+
 _vault_block = ""
 if vault_facts:
     _vault_block = "\n\nKNOWLEDGE BASE:\n" + "\n".join(f"- {f}" for f in vault_facts)
+
+_mode_line = f"\n{_MODE_BEHAVIORS[_mode]}" if _mode in _MODE_BEHAVIORS else ""
 
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 JARVIS — {datetime.now().strftime('%Y-%m-%d %H:%M')}
 Modelo  : {model}
 Proyecto: {project}
 Próximo : {next_step}{audit_alert}
-Última auditoría: {audit_info}{_vault_block}
+Última auditoría: {audit_info}{_mode_line}{_vault_block}
 
 LECCIONES RECIENTES:
 {chr(10).join(lessons) if lessons else '  (ninguna aún)'}

@@ -162,6 +162,29 @@ def _insert_actions(conn: sqlite3.Connection, rows: list[dict], dry_run: bool = 
                 row,
             )
             inserted += 1
+            if row["success"] == 0:
+                _keywords = json.dumps(
+                    [
+                        row["agent_name"],
+                        row["tool_used"],
+                        (row["file_path"] or "")[:20],
+                    ]
+                )
+                conn.execute(
+                    """
+                    INSERT INTO error_log
+                        (session_id, agent_name, error_type, error_message,
+                         keywords, resolved, lesson_added)
+                    VALUES (?, ?, ?, ?, ?, 0, 0)
+                    """,
+                    (
+                        row["session_id"],
+                        row["agent_name"],
+                        row["tool_used"],
+                        row["error_message"] or "no output",
+                        _keywords,
+                    ),
+                )
         except sqlite3.Error as e:
             print(f"  WARN insert failed: {e}")
     if not dry_run:

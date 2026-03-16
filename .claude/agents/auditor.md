@@ -96,6 +96,9 @@ set `adr_violations = 0` and note "ADR check not available" in the report.
 
 ### 2. Compute overall score
 
+**Methodology version: v1.0** (2026-03-16)
+Always include `methodology_version: v1.0` in the report header so scores are comparable across audits.
+
 Score 0-100 based on:
 - Global success rate (weight 35%)
 - Unresolved errors ratio (weight 25%)
@@ -104,6 +107,32 @@ Score 0-100 based on:
 - ADR compliance: `10 - (adr_violations * 3)`, min 0 (weight 10%)
 
 > ADR penalty: each violation costs 3 points from the ADR component (max loss = 10 pts).
+
+**Exact formulas (v1.0):**
+```
+component_1 = success_rate_pct                          # e.g. 99.71
+component_2 = (1 - unresolved_errors/max(total_errors,1)) * 100  # 0 unresolved → 100
+component_3 = (1 - hook_blocks/max(total_actions,1)) * 100
+component_4 = (sessions_with_lessons / max(total_sessions,1)) * 100
+component_5 = max(0, 10 - adr_violations * 3) * 10     # scaled to 0-100
+
+score = (component_1*0.35 + component_2*0.25 + component_3*0.20
+         + component_4*0.10 + component_5*0.10)
+```
+
+> Note: component_2 uses `error_log` table only. If `error_log` is empty despite failures
+> in `agent_actions`, note "error_log pipeline broken" — do NOT award full score silently.
+
+> **component_4 — Scenario A interpretation (added 2026-03-16):**
+> For a system with >99% success rate, most sessions will be genuinely clean (no corrections
+> to capture). A component_4 of 30-40% in this context is **HEALTHY** (Scenario A), not a
+> deficiency. Before flagging low lesson capture, run the diagnostic:
+> ```sql
+> SELECT COUNT(*) FROM sessions WHERE lessons_added = 0 AND total_errors > 0;
+> ```
+> - Result = 0 → Scenario A. Target ~35% is correct for a mature system. Do NOT penalize.
+> - Result > 0 → Scenario B. Failures not converting to lessons — investigate implicit capture.
+> Only raise a recommendation about lesson capture if Scenario B is confirmed.
 
 ### 3. Write the report
 

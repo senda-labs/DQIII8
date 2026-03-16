@@ -70,4 +70,54 @@ try:
 except Exception:
     pass  # logging falla silenciosamente
 
+# ── Implicit correction capture ──────────────────────────────────────
+# Pattern: tool fails → same agent+file → tool succeeds = silent fix → lesson
+try:
+    import sqlite3 as _ics
+
+    _PENDING = f"/tmp/jarvis_pending_{session[:8]}.json"
+    _fpath = inp.get("file_path", inp.get("path", ""))
+    _ok = resp.get("exit_code", 0) == 0
+    _err = (resp.get("stderr") or resp.get("error") or "")[:200]
+    _pend: dict = {}
+    if os.path.exists(_PENDING):
+        try:
+            with open(_PENDING, encoding="utf-8") as _f:
+                _pend = json.load(_f)
+        except Exception:
+            _pend = {}
+    _key = f"{agent}|{_fpath}" if _fpath else ""
+    if _key:
+        if not _ok:
+            _pend[_key] = {"error_type": f"{tool}Error", "error_msg": _err or f"{tool} failed"}
+            with open(_PENDING, "w", encoding="utf-8") as _f:
+                json.dump(_pend, _f)
+        elif _key in _pend:
+            _fail = _pend.pop(_key)
+            with open(_PENDING, "w", encoding="utf-8") as _f:
+                json.dump(_pend, _f)
+            _db_path = os.path.join(
+                os.environ.get("JARVIS_ROOT", "/root/jarvis"), "database", "jarvis_metrics.db"
+            )
+            if os.path.exists(_db_path):
+                _vc = _ics.connect(_db_path, timeout=2)
+                _proj = os.environ.get("JARVIS_PROJECT", "jarvis-core")
+                _vc.execute(
+                    "INSERT INTO vault_memory"
+                    " (subject,predicate,object,project,confidence,entry_type,source,created_at,last_seen)"
+                    " VALUES (?,?,?,?,0.6,'lesson','post_tool_use',datetime('now'),datetime('now'))"
+                    " ON CONFLICT(subject,predicate,object) DO UPDATE SET"
+                    "   times_seen=times_seen+1, last_seen=datetime('now')",
+                    (
+                        _fail["error_type"],
+                        "resolved_by",
+                        f"{tool} on {os.path.basename(_fpath)}",
+                        _proj,
+                    ),
+                )
+                _vc.commit()
+                _vc.close()
+except Exception:
+    pass
+
 sys.exit(0)

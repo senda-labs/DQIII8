@@ -106,3 +106,17 @@ TTS synthesis Python, subtitle generation, viral content generation
 **Output:** `tasks/github_reports/github_[topic]_[timestamp].md`
 **DB:** `github_research` + `github_search_sessions` en jarvis_metrics.db
 **Nota:** Sin GITHUB_TOKEN → 60 req/h. Añadir a .env para 5000 req/h.
+
+
+## Context Efficiency (context-mode MCP)
+- Prefer `ctx_execute` over Bash for: log reading, git log, test output, API responses, any command with >1KB output
+- Prefer `ctx_fetch_and_index` over WebFetch for documentation
+- Prefer `ctx_batch_execute` for multiple commands in sequence
+- Use `ctx_search` to retrieve previously indexed content
+- NEVER use these tools for: file writes, git commits, or any action that must leave a real side effect
+
+## Personality Modes (activar desde OpenClaw: /mode [nombre])
+- analyst: respuestas densas, tablas, métricas, sin prosa
+- coder: código primero, explicación mínima, Black siempre
+- creative: narrativa, español literario, sin formato técnico
+Default: el modo se hereda del proyecto activo en projects/*.md

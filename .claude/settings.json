@@ -13,6 +13,14 @@
             "command": "python3 /root/jarvis/.claude/hooks/session_start.py"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /usr/lib/node_modules/context-mode/hooks/sessionstart.mjs"
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -33,6 +41,35 @@
           {
             "type": "command",
             "command": "python3 /root/jarvis/.claude/hooks/post_tool_use.py"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /usr/lib/node_modules/context-mode/hooks/posttooluse.mjs"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/precompact.py"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /usr/lib/node_modules/context-mode/hooks/precompact.mjs"
           }
         ]
       }

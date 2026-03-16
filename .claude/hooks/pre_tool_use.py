@@ -90,8 +90,8 @@ try:
         _conn = sqlite3.connect(_DB, timeout=10)
         _conn.execute(
             "INSERT INTO agent_actions "
-            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier,model_used) "
+            "VALUES (?,?,?,?,?,?,?,?)",
             (
                 session,
                 agent,
@@ -100,6 +100,7 @@ try:
                 tool.lower(),
                 int(time.time() * 1000),
                 _tier,
+                _model,
             ),
         )
         _conn.commit()

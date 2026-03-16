@@ -15,4 +15,4 @@ Fase 1 en progreso. Infraestructura VPS completa. 4 agentes Ola 1 configurados. 
 ## Próximo paso
 Fase 2: implementar bin/ollama_wrapper.py para routing real de tareas simples a qwen2.5-coder:7b sin gastar tokens.
 
-**Ultima sesion:** 2026-03-15 — handover manual
+**Ultima sesion:** 2026-03-16 — handover manual

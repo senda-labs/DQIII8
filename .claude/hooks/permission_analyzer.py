@@ -166,6 +166,13 @@ class PermissionAnalyzer:
                         "Editar directamente desde terminal o pedir al usuario.",
                     )
 
+        # 3b. Resource claims — bloquear si otro agente tiene el archivo
+        if tool in ("Edit", "Write", "MultiEdit"):
+            path = inp.get("file_path", inp.get("path", ""))
+            claim_deny = self._check_resource_claim(tool, path, _session)
+            if claim_deny:
+                return claim_deny
+
         # 4. Comandos de alto riesgo con excepción ALLOWED_DELETIONS
         if tool == "Bash":
             cmd = inp.get("command", "")
@@ -306,6 +313,41 @@ class PermissionAnalyzer:
             return row is not None
         except Exception:
             return False
+
+    def _check_resource_claim(self, tool: str, path: str, session_id: str) -> dict | None:
+        """
+        Bloquea si otro agente/sesión tiene un claim activo sobre este recurso.
+        Claims expiran automáticamente por TTL (expires_at).
+        """
+        if not path:
+            return None
+        try:
+            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            row = conn.execute(
+                """
+                SELECT agent, session_id FROM resource_claims
+                WHERE resource = ?
+                  AND session_id != ?
+                  AND expires_at > datetime('now')
+                LIMIT 1
+                """,
+                (path, session_id),
+            ).fetchone()
+            conn.close()
+            if row:
+                holder_agent, holder_session = row
+                return self._deny(
+                    tool,
+                    path,
+                    f"Recurso '{path}' bloqueado por agente '{holder_agent}' "
+                    f"(sesión {holder_session[:8]}…). Espera a que expire el claim.",
+                    "MEDIUM",
+                    "resource_claim",
+                    "Espera 30 min o pide al agente propietario que libere el recurso.",
+                )
+        except Exception:
+            pass
+        return None
 
     def _check_budget(self, session_id: str) -> dict | None:
         """Bloquea si el coste estimado de la sesión supera MAX_SESSION_COST_USD."""

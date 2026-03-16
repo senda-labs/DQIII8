@@ -65,18 +65,33 @@ if result["decision"] in ("DENY", "ESCALATE"):
     )
     sys.exit(0)
 
+
+def _model_tier(model_id: str) -> int:
+    """Return tier (1/2/3) for a model identifier string."""
+    m = model_id.lower()
+    if "ollama" in m or "qwen2.5-coder" in m:
+        return 1
+    if any(x in m for x in ("groq", "openrouter", "haiku", "nemotron", "qwen3")):
+        return 2
+    if any(x in m for x in ("sonnet", "opus", "claude-sonnet", "claude-opus")):
+        return 3
+    return 0  # unknown
+
+
 try:
     import sqlite3
 
     _DB = os.path.join(
         os.environ.get("JARVIS_ROOT", "/root/jarvis"), "database", "jarvis_metrics.db"
     )
+    _model = os.environ.get("JARVIS_MODEL", agent)
+    _tier = _model_tier(_model)
     if os.path.exists(_DB):
         _conn = sqlite3.connect(_DB, timeout=10)
         _conn.execute(
             "INSERT INTO agent_actions "
-            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms) "
-            "VALUES (?,?,?,?,?,?)",
+            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier) "
+            "VALUES (?,?,?,?,?,?,?)",
             (
                 session,
                 agent,
@@ -84,6 +99,7 @@ try:
                 inp.get("file_path", inp.get("command", ""))[:120],
                 tool.lower(),
                 int(time.time() * 1000),
+                _tier,
             ),
         )
         _conn.commit()

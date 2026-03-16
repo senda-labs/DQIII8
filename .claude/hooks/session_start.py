@@ -29,6 +29,12 @@ if not project:
     if not project:
         project = "jarvis-core"
 
+# Save session start time so stop.py Fallback 2 can scope to this session
+try:
+    Path("/tmp/jarvis_session_start.txt").write_text(datetime.now().isoformat(), encoding="utf-8")
+except Exception:
+    pass
+
 # ── Próximo paso del proyecto ──────────────────────────────────────
 next_step = "No definido"
 pm = JARVIS / "projects" / f"{project}.md"

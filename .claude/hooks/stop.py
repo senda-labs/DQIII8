@@ -64,16 +64,33 @@ try:
             lessons_added = diff_count
 
     # Fallback 2: recorrer commits recientes hasta encontrar adiciones en lessons.md
-    # (cubre el caso donde lessons.md fue commitado durante la sesión y hubo más commits después)
+    # Solo considera commits que ocurrieron DURANTE esta sesión (evita heredar lecciones ajenas)
     if lessons_added == 0:
+        _fb2_start: datetime | None = None
+        try:
+            _ts_file = Path("/tmp/jarvis_session_start.txt")
+            if _ts_file.exists():
+                _fb2_start = datetime.fromisoformat(_ts_file.read_text(encoding="utf-8").strip())
+        except Exception:
+            pass
         log_result = subprocess.run(
-            ["git", "-C", str(JARVIS), "log", "--oneline", "-10", "--", "tasks/lessons.md"],
+            ["git", "-C", str(JARVIS), "log", "--format=%H %aI", "-10", "--", "tasks/lessons.md"],
             capture_output=True,
             text=True,
             timeout=5,
         )
-        for commit_line in log_result.stdout.splitlines()[:3]:
-            sha = commit_line.split()[0]
+        for commit_line in log_result.stdout.splitlines()[:5]:
+            parts = commit_line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            sha, commit_ts_str = parts[0], parts[1].strip()
+            if _fb2_start:
+                try:
+                    commit_dt = datetime.fromisoformat(commit_ts_str).replace(tzinfo=None)
+                    if commit_dt < _fb2_start:
+                        continue  # commit pre-dates this session — skip
+                except Exception:
+                    pass
             result2 = subprocess.run(
                 ["git", "-C", str(JARVIS), "diff", f"{sha}~1", sha, "--", "tasks/lessons.md"],
                 capture_output=True,

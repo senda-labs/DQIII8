@@ -83,6 +83,7 @@ def test_implicit_correction_captured_in_vault():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT, agent_name TEXT, error_type TEXT,
                 error_message TEXT, keywords TEXT, resolved INTEGER DEFAULT 0,
+                resolution TEXT, lesson_added INTEGER DEFAULT 0,
                 timestamp TEXT DEFAULT (datetime('now'))
             );
             CREATE TABLE vault_memory (

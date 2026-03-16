@@ -18,7 +18,7 @@
 
 | Proyecto | Skills cargadas |
 |----------|----------------|
-| jarvis-core | obsidian-markdown, obsidian-bases |
+| jarvis-core | obsidian-markdown, obsidian-bases, evolved/ssim |
 | content-automation | obsidian-markdown, fal-ai-media |
 | hult-finance | obsidian-markdown, defuddle |
 | leyendas-del-este | obsidian-markdown |

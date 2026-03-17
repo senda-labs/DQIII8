@@ -27,6 +27,14 @@ OLLAMA_FALLBACK="qwen/qwen3-235b-a22b:free"
 # Cargar variables de entorno
 [[ -f "$JARVIS_ROOT/.env" ]] && set -a && source "$JARVIS_ROOT/.env" && set +a
 
+check_deps() {
+    python3 --version > /dev/null 2>&1 || { echo "❌ Python3 no encontrado"; exit 1; }
+    ollama list > /dev/null 2>&1 || echo "⚠️  Ollama no responde — usando solo Tier 2/3"
+    [ -f "$JARVIS_ROOT/.env" ] || { echo "❌ .env no encontrado en $JARVIS_ROOT"; exit 1; }
+    [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "❌ ANTHROPIC_API_KEY no definida"; exit 1; }
+    echo "✅ Sistema OK — arrancando JARVIS"
+}
+
 MODEL="sonnet"
 
 show_status() {
@@ -45,6 +53,8 @@ show_status() {
 ollama_available() {
     ollama ps &>/dev/null && ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
 }
+
+check_deps
 
 # ── Parseo de flags ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do

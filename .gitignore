@@ -48,5 +48,24 @@ skills-registry/cache/
 
 # Logs internos
 database/system_metrics.log
+database/audit_reports/jarvis_bot.log
 objectives/active/
 objectives/failed/
+
+# Reportes efímeros de tareas (se regeneran, no versionar)
+tasks/gemini_reports/
+tasks/github_reports/
+tasks/precompact_state.json
+tasks/diagnostic_*.md
+tasks/jarvis_architecture_v1.*
+tasks/*.zip
+tasks/*.pdf
+tasks/*.html
+
+# Archivos grandes temporales
+*.zip
+*.tar.gz
+
+# Archivos de decisiones generados automáticamente
+decisions/adr-compliance.json
+tasks/permission_rejection.json

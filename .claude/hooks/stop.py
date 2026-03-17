@@ -331,32 +331,35 @@ try:
         ).fetchone()
         _proj = os.environ.get("JARVIS_PROJECT", "jarvis-core")
         _model = os.environ.get("JARVIS_MODEL", "claude-sonnet-4-6")
-        conn.execute(
-            """
-            INSERT INTO sessions
-            (session_id,start_time,end_time,project,model_used,
-             total_actions,total_errors,files_touched,bytes_written,lessons_added)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(session_id) DO UPDATE SET
-            end_time=excluded.end_time, project=excluded.project,
-            model_used=excluded.model_used, total_actions=excluded.total_actions,
-            total_errors=excluded.total_errors, files_touched=excluded.files_touched,
-            bytes_written=excluded.bytes_written, lessons_added=excluded.lessons_added
-        """,
-            (
-                session,
-                NOW,
-                NOW,
-                _proj,
-                _model,
-                row[0] or 0,
-                row[1] or 0,
-                row[3] or 0,
-                row[2] or 0,
-                lessons_added,
-            ),
-        )
-        conn.commit()
+        _total_actions = row[0] or 0
+        # Guard: skip ghost sessions (no tool calls = no meaningful data, avoids audit penalty)
+        if _total_actions > 0:
+            conn.execute(
+                """
+                INSERT INTO sessions
+                (session_id,start_time,end_time,project,model_used,
+                 total_actions,total_errors,files_touched,bytes_written,lessons_added)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                end_time=excluded.end_time, project=excluded.project,
+                model_used=excluded.model_used, total_actions=excluded.total_actions,
+                total_errors=excluded.total_errors, files_touched=excluded.files_touched,
+                bytes_written=excluded.bytes_written, lessons_added=excluded.lessons_added
+            """,
+                (
+                    session,
+                    NOW,
+                    NOW,
+                    _proj,
+                    _model,
+                    _total_actions,
+                    row[1] or 0,
+                    row[3] or 0,
+                    row[2] or 0,
+                    lessons_added,
+                ),
+            )
+            conn.commit()
         conn.close()
 except Exception:
     pass

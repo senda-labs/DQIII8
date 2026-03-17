@@ -29,3 +29,5 @@ Añadir scenario analysis al análisis de capital structure europeo.
 ## Lecciones específicas de este proyecto
 - WACC Lockheed Martin calculado: ~8.4% usando CAPM + datos Damodaran
 - Visualizaciones con matplotlib — guardar siempre como .png antes de exportar a PPT
+
+**Ultima sesion:** 2026-03-17 — handover manual

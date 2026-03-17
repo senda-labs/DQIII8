@@ -408,6 +408,25 @@ try:
         _duration_min = ((_time.time() * 1000 - _first_ms) / 60000) if _first_ms else 0
 
         if _duration_min >= 15:
+            # Guard: máximo 1 commit de handover por fecha calendario
+            _today = NOW[:10]
+            _log_today = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(JARVIS),
+                    "log",
+                    "--oneline",
+                    "--since=midnight",
+                    "--grep",
+                    f"session handover {_today}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            _already_committed_today = bool(_log_today.stdout.strip())
+
             # Collect modified files via git diff
             _diff = subprocess.run(
                 ["git", "-C", str(JARVIS), "diff", "--stat", "HEAD"],
@@ -478,7 +497,7 @@ duration: {_duration_str}
 """
             _session_path.write_text(_session_md, encoding="utf-8")
 
-            # Git add + commit + push
+            # Git add + commit + push (máximo 1 commit de handover por día)
             subprocess.run(
                 [
                     "git",
@@ -491,16 +510,18 @@ duration: {_duration_str}
                 capture_output=True,
                 timeout=10,
             )
-            subprocess.run(
-                ["git", "-C", str(JARVIS), "commit", "-m", f"📝 session handover {_date}"],
-                capture_output=True,
-                timeout=10,
-            )
-            subprocess.run(
-                ["git", "-C", str(JARVIS), "push", "origin", "master"],
-                capture_output=True,
-                timeout=20,
-            )
+            if not _already_committed_today:
+                subprocess.run(
+                    ["git", "-C", str(JARVIS), "commit", "-m", f"session handover {_date}"],
+                    capture_output=True,
+                    timeout=10,
+                )
+            if not _already_committed_today:
+                subprocess.run(
+                    ["git", "-C", str(JARVIS), "push", "origin", "master"],
+                    capture_output=True,
+                    timeout=20,
+                )
 
             # === GEMINI REVIEW ===
             try:

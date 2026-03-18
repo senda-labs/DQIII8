@@ -128,6 +128,35 @@ except Exception:
     pass
 
 
+# ── 0a-bis. Scenario B: auto-lesson for sessions with failures ────
+try:
+    import sqlite3 as _sb3
+
+    if DB.exists():
+        _sb_conn = _sb3.connect(str(DB), timeout=2)
+        _failures = _sb_conn.execute(
+            "SELECT tool_used, error_message FROM agent_actions "
+            "WHERE session_id=? AND success=0 AND error_message IS NOT NULL "
+            "LIMIT 5",
+            (session,),
+        ).fetchall()
+        _sb_conn.close()
+        if _failures and LESSONS.exists():
+            _today = NOW[:10]
+            _new_lines = []
+            for _stool, _emsg in _failures:
+                _short = (_emsg or "")[:80].replace("\n", " ").strip()
+                if _short:
+                    _new_lines.append(
+                        f"- [{_today}] [{_stool}Error] causa → {_short} (pendiente de fix)\n"
+                    )
+            if _new_lines:
+                with open(str(LESSONS), "a", encoding="utf-8") as _lf:
+                    _lf.writelines(_new_lines)
+                lessons_added += len(_new_lines)
+except Exception:
+    pass
+
 # ── 0b. Extraer instincts de lessons.md ───────────────────────────
 try:
     import sqlite3 as _sl3, re as _re
@@ -585,6 +614,7 @@ sys.exit(0)
 # Backup automático de credenciales OAuth al final de cada sesión
 import shutil
 from pathlib import Path
+
 _backup_dir = Path("/root/jarvis/.claude/backups/oauth")
 _backup_dir.mkdir(parents=True, exist_ok=True)
 for _f in ["/root/.claude.json", "/root/.claude/.credentials.json"]:

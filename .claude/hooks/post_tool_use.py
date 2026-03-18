@@ -16,7 +16,24 @@ tool = data.get("tool_name", "")
 inp = data.get("tool_input", {})
 resp = data.get("tool_response", {}) or {}
 session = data.get("session_id", "unknown")
-agent = data.get("agent_id", data.get("agent_name", "unknown"))
+agent = data.get("agent_id", data.get("agent_name", ""))
+if not agent:
+    try:
+        with open(f"/tmp/jarvis_agent_{session}.json", encoding="utf-8") as _af:
+            agent = json.load(_af).get("agent_type", "claude-sonnet-4-6")
+    except Exception:
+        agent = "claude-sonnet-4-6"
+# Infer from tool+path if agent looks like a UUID (17 hex chars starting with 'a')
+if len(agent) == 17 and agent[0] == "a" and all(c in "0123456789abcdef" for c in agent[1:]):
+    _fp = inp.get("file_path", inp.get("command", ""))
+    if tool in ("Edit", "Write", "MultiEdit") and _fp.endswith(".py"):
+        agent = "python-specialist"
+    elif tool == "Bash" and any(
+        k in _fp for k in ("git commit", "git push", "git branch", "git tag")
+    ):
+        agent = "git-specialist"
+    else:
+        agent = "claude-sonnet-4-6"
 now_ms = int(time.time() * 1000)
 
 # ── Auto-format Python ──────────────────────────────────────────────
@@ -70,8 +87,8 @@ try:
         if not success:
             conn.execute(
                 "INSERT INTO error_log "
-                "(session_id,agent_name,error_type,error_message,keywords) "
-                "VALUES (?,?,?,?,?)",
+                "(timestamp, session_id, agent_name, error_type, error_message, keywords, resolved) "
+                "VALUES (datetime('now'), ?, ?, ?, ?, ?, 0)",
                 (
                     session,
                     agent,

@@ -94,13 +94,12 @@ while [[ $# -gt 0 ]]; do
             exec python3 "$OR_WRAPPER" classify "$*"
             ;;
         --autonomous)
-            export JARVIS_MODE=autonomous
-            echo "  [JARVIS] Modo autónomo activado" >&2
-            # Launch watchdog in background
-            python3 "$JARVIS_ROOT/bin/autonomous_watchdog.py" &
-            echo $! > /tmp/jarvis_watchdog.pid
-            echo "  [JARVIS] Watchdog PID=$(cat /tmp/jarvis_watchdog.pid)" >&2
+            # j --autonomous "objetivo" [horas_max]
+            # Delega a autonomous_loop.sh (supervisor 3-layer activo)
             shift
+            OBJECTIVE="${1:-}"
+            MAX_HOURS="${2:-8}"
+            exec bash "$JARVIS_ROOT/bin/autonomous_loop.sh" "$OBJECTIVE" "$MAX_HOURS"
             ;;
         loop)
             # j loop → arranca Claude Code como usuario jarvis (non-root)
@@ -167,8 +166,8 @@ JARVIS — 3-tier routing
   j --status              proyecto + modelo + ollama ps + tmux
   j --audit               Gemini code review (check-only)
   j --classify TEXTO      muestra tier para el prompt dado
-  j --autonomous          activa modo autónomo (JARVIS_MODE=autonomous)
-  j --loop PROJECT [N] [TIER]  OrchestratorLoop: tier1/tier2/tier3/haiku (def. tier3)
+  j --autonomous "objetivo" [h]  modo sueño con supervisor 3-layer (def. 8h)
+  j --loop PROJECT [N] [TIER]   OrchestratorLoop: tier1/tier2/tier3/haiku (def. tier3)
   j --benchmark-report         informe Sonnet comparando tiers
 
 Tiers:

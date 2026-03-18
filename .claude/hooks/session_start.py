@@ -123,6 +123,40 @@ if os.environ.get("JARVIS_PROPOSITO") == "1":
     if _proposito_path.exists():
         _proposito_block = "\n\nPROPOSITO:\n" + _proposito_path.read_text(encoding="utf-8")
 
+# ── Memorias recientes (mem0 + fallback SQLite) ────────────────────
+_memories_block = ""
+try:
+    import sys as _sys
+    import signal as _sig
+
+    _mm_path = JARVIS / "bin" / "memory_manager.py"
+    if _mm_path.exists():
+        import importlib.util as _ilu
+
+        import io as _io
+
+        _spec = _ilu.spec_from_file_location("memory_manager", str(_mm_path))
+        _mm = _ilu.module_from_spec(_spec)
+        import contextlib as _cl
+
+        with _cl.redirect_stderr(_io.StringIO()):
+            _spec.loader.exec_module(_mm)
+
+        def _timeout_handler(signum, frame):
+            raise TimeoutError
+
+        _sig.signal(_sig.SIGALRM, _timeout_handler)
+        _sig.alarm(2)
+        try:
+            _mems = _mm.search_memories(project, "contexto sesión anterior", top_k=5)
+            _sig.alarm(0)
+            if _mems:
+                _memories_block = "\n\nMEMORIAS RECIENTES:\n" + "\n".join(f"- {m}" for m in _mems)
+        finally:
+            _sig.alarm(0)
+except Exception:
+    pass  # skip silencioso — no bloquear arranque
+
 model = os.environ.get("JARVIS_MODEL", "qwen2.5-coder:7b (Ollama)")
 
 # ── Personality Mode ────────────────────────────────────────────────
@@ -151,7 +185,7 @@ JARVIS — {datetime.now().strftime('%Y-%m-%d %H:%M')}
 Modelo  : {model}
 Proyecto: {project}
 Próximo : {next_step}{audit_alert}
-Última auditoría: {audit_info}{_mode_line}{_vault_block}{_iker_profile_block}{_channels_block}{_proposito_block}
+Última auditoría: {audit_info}{_mode_line}{_vault_block}{_memories_block}{_iker_profile_block}{_channels_block}{_proposito_block}
 
 LECCIONES RECIENTES:
 {chr(10).join(lessons) if lessons else '  (ninguna aún)'}

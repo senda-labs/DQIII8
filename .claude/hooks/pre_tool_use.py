@@ -109,3 +109,14 @@ except Exception:
     pass
 
 sys.exit(0)
+
+# Protección adicional: credenciales OAuth
+_OAUTH_FILES = ["/root/.claude.json", "/root/.claude/.credentials.json"]
+if tool in ("Bash",):
+    cmd = inp.get("command", "")
+    for f in _OAUTH_FILES:
+        if f in cmd and any(x in cmd for x in ["rm ", "truncate", "> ", "mv "]):
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": f"Protegido: credencial OAuth {f}"}}))
+            sys.exit(0)

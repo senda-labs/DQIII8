@@ -1,8 +1,8 @@
 {
   "env": {
     "JARVIS_ROOT": "/root/jarvis",
-    "ENABLE_TOOL_SEARCH": "auto",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50"
   },
   "hooks": {
@@ -103,6 +103,17 @@
           {
             "type": "command",
             "command": "python3 /root/jarvis/.claude/hooks/subagent_start.py"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/postcompact.py"
           }
         ]
       }

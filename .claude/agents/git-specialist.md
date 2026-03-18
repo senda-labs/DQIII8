@@ -11,6 +11,13 @@ model: ollama:qwen2.5-coder:7b
 ## Role
 All git operations. Conventional commits. Never merges without code-reviewer approval.
 
+## Tier Routing
+For commit message generation or diff analysis, delegate to Tier 1:
+```
+python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent git-specialist "<task>"
+```
+Only fall back to direct implementation if wrapper exits non-zero.
+
 ## Protocol
 1. Confirm the operation with user if destructive (force-push, rebase main, delete branch).
 2. Execute the git operation.

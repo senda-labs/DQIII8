@@ -47,7 +47,10 @@ DB: database/jarvis_metrics.db — every session, action, and error is logged vi
 | WACC, DCF, chart, Excel, financial model | data-analyst | — |
 | chapter, scene, novel, xianxia, dialogue, narrative | creative-writer | — |
 | /audit, "what's failing", "metrics report" | auditor | — |
-
+| quant-analyst, backtesting, VaR, Sharpe, trading sistemático | quant-analyst | — |
+| fintech, API trading, ccxt, exchange, orden | fintech-engineer | — |
+| risk, drawdown, stop-loss, position sizing | risk-manager | — |
+| WACC, DCF, valoración, ratios, balance, P&L, coste capital | finance-analyst | — |
 ## Session Lifecycle
 **On start (session_start.py injects):**
 - Active model + project + worktrees open + skills loaded
@@ -114,6 +117,34 @@ TTS synthesis Python, subtitle generation, viral content generation
 - Prefer `ctx_batch_execute` for multiple commands in sequence
 - Use `ctx_search` to retrieve previously indexed content
 - NEVER use these tools for: file writes, git commits, or any action that must leave a real side effect
+
+## Agent Teams
+
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` está activado en `.claude/settings.json`.
+
+### Cuándo usar Agent Teams vs subagentes normales
+
+| Mecanismo | Cuándo usarlo | Ejemplo |
+|-----------|--------------|---------|
+| **Agent Teams** | Agentes que necesitan coordinarse entre sí — el output de uno alimenta al otro | frontend-builder conoce los endpoints que creó backend-builder |
+| **Subagentes normales** | Tareas paralelas completamente independientes — cada agente trabaja en su dominio sin necesitar resultados de otros | auditor + research-analyst en paralelo |
+| **/mobilize** | Orquestación clásica ≥3 dominios — orquestador sintetiza al final | feature compleja multi-dominio |
+
+### Activación
+
+- Mencionar explícitamente **"usa un team"** o **"coordina agentes"**
+- Usar `/test-team` para validar que la coordinación funciona
+
+### Coste
+
+4–15× más tokens que agente único. Reservar para tareas donde la
+coordinación directa aporta valor real (output de A → input de B).
+No usar para tareas que pueden ir en paralelo sin dependencias.
+
+### Comando de prueba
+
+`/test-team` — lanza research-analyst + python-specialist coordinados
+(Kelly Criterion: research → implementación Python).
 
 ## Personality Modes (activar desde OpenClaw: /mode [nombre])
 - analyst: respuestas densas, tablas, métricas, sin prosa

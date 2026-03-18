@@ -579,8 +579,8 @@ INSTRUCCIONES:
             else:
                 plan_quality = "poor"
         except Exception as e:
-            print(f"  [tier1] Ollama no disponible: {e} → fallback tier3")
-            return self._execute_claude(prompt, project)
+            print(f"  [tier1] Ollama no disponible: {e} → fallback tier2")
+            return self._execute_openrouter(prompt, project)
 
         # Paso 2: Claude Code ejecuta el plan con herramientas reales
         combined_prompt = (
@@ -605,7 +605,7 @@ INSTRUCCIONES:
         if not wrapper.exists():
             return "[OpenRouter] wrapper no encontrado en bin/openrouter_wrapper.py"
         result = subprocess.run(
-            ["python3", str(wrapper), "generate", prompt],
+            ["python3", str(wrapper), "--agent", "default", prompt],
             capture_output=True,
             text=True,
             timeout=300,

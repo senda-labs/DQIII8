@@ -23,6 +23,11 @@ from pathlib import Path
 # ── Configuración de providers ──────────────────────────────────────────────
 
 PROVIDERS = {
+    "ollama": {
+        "base_url": "http://localhost:11434/v1",
+        "api_key_env": None,
+        "headers_extra": {},
+    },
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
@@ -51,20 +56,23 @@ PROVIDERS = {
 # ── Tabla de routing por agente ─────────────────────────────────────────────
 
 AGENT_ROUTING = {
-    "python-specialist": ("openrouter", "qwen/qwen3-coder:free"),
+    # Tier 1 — Ollama local (qwen2.5-coder:7b)
+    "python-specialist": ("ollama", "qwen2.5-coder:7b"),
+    "git-specialist": ("ollama", "qwen2.5-coder:7b"),
+    "content-automator": ("ollama", "qwen2.5-coder:7b"),
+    # Tier 2 — Cloud free
     "backend-builder": ("openrouter", "qwen/qwen3-coder:free"),
-    "git-specialist": ("groq", "llama-3.3-70b-versatile"),
     "research-analyst": ("openrouter", "stepfun/step-3.5-flash:free"),
     "auditor": ("openrouter", "stepfun/step-3.5-flash:free"),
     "data-analyst": ("openrouter", "openai/gpt-oss-120b:free"),
     "code-reviewer": ("openrouter", "openai/gpt-oss-120b:free"),
     "creative-writer": ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
-    "content-automator": ("openrouter", "nvidia/nemotron-nano-12b-v2-vl:free"),
     "default": ("openrouter", "stepfun/step-3.5-flash:free"),
 }
 
 # Fallback universal por proveedor (cuando el modelo primario falla)
 FALLBACK_MODELS = {
+    "openrouter": ("openrouter", "stepfun/step-3.5-flash:free"),
     "groq": ("groq", "llama-3.3-70b-versatile"),
     "llm7": ("llm7", "gpt-4o-mini"),
     "pollinations": ("pollinations", "openai"),
@@ -72,6 +80,7 @@ FALLBACK_MODELS = {
 
 # Cadena de fallback por proveedor primario
 FALLBACK_CHAIN = {
+    "ollama": ["openrouter", "groq", "llm7", "pollinations"],
     "openrouter": ["groq", "llm7", "pollinations"],
     "groq": ["llm7", "pollinations"],
     "llm7": ["pollinations"],
@@ -302,7 +311,7 @@ def print_routing_table() -> None:
     for tier, provider, model, route, _ in ROUTING_TABLE:
         print(f"  {tier:<6} {provider:<12} {model:<30} {route}")
     print()
-    print("Fallback chain: OpenRouter → Groq → llm7.io → Pollinations")
+    print("Fallback chain (Tier 1): Ollama → OpenRouter → Groq → llm7.io → Pollinations")
     print()
 
 

@@ -581,3 +581,12 @@ except Exception as _oe:
     print(f"[observe_events] sync skipped: {_oe}")
 
 sys.exit(0)
+
+# Backup automático de credenciales OAuth al final de cada sesión
+import shutil
+from pathlib import Path
+_backup_dir = Path("/root/jarvis/.claude/backups/oauth")
+_backup_dir.mkdir(parents=True, exist_ok=True)
+for _f in ["/root/.claude.json", "/root/.claude/.credentials.json"]:
+    if Path(_f).exists():
+        shutil.copy2(_f, _backup_dir / Path(_f).name)

@@ -11,6 +11,21 @@ Error traceback in Python | "refactor" | "optimize" | "add async" | file ends in
 ## Role
 Fix, refactor, and optimize Python code. Black runs automatically after every edit (PostToolUse hook — do not run it manually).
 
+## Knowledge Search
+Antes de responder, ejecuta:
+```
+python3 $JARVIS_ROOT/bin/knowledge_search.py --agent python-specialist '<tarea>'
+```
+e incluye los chunks relevantes en tu contexto (paths, async patterns, lecciones previas).
+
+## Tier Routing
+Before writing code yourself, delegate generation to Tier 1:
+```
+python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent python-specialist "<task>"
+```
+Apply the output with Edit/Write tools. Only implement directly if the wrapper
+exits non-zero (Ollama + all fallbacks failed).
+
 ## Protocol
 1. Read the file or traceback.
 2. Apply minimal fix — touch only what is broken.

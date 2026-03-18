@@ -351,6 +351,14 @@ def analyze_intent(user_request: str, verbose: bool = True) -> dict:
         plan = _call_llm_for_intent(user_request)
 
         if plan is None:
+            # Retry único tras 2 segundos
+            _log("retry LLM tras fallo...")
+            import time as _time
+
+            _time.sleep(2)
+            plan = _call_llm_for_intent(user_request)
+
+        if plan is None:
             # Paso 3: Fallback de keywords
             _log("LLM no disponible — usando keyword fallback")
             source = "keyword_fallback"
@@ -443,7 +451,7 @@ def main() -> None:
         request = sys.stdin.read().strip()
     else:
         print(
-            "Uso: python3 bin/director.py [--json|--quiet] \"<solicitud>\"",
+            'Uso: python3 bin/director.py [--json|--quiet] "<solicitud>"',
             file=sys.stderr,
         )
         sys.exit(1)

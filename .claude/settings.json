@@ -33,6 +33,16 @@
             "command": "python3 /root/jarvis/.claude/hooks/pre_tool_use.py"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Eres el agente Shannon de seguridad de JARVIS. Evalua si esta operacion es segura. Tool: $TOOL_NAME. Input: $TOOL_INPUT. Responde SOLO con JSON: {\"allow\": true/false, \"risk\": \"LOW/MEDIUM/HIGH\", \"reason\": \"una linea\"}. Bloquea solo si detectas: escritura a .env o secrets, SQL sin parametrizar, o exfiltracion de datos. En cualquier otro caso allow: true.",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -51,6 +61,24 @@
           {
             "type": "command",
             "command": "node /usr/lib/node_modules/context-mode/hooks/posttooluse.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/semgrep_scan.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/semgrep_scan.py"
           }
         ]
       }
@@ -109,11 +137,40 @@
     ],
     "PostCompact": [
       {
-        "matcher": "",
         "hooks": [
           {
             "type": "command",
             "command": "python3 /root/jarvis/.claude/hooks/postcompact.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/user_prompt_submit.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/post_tool_use_failure.py"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /root/jarvis/.claude/hooks/permission_request.py"
           }
         ]
       }

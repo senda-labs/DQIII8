@@ -762,6 +762,95 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     log.info("Respuesta rápida enviada (%d chars)", len(output))
 
 
+# ── Bloque 4: Auto-mejora + Modo Sueño commands ─────────────────────────────────
+
+
+async def cmd_research_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Muestra estado de research_items por status."""
+    conn = sqlite3.connect(str(DB), timeout=5)
+    rows = conn.execute(
+        "SELECT status, COUNT(*) FROM research_items GROUP BY status ORDER BY COUNT(*) DESC"
+    ).fetchall()
+    conn.close()
+    if not rows:
+        await update.message.reply_text("No hay research items aún.")
+        return
+    lines = ["*Research Items:*"]
+    for status, count in rows:
+        lines.append(f"• {status}: {count}")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def cmd_sandbox_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ejecuta sandbox_tester.py --process-queue en background."""
+    await update.message.reply_text("[JARVIS] Lanzando sandbox tester...")
+    result = subprocess.run(
+        [sys.executable, str(JARVIS / "bin" / "sandbox_tester.py"), "--process-queue"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=str(JARVIS),
+    )
+    output = (result.stdout + result.stderr).strip()[-800:] or "(sin output)"
+    await send_chunks(update, output)
+
+
+async def _handle_integrar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Marca un research item como INTEGRADO. Uso: /integrar_<id>"""
+    text = update.message.text or ""
+    m = re.match(r"/integrar[_\s]+(\d+)", text)
+    if not m:
+        await update.message.reply_text("Uso: /integrar_<id>")
+        return
+    item_id = int(m.group(1))
+    conn = sqlite3.connect(str(DB), timeout=5)
+    conn.execute("UPDATE research_items SET status='INTEGRADO' WHERE id=?", (item_id,))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text(f"[JARVIS] Item {item_id} marcado como INTEGRADO.")
+
+
+async def _handle_rechazar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Marca un research item como RECHAZADO. Uso: /rechazar_<id>"""
+    text = update.message.text or ""
+    m = re.match(r"/rechazar[_\s]+(\d+)", text)
+    if not m:
+        await update.message.reply_text("Uso: /rechazar_<id>")
+        return
+    item_id = int(m.group(1))
+    conn = sqlite3.connect(str(DB), timeout=5)
+    conn.execute("UPDATE research_items SET status='RECHAZADO_MANUAL' WHERE id=?", (item_id,))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text(f"[JARVIS] Item {item_id} rechazado.")
+
+
+async def _handle_aprobar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Aprueba una solicitud de permiso del Modo Sueño. Uso: /aprobar_<id>"""
+    text = update.message.text or ""
+    m = re.match(r"/aprobar[_\s]+([0-9a-f]+)", text)
+    if not m:
+        await update.message.reply_text("Uso: /aprobar_<id>")
+        return
+    perm_id = m.group(1)
+    perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
+    perm_file.write_text('{"decision":"allow","reason":"usuario aprobó"}', encoding="utf-8")
+    await update.message.reply_text(f"[JARVIS] Permiso {perm_id} APROBADO.")
+
+
+async def _handle_denegar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Deniega una solicitud de permiso del Modo Sueño. Uso: /denegar_<id>"""
+    text = update.message.text or ""
+    m = re.match(r"/denegar[_\s]+([0-9a-f]+)", text)
+    if not m:
+        await update.message.reply_text("Uso: /denegar_<id>")
+        return
+    perm_id = m.group(1)
+    perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
+    perm_file.write_text('{"decision":"deny","reason":"usuario denegó"}', encoding="utf-8")
+    await update.message.reply_text(f"[JARVIS] Permiso {perm_id} DENEGADO.")
+
+
 # ── Main ────────────────────────────────────────────────────────────────────────
 def main() -> None:
     global APP
@@ -785,6 +874,12 @@ def main() -> None:
     APP.add_handler(CommandHandler("kill", cmd_kill))
     APP.add_handler(CommandHandler("loop", cmd_loop))
     APP.add_handler(CommandHandler("images", cmd_images))
+    APP.add_handler(CommandHandler("research_status", cmd_research_status))
+    APP.add_handler(CommandHandler("sandbox_run", cmd_sandbox_run))
+    APP.add_handler(MessageHandler(filters.Regex(r"^/integrar"), _handle_integrar))
+    APP.add_handler(MessageHandler(filters.Regex(r"^/rechazar"), _handle_rechazar))
+    APP.add_handler(MessageHandler(filters.Regex(r"^/aprobar"), _handle_aprobar))
+    APP.add_handler(MessageHandler(filters.Regex(r"^/denegar"), _handle_denegar))
     APP.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     APP.add_handler(CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:"))

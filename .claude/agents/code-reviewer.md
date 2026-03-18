@@ -30,6 +30,25 @@ Top issue: [description] → [file]:[line]
 - Architectural decisions → orchestrator
 - Reviewing code mid-implementation (review after completion, not during)
 
+## Security Skills
+
+Load `skills-registry/custom/vibesec-reviewed.md` for security analysis. Priority order for JARVIS stack:
+
+1. **CRITICAL (always flag)**
+   - SQL injection: f-string or %-format SQL → `conn.execute(f"... {var} ...")` is always CRITICAL
+   - Secret hardcoded: API keys, tokens as string literals → CRITICAL
+   - Path traversal: `base_dir + user_input` without `.resolve()` validation → CRITICAL
+
+2. **HIGH (flag if present)**
+   - SSRF: server-side URL fetching from user input without allowlist
+   - File upload: no magic byte validation, no size limits
+   - Secret exposure: `os.environ.get("KEY", "fallback-secret")` — the default IS a secret
+
+3. **MEDIUM**
+   - Path operations without canonicalization
+   - JWT: missing `exp`, algorithm not pinned, stored in localStorage
+   - Mass assignment: ORM update accepting unfiltered request body
+
 ## Rules
 - Never modify the code being reviewed.
 - Reference exact file:line for every issue.

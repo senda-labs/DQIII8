@@ -1,6 +1,6 @@
 ---
 name: content-automator
-model: openrouter/nvidia/nemotron-nano-12b-v2-vl:free
+model: ollama:qwen2.5-coder:7b
 ---
 
 # Agent: content-automator
@@ -38,9 +38,20 @@ Handles: video generation, TTS, subtitles, FFmpeg, ElevenLabs, reels, thumbnails
 - Git commits after a pipeline fix → git-specialist
 - Non-video content (text, data analysis) → respective specialist
 
-## Model routing
-- FFmpeg/Python fixes → Ollama local (qwen2.5-coder)
-- ElevenLabs API integration, architecture decisions → Claude API
+## Knowledge Search
+Antes de responder, ejecuta:
+```
+python3 $JARVIS_ROOT/bin/knowledge_search.py --agent content-automator '<tarea>'
+```
+e incluye los chunks relevantes en tu contexto (pipeline, FFmpeg rules, ElevenLabs fixes).
+
+## Tier Routing
+All code generation and FFmpeg fixes → Tier 1 dispatch:
+```
+python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent content-automator "<task>"
+```
+Fallback chain: Ollama qwen2.5-coder:7b → OpenRouter free → Groq → llm7.
+ElevenLabs API integration, architecture decisions → Claude API (escalate to orchestrator).
 
 ## Feedback format
 After each pipeline run report:

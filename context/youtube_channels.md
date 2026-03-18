@@ -1,7 +1,7 @@
 ---
 title: Canales YouTube — Contexto
 tags: [youtube, context, channels]
-last_updated: 2026-03-12
+last_updated: 2026-03-18
 read_only: true
 ---
 
@@ -12,22 +12,23 @@ read_only: true
 | Campo | Valor |
 |-------|-------|
 | Temática | Historia mundial — batallas, civilizaciones, eventos clave |
+| Idioma | Inglés |
 | Tono | Documental serio, narrativo, emotivo |
 | Audiencia | 18-45 años, amantes de la historia, educación informal |
-| Formato preferido | 30-60s Shorts · narración en off · imágenes históricas o generadas |
-| Idioma | Inglés |
+| Formato | 30-60s Shorts · narración en off · imágenes históricas o generadas |
 | Modo narrativo | `historian`, `novelist`, `witness` |
-| Canal principal de contenido-automation | ✅ Sí |
+| Paleta tipográfica | `historical_documentary` |
+| Canal principal content-automation | ✅ Sí — prioridad alta |
 
 ## Primordial Economics
 
 | Campo | Valor |
 |-------|-------|
 | Temática | Economía, finanzas personales, historia económica |
+| Idioma | Inglés / Español |
 | Tono | Analítico pero accesible, datos reales, ejemplos concretos |
 | Audiencia | 25-45 años, profesionales, estudiantes universitarios |
-| Formato preferido | 30-60s Shorts · infografías tipográficas · datos y cifras |
-| Idioma | Inglés / Español |
+| Formato | 30-60s Shorts · infografías tipográficas · datos y cifras |
 | Modo narrativo | `journalist`, `philosopher`, `viral_hook` |
 | Paleta tipográfica | `finance` |
 
@@ -36,10 +37,10 @@ read_only: true
 | Campo | Valor |
 |-------|-------|
 | Temática | Filosofía oriental, estoicismo, reflexiones sobre la existencia |
+| Idioma | Inglés |
 | Tono | Meditativo, profundo, pausado — estilo ASMR o spoken word |
 | Audiencia | 20-40 años, búsqueda de sentido, meditación, mindfulness |
-| Formato preferido | 60s · fondo oscuro tipográfico · voz suave |
-| Idioma | Inglés |
+| Formato | 60s · fondo oscuro tipográfico · voz suave |
 | Modo narrativo | `philosopher`, `asmr_history` |
 | Paleta tipográfica | `xianxia` |
 
@@ -48,10 +49,10 @@ read_only: true
 | Campo | Valor |
 |-------|-------|
 | Temática | Historias épicas del fútbol — partidos legendarios, jugadores, momentos |
+| Idioma | Inglés / Español |
 | Tono | Energético, dramático, fan culture |
 | Audiencia | 16-35 años, fans de fútbol global |
-| Formato preferido | 30s · frases impactantes · estadísticas visuales |
-| Idioma | Inglés / Español |
+| Formato | 30s · frases impactantes · estadísticas visuales |
 | Modo narrativo | `viral_hook`, `journalist` |
 | Paleta tipográfica | `viral_hook` |
 
@@ -60,14 +61,14 @@ read_only: true
 | Campo | Valor |
 |-------|-------|
 | Temática | Antropología, evolución humana, prehistoria, arqueología |
+| Idioma | Inglés |
 | Tono | Divulgativo, asombro científico, accesible |
 | Audiencia | 20-45 años, curiosos, fans de National Geographic |
-| Formato preferido | 45-60s · narración documental · preguntas que invitan a reflexionar |
-| Idioma | Inglés |
+| Formato | 45-60s · narración documental · preguntas que invitan a reflexionar |
 | Modo narrativo | `historian`, `philosopher` |
 | Paleta tipográfica | `historical_documentary` |
 
-## Resumen de routing
+## Resumen de routing para el pipeline
 
 | Canal | Pipeline modo | Paleta | Prioridad |
 |-------|--------------|--------|-----------|

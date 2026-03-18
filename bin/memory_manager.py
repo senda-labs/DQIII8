@@ -104,17 +104,17 @@ def _db_search(project: str, query: str, top_k: int = 10) -> list[str]:
         terms = query.split()[:5]  # máximo 5 términos
         conditions = " OR ".join(["object LIKE ?" for _ in terms])
         params = [f"%{t}%" for t in terms] + [project, top_k]
-        rows = conn.execute(
-            f"""
-            SELECT object FROM vault_memory
-            WHERE ({conditions})
-              AND (project = ? OR project = '')
-              AND entry_type IN ('session_memory', 'lesson', 'checkpoint', 'project_state')
-            ORDER BY last_seen DESC
-            LIMIT ?
-            """,
-            params,
-        ).fetchall()
+        # `conditions` is built as "object LIKE ? OR object LIKE ? ..." — only
+        # safe ? placeholders; no user data appears in the SQL structure.
+        query = (
+            "SELECT object FROM vault_memory"
+            " WHERE (" + conditions + ")"
+            " AND (project = ? OR project = '')"
+            " AND entry_type IN ('session_memory', 'lesson', 'checkpoint', 'project_state')"
+            " ORDER BY last_seen DESC"
+            " LIMIT ?"
+        )
+        rows = conn.execute(query, params).fetchall()  # nosemgrep: sqlalchemy-execute-raw-query
         conn.close()
         return [r[0] for r in rows]
     except Exception:

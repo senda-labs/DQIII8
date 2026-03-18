@@ -27,6 +27,15 @@ OLLAMA_FALLBACK="qwen/qwen3-235b-a22b:free"
 # Cargar variables de entorno
 [[ -f "$JARVIS_ROOT/.env" ]] && set -a && source "$JARVIS_ROOT/.env" && set +a
 
+# Flag A/B: propósito activo si existe .jarvis_proposito
+# Activar: touch /root/jarvis/.jarvis_proposito
+# Desactivar: rm /root/jarvis/.jarvis_proposito
+if [[ -f "$JARVIS_ROOT/.jarvis_proposito" ]]; then
+    export JARVIS_PROPOSITO=1
+else
+    export JARVIS_PROPOSITO=0
+fi
+
 check_deps() {
     python3 --version > /dev/null 2>&1 || { echo "❌ Python3 no encontrado"; exit 1; }
     ollama list > /dev/null 2>&1 || echo "⚠️  Ollama no responde — usando solo Tier 2/3"

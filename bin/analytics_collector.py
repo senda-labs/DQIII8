@@ -76,16 +76,18 @@ def collect_youtube(api_key: str, channel_ids: list) -> list:
             )
             for item in stats_r.json().get("items", []):
                 stats = item.get("statistics", {})
-                results.append({
-                    "platform": "youtube",
-                    "channel_id": channel_id,
-                    "video_id": item["id"],
-                    "video_title": item["snippet"]["title"],
-                    "published_at": item["snippet"]["publishedAt"],
-                    "views": int(stats.get("viewCount", 0)),
-                    "likes": int(stats.get("likeCount", 0)),
-                    "comments": int(stats.get("commentCount", 0)),
-                })
+                results.append(
+                    {
+                        "platform": "youtube",
+                        "channel_id": channel_id,
+                        "video_id": item["id"],
+                        "video_title": item["snippet"]["title"],
+                        "published_at": item["snippet"]["publishedAt"],
+                        "views": int(stats.get("viewCount", 0)),
+                        "likes": int(stats.get("likeCount", 0)),
+                        "comments": int(stats.get("commentCount", 0)),
+                    }
+                )
         except Exception as e:
             print(f"[ANALYTICS] YouTube error {channel_id}: {e}")
     return results
@@ -115,11 +117,23 @@ def save_metrics(metrics_list: list) -> int:
                 ),
             )
         else:
-            cols = ", ".join(m.keys())
-            vals = ", ".join(["?"] * len(m))
             conn.execute(
-                f"INSERT INTO video_metrics ({cols}) VALUES ({vals})",
-                list(m.values()),
+                "INSERT INTO video_metrics"
+                " (platform, channel_id, video_id, video_title, published_at,"
+                "  views, likes, comments, performance_score, collected_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    m.get("platform"),
+                    m.get("channel_id"),
+                    m.get("video_id"),
+                    m.get("video_title"),
+                    m.get("published_at"),
+                    m.get("views", 0),
+                    m.get("likes", 0),
+                    m.get("comments", 0),
+                    m.get("performance_score"),
+                    m.get("collected_at"),
+                ),
             )
         saved += 1
     conn.commit()

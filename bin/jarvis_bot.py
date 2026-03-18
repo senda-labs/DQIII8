@@ -888,5 +888,112 @@ def main() -> None:
     APP.run_polling(drop_pending_updates=True)
 
 
+# ── Morning Report ───────────────────────────────────────────────────────────────
+
+
+def send_morning_report() -> None:
+    """
+    Builds and sends a morning status Telegram message.
+    Called via: python3 bin/jarvis_bot.py --morning-report
+    """
+    import urllib.request
+    import urllib.parse
+    from datetime import datetime, timedelta
+
+    token = os.getenv("JARVIS_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        print("[morning_report] JARVIS_BOT_TOKEN or TELEGRAM_CHAT_ID not set — skipping")
+        return
+
+    today = datetime.now()
+    yesterday = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+    today_str = today.strftime("%Y-%m-%d")
+
+    score = 0.0
+    sessions_yesterday = 0
+    spc_alerts: list[str] = []
+    research_pending = 0
+    active_project = "N/A"
+    next_step = "N/A"
+    lessons_yesterday = 0
+
+    try:
+        conn = sqlite3.connect(str(DB), timeout=5)
+
+        row = conn.execute(
+            "SELECT overall_score FROM audit_reports ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            score = row[0]
+
+        sessions_yesterday = conn.execute(
+            "SELECT COUNT(*) FROM sessions WHERE start_time LIKE ?", (f"{yesterday}%",)
+        ).fetchone()[0]
+
+        spc_rows = conn.execute(
+            "SELECT trigger_id, reason FROM spc_metrics"
+            " WHERE triggered=1 AND checked_at >= datetime('now', '-24 hours')"
+            " ORDER BY checked_at DESC"
+        ).fetchall()
+        spc_alerts = [f"{r[0]}: {r[1][:60]}" for r in spc_rows]
+
+        research_pending = conn.execute(
+            "SELECT COUNT(*) FROM research_items WHERE status='PENDIENTE_TEST'"
+        ).fetchone()[0]
+
+        lessons_yesterday = (
+            conn.execute(
+                "SELECT SUM(lessons_added) FROM sessions WHERE start_time LIKE ?",
+                (f"{yesterday}%",),
+            ).fetchone()[0]
+            or 0
+        )
+
+        conn.close()
+    except Exception as e:
+        print(f"[morning_report] DB error: {e}")
+
+    # Find active project + next_step from projects/*.md
+    try:
+        import re
+
+        for proj_file in sorted(
+            (JARVIS / "projects").glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True
+        ):
+            text = proj_file.read_text(encoding="utf-8")
+            if "status: active" in text.lower() or "status:active" in text.lower():
+                active_project = proj_file.stem
+                m = re.search(r"(?:next[_\s]step|próximo)[:\s]+(.+)", text, re.IGNORECASE)
+                if m:
+                    next_step = m.group(1).strip()[:80]
+                break
+    except Exception:
+        pass
+
+    spc_line = "\n   • ".join(spc_alerts) if spc_alerts else "ninguno"
+    msg = (
+        f"☀️ JARVIS Morning Report — {today_str}\n"
+        f"Score: {score:.0f}/100 | Sesiones ayer: {sessions_yesterday}\n"
+        f"SPC alerts: {spc_line}\n"
+        f"Research queue: {research_pending} items pendientes\n"
+        f"Proyecto activo: {active_project}\n"
+        f"Próximo paso: {next_step}\n"
+        f"Lecciones nuevas ayer: {lessons_yesterday}"
+    )
+
+    try:
+        data = urllib.parse.urlencode({"chat_id": chat_id, "text": msg}).encode()
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        urllib.request.urlopen(url, data, timeout=10)
+        print(f"[morning_report] Sent OK — {today_str}")
+    except Exception as e:
+        print(f"[morning_report] Telegram send failed: {e}")
+
+
 if __name__ == "__main__":
-    main()
+    if "--morning-report" in sys.argv:
+        load_dotenv(JARVIS / ".env")
+        send_morning_report()
+    else:
+        main()

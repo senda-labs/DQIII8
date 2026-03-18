@@ -96,6 +96,10 @@ while [[ $# -gt 0 ]]; do
         --autonomous)
             export JARVIS_MODE=autonomous
             echo "  [JARVIS] Modo autónomo activado" >&2
+            # Launch watchdog in background
+            python3 "$JARVIS_ROOT/bin/autonomous_watchdog.py" &
+            echo $! > /tmp/jarvis_watchdog.pid
+            echo "  [JARVIS] Watchdog PID=$(cat /tmp/jarvis_watchdog.pid)" >&2
             shift
             ;;
         loop)

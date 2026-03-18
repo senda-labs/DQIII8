@@ -1,0 +1,13 @@
+# JARVIS — Estado Persistente Inter-sesión
+Última actualización: 2026-03-18 00:00
+Sesiones totales: 128
+Score actual: 100.0/100 (2026-03-17)
+
+## Recomendaciones pendientes
+- Sistema saludable. Ghost sessions eliminadas en origen (stop.py guard). /tmp limpio. ModemManager desactivado.
+
+## Últimas 5 integraciones
+(ninguna aún)
+
+## Patrones consolidados
+(ninguno aún — ejecutar lessons_consolidator.py para generar)

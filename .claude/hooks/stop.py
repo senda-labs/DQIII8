@@ -626,6 +626,80 @@ try:
 except Exception as _oe:
     print(f"[observe_events] sync skipped: {_oe}")
 
+# ── 7. Regenerar claude-progress.txt ───────────────────────────────
+try:
+    import json as _json
+    from datetime import datetime as _dt
+
+    _db_path = JARVIS / "database" / "jarvis_metrics.db"
+    _progress_file = JARVIS / "claude-progress.txt"
+
+    if _db_path.exists():
+        _conn = sqlite3.connect(str(_db_path), timeout=3)
+
+        _total_sessions = _conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+
+        _audit_row = _conn.execute(
+            "SELECT overall_score, timestamp, recommendations FROM audit_reports ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        _score = _audit_row[0] if _audit_row else 0.0
+        _audit_ts = (_audit_row[1] or "")[:10] if _audit_row else "N/A"
+        _recs_raw = _audit_row[2] if _audit_row else ""
+        try:
+            _recs = _json.loads(_recs_raw or "[]")
+        except Exception:
+            _recs = [_recs_raw[:200]] if _recs_raw else []
+
+        _integrations = _conn.execute(
+            "SELECT title FROM research_items WHERE status='INTEGRADO' ORDER BY id DESC LIMIT 5"
+        ).fetchall()
+
+        _conn.close()
+
+        _now_str = _dt.now().strftime("%Y-%m-%d %H:%M")
+
+        _lines = [
+            f"# JARVIS — Estado Persistente Inter-sesión\n",
+            f"Última actualización: {_now_str}\n",
+            f"Sesiones totales: {_total_sessions}\n",
+            f"Score actual: {_score:.1f}/100 ({_audit_ts})\n",
+            f"\n## Recomendaciones pendientes\n",
+        ]
+        if _recs:
+            for _r in _recs[:5]:
+                _lines.append(f"- {str(_r).strip()}\n")
+        else:
+            _lines.append("- (ninguna)\n")
+
+        _lines.append("\n## Últimas 5 integraciones\n")
+        if _integrations:
+            for (_t,) in _integrations:
+                _lines.append(f"- {_t[:80]}\n")
+        else:
+            _lines.append("(ninguna aún)\n")
+
+        _lines.append("\n## Patrones consolidados\n")
+        _lessons_file = JARVIS / "tasks" / "lessons.md"
+        if _lessons_file.exists():
+            import re as _re
+
+            _ltext = _lessons_file.read_text(encoding="utf-8")
+            _patterns = _re.findall(r"\[PATTERN:([A-Z0-9_\-]+)\]", _ltext)
+            if _patterns:
+                for _p in _patterns:
+                    _lines.append(f"- {_p}\n")
+            else:
+                _lines.append("(ninguno aún)\n")
+        else:
+            _lines.append("(ninguno aún)\n")
+
+        _progress_file.write_text("".join(_lines), encoding="utf-8")
+        print(
+            f"[stop] claude-progress.txt actualizado ({_total_sessions} sesiones, score={_score:.1f})"
+        )
+except Exception as _pe:
+    print(f"[stop] progress update skipped: {_pe}")
+
 sys.exit(0)
 
 # Backup automático de credenciales OAuth al final de cada sesión

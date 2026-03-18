@@ -180,12 +180,22 @@ if vault_facts:
 
 _mode_line = f"\n{_MODE_BEHAVIORS[_mode]}" if _mode in _MODE_BEHAVIORS else ""
 
+# ── Inter-session progress block ─────────────────────────────────
+_progress_block = ""
+try:
+    _progress_file = JARVIS / "claude-progress.txt"
+    if _progress_file.exists():
+        _raw = _progress_file.read_text(encoding="utf-8").strip()
+        _progress_block = "\n\nPROGRESO:\n" + _raw
+except Exception:
+    pass
+
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 JARVIS — {datetime.now().strftime('%Y-%m-%d %H:%M')}
 Modelo  : {model}
 Proyecto: {project}
 Próximo : {next_step}{audit_alert}
-Última auditoría: {audit_info}{_mode_line}{_vault_block}{_memories_block}{_iker_profile_block}{_channels_block}{_proposito_block}
+Última auditoría: {audit_info}{_mode_line}{_progress_block}{_vault_block}{_memories_block}{_iker_profile_block}{_channels_block}{_proposito_block}
 
 LECCIONES RECIENTES:
 {chr(10).join(lessons) if lessons else '  (ninguna aún)'}

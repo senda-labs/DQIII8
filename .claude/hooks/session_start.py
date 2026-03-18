@@ -100,6 +100,29 @@ try:
 except Exception:
     pass
 
+# ── Carga lazy de contexto ─────────────────────────────────────────
+CONTEXT_DIR = JARVIS / "context"
+
+# iker_profile.md: SIEMPRE (contexto universal ~1KB)
+_iker_profile_block = ""
+_profile_path = CONTEXT_DIR / "iker_profile.md"
+if _profile_path.exists():
+    _iker_profile_block = "\n\nPERFIL USUARIO:\n" + _profile_path.read_text(encoding="utf-8")
+
+# youtube_channels.md: SOLO si proyecto es content-automation
+_channels_block = ""
+if project in ("content-automation", "content-automation-faceless"):
+    _channels_path = CONTEXT_DIR / "youtube_channels.md"
+    if _channels_path.exists():
+        _channels_block = "\n\nCANALES YOUTUBE:\n" + _channels_path.read_text(encoding="utf-8")
+
+# proposito.md: SOLO si existe y JARVIS_PROPOSITO=1
+_proposito_block = ""
+if os.environ.get("JARVIS_PROPOSITO") == "1":
+    _proposito_path = CONTEXT_DIR / "proposito.md"
+    if _proposito_path.exists():
+        _proposito_block = "\n\nPROPOSITO:\n" + _proposito_path.read_text(encoding="utf-8")
+
 model = os.environ.get("JARVIS_MODEL", "qwen2.5-coder:7b (Ollama)")
 
 # ── Personality Mode ────────────────────────────────────────────────
@@ -128,7 +151,7 @@ JARVIS — {datetime.now().strftime('%Y-%m-%d %H:%M')}
 Modelo  : {model}
 Proyecto: {project}
 Próximo : {next_step}{audit_alert}
-Última auditoría: {audit_info}{_mode_line}{_vault_block}
+Última auditoría: {audit_info}{_mode_line}{_vault_block}{_iker_profile_block}{_channels_block}{_proposito_block}
 
 LECCIONES RECIENTES:
 {chr(10).join(lessons) if lessons else '  (ninguna aún)'}

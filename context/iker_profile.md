@@ -1,24 +1,30 @@
 ---
 title: Iker — Perfil del Usuario
 tags: [context, profile, user]
-last_updated: 2026-03-12
+last_updated: 2026-03-18
 read_only: true
 ---
 
 # Iker — Perfil
 
 ## Identidad
-Iker Martínez. MBA student en Hult International Business School.
-Emprendedor técnico. Builder de sistemas de automatización de contenido.
+Iker. Londres, Reino Unido.
+Emprendedor técnico. Builder de sistemas de automatización e IA.
+
+## Formación
+- **UC3M** — Finanzas, Contabilidad, Big Data, Derecho básico, Trading sistemático
+- **Hult International Business School** — MBA (Corporate Finance, Strategy)
 
 ## Infraestructura
-- **VPS:** Ubuntu 24.04 · IP 76.13.40.235
-- **Sistema JARVIS:** `/root/jarvis/` — orquestador Claude Code con hooks, agentes, routing
-- **Proyecto principal:** `/root/content-automation-faceless/` — pipeline de vídeo faceless
+- **VPS:** Ubuntu 24.04 · /root/jarvis/
+- **Sistema JARVIS:** orquestador Claude Code con hooks, agentes, routing
+- **Proyecto principal:** `/root/content-automation-faceless/` — pipeline vídeo faceless
 - **Repo GitHub:** github.com/ikermartiinsv-eng/jarvis
+- **Terminal móvil:** Telegram bot (jarvis_bot)
+- **Notas:** Obsidian vault sincronizado con VPS via git
 
 ## Stack técnico
-- **Lenguajes:** Python (principal), SQL, bash
+- **Lenguajes:** Python (intermedio), SQL, bash, TypeScript
 - **Frameworks:** FastAPI, MoviePy, FFmpeg, Telegram Bot PTB v20
 - **IA/Audio:** Claude API (Sonnet 4.6), Groq (Llama 3.3), ElevenLabs, Ollama local (qwen2.5-coder)
 - **DB:** SQLite (jarvis_metrics.db, asset_library.db)
@@ -33,6 +39,7 @@ Emprendedor técnico. Builder de sistemas de automatización de contenido.
 | [[hult-finance]] | 🟡 Activo | Corporate Finance MBA — análisis, WACC, DCF |
 | [[leyendas-del-este]] | 🔵 Pausado | Novela xianxia en español |
 | [[jarvis-core]] | 🟢 Activo | Infraestructura del sistema JARVIS |
+| [[trading-sistemático]] | 🟡 Activo | Backtesting, VaR, Kelly, estrategias cuantitativas |
 
 ## Canales YouTube
 Ver [[youtube_channels]] para detalle completo.
@@ -42,9 +49,14 @@ Ver [[youtube_channels]] para detalle completo.
 - **Football Chronicles** — fútbol
 - **Sapiens Origins** — antropología
 
-## Meta principal
-Automatizar la producción de contenido faceless para monetizar YouTube.
-Pipeline objetivo: tema → script (Groq) → TTS (ElevenLabs) → vídeo (PIL/MoviePy) → subtítulos → publicación automática.
+## Objetivo principal
+JARVIS como producto comercial: versión open-source + tier premium.
+Pipeline de contenido faceless totalmente autónomo.
+App/web propia para usuarios no técnicos (sin necesidad de VPS ni CLI).
+
+## Filosofía
+Dao — wu wei, dualidades, fluir con el sistema.
+Sistemas que funcionan solos. Mínimo esfuerzo, máximo resultado.
 
 ## Idioma de trabajo
 Español (Claude responde en español salvo que Iker use inglés)

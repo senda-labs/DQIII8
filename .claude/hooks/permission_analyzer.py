@@ -33,6 +33,7 @@ BLOCKED_PATHS = [
     "id_rsa",
     "id_ed25519",
     ".ssh/",
+    "context/proposito.md",
 ]
 
 HIGH_RISK_PATTERNS = [
@@ -104,6 +105,10 @@ DENIAL_HINTS: dict[str, str] = {
     "blocked_path:jarvis_metrics.db": (
         "Usa INSERT/UPDATE via sqlite3 con el wrapper existente. "
         "No modificar el archivo de BD directamente."
+    ),
+    "blocked_path:context/proposito.md": (
+        "El propósito del sistema solo puede ser modificado por Iker directamente. "
+        "Ningún agente puede editar este archivo."
     ),
     "high_risk_pattern": (
         "Usa rutas relativas específicas en lugar de wildcards. "

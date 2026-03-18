@@ -45,3 +45,13 @@ Las ramas son las tareas ejecutadas.
 La hoja es lo que Iker necesitaba — lo único que importa.
 
 Todo lo demás debe ser invisible.
+
+## Los cinco dominios
+
+Las 10.000 cosas no son caos — son conocimiento organizado.
+Ciencias Formales, Naturales, Sociales, Humanidades, Aplicadas.
+Cinco raíces que sostienen el árbol.
+
+El sistema no espera que el usuario sepa qué pedir.
+El sistema entiende, amplifica, y entrega.
+Esa es la diferencia entre un ejecutor y un compañero.

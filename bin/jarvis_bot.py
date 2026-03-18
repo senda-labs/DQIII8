@@ -14,8 +14,15 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 # ── Rutas ──────────────────────────────────────────────────────────────────────
 JARVIS = Path("/root/jarvis")
@@ -47,6 +54,11 @@ APP: Application = None  # type: ignore[assignment]
 # ── Estado de tareas activas ────────────────────────────────────────────────────
 # {task_id: {start_time, description, chat_id, proc, monitor: asyncio.Task}}
 ACTIVE_TASKS: dict[str, dict] = {}
+
+# ── Satisfacción pendiente de respuesta ─────────────────────────────────────────
+# {pending_key: {session_id, model_used, task_type, task_description, duration_ms,
+#                technical_success, tier_used}}
+PENDING_SATISFACTION: dict[str, dict] = {}
 
 ACTION_VERBS_RE = re.compile(
     r"\b(arregla|crea|refactoriza|implementa|añade|ejecuta|"
@@ -110,6 +122,73 @@ def _load_env_dict() -> dict:
     return env
 
 
+# ── Satisfacción de modelos ──────────────────────────────────────────────────────
+
+
+def _infer_task_type(description: str) -> str:
+    d = description.lower()
+    if any(k in d for k in ("video", "tts", "subtitle", "pipeline", "ffmpeg", "reels", "faceless")):
+        return "pipeline"
+    if any(
+        k in d
+        for k in ("chapter", "scene", "novel", "xianxia", "narrative", "creative", "escritura")
+    ):
+        return "escritura"
+    if any(k in d for k in ("review", "analiz", "research", "audit", "investiga", "explain")):
+        return "análisis"
+    if any(
+        k in d
+        for k in (
+            "python",
+            "refactor",
+            "debug",
+            "fix",
+            "test",
+            "commit",
+            "bug",
+            "script",
+            "código",
+            "codigo",
+        )
+    ):
+        return "código"
+    return "research"
+
+
+def _log_satisfaction(
+    session_id: str,
+    model_used: str,
+    task_type: str,
+    task_description: str,
+    duration_ms: int,
+    technical_success: int,
+    tier_used: str,
+    user_satisfaction: int | None = None,
+) -> None:
+    try:
+        conn = sqlite3.connect(str(DB), timeout=2)
+        conn.execute(
+            "INSERT INTO model_satisfaction "
+            "(session_id, model_used, task_type, task_description, "
+            "duration_ms, technical_success, user_satisfaction, tier_used) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                session_id,
+                model_used,
+                task_type,
+                task_description[:100],
+                duration_ms,
+                technical_success,
+                user_satisfaction,
+                tier_used,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        log.error("Error logging satisfaction: %s", exc)
+
+
 # ── Ejecución de tarea (subprocess asyncio) ─────────────────────────────────────
 async def _run_task(task_id: str, description: str, chat_id: str) -> None:
     """
@@ -161,7 +240,9 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
     except Exception as exc:
         output = f"Error lanzando claude: {exc}"
     finally:
-        ACTIVE_TASKS.pop(task_id, None)
+        task_info = ACTIVE_TASKS.pop(task_id, {})
+        task_start = task_info.get("start_time", time.time())
+        duration_ms = int((time.time() - task_start) * 1000)
 
     # Enviar resultado en chunks si es largo
     chunks = [output[i : i + 3800] for i in range(0, max(len(output), 1), 3800)]
@@ -173,6 +254,54 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
             parse_mode="Markdown",
         )
     log.info("Tarea completada: %s (%d chars)", task_id, len(output))
+
+    # Prompt de satisfacción con botones inline
+    technical_success = 0 if output.startswith("Error") or "Timeout" in output else 1
+    task_type = _infer_task_type(description)
+    pending_key = f"sat_{task_id}"
+    PENDING_SATISFACTION[pending_key] = {
+        "session_id": task_id,
+        "model_used": "claude-sonnet-4-6",
+        "task_type": task_type,
+        "task_description": description[:100],
+        "duration_ms": duration_ms,
+        "technical_success": technical_success,
+        "tier_used": "tier3",
+    }
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("👍", callback_data=f"sat:1:{pending_key}"),
+                InlineKeyboardButton("👎", callback_data=f"sat:0:{pending_key}"),
+            ]
+        ]
+    )
+    await APP.bot.send_message(
+        chat_id=chat_id,
+        text=f"_{description[:60]}_ — ¿fue útil?",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+
+
+async def handle_satisfaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Registra la respuesta 👍/👎 y actualiza model_satisfaction."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data or ""
+    parts = data.split(":", 2)
+    if len(parts) != 3 or parts[0] != "sat":
+        return
+    rating = int(parts[1])
+    key = parts[2]
+    record = PENDING_SATISFACTION.pop(key, None)
+    if not record:
+        await query.edit_message_text("(ya registrado)")
+        return
+    _log_satisfaction(**record, user_satisfaction=rating)
+    emoji = "👍" if rating else "👎"
+    await query.edit_message_text(f"{emoji} Registrado.")
+    log.info("Satisfaction: %s | %s | rating=%d", key, record.get("task_type"), rating)
 
 
 async def _spawn_task(update: Update, description: str) -> str:
@@ -658,6 +787,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("images", cmd_images))
     APP.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    APP.add_handler(CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:"))
 
     log.info("Bot en polling. Ctrl+C para detener.")
     APP.run_polling(drop_pending_updates=True)

@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "timestamp": "2026-03-18T01:12:36.103140",
+    "session_id": "unknown",
+    "tool_name": "Edit",
+    "action_detail": "/root/jarvis/database/schema.sql",
+    "decision": "DENY",
+    "reason": "Escritura bloqueada en '/root/jarvis/database/schema.sql'. Modifica este archivo manualmente si es necesario. | Alternativa: Añade la migración SQL en un archivo nuevo: database/migrations/YYYYMMDD_descripcion.sql",
+    "risk_level": "CRITICAL",
+    "rule_triggered": "blocked_path:schema.sql",
+    "suggested_fix": "Editar directamente desde terminal o pedir al usuario."
+  }
+]

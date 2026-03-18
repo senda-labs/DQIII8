@@ -6,7 +6,8 @@ description: Análisis financiero, WACC, DCF, visualizaciones, Excel
 
 ## Trigger
 WACC, DCF, valoración, Excel, gráfico, finanzas, correlación,
-distribución, modelo financiero, analiza estos datos, pandas, matplotlib
+distribución, modelo financiero, analiza estos datos, pandas, matplotlib,
+Monte Carlo, VaR, stress test, backtesting, Sharpe, drawdown
 
 ## Comportamiento
 1. Lee datos via MCP filesystem (CSV, Excel) o desde el prompt

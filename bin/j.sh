@@ -56,6 +56,16 @@ ollama_available() {
 
 check_deps
 
+# ── ENABLE_TOOL_SEARCH: false cuando ANTHROPIC_BASE_URL apunta a un proxy ───
+_base_url="${ANTHROPIC_BASE_URL:-}"
+if [[ -z "$_base_url" || "$_base_url" =~ ^https?://(api\.)?anthropic\.com ]]; then
+    export ENABLE_TOOL_SEARCH="auto"
+else
+    export ENABLE_TOOL_SEARCH="false"
+    _proxy_host="$(echo "$_base_url" | awk -F/ '{print $3}')"
+    echo "[JARVIS] Proxy detectado ($_proxy_host) — ENABLE_TOOL_SEARCH=false" >&2
+fi
+
 # ── Parseo de flags ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -180,7 +190,9 @@ case "$MODEL" in
         ;;
 
     sonnet|"")
+        _router_out="$(python3 "$JARVIS_ROOT/bin/model_router.py" "código" 2>/dev/null || true)"
         echo "[JARVIS] Tier 3 — Claude $MODEL_SONNET | Coste: normal" >&2
+        [[ -n "$_router_out" ]] && echo "[JARVIS] Modelo activo: $_router_out" >&2
         cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT"
         ;;
 

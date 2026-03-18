@@ -69,3 +69,6 @@ tasks/*.html
 # Archivos de decisiones generados automáticamente
 decisions/adr-compliance.json
 tasks/permission_rejection.json
+
+# Node (Claude Code)
+node_modules/

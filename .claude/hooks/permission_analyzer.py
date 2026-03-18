@@ -40,7 +40,7 @@ HIGH_RISK_PATTERNS = [
     r"rm\s+-rf\s+~",
     r"rm\s+-rf\s+\$HOME",
     r"DROP\s+TABLE",
-    r"DELETE\s+FROM\s+agent_actions",
+    r"DELETE\s+FROM\s+agent_actions\b(?!\s+WHERE)",  # solo sin WHERE (mass-delete)
     r"DROP\s+DATABASE",
     r">\s+/dev/sda",
     r"\bmkfs\b",
@@ -64,6 +64,7 @@ ALLOWED_DELETIONS = [
 
 # Directorios de proyecto siempre seguros para escritura
 SAFE_PROJECT_DIRS = [
+    "/root/jarvis/",
     "/root/math-image-generator",
     "/root/content-automation-faceless/output",
     "/tmp/",
@@ -132,10 +133,17 @@ class PermissionAnalyzer:
         _session = session_id or SESSION_ID
         detail = str(inp.get("file_path", inp.get("command", "")))
 
-        # 0a. Directorios de proyecto seguros — fast-path sin restricciones
-        if tool in ("Write", "Edit", "MultiEdit", "Bash"):
-            if any(safe in detail for safe in SAFE_PROJECT_DIRS):
-                return self._approve("Directorio de proyecto seguro", "LOW", "safe_project_dir")
+        # 0a. Directorios de proyecto seguros — fast-path (respeta BLOCKED_PATHS)
+        if tool in ("Write", "Edit", "MultiEdit"):
+            file_path = inp.get("file_path", inp.get("path", ""))
+            if any(safe in file_path for safe in SAFE_PROJECT_DIRS):
+                if not any(blocked in file_path for blocked in BLOCKED_PATHS):
+                    return self._approve("Directorio de proyecto seguro", "LOW", "safe_project_dir")
+        elif tool == "Bash":
+            # Para Bash: solo fast-path en directorios de output/tmp (no en rutas de proyecto)
+            bash_safe = ["/root/content-automation-faceless/output", "/tmp/"]
+            if any(safe in detail for safe in bash_safe):
+                return self._approve("Directorio de output seguro", "LOW", "safe_project_dir")
 
         # 0b. learned_approvals — fast-path para patrones históricamente seguros
         if self._is_learned_safe(tool, detail):

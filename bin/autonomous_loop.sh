@@ -54,14 +54,23 @@ trap cleanup EXIT
 
 cd "$JARVIS_ROOT_PATH"
 
+# Asegurar directorio de resultados
+mkdir -p "$JARVIS_ROOT_PATH/tasks/results"
+
 # Calcular timeout en segundos
 MAX_SECONDS=$(( MAX_HOURS * 3600 ))
 
+# Limpiar stop flag de sesiones anteriores (watchdog lo deja entre runs)
+rm -f /tmp/jarvis_autonomous_stop.flag
+
 # Lanzar claude con tiempo límite
+# < /dev/null: en tmux detached, stdin es un PTY que no envía EOF;
+#   claude -p podría bloquearse leyendo stdin. /dev/null da EOF inmediato.
 timeout "$MAX_SECONDS" claude \
     --add-dir /root/jarvis \
     --add-dir /root/content-automation-faceless \
     -p "$OBJECTIVE" \
+    < /dev/null \
     || EXIT_CODE=$?
 
 # timeout devuelve 124 si alcanza el límite

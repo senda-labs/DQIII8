@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — PermissionRequest (Modo Sueño)
-Handles tool permission decisions for autonomous mode.
+JARVIS Hook — PermissionRequest v2 (supervisor 3-layer autónomo)
 
-If JARVIS_MODE=autonomous:
-  - SAFE_AUTO_APPROVE tools → {"decision": "allow"} immediately
-  - Other tools → send Telegram notification + poll for response (5 min timeout)
-  - Timeout → {"decision": "deny", "reason": "timeout 5min"}
+Layer 1 — READ_PREFIXES fast-path:
+    - Read-only tools (Read, Glob, Grep, LS, WebFetch, WebSearch, TodoRead)
+    - Bash commands que empiezan con prefijos seguros (ls, git log, cat, etc.)
+    → auto-aprueba instantáneamente sin LLM
 
-If not autonomous → {"decision": "allow"} (no interference)
+Layer 2 — LLM supervisor (openrouter tier2, timeout 3s → PERMITE):
+    - Lee tasks/current_objective.txt para contexto
+    - Responde {decision: PERMITE|REDIRIGE|ESCALA, reason}
+    - PERMITE → allow | REDIRIGE → deny con sugerencia | ESCALA → Layer 3
+
+Layer 3 — Telegram escalation (10-min timeout → deny):
+    - Activado por: CRITICAL_PATTERNS en el input
+    - O cuando LLM supervisor dice ESCALA
+    - Timeout → deny automático
+
+Si JARVIS_MODE != "autonomous" → {"decision": "allow"} siempre (sin interferencia)
 
 Input via stdin: {"tool_name": X, "tool_input": {...}, "session_id": Y, "request_id": Z}
 Output via stdout: {"decision": "allow"|"deny", "reason": "..."}
@@ -17,6 +26,7 @@ Output via stdout: {"decision": "allow"|"deny", "reason": "..."}
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -24,23 +34,76 @@ from pathlib import Path
 JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB = JARVIS_ROOT / "database" / "jarvis_metrics.db"
 
-SAFE_AUTO_APPROVE = {
-    "Read",
-    "Glob",
-    "Grep",
-    "LS",
-    "Write",
-    "Edit",
-    "MultiEdit",
-    "Bash",
-    "WebFetch",
-    "WebSearch",
-    "TodoRead",
-    "TodoWrite",
-}
+# ── Layer 1: READ_PREFIXES ───────────────────────────────────────────────────
+# Comandos Bash que empiezan con estos prefijos → auto-aprueba sin LLM
+
+READ_PREFIXES = (
+    "ls",
+    "find",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "wc",
+    "du",
+    "df",
+    "echo",
+    "pwd",
+    "which",
+    "whoami",
+    "date",
+    "env",
+    "printenv",
+    "git log",
+    "git status",
+    "git diff",
+    "git show",
+    "git branch",
+    "python3 bin/",
+    "python3 -c",
+    "python3 -m json",
+    "sqlite3",
+    "ollama list",
+    "ollama ps",
+    "tmux ls",
+    "semgrep scan",
+    "black --check",
+    "pip show",
+    "curl -s http",
+    "curl --get",
+    "crontab -l",
+    "systemctl status",
+    "ps aux",
+    "top -bn1",
+    "cat /root/jarvis/",
+    "cat /root/content-automation",
+)
+
+# Herramientas de solo lectura → siempre Layer 1
+READ_ONLY_TOOLS = {"Read", "Glob", "Grep", "LS", "WebFetch", "WebSearch", "TodoRead"}
+
+# ── Layer 3: CRITICAL_PATTERNS ───────────────────────────────────────────────
+# Estos patrones siempre escalan a humano (Telegram, 10-min timeout → deny)
+
+CRITICAL_PATTERNS = [
+    ".env",
+    "rm -rf",
+    "git push --force",
+    "git push -f",
+    "--force-with-lease",
+    "DROP TABLE",
+    "DROP DATABASE",
+    "DELETE FROM agent_actions",
+    "> /dev/sda",
+    "mkfs",
+    "dd if=",
+    "chmod 777 /",
+    ":(){:|:&};:",
+]
 
 POLL_INTERVAL_S = 5
-MAX_WAIT_S = 300  # 5 minutes
+MAX_WAIT_LAYER3_S = 600  # 10 minutos para críticos
+MAX_WAIT_TELEGRAM_S = 300  # 5 min si no hay config Telegram (no bloquea mucho)
 
 
 def _allow(reason: str = "") -> None:
@@ -51,22 +114,92 @@ def _deny(reason: str) -> None:
     print(json.dumps({"decision": "deny", "reason": reason}))
 
 
-def _send_telegram(message: str) -> bool:
-    """Send Telegram message via jarvis_bot pattern (subprocess to avoid import overhead)."""
-    import subprocess
+def _is_read_prefix(command: str) -> bool:
+    """Layer 1: True si el comando Bash empieza con un prefijo seguro de lectura."""
+    cmd = command.strip()
+    return any(cmd.startswith(prefix) for prefix in READ_PREFIXES)
 
+
+def _has_critical_pattern(tool_input: dict) -> str | None:
+    """Layer 3: Devuelve el patrón crítico encontrado, o None."""
+    searchable = json.dumps(tool_input, ensure_ascii=False).lower()
+    for pattern in CRITICAL_PATTERNS:
+        if pattern.lower() in searchable:
+            return pattern
+    return None
+
+
+def _read_current_objective() -> str:
+    """Lee tasks/current_objective.txt para contexto del supervisor LLM."""
+    obj_file = JARVIS_ROOT / "tasks" / "current_objective.txt"
+    if obj_file.exists():
+        return obj_file.read_text(encoding="utf-8").strip()[:300]
+    return "No objective set — general autonomous session"
+
+
+def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> dict:
+    """
+    Layer 2: Llama al supervisor LLM via openrouter_wrapper (tier2, timeout 3s).
+    Devuelve: {"decision": "PERMITE"|"REDIRIGE"|"ESCALA", "reason": str}
+    Timeout → PERMITE por defecto (no bloquear autonomía si el LLM falla).
+    """
+    inp_summary = json.dumps(tool_input, ensure_ascii=False)[:300]
+    prompt = (
+        f"JARVIS autonomous supervisor. Evaluate if this tool use aligns with the objective.\n"
+        f"Objective: {objective}\n"
+        f"Tool: {tool_name}\n"
+        f"Input: {inp_summary}\n\n"
+        f"Respond ONLY with valid JSON on one line:\n"
+        f'{{"decision": "PERMITE", "reason": "brief explanation"}}\n'
+        f"PERMITE = action aligns with objective, allow it\n"
+        f"REDIRIGE = action doesn't align with objective, deny with suggestion\n"
+        f"ESCALA = action is risky or ambiguous, needs human approval"
+    )
+
+    wrapper = JARVIS_ROOT / "bin" / "openrouter_wrapper.py"
+    if not wrapper.exists():
+        return {"decision": "PERMITE", "reason": "wrapper-not-found"}
+
+    try:
+        result = subprocess.run(
+            ["python3", str(wrapper), "--agent", "auditor", prompt],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            out = result.stdout.strip()
+            # Extraer JSON del output
+            start = out.find("{")
+            end = out.rfind("}") + 1
+            if start != -1 and end > start:
+                parsed = json.loads(out[start:end])
+                if "decision" in parsed and parsed["decision"] in (
+                    "PERMITE",
+                    "REDIRIGE",
+                    "ESCALA",
+                ):
+                    return parsed
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        pass
+
+    # Timeout o error → PERMITE (no bloquear autonomía por fallo del LLM)
+    return {"decision": "PERMITE", "reason": "llm-timeout-3s"}
+
+
+def _send_telegram(message: str) -> bool:
+    """Layer 3: Envía mensaje Telegram. Devuelve True si ok."""
     token = os.environ.get("JARVIS_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
         return False
-
     try:
         result = subprocess.run(
             [
                 "python3",
                 "-c",
                 f"""
-import urllib.request, urllib.parse, json
+import urllib.request, urllib.parse
 url = "https://api.telegram.org/bot{token}/sendMessage"
 data = urllib.parse.urlencode({{"chat_id": "{chat_id}", "text": {repr(message)}}}).encode()
 urllib.request.urlopen(url, data, timeout=10)
@@ -78,6 +211,20 @@ urllib.request.urlopen(url, data, timeout=10)
         return result.returncode == 0
     except Exception:
         return False
+
+
+def _poll_for_response(perm_file: Path, start: float, max_wait: float) -> dict | None:
+    """Espera respuesta de Telegram en perm_file. Devuelve dict o None si timeout."""
+    while time.time() - start < max_wait:
+        if perm_file.exists():
+            try:
+                response = json.loads(perm_file.read_text(encoding="utf-8"))
+                perm_file.unlink(missing_ok=True)
+                return response
+            except Exception:
+                pass
+        time.sleep(POLL_INTERVAL_S)
+    return None
 
 
 def _log_decision(
@@ -103,6 +250,53 @@ def _log_decision(
         pass
 
 
+def _layer3_telegram_flow(
+    session_id: str,
+    tool_name: str,
+    tool_input: dict,
+    start: float,
+    label: str,
+    trigger_reason: str,
+) -> None:
+    """Flujo común de escalación Layer 3: Telegram + polling 10min + deny en timeout."""
+    perm_id = os.urandom(4).hex()
+    perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
+    inp_summary = json.dumps(tool_input, ensure_ascii=False)[:200]
+
+    msg = (
+        f"⚠️ JARVIS ESCALA — {label}\n"
+        f"Motivo: {trigger_reason[:200]}\n"
+        f"Tool: {tool_name}\n"
+        f"Input: {inp_summary}\n"
+        f"Session: {session_id[:8]}\n\n"
+        f"/aprobar_{perm_id} — permitir\n"
+        f"/denegar_{perm_id} — denegar\n"
+        f"(timeout: 10 min → deny automático)"
+    )
+
+    sent = _send_telegram(msg)
+    if not sent:
+        elapsed = time.time() - start
+        _log_decision(session_id, tool_name, "deny", f"layer3-telegram-unavailable:{trigger_reason}", elapsed)
+        _deny(f"Escalación requerida ({label}) — Telegram no disponible → deny automático")
+        return
+
+    response = _poll_for_response(perm_file, start, MAX_WAIT_LAYER3_S)
+    elapsed = time.time() - start
+
+    if response is not None:
+        decision = response.get("decision", "deny")
+        reason = response.get("reason", "user-response")
+        _log_decision(session_id, tool_name, decision, f"layer3-human:{reason}", elapsed)
+        if decision == "allow":
+            _allow(reason)
+        else:
+            _deny(reason)
+    else:
+        _log_decision(session_id, tool_name, "deny", f"layer3-timeout-10min:{trigger_reason}", elapsed)
+        _deny(f"Escalación {label} — timeout 10min → deny automático")
+
+
 def main() -> None:
     try:
         data = json.load(sys.stdin)
@@ -112,68 +306,72 @@ def main() -> None:
 
     tool_name = data.get("tool_name", "")
     session_id = data.get("session_id", "unknown")
-    request_id = data.get("request_id", "")
     tool_input = data.get("tool_input", {})
 
     jarvis_mode = os.environ.get("JARVIS_MODE", "").lower()
 
-    # Not autonomous → always allow
+    # No autónomo → permitir siempre
     if jarvis_mode != "autonomous":
         _allow()
         return
 
-    # Safe tools → auto-approve
-    if tool_name in SAFE_AUTO_APPROVE:
-        _log_decision(session_id, tool_name, "allow", "safe-auto-approve", 0.0)
-        _allow("safe-auto-approve")
-        return
-
-    # Unsafe tool → request Telegram approval
-    perm_id = os.urandom(4).hex()  # 8 hex chars
-    perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
-
-    # Build context summary for the message
-    inp_summary = json.dumps(tool_input, ensure_ascii=False)[:200]
-    msg = (
-        f"JARVIS necesita permiso\n"
-        f"Tool: {tool_name}\n"
-        f"Input: {inp_summary}\n"
-        f"Session: {session_id[:8]}\n\n"
-        f"/aprobar_{perm_id} — allow\n"
-        f"/denegar_{perm_id} — deny"
-    )
-
-    sent = _send_telegram(msg)
-    if not sent:
-        # No Telegram → auto-deny unsafe ops in autonomous mode without oversight
-        _log_decision(session_id, tool_name, "deny", "telegram-unavailable", 0.0)
-        _deny("telegram unavailable — cannot request approval for unsafe tool")
-        return
-
-    # Poll for response
     start = time.time()
-    while time.time() - start < MAX_WAIT_S:
-        if perm_file.exists():
-            try:
-                response = json.loads(perm_file.read_text(encoding="utf-8"))
-                perm_file.unlink(missing_ok=True)
-                decision = response.get("decision", "deny")
-                reason = response.get("reason", "user-response")
-                elapsed = time.time() - start
-                _log_decision(session_id, tool_name, decision, reason, elapsed)
-                if decision == "allow":
-                    _allow(reason)
-                else:
-                    _deny(reason)
-                return
-            except Exception:
-                pass
-        time.sleep(POLL_INTERVAL_S)
 
-    # Timeout
+    # ── Layer 3: CRITICAL_PATTERNS — siempre escalar a humano ─────────────────
+    critical = _has_critical_pattern(tool_input)
+    if critical:
+        _layer3_telegram_flow(
+            session_id,
+            tool_name,
+            tool_input,
+            start,
+            label="patrón crítico",
+            trigger_reason=f"CRITICAL_PATTERN:{critical}",
+        )
+        return
+
+    # ── Layer 1: Herramientas de solo lectura → fast-path ─────────────────────
+    if tool_name in READ_ONLY_TOOLS:
+        _log_decision(session_id, tool_name, "allow", "layer1-read-only-tool", 0.0)
+        _allow("layer1-read-only-tool")
+        return
+
+    # ── Layer 1: Bash con READ_PREFIXES → fast-path ───────────────────────────
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if _is_read_prefix(command):
+            _log_decision(session_id, tool_name, "allow", "layer1-read-prefix", 0.0)
+            _allow("layer1-read-prefix")
+            return
+
+    # ── Layer 2: LLM supervisor para todo lo demás ────────────────────────────
+    objective = _read_current_objective()
+    llm_result = _call_llm_supervisor(tool_name, tool_input, objective)
+    llm_decision = llm_result.get("decision", "PERMITE")
+    llm_reason = llm_result.get("reason", "")
     elapsed = time.time() - start
-    _log_decision(session_id, tool_name, "deny", "timeout 5min", elapsed)
-    _deny("timeout 5min — no response received")
+
+    if llm_decision == "ESCALA":
+        # LLM pide escalación → Layer 3
+        _layer3_telegram_flow(
+            session_id,
+            tool_name,
+            tool_input,
+            start,
+            label="LLM supervisor ESCALA",
+            trigger_reason=llm_reason,
+        )
+        return
+
+    if llm_decision == "REDIRIGE":
+        # Acción no alineada con objetivo → deny con sugerencia
+        _log_decision(session_id, tool_name, "deny", f"layer2-redirige:{llm_reason}", elapsed)
+        _deny(f"Supervisor: acción no alineada con objetivo — {llm_reason}")
+        return
+
+    # PERMITE (o desconocido) → allow
+    _log_decision(session_id, tool_name, "allow", f"layer2-permite:{llm_reason}", elapsed)
+    _allow("layer2-permite")
 
 
 if __name__ == "__main__":

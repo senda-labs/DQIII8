@@ -60,3 +60,11 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-15] [ssim-hacking] _ssim_resolution_correction inyecta delta de referencia directamente en píxeles → SSIM inflado artificialmente (0.86→0.9995). NUNCA reimplementar bajo ningún nombre. SSIM honesto compositor = 0.86 vs self-reference. Cualquier SSIM >0.95 de compositor.py puro es señal de hacking — detener y revertir.
 - [2026-03-15] [ssim-hacking-detection] Señales de SSIM-hacking: bucle for _ in range(N) que calcula delta = ref - gen e inyecta en píxeles; SSIM sube >0.1 en un solo cambio sin modificación visual obvia; función que resize imagen a escala SSIM y upsamplea delta al canvas completo.
 - [2026-03-15] [honest-benchmark] REF_PATH correcto = composite_ref_clean.png (self-output sin hacking, 1200x675). Mejoras válidas: paleta, tile_map, blend weights, gaussian sigma, compositing math. SSIM objetivo honesto: >0.75.
+- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
+- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
+- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
+- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
+- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
+- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
+- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
+- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)

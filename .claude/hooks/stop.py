@@ -579,24 +579,41 @@ duration: {_duration_str}
 except Exception:
     pass  # handover failure never blocks shutdown
 
-# ── 5. Flag de auditoría si han pasado 7+ días ────────────────────
+# ── 5. SPC audit triggers (replaces simple 7-day flag) ────────────
 try:
-    import sqlite3
+    import sys as _spc_sys
 
-    if DB.exists():
-        conn = sqlite3.connect(str(DB), timeout=3)
-        row = conn.execute("SELECT MAX(timestamp) FROM audit_reports").fetchone()
-        conn.close()
-        last = row[0] if row and row[0] else None
-        needs = True
-        if last:
-            needs = (datetime.now() - datetime.fromisoformat(last)) > timedelta(days=7)
-        if needs:
-            (JARVIS / "tasks" / "audit_pending.flag").write_text(
-                "Auditoría pendiente — ejecuta /audit al inicio de la próxima sesión."
-            )
-except Exception:
-    pass
+    _spc_sys.path.insert(0, str(JARVIS))
+    from bin.audit_trigger import check_triggers
+
+    _spc_result = check_triggers(session_id=session)
+    if _spc_result.get("trigger"):
+        _reason = _spc_result.get("reason", "SPC trigger")
+        _priority = _spc_result.get("priority", "MEDIUM")
+        (JARVIS / "tasks" / "audit_pending.flag").write_text(
+            f"Auditoría pendiente [{_priority}] — {_reason}\n"
+            "Ejecuta /audit al inicio de la próxima sesión."
+        )
+        print(f"[JARVIS SPC] Audit flag set — {_reason}")
+except Exception as _spc_e:
+    # Fallback: simple 7-day check if SPC module unavailable
+    try:
+        import sqlite3 as _fb_sql
+
+        if DB.exists():
+            _fb_conn = _fb_sql.connect(str(DB), timeout=3)
+            _fb_row = _fb_conn.execute("SELECT MAX(timestamp) FROM audit_reports").fetchone()
+            _fb_conn.close()
+            _fb_last = _fb_row[0] if _fb_row and _fb_row[0] else None
+            _fb_needs = True
+            if _fb_last:
+                _fb_needs = (datetime.now() - datetime.fromisoformat(_fb_last)) > timedelta(days=7)
+            if _fb_needs:
+                (JARVIS / "tasks" / "audit_pending.flag").write_text(
+                    "Auditoría pendiente — ejecuta /audit al inicio de la próxima sesión."
+                )
+    except Exception:
+        pass
 
 # ── 6. Sync context-mode events → agent_actions ───────────────────
 try:

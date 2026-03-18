@@ -170,7 +170,24 @@ def search_memories(project: str, query: str, top_k: int = 10) -> list[str]:
         except (TimeoutError, Exception):
             pass  # fallback silencioso
 
-    return _db_search(project, query, top_k)
+    results = _db_search(project, query, top_k)
+    if results:
+        try:
+            _conn = sqlite3.connect(str(DB_PATH), timeout=3)
+            _now = datetime.now().isoformat()
+            _terms = query.split()[:5]
+            _conditions = " OR ".join(["object LIKE ?" for _ in _terms])
+            _params = [f"%{t}%" for t in _terms] + [project]
+            _conn.execute(
+                "UPDATE vault_memory SET last_accessed=?, access_count=COALESCE(access_count,0)+1"
+                " WHERE (" + _conditions + ") AND (project = ? OR project = '')",
+                [_now] + _params,
+            )
+            _conn.commit()
+            _conn.close()
+        except Exception:
+            pass
+    return results
 
 
 # ── CLI ───────────────────────────────────────────────────────────

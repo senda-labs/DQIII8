@@ -3,7 +3,7 @@ title: content-automation-faceless
 tags: [project, active]
 status: active
 last_updated: 2026-03-12
-agents: [content-automator, python-specialist, code-reviewer]
+agents: [content-automator, python-specialist, code-reviewer, shannon]
 model: api
 ---
 # content-automation-faceless — Estado del Proyecto
@@ -118,6 +118,11 @@ Claude API (video pipeline, TTS, publicacion multi-plataforma)
 - [ ] Imagenes cinematograficas: frames de peliculas o Midjourney API
 - [ ] Evaluar ElevenLabs Image/Video API
 - [ ] Evaluar Midjourney API
+
+### Pre-publicacion (OBLIGATORIO antes de cada release)
+- [ ] Ejecutar `/shannon` sobre `/root/content-automation-faceless/` antes de cada release
+- [ ] Verificar Score seguridad >= 8/10 y Criticos = 0 antes de publicar
+- [ ] Si CRITICO > 0 → BLOQUEAR publicacion hasta resolver
 
 ### Fase B — Distribucion
 - [ ] Telegram Bot interfaz completa

@@ -8,27 +8,37 @@ Uso:
     python3 bin/ollama_wrapper.py --model llama3 "explica qué es un closure"
     python3 bin/ollama_wrapper.py "lista de sorting algorithms"
 """
+
 import argparse
 import json
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
+from urllib.parse import urlparse
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_URL = "http://localhost:11434/api/generate"  # nosemgrep
 DEFAULT_MODEL = "qwen2.5-coder:7b"
+
+# Ollama runs locally — HTTP to localhost is intentional (no TLS support)
+_ALLOWED_HOSTS = frozenset({"localhost", "127.0.0.1"})
+
+
+def _validate_url(url: str) -> None:
+    host = urlparse(url).hostname or ""
+    if not any(host == h or host.endswith(f".{h}") for h in _ALLOWED_HOSTS):
+        raise ValueError(f"URL no permitida: {url}")
 
 
 def stream_response(model: str, prompt: str) -> int:
-    payload = json.dumps({"model": model, "prompt": prompt, "stream": True}).encode(
-        "utf-8"
-    )
-    req = urllib.request.Request(
+    _validate_url(OLLAMA_URL)
+    payload = json.dumps({"model": model, "prompt": prompt, "stream": True}).encode("utf-8")
+    req = urllib.request.Request(  # nosemgrep
         OLLAMA_URL,
         data=payload,
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:  # nosemgrep
             for raw_line in resp:
                 line = raw_line.decode("utf-8").strip()
                 if not line:

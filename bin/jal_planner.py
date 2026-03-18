@@ -14,9 +14,27 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 JARVIS = Path("/root/jarvis")
-DB     = JARVIS / "database" / "jarvis_metrics.db"
+DB = JARVIS / "database" / "jarvis_metrics.db"
+
+_ALLOWED_HOSTS = frozenset(
+    {
+        "api.openai.com",
+        "openrouter.ai",
+        "api.groq.com",
+        "api.elevenlabs.io",
+        "localhost",
+        "127.0.0.1",
+    }
+)
+
+
+def _validate_url(url: str) -> None:
+    host = urlparse(url).hostname or ""
+    if not any(host == h or host.endswith(f".{h}") for h in _ALLOWED_HOSTS):
+        raise ValueError(f"URL no permitida: {url}")
 
 
 def load_env():
@@ -72,20 +90,24 @@ def _call_openrouter(prompt: str, model: str = "qwen/qwen3-coder:free") -> str:
         "HTTP-Referer": "https://jarvis.local",
         "X-Title": "JARVIS",
     }
-    fallback_chain = [model, "stepfun/step-3.5-flash:free",
-                      "meta-llama/llama-3.3-70b-instruct:free"]
+    fallback_chain = [
+        model,
+        "stepfun/step-3.5-flash:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+    ]
     for m in fallback_chain:
-        payload = json.dumps({
-            "model": m,
-            "messages": [{"role": "user", "content": prompt}],
-        }).encode("utf-8")
-        req = urllib.request.Request(
-            "https://openrouter.ai/api/v1/chat/completions",
-            data=payload,
-            headers=headers,
-        )
+        payload = json.dumps(
+            {
+                "model": m,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+        ).encode("utf-8")
+        _url = "https://openrouter.ai/api/v1/chat/completions"
+        _validate_url(_url)
+        req = urllib.request.Request(_url, data=payload, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            _resp = urllib.request.urlopen(req, timeout=120)  # nosemgrep
+            with _resp as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             return data["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as exc:
@@ -142,23 +164,31 @@ CRITICO: criticality=3 solo si el fallo bloquea el objetivo completo."""
 
 def save_plan(obj_id: str, title: str, steps: list, attempt: int):
     conn = sqlite3.connect(DB)
-    conn.execute("""
+    conn.execute(
+        """
         INSERT OR IGNORE INTO jal_objectives
         (objective_id, title, status, started_at)
         VALUES (?, ?, 'active', datetime('now'))
-    """, (obj_id, title))
-    conn.execute("""
+    """,
+        (obj_id, title),
+    )
+    conn.execute(
+        """
         UPDATE jal_objectives SET status='active', current_attempt=?
         WHERE objective_id=?
-    """, (attempt, obj_id))
+    """,
+        (attempt, obj_id),
+    )
     for s in steps:
-        conn.execute("""
+        conn.execute(
+            """
             INSERT OR REPLACE INTO jal_steps
             (objective_id, attempt, step_number, description,
              weight, criticality, status)
             VALUES (?, ?, ?, ?, ?, ?, 'pending')
-        """, (obj_id, attempt, s["step_number"],
-              s["description"], s["weight"], s["criticality"]))
+        """,
+            (obj_id, attempt, s["step_number"], s["description"], s["weight"], s["criticality"]),
+        )
     conn.commit()
     conn.close()
 
@@ -166,22 +196,25 @@ def save_plan(obj_id: str, title: str, steps: list, attempt: int):
 def main():
     load_env()
     active_dir = JARVIS / "objectives" / "active"
-    obj_files  = sorted(active_dir.glob("*.md"))
+    obj_files = sorted(active_dir.glob("*.md"))
 
     if not obj_files:
         print("[PLANNER] No hay objetivos en objectives/active/")
         sys.exit(0)
 
-    obj_path    = obj_files[0]
+    obj_path = obj_files[0]
     obj_content = obj_path.read_text(encoding="utf-8")
-    obj_id      = obj_path.stem
+    obj_id = obj_path.stem
 
     # Determinar intento actual
     conn = sqlite3.connect(DB)
-    row  = conn.execute("""
+    row = conn.execute(
+        """
         SELECT current_attempt FROM jal_objectives
         WHERE objective_id=?
-    """, (obj_id,)).fetchone()
+    """,
+        (obj_id,),
+    ).fetchone()
     conn.close()
     attempt = (row[0] + 1) if row else 1
 
@@ -194,8 +227,10 @@ def main():
     print(f"[PLANNER] Plan creado: {len(steps)} pasos")
     for s in steps:
         crit_label = ["", "normal", "importante", "CRITICO"][s["criticality"]]
-        print(f"  {s['step_number']}. [{crit_label}] w={s['weight']:.2f} "
-              f"-- {s['description'][:70]}")
+        print(
+            f"  {s['step_number']}. [{crit_label}] w={s['weight']:.2f} "
+            f"-- {s['description'][:70]}"
+        )
 
     # Escribir plan en el objetivo
     plan_md = f"\n\n## Plan -- Intento {attempt}\n"

@@ -4,17 +4,16 @@ Sesiones totales: 132
 Score actual: 86/100 (2026-03-18) | Anterior: 75.8 → 86.0 (+10.2 post-Bloque 4)
 
 ## Recomendaciones pendientes
-- GAP 1: pre_tool_use.py demasiado agresivo — bloquea 19 Bash commands en context-mode
 - GAP 2: openrouter_wrapper retry/fallback para research-analyst (60% success → target 90%)
 - GAP 3: lessons_added fallback HEAD~1 overcounting ghost sessions (prioridad baja)
 - Bloque 6: install.sh + README open source GitHub (plan en tasks/results/bloque6-plan-20260318.md)
 
 ## Últimas 5 integraciones
-1. 2026-03-18 — Purga 12 registros corruptos BD (IDs 142-154, named-agents 0%→100%)
-2. 2026-03-18 — stop.py: lessons_added HEAD~1 fallback con temporal guard
-3. 2026-03-18 — gemini_review.py: score=None sentinel (no más 0.5 contaminando audit_reports)
-4. 2026-03-18 — content-automation: unificar DURATION_CONFIG → _duration_config.py
-5. 2026-03-18 — semgrep: 3 SQL injection findings → 0 (performance_tracker + asset_library)
+1. 2026-03-18 — Supervisor 3-layer: READ_PREFIXES + LLM (3s) + Telegram (10min) en permission_request.py
+2. 2026-03-18 — GAP 1 fix: DELETE\s+FROM\s+agent_actions(?!\s+WHERE) — 19 Bash failures eliminados
+3. 2026-03-18 — autonomous_loop.sh: modo sueño sin --dangerously-skip-permissions
+4. 2026-03-18 — jarvis.service desactivado (crash-loop /home/clawd/ eliminado)
+5. 2026-03-18 — /root/jarvis/ en SAFE_PROJECT_DIRS + dead code OAuth fix en pre_tool_use.py
 
 ## Patrones consolidados
 - Blocks pre_tool_use: sqlite3 DELETE, python3 -c inline → workaround: script file /tmp/

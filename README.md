@@ -1,13 +1,38 @@
-# JARVIS — AI Orchestration System
+# DQIII8
 
-> Multi-agent orchestration system built on Claude Code.
-> Routes tasks between local models and Claude API based on cost and complexity.
-> Self-improving via SQLite metrics + auditor agent.
+**The AI system that gets better every time you use it.**
+
+You give an order in natural language. DQIII8 understands it, amplifies it with specialized knowledge from domain-expert agents, and executes it — without you needing to know how to write prompts.
+
+## Features
+
+- **Free local models via Ollama** — Run AI coding, debugging, and git operations without spending a cent. Tier 1 handles 80%+ of daily tasks.
+- **Optional paid models** — Escalate to cloud APIs (Groq free tier, OpenRouter, Claude) only when local models can't solve it. You control the cost.
+- **Domain-expert agents** — Python specialist, git specialist, code reviewer, content automator, finance analyst, creative writer, and more. Each agent carries its own knowledge base.
+- **Learns from every session** — Mistakes are logged, patterns are extracted, and the system improves. Lessons persist across sessions and inform future decisions.
+- **Built-in security** — Pre-commit hooks validate every action. Secrets are never written to code. Destructive operations require confirmation.
+- **Autonomous 24/7** — Deploy on a VPS and let it work while you sleep. Telegram bot for notifications and remote control.
+
+## Quickstart
+
+```bash
+# 1. Clone and install
+git clone https://github.com/YOUR_USER/dqiii8.git && cd dqiii8
+chmod +x install.sh && ./install.sh
+
+# 2. (Optional) Add API keys for cloud models
+nano .env
+
+# 3. Launch
+source .venv/bin/activate && claude
+```
+
+That's it. Start giving orders in plain language.
 
 ## Architecture
 
 ```
-j command
+user command
     │
     ▼
 bin/openrouter_wrapper.py classify  ──→  tier=1|2|3
@@ -26,96 +51,84 @@ bin/openrouter_wrapper.py classify  ──→  tier=1|2|3
     │                    │
     └────────┬───────────┘
              │
-        jarvis_metrics.db  ←  hooks (pre/post/stop)
+        metrics.db  ←  hooks (pre/post/stop)
              │
         /audit (7-day cycle)
 ```
 
-## Quick Start
+DQIII8 uses a 3-tier model routing system:
 
-**Prerequisites:** Python 3.11+, Node.js 18+, Claude Code
+| Tier | Provider | Cost | Used for |
+|------|----------|------|----------|
+| 1 | Ollama (local) | Free | Python, refactoring, debugging, git ops |
+| 2 | Groq / OpenRouter | Free | Code review, analysis, research, media |
+| 3 | Claude API | Paid | Finance, creative, architecture, multi-agent |
 
-```bash
-git clone https://github.com/ikermartiinsv-eng/jarvis
-cd jarvis
-cp .env.example .env   # fill your API keys
-bash bin/j.sh          # launch
-```
-
-## Model Routing
-
-| Task type | Tier | Provider | Model | Cost |
-|-----------|------|----------|-------|------|
-| Python, debug, refactor, git | 1 | Ollama (local) | qwen2.5-coder:7b | $0 |
-| Code review, research, analysis | 2 | Groq | llama-3.3-70b-versatile | $0 |
-| Video, TTS, subtitles | 2 | OpenRouter | nemotron:free | $0 |
-| Finance, docs | 2 | OpenRouter | qwen3:free | $0 |
-| Architecture, security, auth | 3 | Claude API | claude-sonnet-4-6 | Subscription |
-| Financial analysis, WACC, DCF | 3 | Claude API | claude-sonnet-4-6 | Subscription |
-| Creative writing, novel | 3 | Claude API | claude-sonnet-4-6 | Subscription |
-| /mobilize, multi-agent | 3 | Claude API | claude-sonnet-4-6 | Subscription |
-
-**Rule:** use the lowest tier that solves the task. Escalate only when lower tier fails.
-
-```bash
-python3 bin/openrouter_wrapper.py classify "refactor this function"
-# → tier=1 provider=ollama model=qwen2.5-coder:7b
-```
+The system always tries the cheapest tier first and only escalates when needed.
 
 ## Agents
 
 | Agent | Trigger | Isolation |
 |-------|---------|-----------|
-| orchestrator | /mobilize, 3+ domains | worktree |
+| orchestrator | 3+ domains, multi-agent | worktree |
 | python-specialist | traceback, .py, refactor, debug | — |
 | git-specialist | commit, branch, PR, merge | — |
 | code-reviewer | review, after feature | worktree |
-| content-automator | video, TTS, ElevenLabs, pipeline | — |
+| content-automator | video, TTS, pipeline | — |
 | data-analyst | WACC, DCF, chart, Excel | — |
-| creative-writer | chapter, scene, novel, xianxia | — |
+| creative-writer | chapter, scene, novel | — |
 | auditor | /audit, metrics report | — |
 
-## Stack
+## Self-Improvement Loop
 
-Python · FastAPI · SQLite · Claude Code · OpenRouter · Groq · Ollama
+1. Every session — hooks log actions to the metrics database
+2. Corrections — appended to `tasks/lessons.md` as instincts
+3. Every 7 days — `/audit` generates a health report and score
+4. Instincts — extracted and used to improve future sessions
 
 ## Project Structure
 
 ```
-jarvis/
-├── CLAUDE.md                    # System constitution (rules, routing, workflow)
-├── bin/
-│   ├── j.sh                     # Main entry point (flag-based CLI)
-│   ├── openrouter_wrapper.py    # Tier-2 routing + classify command
-│   ├── ollama_wrapper.py        # Tier-1 local model wrapper
-│   └── gemini_review.py         # Background code review via Gemini
-├── .claude/
-│   ├── agents/                  # Agent definitions (8 specialized agents)
-│   ├── hooks/                   # Lifecycle hooks: pre_tool_use, post_tool_use, stop
-│   ├── rules/                   # Rule files loaded per context
-│   └── commands/                # Slash command definitions (/audit, /mobilize...)
+dqiii8/
+├── bin/                  # Core scripts — model routing, agents, automation
+│   ├── j.sh              # Main entry point (flag-based CLI)
+│   ├── openrouter_wrapper.py
+│   ├── ollama_wrapper.py
+│   └── ...
+├── config/
+│   └── .env.example      # Environment template
 ├── database/
-│   ├── jarvis_metrics.db        # SQLite: sessions, actions, instincts, audits
-│   ├── schema.sql               # DB schema
-│   └── audit_reports/           # /audit output logs
-├── projects/                    # Per-project state + next step
-├── tasks/
-│   ├── todo.md                  # Active tasks (orchestrator only)
-│   ├── lessons.md               # Self-improvement log
-│   └── results/                 # Agent output files
-├── skills-registry/
-│   ├── INDEX.md                 # Approved skills catalog
-│   └── custom/                  # SKILL.md files for reusable patterns
-└── sessions/                    # Session handover notes (auto-generated)
+│   ├── schema.sql        # DB schema
+│   └── audit_reports/    # Health reports
+├── .claude/
+│   ├── agents/           # Agent definitions + knowledge bases
+│   ├── hooks/            # Lifecycle hooks (pre/post/stop)
+│   └── rules/            # Context-loaded rule files
+├── tasks/                # Active tasks, lessons, results
+└── skills-registry/      # Reusable skill patterns
 ```
 
-## Self-Improvement Loop
+## Requirements
 
-1. Every session → hooks log actions to `jarvis_metrics.db`
-2. Corrections → appended to `tasks/lessons.md` as instincts
-3. Every 7 days → `/audit` generates health report + score
-4. Instincts → extracted to `instincts` table → used in future sessions
+- Ubuntu 22.04 or 24.04 (other Linux distros may work)
+- Python 3.10+
+- 8GB RAM minimum (for local Ollama models)
+- ~5GB disk for qwen2.5-coder:7b model
 
-## Environment Variables
+## Configuration
 
-See `.env.example` for the full list of required variables.
+Copy the environment template and fill in the keys you need:
+
+```bash
+cp config/.env.example .env
+```
+
+All API keys are optional. With zero configuration, Tier 1 (local Ollama) works out of the box for coding tasks.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT

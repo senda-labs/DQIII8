@@ -19,6 +19,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 # ── Configuración de providers ──────────────────────────────────────────────
 
@@ -52,6 +53,16 @@ PROVIDERS = {
         "headers_extra": {},
     },
 }
+
+# Allowlist derived from PROVIDERS — only these hosts are ever called
+_ALLOWED_HOSTS = frozenset(urlparse(cfg["base_url"]).hostname for cfg in PROVIDERS.values())
+
+
+def _validate_url(url: str) -> None:
+    host = urlparse(url).hostname or ""
+    if not any(host == h or host.endswith(f".{h}") for h in _ALLOWED_HOSTS):
+        raise ValueError(f"URL no permitida: {url}")
+
 
 # ── Tabla de routing por agente ─────────────────────────────────────────────
 
@@ -195,6 +206,7 @@ def build_request(provider_name: str, model: str, prompt: str):
     cfg = PROVIDERS[provider_name]
     base = cfg["base_url"].rstrip("/")
     url = f"{base}/chat/completions"
+    _validate_url(url)
 
     headers = {"Content-Type": "application/json"}
     api_key_env = cfg["api_key_env"]
@@ -225,7 +237,7 @@ def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, i
     full_text = ""
 
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # nosemgrep
             for raw_line in resp:
                 line = raw_line.decode("utf-8").strip()
                 if not line or line == "data: [DONE]":

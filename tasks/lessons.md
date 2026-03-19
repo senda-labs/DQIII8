@@ -24,6 +24,11 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 
 ## jarvis-core
 - [2026-03-19] [ErrorPipeline] error_log no capturaba fallos de agent_actions → fix: write-through en post_tool_use.py + reconcile_errors.py en stop.py. 35 huérfanos reconciliados.
+- [2026-03-19] [TokenEstimation] len(text)//4 tiene error 20-40% → capturar usage.prompt_tokens/completion_tokens del stream; fallback a estimación si API no devuelve usage.
+- [2026-03-19] [FallbackEscalation] Escalados de fallback chain silenciosos → ahora se registran en error_log con keyword ESCALATION para trazabilidad.
+- [2026-03-19] [mem0Removal] mem0ai instalado pero 0 usos activos → desinstalado; vault_memory SQLite es el sistema de memoria activo.
+- [2026-03-19] [AutonomousStop] No había kill-switch para sesiones autónomas → stop flag en tasks/.stop_flag + /stop en Telegram bot.
+- [2026-03-19] [AuditorFormula] Pesos v1.0 premiaban pipeline roto silenciosamente → v1.1: unresolved_errors=30%, PROVISIONAL si datos<30d, meta-check de pipeline integrity.
 - [2026-03-10] [hooks] BLOCKED_BASH hace match contra el string completo incluyendo commit message → usar mensajes de commit sin patrones peligrosos
 - [2026-03-10] [ollama-routing] Claude Code no soporta ollama como modelo nativo → routing real via openrouter_wrapper.py
 - [2026-03-14] [github-auth] Git push requiere PAT no contraseña → usar token en remote URL

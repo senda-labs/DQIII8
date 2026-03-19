@@ -25,6 +25,7 @@ fi
 JARVIS_ROOT_PATH="/root/jarvis"
 OBJECTIVE_FILE="$JARVIS_ROOT_PATH/tasks/current_objective.txt"
 WATCHDOG_PID_FILE="/tmp/jarvis_watchdog.pid"
+STOP_FLAG="$JARVIS_ROOT_PATH/tasks/.stop_flag"
 
 echo "🌙 DQIII8 Autonomous Mode — Supervisor: ACTIVO"
 echo "   Objetivo : $OBJECTIVE"
@@ -59,6 +60,13 @@ mkdir -p "$JARVIS_ROOT_PATH/tasks/results"
 
 # Calcular timeout en segundos
 MAX_SECONDS=$(( MAX_HOURS * 3600 ))
+
+# Verificar stop flag antes de iniciar
+if [ -f "$STOP_FLAG" ]; then
+    echo "Stop flag detectado — abortando antes de iniciar."
+    rm -f "$STOP_FLAG"
+    exit 0
+fi
 
 # Limpiar stop flag de sesiones anteriores (watchdog lo deja entre runs)
 rm -f /tmp/jarvis_autonomous_stop.flag

@@ -12,7 +12,7 @@ Score: 86.0/100 | Sesiones: 150 | Fecha: 2026-03-18
 - Bloque 1: Claude Code 2026 features, routing real ✅
 - Bloque 2: Director v3, knowledge/ por agente, Agent Teams ✅
 - Bloque 3: mem0, Shannon 10/10, contexts, security ✅
-- Bloque 4: Auditor SPC, auto-researcher, sandbox, modo sueño ✅
+- Bloque 4: Auditor SPC, auto-researcher, sandbox ✅
 - Bloque 5: Supervisor 3-layer, autonomous_loop.sh, bypassPermissions ✅
 
 ## Bloque 6 — En curso
@@ -30,6 +30,7 @@ Función: clasifican y amplían el prompt del usuario antes de
 pasarlo al agente funcional. El usuario no necesita saber hacer prompts.
 
 ## Bloques pendientes
+- **Bloque 4.6** — Modo sueño: ejecución programada de tareas de mantenimiento (auto-researcher, consolidación, cleanup)
 - Bloque 7: UI/web (Codeman Respawn + CloudCLI plugins + push notifications)
 - Bloque 8: Benchmark real 3 tiers
 - Bloque 9: Graphiti temporal memory (reemplaza mem0 SQLite)
@@ -42,7 +43,7 @@ Tier 2: Groq llama-3.3-70b + OpenRouter (cloud free, $0)
 Tier 3: Claude API (paid, solo cuando necesario)
 Supervisor: 3-layer (whitelist → LLM → Telegram)
 Seguridad: Shannon semgrep score 10/10
-Memoria: mem0 + vault_memory SQLite + decay
+Memoria: vault_memory SQLite + decay
 Auto-mejora: SPC triggers + auto-researcher + sandbox tester
 Obsidian: vault sincronizado via git en tiempo real
 

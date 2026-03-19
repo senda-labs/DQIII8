@@ -127,19 +127,19 @@ set `adr_violations = 0` and note "ADR check not available" in the report.
 
 ### 2. Compute overall score
 
-**Methodology version: v1.0** (2026-03-16)
-Always include `methodology_version: v1.0` in the report header so scores are comparable across audits.
+**Methodology version: v1.1** (2026-03-19)
+Always include `methodology_version: v1.1` in the report header so scores are comparable across audits.
 
 Score 0-100 based on:
-- Global success rate (weight 35%)
-- Unresolved errors ratio (weight 25%)
+- Global success rate (weight 30%)
+- Unresolved errors ratio (weight 30%)  ← increased from 25% to penalize pipeline failures
 - Hook blocks / total actions (weight 20%)
 - Sessions with lessons_added > 0 (weight 10%)
 - ADR compliance: `10 - (adr_violations * 3)`, min 0 (weight 10%)
 
 > ADR penalty: each violation costs 3 points from the ADR component (max loss = 10 pts).
 
-**Exact formulas (v1.0):**
+**Exact formulas (v1.1):**
 ```
 component_1 = success_rate_pct                          # e.g. 99.71
 component_2 = (1 - unresolved_errors/max(total_errors,1)) * 100  # 0 unresolved → 100
@@ -147,9 +147,21 @@ component_3 = (1 - hook_blocks/max(total_actions,1)) * 100
 component_4 = (sessions_with_lessons / max(total_sessions,1)) * 100
 component_5 = max(0, 10 - adr_violations * 3) * 10     # scaled to 0-100
 
-score = (component_1*0.35 + component_2*0.25 + component_3*0.20
+score = (component_1*0.30 + component_2*0.30 + component_3*0.20
          + component_4*0.10 + component_5*0.10)
 ```
+
+> **PROVISIONAL warning:** If data_range_days < 30, prepend the score with "PROVISIONAL —"
+> and note "SPC baselines require 30+ days; current: N days".
+> Run: `SELECT julianday('now') - julianday(MIN(start_time)) FROM sessions` to get data_range_days.
+
+> **Pipeline integrity meta-check (run before computing component_2):**
+> ```sql
+> SELECT COUNT(*) FROM agent_actions WHERE success=0
+>   AND id NOT IN (SELECT action_id FROM error_log WHERE action_id IS NOT NULL);
+> ```
+> If result > 0: set component_2 = 0 and add warning "ERROR_LOG_PIPELINE_BROKEN: N orphaned failures not captured".
+> Do NOT award full score silently when error_log is empty despite agent_actions failures.
 
 > Note: component_2 uses `error_log` table only. If `error_log` is empty despite failures
 > in `agent_actions`, note "error_log pipeline broken" — do NOT award full score silently.

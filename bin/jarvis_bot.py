@@ -851,6 +851,21 @@ async def _handle_denegar(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text(f"[JARVIS] Permiso {perm_id} DENEGADO.")
 
 
+async def cmd_stop_autonomous(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Escribe stop flag para detener la próxima sesión autónoma."""
+    if not authorized(update):
+        await update.message.reply_text("No autorizado.")
+        return
+    stop_flag = JARVIS / "tasks" / ".stop_flag"
+    stop_flag.write_text(f"stop requested at {time.time()}", encoding="utf-8")
+    await update.message.reply_text(
+        "Stop flag escrito en `tasks/.stop_flag`.\n"
+        "La sesión autónoma se detendrá antes del próximo inicio.",
+        parse_mode="Markdown",
+    )
+    log.info("/stop: stop flag written to %s", stop_flag)
+
+
 # ── Main ────────────────────────────────────────────────────────────────────────
 def main() -> None:
     global APP
@@ -876,6 +891,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("images", cmd_images))
     APP.add_handler(CommandHandler("research_status", cmd_research_status))
     APP.add_handler(CommandHandler("sandbox_run", cmd_sandbox_run))
+    APP.add_handler(CommandHandler("stop", cmd_stop_autonomous))
     APP.add_handler(MessageHandler(filters.Regex(r"^/integrar"), _handle_integrar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/rechazar"), _handle_rechazar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/aprobar"), _handle_aprobar))

@@ -94,3 +94,5 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
 - [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
 - [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
+- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
+- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)

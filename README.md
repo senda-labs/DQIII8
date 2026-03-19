@@ -42,6 +42,21 @@ dq "hello, who are you?"
 **Requirements:** Ubuntu 22.04+, 4GB RAM minimum (8GB recommended), Python 3.11+.
 No GPU needed. Works fully offline with Tier C.
 
+### Windows
+
+DQIII8 runs on Windows via WSL2 (Windows Subsystem for Linux):
+
+```powershell
+# Step 1: Install WSL2 (PowerShell as Administrator, one time only)
+wsl --install -d Ubuntu-24.04
+# Restart your computer, then open Ubuntu from Start menu
+
+# Step 2: Install DQIII8 inside Ubuntu
+curl -fsSL https://raw.githubusercontent.com/senda-labs/DQIII8/main/install.sh | bash
+```
+
+No native Windows support needed — WSL2 gives you full Linux performance.
+
 ---
 
 ## Why DQIII8?

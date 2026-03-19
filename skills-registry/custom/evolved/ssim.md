@@ -2,7 +2,7 @@
 
 **Generada:** 2026-03-16
 **Fuente:** /evolve — 4 instincts agrupados
-**Proyectos:** jarvis-core
+**Proyectos:** dqiii8-core
 **Confianza media:** 0.50
 **Total aplicado:** 123x
 **Status:** APROBADA

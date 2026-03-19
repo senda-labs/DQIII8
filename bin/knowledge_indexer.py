@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Knowledge Indexer
+DQIII8 — Knowledge Indexer
 
 Chunks agent knowledge documents (.md), generates embeddings via Ollama
 nomic-embed-text, and saves to .claude/agents/{agent}/knowledge/index.json.

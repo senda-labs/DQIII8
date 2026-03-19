@@ -1,6 +1,6 @@
-# JARVIS — Python Standards
+# DQIII8 — Python Standards
 
-> Extiende python/coding-style.md con convenciones específicas de JARVIS.
+> Extiende python/coding-style.md con convenciones específicas de DQIII8.
 
 - **Formatter**: Black (corre automáticamente vía PostToolUse hook — no ejecutar manualmente).
 - **Paths**: siempre `pathlib.Path()`. Nunca concatenación de strings para rutas. Usar `.as_posix()` para compat Windows.

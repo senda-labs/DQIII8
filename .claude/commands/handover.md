@@ -8,7 +8,7 @@ Usuario escribe `/handover` al final de una sesión de trabajo.
 Ejecuta el script de handover con una sola llamada:
 
 ```bash
-python3 /root/jarvis/bin/handover.py
+python3 /root/dqiii8/bin/handover.py
 ```
 
 El script hace todo sin herramientas adicionales de Claude:
@@ -22,10 +22,10 @@ El script hace todo sin herramientas adicionales de Claude:
 ## Invocación no-interactiva
 
 ```bash
-python3 /root/jarvis/bin/handover.py
+python3 /root/dqiii8/bin/handover.py
 ```
 
 ## Notas
 - Si git push falla (red/auth), el archivo .md queda guardado localmente — no bloquea
 - Nunca incluir información sensible (API keys, passwords) en el handover
-- Variable `JARVIS_PROJECT` controla el proyecto activo (default: `jarvis-core`)
+- Variable `DQIII8_PROJECT` controla el proyecto activo (default: `dqiii8-core`)

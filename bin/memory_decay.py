@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Memory Decay
+DQIII8 — Memory Decay
 Applies weekly decay (0.95/week) to vault_memory entries.
 Archives entries with decay_score < 0.1 to vault_memory_archive.
 Access bumps decay by +0.2 (capped at 1.0).
@@ -26,7 +26,7 @@ ACCESS_BOOST = 0.2
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="JARVIS memory decay")
+    parser = argparse.ArgumentParser(description="DQIII8 memory decay")
     parser.add_argument("--dry-run", action="store_true", help="Show stats without modifying")
     args = parser.parse_args()
 

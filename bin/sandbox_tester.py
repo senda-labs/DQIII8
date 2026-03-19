@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Sandbox Tester
+DQIII8 — Sandbox Tester
 Reads PENDIENTE_TEST items from research_items, generates minimal test code,
 runs semgrep for Shannon score, and auto-approves if criteria met.
 
@@ -124,7 +124,7 @@ def process_content(text, output_format="markdown"):
         raise ValueError("empty content")
     return text.strip()
 
-result = process_content("Test content for JARVIS pipeline")
+result = process_content("Test content for DQIII8 pipeline")
 assert len(result) > 0
 print(f"Content probe OK: {{len(result)}} chars")
 '''
@@ -209,7 +209,7 @@ def process_item(item_id: int, title: str, summary: str, dry_run: bool) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="JARVIS sandbox tester")
+    parser = argparse.ArgumentParser(description="DQIII8 sandbox tester")
     parser.add_argument(
         "--process-queue", action="store_true", help="Process all PENDIENTE_TEST items"
     )

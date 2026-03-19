@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Autonomous Watchdog
+DQIII8 — Autonomous Watchdog
 Monitors autonomous-mode sessions for inactivity, time, and token limits.
 
 Checks every 10 minutes:
@@ -51,7 +51,7 @@ def _send_telegram(message: str, dry_run: bool = False) -> bool:
 
 
 def _stop(reason: str, dry_run: bool) -> None:
-    msg = f"⏰ JARVIS modo sueño — {reason}"
+    msg = f"⏰ DQIII8 modo sueño — {reason}"
     _send_telegram(msg, dry_run=dry_run)
     if not dry_run:
         STOP_FLAG.write_text(reason, encoding="utf-8")
@@ -113,7 +113,7 @@ def main() -> None:
         print("[watchdog] TEST MODE — no real Telegram messages or stop flags")
         # Simulate: pretend there's no activity in last 2h
         _send_telegram(
-            "⏰ JARVIS modo sueño sin actividad 2h — terminando sesión automáticamente",
+            "⏰ DQIII8 modo sueño sin actividad 2h — terminando sesión automáticamente",
             dry_run=True,
         )
         print("[watchdog] Test complete.")

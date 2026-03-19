@@ -32,7 +32,7 @@ Top issue: [description] → [file]:[line]
 
 ## Security Skills
 
-Load `skills-registry/custom/vibesec-reviewed.md` for security analysis. Priority order for JARVIS stack:
+Load `skills-registry/custom/vibesec-reviewed.md` for security analysis. Priority order for DQIII8 stack:
 
 1. **CRITICAL (always flag)**
    - SQL injection: f-string or %-format SQL → `conn.execute(f"... {var} ...")` is always CRITICAL

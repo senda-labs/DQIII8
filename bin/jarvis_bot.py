@@ -1,5 +1,5 @@
 """
-JARVIS Telegram Bot — terminal móvil completo.
+DQIII8 Telegram Bot — terminal móvil completo.
 Requiere: python-telegram-bot>=20, JARVIS_BOT_TOKEN en .env
 """
 
@@ -100,7 +100,7 @@ def run_cmd(cmd: list[str], timeout: int = 120) -> str:
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=JARVIS,
+            cwd=DQIII8,
             encoding="utf-8",
         )
         return (result.stdout + result.stderr).strip() or "(sin salida)"
@@ -424,7 +424,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     chat_id = update.effective_chat.id
     text = (
-        f"*JARVIS Bot — terminal móvil*\n\n"
+        f"*DQIII8 Bot — terminal móvil*\n\n"
         f"Chat ID: `{chat_id}`\n\n"
         "*Tareas Claude Code:*\n"
         "/task [desc] — lanza claude -p en background\n"
@@ -740,7 +740,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text("Procesando...")
     log.info("Mensaje rápido: %s", user_msg[:80])
     prompt = (
-        "Eres JARVIS, el sistema de orquestacion de Iker. "
+        "Eres DQIII8, el sistema de orquestacion de Iker. "
         f"Responde de forma concisa y tecnica:\n\n{user_msg}"
     )
     result = subprocess.run(
@@ -783,7 +783,7 @@ async def cmd_research_status(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def cmd_sandbox_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Ejecuta sandbox_tester.py --process-queue en background."""
-    await update.message.reply_text("[JARVIS] Lanzando sandbox tester...")
+    await update.message.reply_text("[DQIII8] Lanzando sandbox tester...")
     result = subprocess.run(
         [sys.executable, str(JARVIS / "bin" / "sandbox_tester.py"), "--process-queue"],
         capture_output=True,
@@ -807,7 +807,7 @@ async def _handle_integrar(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     conn.execute("UPDATE research_items SET status='INTEGRADO' WHERE id=?", (item_id,))
     conn.commit()
     conn.close()
-    await update.message.reply_text(f"[JARVIS] Item {item_id} marcado como INTEGRADO.")
+    await update.message.reply_text(f"[DQIII8] Item {item_id} marcado como INTEGRADO.")
 
 
 async def _handle_rechazar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -822,7 +822,7 @@ async def _handle_rechazar(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     conn.execute("UPDATE research_items SET status='RECHAZADO_MANUAL' WHERE id=?", (item_id,))
     conn.commit()
     conn.close()
-    await update.message.reply_text(f"[JARVIS] Item {item_id} rechazado.")
+    await update.message.reply_text(f"[DQIII8] Item {item_id} rechazado.")
 
 
 async def _handle_aprobar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -835,7 +835,7 @@ async def _handle_aprobar(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     perm_id = m.group(1)
     perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
     perm_file.write_text('{"decision":"allow","reason":"usuario aprobó"}', encoding="utf-8")
-    await update.message.reply_text(f"[JARVIS] Permiso {perm_id} APROBADO.")
+    await update.message.reply_text(f"[DQIII8] Permiso {perm_id} APROBADO.")
 
 
 async def _handle_denegar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -848,7 +848,7 @@ async def _handle_denegar(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     perm_id = m.group(1)
     perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
     perm_file.write_text('{"decision":"deny","reason":"usuario denegó"}', encoding="utf-8")
-    await update.message.reply_text(f"[JARVIS] Permiso {perm_id} DENEGADO.")
+    await update.message.reply_text(f"[DQIII8] Permiso {perm_id} DENEGADO.")
 
 
 async def cmd_stop_autonomous(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -873,7 +873,7 @@ def main() -> None:
         log.error("JARVIS_BOT_TOKEN no configurado en .env -- abortando.")
         sys.exit(1)
 
-    log.info("Iniciando JARVIS Bot (terminal móvil)...")
+    log.info("Iniciando DQIII8 Bot (terminal móvil)...")
     APP = Application.builder().token(BOT_TOKEN).build()
 
     APP.add_handler(CommandHandler("start", cmd_start))
@@ -989,7 +989,7 @@ def send_morning_report() -> None:
 
     spc_line = "\n   • ".join(spc_alerts) if spc_alerts else "ninguno"
     msg = (
-        f"☀️ JARVIS Morning Report — {today_str}\n"
+        f"☀️ DQIII8 Morning Report — {today_str}\n"
         f"Score: {score:.0f}/100 | Sesiones ayer: {sessions_yesterday}\n"
         f"SPC alerts: {spc_line}\n"
         f"Research queue: {research_pending} items pendientes\n"

@@ -1,7 +1,7 @@
-# JARVIS — GitHub Research Tool
+# DQIII8 — GitHub Research Tool
 
 ## Propósito
-Investigar repos GitHub relevantes para el stack JARVIS.
+Investigar repos GitHub relevantes para el stack DQIII8.
 Triggers: "busca repos", "investiga GitHub", "¿existe algo que haga X?"
 
 ## Tópicos prioritarios

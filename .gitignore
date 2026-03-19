@@ -66,6 +66,12 @@ objectives/failed/
 tasks/gemini_reports/
 tasks/github_reports/
 tasks/precompact_state.json
+
+# Premium features (not included in free tier)
+bin/intent_amplifier.py
+bin/knowledge_upload.py
+knowledge/*/user_uploads/
+knowledge/**/PREMIUM_*
 tasks/diagnostic_*.md
 tasks/jarvis_architecture_v1.*
 tasks/*.zip

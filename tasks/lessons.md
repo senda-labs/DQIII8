@@ -23,6 +23,11 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-10] [matplotlib-export] Guardar .png antes de insertar en PPT → no insertar figura directamente
 
 ## jarvis-core
+- [2026-03-19] [AUTO:SYSTEMIC-openrouter_wrapperError] Error sistémico: 8x en 30d → priorizar fix estructural. Último: 2026-03-18
+- [2026-03-19] [AUTO:SYSTEMIC-Bash] Error sistémico: 9x en 30d → priorizar fix estructural. Último: 2026-03-19
+- [2026-03-19] [AUTO:SYSTEMIC-ReadError] Error sistémico: 14x en 30d → priorizar fix estructural. Último: 2026-03-19
+- [2026-03-19] [AUTO:SYSTEMIC-mcp__sqlite__executeError] Error sistémico: 14x en 30d → priorizar fix estructural. Último: 2026-03-19
+- [2026-03-19] [AUTO:SYSTEMIC-BashError] Error sistémico: 31x en 30d → priorizar fix estructural. Último: 2026-03-19
 - [2026-03-19] [AUTO:AgentError] Error repetido 2x en 7d → revisar causa raíz. Último: Agent type 'auditor' not found. Available agents: general-pu
 - [2026-03-19] [AUTO:mcp__sqlite__executeError] Error repetido 7x en 7d → revisar causa raíz. Último: MCP error -32000: no such column: resolution_note
 - [2026-03-19] [AUTO:RetrySuccess-Agent] Agent falló 1x antes de éxito → verificar condiciones previas o timeout

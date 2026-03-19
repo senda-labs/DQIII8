@@ -128,33 +128,21 @@ except Exception:
     pass
 
 
-# ── 0a-bis. Scenario B: auto-lesson for sessions with failures ────
+# ── 0a-bis. Auto-lesson detector (pattern-based, $0 cost) ────────
+_auto_count = 0
+_patterns_count = 0
 try:
-    import sqlite3 as _sb3
+    import sys as _als
 
-    if DB.exists():
-        _sb_conn = _sb3.connect(str(DB), timeout=2)
-        _failures = _sb_conn.execute(
-            "SELECT tool_used, error_message FROM agent_actions "
-            "WHERE session_id=? AND success=0 AND error_message IS NOT NULL "
-            "LIMIT 5",
-            (session,),
-        ).fetchall()
-        _sb_conn.close()
-        if _failures and LESSONS.exists():
-            _today = NOW[:10]
-            _new_lines = []
-            for _stool, _emsg in _failures:
-                _short = (_emsg or "")[:80].replace("\n", " ").strip()
-                if _short:
-                    _new_lines.append(
-                        f"- [{_today}] [{_stool}Error] causa → {_short} (pendiente de fix)\n"
-                    )
-            if _new_lines:
-                with open(str(LESSONS), "a", encoding="utf-8") as _lf:
-                    _lf.writelines(_new_lines)
-                lessons_added += len(_new_lines)
-except Exception:
+    if str(JARVIS) not in _als.path:
+        _als.path.insert(0, str(JARVIS))
+    from bin.auto_learner import detect_auto_lessons as _detect
+
+    _auto_count, _patterns_count = _detect(session_id=session, db_path=str(DB))
+    if _auto_count:
+        lessons_added += _auto_count
+        print(f"[JARVIS] {_auto_count} auto-lesson(s) detectada(s) ({_patterns_count} patrones)")
+except Exception as _ale:
     pass
 
 # ── 0b. Extraer instincts de lessons.md ───────────────────────────
@@ -407,6 +395,33 @@ try:
         print(_rec.stdout.strip())
 except Exception as _rec_e:
     print(f"[stop] reconcile_errors skipped: {_rec_e}")
+
+# ── 1c. Learning metrics ──────────────────────────────────────────
+try:
+    import sqlite3 as _lm3
+
+    if DB.exists():
+        _lm_conn = _lm3.connect(str(DB), timeout=5)
+        _lm_conn.execute(
+            "CREATE TABLE IF NOT EXISTS learning_metrics ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "session_id TEXT,"
+            "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
+            "lessons_auto INTEGER DEFAULT 0,"
+            "lessons_manual INTEGER DEFAULT 0,"
+            "patterns_detected INTEGER DEFAULT 0"
+            ")"
+        )
+        _lessons_manual = max(0, lessons_added - _auto_count)
+        _lm_conn.execute(
+            "INSERT INTO learning_metrics (session_id, lessons_auto, lessons_manual, patterns_detected)"
+            " VALUES (?, ?, ?, ?)",
+            (session, _auto_count, _lessons_manual, _patterns_count),
+        )
+        _lm_conn.commit()
+        _lm_conn.close()
+except Exception:
+    pass
 
 # ── 2. Auto-commit lessons.md + projects/*.md ──────────────────────
 try:

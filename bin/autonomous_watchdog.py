@@ -17,8 +17,6 @@ import os
 import sqlite3
 import sys
 import time
-import urllib.parse
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -31,23 +29,15 @@ INACTIVITY_LIMIT_S = 7200  # 2 hours
 SESSION_MAX_S = 28800  # 8 hours
 TOKEN_LIMIT = 500_000
 
+sys.path.insert(0, str(JARVIS_ROOT / "bin"))
+from notify import send_telegram as _send_telegram_direct
+
 
 def _send_telegram(message: str, dry_run: bool = False) -> bool:
     if dry_run:
         print(f"[watchdog:DRY-RUN] Would send Telegram:\n{message}")
         return True
-    token = os.environ.get("JARVIS_BOT_TOKEN", "")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-    if not token or not chat_id:
-        return False
-    try:
-        data = urllib.parse.urlencode({"chat_id": chat_id, "text": message}).encode()
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        urllib.request.urlopen(url, data, timeout=10)
-        return True
-    except Exception as e:
-        print(f"[watchdog] Telegram error: {e}")
-        return False
+    return _send_telegram_direct(message)
 
 
 def _stop(reason: str, dry_run: bool) -> None:

@@ -14,7 +14,9 @@ from pathlib import Path
 from datetime import datetime
 import httpx
 
-sys.path.insert(0, "/root/content-automation-faceless")
+CONTENT_ROOT = os.environ.get("CONTENT_PROJECT_ROOT", "")
+if CONTENT_ROOT:
+    sys.path.insert(0, CONTENT_ROOT)
 
 JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB = str(JARVIS / "database" / "jarvis_metrics.db")
@@ -100,8 +102,10 @@ class GitHubClient:
     def __init__(self):
         from dotenv import load_dotenv
 
-        load_dotenv("/root/content-automation-faceless/config/.env")
-        load_dotenv("/root/jarvis/.env")
+        content_env = Path(os.environ.get("CONTENT_PROJECT_ROOT", "")) / "config" / ".env"
+        if content_env.parent.parent.exists():
+            load_dotenv(str(content_env))
+        load_dotenv(str(JARVIS / ".env"))
         self.token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN") or ""
         self.headers = {
             "Accept": "application/vnd.github.v3+json",
@@ -777,7 +781,7 @@ def _send_telegram_report(topic, top_repos, report_path):
         import asyncio
         from dotenv import load_dotenv
 
-        load_dotenv("/root/jarvis/.env")
+        load_dotenv(str(JARVIS / ".env"))
         bot_token = os.getenv("JARVIS_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
         chat_id = os.getenv("TELEGRAM_CHAT_ID")
 

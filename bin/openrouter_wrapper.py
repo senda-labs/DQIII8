@@ -260,6 +260,22 @@ DB_PATH = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")) / "database" / "ja
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 
+def sanitize_prompt(prompt: str) -> str:
+    """Remove potential prompt-injection patterns before sending to a model."""
+    import re
+    dangerous_patterns = [
+        r"ignore previous instructions",
+        r"ignore all previous",
+        r"system:\s*you are now",
+        r"<\|system\|>",
+        r"<\|assistant\|>",
+    ]
+    sanitized = prompt
+    for pattern in dangerous_patterns:
+        sanitized = re.sub(pattern, "[filtered]", sanitized, flags=re.IGNORECASE)
+    return sanitized
+
+
 def build_request(provider_name: str, model: str, prompt: str):
     """Construye URL, headers y payload para una llamada de chat streaming."""
     cfg = PROVIDERS[provider_name]
@@ -292,7 +308,7 @@ def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, i
     Returns (full_text, tokens_input, tokens_output, success).
     Uses real API tokens if available; estimates by chars otherwise.
     """
-    url, headers, payload = build_request(provider_name, model, prompt)
+    url, headers, payload = build_request(provider_name, model, sanitize_prompt(prompt))
     req = urllib.request.Request(url, data=payload, headers=headers)
     full_text = ""
     tokens_in = 0

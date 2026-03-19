@@ -46,6 +46,100 @@ def get_anonymous_id() -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
+def collect_model_performance() -> dict:
+    """Collect anonymous model performance metrics.
+    These help optimize routing decisions for all users.
+    No prompts or outputs are included."""
+    if not DB_PATH.exists():
+        return {}
+
+    conn = sqlite3.connect(str(DB_PATH), timeout=5)
+    week_ago = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    # Performance by tier (no content — latency, cost, success only)
+    rows = conn.execute(
+        """SELECT
+               tier,
+               COUNT(*) as total_calls,
+               ROUND(AVG(success) * 100, 1) as success_rate,
+               ROUND(AVG(duration_ms), 0) as avg_latency_ms,
+               ROUND(AVG(tokens_input), 0) as avg_tokens_in,
+               ROUND(AVG(tokens_output), 0) as avg_tokens_out,
+               ROUND(SUM(estimated_cost_usd), 4) as total_cost,
+               ROUND(AVG(estimated_cost_usd), 6) as avg_cost_per_call
+           FROM agent_actions
+           WHERE timestamp > ?
+           GROUP BY tier""",
+        (week_ago,),
+    ).fetchall()
+
+    model_perf = {
+        (r[0] or "unknown"): {
+            "calls": r[1],
+            "success_rate": r[2],
+            "avg_latency_ms": r[3],
+            "avg_tokens_in": r[4],
+            "avg_tokens_out": r[5],
+            "total_cost_usd": r[6],
+            "avg_cost_per_call": r[7],
+        }
+        for r in rows
+    }
+
+    # Escalation patterns (error_log has no tier column — group by agent_name)
+    esc_rows = conn.execute(
+        """SELECT agent_name, COUNT(*) FROM error_log
+           WHERE keywords LIKE '%ESCALATION%' AND timestamp > ?
+           GROUP BY agent_name""",
+        (week_ago,),
+    ).fetchall()
+    escalation_data = {(r[0] or "unknown"): r[1] for r in esc_rows}
+
+    # Domain-tier routing performance
+    domain_rows = conn.execute(
+        """SELECT domain, tier, COUNT(*), ROUND(AVG(success) * 100, 1)
+           FROM agent_actions
+           WHERE timestamp > ? AND domain IS NOT NULL
+           GROUP BY domain, tier""",
+        (week_ago,),
+    ).fetchall()
+    domain_routing: dict = {}
+    for domain, tier, calls, success in domain_rows:
+        domain_routing.setdefault(domain, {})[tier or "unknown"] = {
+            "calls": calls,
+            "success_rate": success,
+        }
+
+    # Knowledge enrichment impact
+    enrichment = conn.execute(
+        """SELECT
+               ROUND(AVG(CASE WHEN domain_enriched = 1 THEN success ELSE NULL END) * 100, 1),
+               ROUND(AVG(CASE WHEN domain_enriched = 0 THEN success ELSE NULL END) * 100, 1),
+               SUM(CASE WHEN domain_enriched = 1 THEN 1 ELSE 0 END),
+               SUM(CASE WHEN domain_enriched = 0 THEN 1 ELSE 0 END)
+           FROM agent_actions WHERE timestamp > ?""",
+        (week_ago,),
+    ).fetchone()
+
+    conn.close()
+
+    return {
+        "model_performance": model_perf,
+        "escalation_patterns": escalation_data,
+        "domain_routing": domain_routing,
+        "enrichment_impact": {
+            "enriched_success_rate": enrichment[0],
+            "plain_success_rate": enrichment[1],
+            "enriched_calls": enrichment[2],
+            "plain_calls": enrichment[3],
+        }
+        if enrichment
+        else {},
+    }
+
+
 def collect_anonymous_metrics() -> dict:
     """Collect metrics that are safe to share."""
     if not DB_PATH.exists():
@@ -103,7 +197,7 @@ def collect_anonymous_metrics() -> dict:
 
     total_disk, _, free_disk = shutil.disk_usage("/")
 
-    return {
+    metrics = {
         "anonymous_id": get_anonymous_id(),
         "version": VERSION,
         "timestamp": now.isoformat() + "Z",
@@ -127,6 +221,15 @@ def collect_anonymous_metrics() -> dict:
             "health_score": health[0] if health else None,
         },
     }
+
+    # Add model performance metrics
+    perf = collect_model_performance()
+    metrics["model_performance"] = perf.get("model_performance", {})
+    metrics["escalation_patterns"] = perf.get("escalation_patterns", {})
+    metrics["domain_routing"] = perf.get("domain_routing", {})
+    metrics["enrichment_impact"] = perf.get("enrichment_impact", {})
+
+    return metrics
 
 
 def send_telemetry():

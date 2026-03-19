@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # DQIII8 — Installer for Ubuntu 22.04 / 24.04
-# Usage: chmod +x install.sh && ./install.sh
+# Usage: chmod +x install.sh && ./install.sh [--no-model]
+#
+# Flags:
+#   --no-model    Skip pulling qwen2.5-coder:7b (useful in CI/Docker)
 set -euo pipefail
 
 CYAN='\033[0;36m'
@@ -11,6 +14,19 @@ NC='\033[0m'
 info()  { echo -e "${CYAN}[DQIII8]${NC} $*"; }
 ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
 fail()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+
+# ── Parse flags ───────────────────────────────────────────────────────
+SKIP_MODEL=0
+for arg in "$@"; do
+    [[ "$arg" == "--no-model" ]] && SKIP_MODEL=1
+done
+
+# ── Root detection (Docker/CI runs as root without sudo) ──────────────
+if [ "$(id -u)" = "0" ]; then
+    SUDO=""
+else
+    SUDO="sudo"
+fi
 
 # ── Check OS ─────────────────────────────────────────────────────────
 if ! grep -qE 'Ubuntu (22|24)\.' /etc/os-release 2>/dev/null; then
@@ -25,8 +41,8 @@ cd "$PROJECT_DIR"
 
 # ── 1. System packages ──────────────────────────────────────────────
 info "Installing system dependencies..."
-sudo apt-get update -qq
-sudo apt-get install -y -qq python3 python3-venv python3-pip git curl sqlite3 > /dev/null
+$SUDO apt-get update -qq
+$SUDO apt-get install -y -qq python3 python3-venv python3-pip git curl sqlite3 > /dev/null
 ok "System packages installed"
 
 # ── 2. Python venv ──────────────────────────────────────────────────
@@ -48,9 +64,19 @@ else
     ok "Ollama installed"
 fi
 
-info "Pulling qwen2.5-coder:7b (Tier 1 model, ~4.4GB)..."
-ollama pull qwen2.5-coder:7b
-ok "Model qwen2.5-coder:7b ready"
+if [ "$SKIP_MODEL" = "1" ]; then
+    info "Skipping model pull (--no-model flag set)"
+    ok "To pull the model later: ollama pull qwen2.5-coder:7b"
+else
+    info "Pulling qwen2.5-coder:7b (Tier 1 model, ~4.4GB)..."
+    # Start ollama serve in background if no service is running
+    if ! ollama list &>/dev/null 2>&1; then
+        ollama serve &>/tmp/ollama.log &
+        sleep 3
+    fi
+    ollama pull qwen2.5-coder:7b
+    ok "Model qwen2.5-coder:7b ready"
+fi
 
 # ── 4. Initialize database ─────────────────────────────────────────
 info "Initializing SQLite database..."
@@ -79,8 +105,8 @@ else
         ok "Claude Code installed"
     else
         info "Node.js not found. Installing via NodeSource..."
-        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-        sudo apt-get install -y -qq nodejs > /dev/null
+        curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO -E bash -
+        $SUDO apt-get install -y -qq nodejs > /dev/null
         npm install -g @anthropic-ai/claude-code
         ok "Node.js + Claude Code installed"
     fi
@@ -88,8 +114,12 @@ fi
 
 # ── 6. Environment file ────────────────────────────────────────────
 if [ ! -f ".env" ]; then
-    cp config/.env.example .env
-    info "Created .env from template — edit it with your API keys"
+    if [ -f "config/.env.example" ]; then
+        cp config/.env.example .env
+        info "Created .env from template — edit it with your API keys"
+    else
+        info ".env.example not found — create .env manually with your API keys"
+    fi
 else
     ok ".env already exists"
 fi

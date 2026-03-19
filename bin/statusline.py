@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DQIII8 Statusline — muestra métricas de sesión en una línea.
+DQIII8 Statusline — displays session metrics on a single line.
 Uso: python3 bin/statusline.py [--json]
 
 Optimizado para <200ms: solo 3 queries indexed, sin joins pesados.
@@ -100,9 +100,9 @@ def _print(m: dict, as_json: bool) -> None:
     vault_str = f"Vault: {m['vault_facts']}" if m["vault_facts"] else ""
     parts = [
         f"DQIII8 [{m['project']}]",
-        f"Sesión: {m['session_min']}m",
-        f"Acciones: {m['actions']}",
-        f"Bloqueados: {m['blocked']}",
+        f"Session: {m['session_min']}m",
+        f"Actions: {m['actions']}",
+        f"Blocked: {m['blocked']}",
         f"Tokens: {m['tokens']:,}",
         score_str,
     ]

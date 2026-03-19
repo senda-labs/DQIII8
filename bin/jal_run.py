@@ -1,5 +1,5 @@
 """
-JAL Run v3 -- orquestador del ciclo completo
+JAL Run v3 -- full cycle orchestrator
 """
 
 import os
@@ -57,37 +57,37 @@ def mark_step(
 
 def build_executor_prompt(obj_id: str, attempt: int, steps: list) -> str:
     """
-    Construye el prompt para Claude Code.
-    Estructurado para minimizar comportamiento no determinista:
-    - Instrucciones explicitas y verificables
-    - Registro en BD obligatorio por paso
-    - Sin decisiones ambiguas
+    Builds the prompt for Claude Code.
+    Structured to minimize non-deterministic behavior:
+    - Explicit and verifiable instructions
+    - DB registration mandatory per step
+    - No ambiguous decisions
     """
     steps_text = "\n".join(
-        f"PASO {s[0]}: {s[1]}\n"
-        f"  INSTRUCCION: {s[2] or s[1]}\n"
-        f"  REGISTRO: UPDATE jal_steps SET status='completed',"
-        f" result_summary='[resultado]' WHERE objective_id='{obj_id}'"
+        f"STEP {s[0]}: {s[1]}\n"
+        f"  INSTRUCTION: {s[2] or s[1]}\n"
+        f"  REGISTER: UPDATE jal_steps SET status='completed',"
+        f" result_summary='[result]' WHERE objective_id='{obj_id}'"
         f" AND attempt={attempt} AND step_number={s[0]};"
         for s in steps
     )
 
-    return f"""Ejecuta los siguientes pasos en orden para el objetivo {obj_id}.
+    return f"""Execute the following steps in order for objective {obj_id}.
 
-REGLAS ESTRICTAS:
-1. Ejecuta cada paso y registra el resultado en BD ANTES de continuar
-2. Si un paso falla, registra status='failed' y error_raw='[mensaje]'
-3. NO omitas el registro en BD de ningun paso
-4. NO tomes decisiones que no esten en las instrucciones
-5. Al terminar todos los pasos, ejecuta:
+STRICT RULES:
+1. Execute each step and register the result in DB BEFORE continuing
+2. If a step fails, register status='failed' and error_raw='[message]'
+3. DO NOT skip DB registration for any step
+4. DO NOT make decisions not in the instructions
+5. When all steps are done, run:
    python3 /root/jarvis/bin/jal_critic.py
 
-PASOS:
+STEPS:
 {steps_text}
 
-BD: sqlite3 /root/jarvis/database/jarvis_metrics.db "[SQL]"
+DB: sqlite3 /root/jarvis/database/jarvis_metrics.db "[SQL]"
 
-Empieza por el Paso 1."""
+Start with Step 1."""
 
 
 def main():
@@ -101,11 +101,11 @@ def main():
 
     obj_files = list((JARVIS / "objectives" / "active").glob("*.md"))
     if not obj_files:
-        print("[JAL] No hay objetivos en objectives/active/")
-        print("[JAL] Uso: python3 bin/jal_run.py objectives/queue/OBJ-001.md")
+        print("[JAL] No objectives in objectives/active/")
+        print("[JAL] Usage: python3 bin/jal_run.py objectives/queue/OBJ-001.md")
         sys.exit(0)
 
-    print("[JAL] 1/3 Planificando...")
+    print("[JAL] 1/3 Planning...")
     subprocess.run(
         ["python3", str(JARVIS / "bin" / "jal_planner.py")],
         cwd=str(JARVIS),
@@ -114,17 +114,17 @@ def main():
 
     obj_id, steps = get_active_plan()
     if not obj_id or not steps:
-        print("[JAL] No hay pasos pendientes tras la planificacion")
+        print("[JAL] No pending steps after planning")
         sys.exit(1)
 
-    print(f"[JAL] 2/3 Ejecutando {len(steps)} pasos con Claude Code...")
+    print(f"[JAL] 2/3 Executing {len(steps)} steps with Claude Code...")
     executor_prompt = build_executor_prompt(obj_id, 1, steps)
 
     prompt_file = JARVIS / "tasks" / "results" / f"jal_exec_{obj_id}.txt"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(executor_prompt, encoding="utf-8")
 
-    # Cargar .env para que OPENROUTER_API_KEY esté disponible en el subproceso
+    # Load .env so OPENROUTER_API_KEY is available in the subprocess
     env_file = JARVIS / ".env"
     env = dict(os.environ)
     if env_file.exists():

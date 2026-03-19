@@ -1,4 +1,4 @@
--- Métricas de código por renderer
+-- Code metrics per renderer
 CREATE TABLE IF NOT EXISTS code_metrics (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT DEFAULT (datetime('now')),
@@ -7,40 +7,40 @@ CREATE TABLE IF NOT EXISTS code_metrics (
     renderer        TEXT NOT NULL,  -- mandelbrot|julia|perlin|cpp|compositor
     objective_id    TEXT,
 
-    -- DENSIDAD DE CÓDIGO
-    lines_of_code       INTEGER,    -- líneas totales del archivo
-    lines_functional    INTEGER,    -- líneas sin comentarios ni blancos
-    cyclomatic_complexity INTEGER,  -- complejidad ciclomática
+    -- CODE DENSITY
+    lines_of_code       INTEGER,    -- total lines in file
+    lines_functional    INTEGER,    -- lines excluding comments and blanks
+    cyclomatic_complexity INTEGER,  -- cyclomatic complexity
 
-    -- EFICIENCIA COMPUTACIONAL
-    cpu_seconds         REAL,       -- tiempo de render en segundos
-    memory_peak_mb      REAL,       -- RAM peak con tracemalloc
-    megapixels          REAL,       -- píxeles generados en millones
+    -- COMPUTATIONAL EFFICIENCY
+    cpu_seconds         REAL,       -- render time in seconds
+    memory_peak_mb      REAL,       -- RAM peak via tracemalloc
+    megapixels          REAL,       -- pixels generated in millions
     cpu_per_megapixel   REAL,       -- cpu_seconds / megapixels
 
-    -- CALIDAD DEL CÓDIGO
-    uses_vectorization  INTEGER,    -- 1 si usa numpy vectorizado, 0 si loops
-    uses_numpy_only     INTEGER,    -- 1 si no usa loops Python
-    has_type_hints      INTEGER,    -- 1 si tiene type hints
-    passes_tests        INTEGER,    -- 1 si pytest pasa
+    -- CODE QUALITY
+    uses_vectorization  INTEGER,    -- 1 if using numpy vectorized, 0 if loops
+    uses_numpy_only     INTEGER,    -- 1 if no Python loops
+    has_type_hints      INTEGER,    -- 1 if has type hints
+    passes_tests        INTEGER,    -- 1 if pytest passes
 
-    -- CALIDAD VISUAL
-    ssim_score          REAL,       -- similitud con imagen de referencia
+    -- VISUAL QUALITY
+    ssim_score          REAL,       -- similarity vs reference image
     ssim_quality        TEXT,       -- excellent|good|partial|poor
-    output_variance     REAL,       -- varianza de píxeles (no es imagen negra)
-    contrast_ratio      REAL,       -- contraste del output
+    output_variance     REAL,       -- pixel variance (not a black image)
+    contrast_ratio      REAL,       -- output contrast
 
-    -- C++ ESPECÍFICO
-    speedup_vs_python   REAL,       -- ratio velocidad C++ / Python
-    uses_simd           INTEGER,    -- 1 si usa SSE/AVX intrinsics
-    compiled_ok         INTEGER,    -- 1 si gcc compiló sin errores
+    -- C++ SPECIFIC
+    speedup_vs_python   REAL,       -- C++ / Python speed ratio
+    uses_simd           INTEGER,    -- 1 if using SSE/AVX intrinsics
+    compiled_ok         INTEGER,    -- 1 if gcc compiled without errors
 
-    -- RESULTADO FINAL
-    success             INTEGER,    -- 1 si cumplió todos los criterios
-    failure_reason      TEXT        -- por qué falló si success=0
+    -- FINAL RESULT
+    success             INTEGER,    -- 1 if all criteria met
+    failure_reason      TEXT        -- why it failed if success=0
 );
 
--- Índices para análisis rápido
+-- Indexes for fast analysis
 CREATE INDEX IF NOT EXISTS idx_code_metrics_tier
     ON code_metrics(model_tier, renderer);
 CREATE INDEX IF NOT EXISTS idx_code_metrics_project
@@ -79,7 +79,7 @@ SELECT
     -- Score compuesto (0-100)
     ROUND(
         (100.0 * SUM(success) / COUNT(*)) * 0.35 +
-        -- Eficiencia código: menos líneas = mejor (normalizado a 100)
+        -- Code efficiency: fewer lines = better (normalized to 100)
         (100.0 - MIN(100, AVG(lines_of_code) / 2.0)) * 0.20 +
         -- Velocidad: <30s target
         (100.0 - MIN(100, AVG(cpu_seconds) / 0.3)) * 0.20 +

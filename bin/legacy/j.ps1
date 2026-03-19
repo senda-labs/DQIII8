@@ -1,6 +1,6 @@
 # ══════════════════════════════════════════════════════════════════
 # j.ps1 — JARVIS launcher
-# Uso: j [proyecto] [flags]
+# Usage: j [project] [flags]
 # Flags: --model local|claude|auto  --status  --sync  --audit
 #        --clear  --worktree nombre  --new nombre
 # ══════════════════════════════════════════════════════════════════
@@ -27,7 +27,7 @@ function RamFreeMB {
 function OllamaModel {
     $ram = RamFreeMB
     if ($ram -lt 2800) {
-        Write-Host "  ⚠  RAM libre: ${ram}MB → qwen2.5-coder:1.5b" -ForegroundColor Yellow
+        Write-Host "  ⚠  RAM free: ${ram}MB → qwen2.5-coder:1.5b" -ForegroundColor Yellow
         return "qwen2.5-coder:1.5b"
     }
     return "qwen2.5-coder:3b"
@@ -36,7 +36,7 @@ function OllamaModel {
 function EnsureOllama {
     $r = ollama list 2>$null
     if (-not $?) {
-        Write-Host "  ▶  Arrancando Ollama..." -ForegroundColor DarkGray
+        Write-Host "  ▶  Starting Ollama..." -ForegroundColor DarkGray
         Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
         Start-Sleep 2
     }
@@ -67,25 +67,25 @@ if ($Status) {
     $ram   = RamFreeMB
     Write-Host ""
     Write-Host "  JARVIS status" -ForegroundColor Cyan
-    Write-Host "  Proyecto : $proj"
-    Write-Host "  Modelo   : $model"
-    Write-Host "  RAM libre: ${ram}MB"
+    Write-Host "  Project  : $proj"
+    Write-Host "  Model    : $model"
+    Write-Host "  RAM free : ${ram}MB"
     $wt = git -C $ROOT worktree list 2>$null
     Write-Host "  Worktrees:"
     if ($wt) { $wt | % { Write-Host "    $_" -ForegroundColor DarkGray } }
-    else      { Write-Host "    (ninguno)" -ForegroundColor DarkGray }
+    else      { Write-Host "    (none)" -ForegroundColor DarkGray }
     Write-Host ""
     exit 0
 }
 
 # ── --sync ─────────────────────────────────────────────────────────
 if ($Sync) {
-    Write-Host "  ↓ Sincronizando..." -ForegroundColor DarkGray
+    Write-Host "  ↓ Syncing..." -ForegroundColor DarkGray
     git -C $ROOT pull --quiet 2>$null
-    Write-Host "  ✓ Sync completo" -ForegroundColor Green
+    Write-Host "  ✓ Sync complete" -ForegroundColor Green
 }
 
-# ── Resolución ─────────────────────────────────────────────────────
+# ── Resolution ─────────────────────────────────────────────────────
 $proj  = ActiveProject
 $model = ChooseModel $proj
 $env:JARVIS_PROJECT = $proj
@@ -95,8 +95,8 @@ Write-Host ""
 Write-Host "  ╔══════════════════════════╗" -ForegroundColor Cyan
 Write-Host "  ║  JARVIS — Claude Code   ║" -ForegroundColor Cyan
 Write-Host "  ╚══════════════════════════╝" -ForegroundColor Cyan
-Write-Host "  Proyecto : $proj" -ForegroundColor White
-Write-Host "  Modelo   : $model" -ForegroundColor $(if ($model -like "ollama*") {"Green"} else {"Cyan"})
+Write-Host "  Project  : $proj" -ForegroundColor White
+Write-Host "  Model    : $model" -ForegroundColor $(if ($model -like "ollama*") {"Green"} else {"Cyan"})
 Write-Host ""
 
 # ── --new ──────────────────────────────────────────────────────────
@@ -104,28 +104,28 @@ if ($New -and $Project) {
     $md = "$ROOT\projects\$Project.md"
     if (-not (Test-Path $md)) {
         @"
-# $Project — Estado del Proyecto
-Última actualización: $(Get-Date -Format 'yyyy-MM-dd')
+# $Project — Project Status
+Last updated: $(Get-Date -Format 'yyyy-MM-dd')
 
-## Estado actual
-Proyecto nuevo.
+## Current status
+New project.
 
-## Agentes asignados
-- Principal: python-specialist
+## Assigned agents
+- Main: python-specialist
 
-## Skills activas
-(ninguna — añadir en skills-registry/INDEX.md)
+## Active skills
+(none — add in skills-registry/INDEX.md)
 
-## Modelo preferido
+## Preferred model
 local (qwen2.5-coder:3b)
 
-## Próximo paso
-Definir alcance y primeros archivos.
+## Next step
+Define scope and first files.
 
-## Lecciones específicas
-(ninguna aún)
+## Specific lessons
+(none yet)
 "@ | Out-File $md -Encoding utf8
-        Write-Host "  ✓ Creado: projects\$Project.md" -ForegroundColor Green
+        Write-Host "  ✓ Created: projects\$Project.md" -ForegroundColor Green
     }
 }
 

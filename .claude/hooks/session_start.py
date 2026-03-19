@@ -77,7 +77,7 @@ if FLAG.exists():
     except Exception:
         pass
 
-# ── Vault Memory — top-8 hechos recientes ─────────────────────────
+# ── Vault Memory — top-8 recent facts ─────────────────────────────
 vault_facts = []
 try:
     import sqlite3 as _vsl3
@@ -155,7 +155,7 @@ try:
         finally:
             _sig.alarm(0)
 except Exception:
-    pass  # skip silencioso — no bloquear arranque
+    pass  # silent skip — do not block startup
 
 model = os.environ.get("JARVIS_MODEL", "qwen2.5-coder:7b (Ollama)")
 

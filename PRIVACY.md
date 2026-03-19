@@ -28,6 +28,10 @@ When enabled, the following anonymous data is collected weekly:
 | Session count | "23 sessions/week" | Understand usage patterns |
 | Health score | "91.1" | Track system quality |
 | OS/Python/RAM | "Ubuntu 24.04, Python 3.12, 8GB" | Optimize requirements |
+| Model performance per tier | "Tier C: 99.5% success, 450ms avg" | Optimize routing decisions |
+| Escalation frequency | "B→A: 12 times/week" | Improve tier classification |
+| Domain-tier mapping | "finance→Tier A: 95% success" | Better domain routing |
+| Enrichment impact | "enriched: 98% vs plain: 94%" | Validate knowledge system |
 
 **Never collected:** prompts, outputs, API keys, file names, paths, IP addresses,
 or any personally identifiable information.

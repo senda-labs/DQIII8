@@ -117,7 +117,7 @@ def detect_auto_lessons(session_id: str, db_path: str | Path | None = None) -> t
                 continue
             lesson = (
                 f"- [{today}] [AUTO:{kw}] "
-                f"Error repetido {row['cnt']}x en 7d → revisar causa raíz. "
+                f"Repeated error {row['cnt']}x in 7d → review root cause. "
                 f"Último: {(row['last_msg'] or '')[:60].replace(chr(10), ' ')}"
             )
             append_lesson(lesson)
@@ -148,8 +148,8 @@ def detect_auto_lessons(session_id: str, db_path: str | Path | None = None) -> t
                 continue
             lesson = (
                 f"- [{today}] [AUTO:{kw}] "
-                f"{row['tool_used']} falló {row['fails']}x antes de éxito "
-                f"→ verificar condiciones previas o timeout"
+                f"{row['tool_used']} failed {row['fails']}x before success "
+                f"→ verify preconditions or timeout"
             )
             append_lesson(lesson)
             lessons_text += lesson
@@ -178,8 +178,8 @@ def detect_auto_lessons(session_id: str, db_path: str | Path | None = None) -> t
                 continue
             lesson = (
                 f"- [{today}] [AUTO:{kw}] "
-                f"Agente {row['agent_name']} escaló {row['cnt']}x → "
-                f"revisar si tier inferior puede resolver: {(row['last_msg'] or '')[:50].replace(chr(10), ' ')}"
+                f"Agent {row['agent_name']} escalated {row['cnt']}x → "
+                f"check if lower tier can resolve: {(row['last_msg'] or '')[:50].replace(chr(10), ' ')}"
             )
             append_lesson(lesson)
             lessons_text += lesson
@@ -245,7 +245,7 @@ def consolidate_learning(db_path: str | Path | None = None) -> int:
                 continue
             lesson = (
                 f"- [{today}] [AUTO:{patterns_detected_kw}] "
-                f"Error sistémico: {row['cnt']}x en 30d → priorizar fix estructural. "
+                f"Systemic error: {row['cnt']}x in 30d → prioritize structural fix. "
                 f"Último: {row['last_seen'][:10]}"
             )
             append_lesson(lesson)
@@ -281,8 +281,8 @@ def consolidate_learning(db_path: str | Path | None = None) -> int:
                 continue
             lesson = (
                 f"- [{today}] [AUTO:{kw}] "
-                f"Patrón resuelto: {row['error_type']} ({row['total_30d']}x antes, "
-                f"0 en últimos 7d) → fix efectivo confirmado"
+                f"Resolved pattern: {row['error_type']} ({row['total_30d']}x before, "
+                f"0 in last 7d) → effective fix confirmed"
             )
             append_lesson(lesson)
             lessons_text += lesson
@@ -311,7 +311,7 @@ if __name__ == "__main__":
 
     if args.consolidate:
         added = consolidate_learning(db)
-        print(f"[auto-learner] consolidate: {added} lecciones sistémicas añadidas")
+        print(f"[auto-learner] consolidate: {added} systemic lessons added")
     elif args.session:
         added, patterns = detect_auto_lessons(args.session, db)
         print(f"[auto-learner] session {args.session[:8]}: {added} lecciones, {patterns} patrones")

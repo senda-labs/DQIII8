@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 DQIII8 — Gemini Pro Code Reviewer via Aider
-Detecta archivos .py no revisados y ejecuta auditoría de eficiencia.
-Guarda reporte en database/audit_reports/ y lo registra en BD.
+Detects unreviewed .py files and runs an efficiency audit.
+Saves report in database/audit_reports/ and registers it in the DB.
 """
 import argparse
 import json
@@ -17,19 +17,19 @@ JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB = JARVIS / "database" / "jarvis_metrics.db"
 REPORTS_DIR = JARVIS / "database" / "audit_reports"
 AIDER_PROMPT = """\
-Eres un revisor de código Python de nivel senior. Analiza el archivo de forma eficiente:
+You are a senior-level Python code reviewer. Analyze the file efficiently:
 
-1. **Bugs potenciales**: errores lógicos, condiciones de carrera, excepciones no manejadas.
-2. **Eficiencia**: operaciones costosas, consultas N+1, uso innecesario de memoria.
-3. **Legibilidad**: nombres confusos, funciones demasiado largas, comentarios obsoletos.
-4. **Seguridad**: inyección de comandos, rutas sin sanitizar, credenciales expuestas.
+1. **Potential bugs**: logic errors, race conditions, unhandled exceptions.
+2. **Efficiency**: expensive operations, N+1 queries, unnecessary memory usage.
+3. **Readability**: confusing names, overly long functions, obsolete comments.
+4. **Security**: command injection, unsanitized paths, exposed credentials.
 
-Responde SOLO con JSON válido (sin markdown):
+Respond ONLY with valid JSON (no markdown):
 {
-  "file": "<nombre>",
+  "file": "<name>",
   "score": <0.0-1.0>,
-  "issues": [{"severity": "high|medium|low", "line": <n|null>, "description": "<texto>"}],
-  "recommendations": ["<acción concreta>"]
+  "issues": [{"severity": "high|medium|low", "line": <n|null>, "description": "<text>"}],
+  "recommendations": ["<concrete action>"]
 }
 """
 
@@ -46,7 +46,7 @@ def load_env() -> None:
 
 
 def get_unreviewed_files() -> list[Path]:
-    """Retorna archivos .py modificados desde el último review registrado en BD."""
+    """Returns .py files modified since the last review registered in the DB."""
     reviewed: set[str] = set()
 
     if DB.exists():
@@ -63,7 +63,7 @@ def get_unreviewed_files() -> list[Path]:
         except Exception:
             pass
 
-    # Archivos .py modificados en git (staged + unstaged + untracked)
+    # .py files modified in git (staged + unstaged + untracked)
     result = subprocess.run(
         ["git", "-C", str(JARVIS), "diff", "--name-only", "HEAD"],
         capture_output=True,
@@ -77,7 +77,7 @@ def get_unreviewed_files() -> list[Path]:
             if p.exists() and p.name not in reviewed:
                 candidates.append(p)
 
-    # También incluir archivos tracked con cambios unstaged
+    # Also include tracked files with unstaged changes
     result2 = subprocess.run(
         ["git", "-C", str(JARVIS), "diff", "--name-only"],
         capture_output=True,
@@ -94,15 +94,15 @@ def get_unreviewed_files() -> list[Path]:
 
 
 def run_review(files: list[Path]) -> list[dict]:
-    """Ejecuta aider sobre cada archivo y parsea el JSON de respuesta."""
+    """Runs aider on each file and parses the JSON response."""
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
-        print("[gemini-review] ERROR: GEMINI_API_KEY no configurada en .env", file=sys.stderr)
+        print("[gemini-review] ERROR: GEMINI_API_KEY not configured in .env", file=sys.stderr)
         sys.exit(1)
 
     results = []
     for f in files:
-        print(f"[gemini-review] Revisando {f.name} ...", flush=True)
+        print(f"[gemini-review] Reviewing {f.name} ...", flush=True)
         try:
             proc = subprocess.run(
                 [
@@ -120,7 +120,7 @@ def run_review(files: list[Path]) -> list[dict]:
                 env={**os.environ, "GEMINI_API_KEY": api_key},
             )
             output = proc.stdout + proc.stderr
-            # Extraer primer bloque JSON de la salida
+            # Extract first JSON block from the output
             json_start = output.find("{")
             json_end = output.rfind("}") + 1
             if json_start != -1 and json_end > json_start:
@@ -141,7 +141,7 @@ def run_review(files: list[Path]) -> list[dict]:
                     "file": f.name,
                     "score": None,
                     "issues": [],
-                    "recommendations": ["No se pudo parsear la respuesta de Gemini"],
+                    "recommendations": ["Could not parse Gemini response"],
                     "raw": output[:500],
                 })
         except subprocess.TimeoutExpired:
@@ -149,7 +149,7 @@ def run_review(files: list[Path]) -> list[dict]:
                 "file": f.name,
                 "score": None,
                 "issues": [],
-                "recommendations": ["Timeout al revisar el archivo"],
+                "recommendations": ["Timeout while reviewing the file"],
             })
         except Exception as e:
             results.append({
@@ -162,7 +162,7 @@ def run_review(files: list[Path]) -> list[dict]:
 
 
 def save_report(files: list[Path], results: list[dict]) -> Path:
-    """Guarda reporte .md en audit_reports/ y registra en BD."""
+    """Saves .md report in audit_reports/ and registers it in the DB."""
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now()
     ts = now.strftime("%Y%m%d_%H%M%S")
@@ -174,7 +174,7 @@ def save_report(files: list[Path], results: list[dict]) -> Path:
 
     lines = [
         f"# Gemini Code Review — {now.strftime('%Y-%m-%d %H:%M')}",
-        f"\n**Score global:** {avg_score_display}  |  **Archivos revisados:** {len(results)}\n",
+        f"\n**Global score:** {avg_score_display}  |  **Files reviewed:** {len(results)}\n",
     ]
     for r in results:
         lines.append(f"\n## {r['file']}  (score: {r.get('score', '?')})")
@@ -189,14 +189,14 @@ def save_report(files: list[Path], results: list[dict]) -> Path:
                 lines.append(f"- [{sev}]{loc} {desc}")
         recs = r.get("recommendations", [])
         if recs:
-            lines.append("\n### Recomendaciones")
+            lines.append("\n### Recommendations")
             for rec in recs:
                 lines.append(f"- {rec}")
 
     report_path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"[gemini-review] Reporte guardado: {report_path}")
+    print(f"[gemini-review] Report saved: {report_path}")
 
-    # Registrar en BD solo si hay score válido
+    # Register in DB only if there is a valid score
     if DB.exists() and avg_score is not None:
         try:
             conn = sqlite3.connect(str(DB), timeout=5)
@@ -217,9 +217,9 @@ def save_report(files: list[Path], results: list[dict]) -> Path:
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"[gemini-review] BD skip: {e}", file=sys.stderr)
+            print(f"[gemini-review] DB skip: {e}", file=sys.stderr)
     elif avg_score is None:
-        print("[gemini-review] Score inválido (todos fallbacks) — omitiendo INSERT en BD")
+        print("[gemini-review] Invalid score (all fallbacks) — skipping INSERT into DB")
 
     return report_path
 
@@ -227,13 +227,13 @@ def save_report(files: list[Path], results: list[dict]) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Gemini Pro code reviewer via Aider")
     parser.add_argument("--check-only", action="store_true",
-                        help="Solo reportar cuántos archivos hay pendientes (sin revisar)")
-    parser.add_argument("files", nargs="*", help="Archivos específicos a revisar")
+                        help="Only report how many files are pending (without reviewing)")
+    parser.add_argument("files", nargs="*", help="Specific files to review")
     args = parser.parse_args()
 
     if args.check_only:
         files = get_unreviewed_files()
-        print(f"{len(files)} archivos pendientes")
+        print(f"{len(files)} files pending review")
         sys.exit(0)
 
     load_env()
@@ -244,14 +244,14 @@ def main() -> None:
         files = get_unreviewed_files()
 
     if not files:
-        print("[gemini-review] No hay archivos .py pendientes de revisión.")
+        print("[gemini-review] No .py files pending review.")
         sys.exit(0)
 
-    print(f"[gemini-review] Revisando {len(files)} archivo(s) con Gemini 2.0 Flash...")
+    print(f"[gemini-review] Reviewing {len(files)} file(s) with Gemini 2.0 Flash...")
     results = run_review(files)
     report = save_report(files, results)
 
-    # Git add + push para que llegue a Obsidian
+    # Git add + push so it reaches Obsidian
     try:
         subprocess.run(
             ["git", "-C", str(JARVIS), "add", str(report)],
@@ -266,7 +266,7 @@ def main() -> None:
             ["git", "-C", str(JARVIS), "push", "origin", "master"],
             capture_output=True, timeout=30
         )
-        print("[gemini-review] Reporte pusheado a Obsidian.")
+        print("[gemini-review] Report pushed to Obsidian.")
     except Exception as e:
         print(f"[gemini-review] Git push skip: {e}", file=sys.stderr)
 

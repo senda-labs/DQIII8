@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# DQIII8 — Routing unificado 3 tiers
+# DQIII8 — Unified 3-tier routing
 #
-# Uso:
+# Usage:
 #   j [--model local|groq|sonnet] [PROMPT]
-#   j --status        → proyecto, modelo activo, ollama ps, tmux sessions
+#   j --status        → project, active model, ollama ps, tmux sessions
 #   j --audit         → Gemini code review (check-only)
 #   j --classify TEXT → shows which tier would handle the prompt
-#   j --autonomous    → activa JARVIS_MODE=autonomous y lanza claude
+#   j --autonomous    → activates JARVIS_MODE=autonomous and launches claude
 #   j --loop PROJECT [CYCLES] [TIER] → OrchestratorLoop (tier1/tier2/tier3/haiku)
-#   j --benchmark-report → informe Sonnet comparativo de tiers
+#   j --benchmark-report → Sonnet comparative report of tiers
 #
 # Tiers:
-#   local  → Tier 1: Ollama qwen2.5-coder:7b  (gratis, local)
-#             Fallback si Ollama no responde: openrouter/qwen3-235b-a22b:free
-#   groq   → Tier 2: Groq llama-3.3-70b-versatile (gratis, cloud)
-#   sonnet → Tier 3: Claude Sonnet 4.6  (pago, potente) [default]
+#   local  → Tier 1: Ollama qwen2.5-coder:7b  (free, local)
+#             Fallback if Ollama not responding: openrouter/qwen3-235b-a22b:free
+#   groq   → Tier 2: Groq llama-3.3-70b-versatile (free, cloud)
+#   sonnet → Tier 3: Claude Sonnet 4.6  (paid, powerful) [default]
 
 set -euo pipefail
 
@@ -44,7 +44,7 @@ check_deps() {
     ollama list > /dev/null 2>&1 || echo "⚠️  Ollama not responding — using Tier 2/3 only"
     [ -f "$JARVIS_ROOT/.env" ] || { echo "❌ .env not found in $JARVIS_ROOT"; exit 1; }
     [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "❌ ANTHROPIC_API_KEY not defined"; exit 1; }
-    echo "✅ Sistema OK — arrancando DQIII8"
+    echo "✅ System OK — starting DQIII8"
 }
 
 MODEL="sonnet"
@@ -97,20 +97,20 @@ while [[ $# -gt 0 ]]; do
             exec python3 "$OR_WRAPPER" classify "$*"
             ;;
         --autonomous)
-            # j --autonomous "objetivo" [horas_max]
-            # Delega a autonomous_loop.sh (supervisor 3-layer activo)
+            # j --autonomous "objective" [max_hours]
+            # Delegates to autonomous_loop.sh (3-layer supervisor active)
             shift
             OBJECTIVE="${1:-}"
             MAX_HOURS="${2:-8}"
             exec bash "$JARVIS_ROOT/bin/autonomous_loop.sh" "$OBJECTIVE" "$MAX_HOURS"
             ;;
         loop)
-            # j loop → arranca Claude Code como usuario jarvis (non-root)
-            # PermissionAnalyzer activo via hooks — sin dangerously-skip-permissions
+            # j loop → starts Claude Code as jarvis user (non-root)
+            # PermissionAnalyzer active via hooks — without dangerously-skip-permissions
             if [[ "${2:-}" == "" || "${2:-}" == "auth" ]]; then
-                echo "[DQIII8] Claude Code como usuario jarvis (non-root)"
-                echo "  PermissionAnalyzer activo via hooks"
-                echo "  Para autenticar: /login"
+                echo "[DQIII8] Claude Code as jarvis user (non-root)"
+                echo "  PermissionAnalyzer active via hooks"
+                echo "  To authenticate: /login"
                 exec su - jarvis -c "
                     export JARVIS_ROOT='/root/jarvis'
                     export JARVIS_MODE='autonomous'

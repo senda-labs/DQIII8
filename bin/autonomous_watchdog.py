@@ -51,7 +51,7 @@ def _send_telegram(message: str, dry_run: bool = False) -> bool:
 
 
 def _stop(reason: str, dry_run: bool) -> None:
-    msg = f"⏰ DQIII8 modo sueño — {reason}"
+    msg = f"⏰ DQIII8 sleep mode — {reason}"
     _send_telegram(msg, dry_run=dry_run)
     if not dry_run:
         STOP_FLAG.write_text(reason, encoding="utf-8")
@@ -79,7 +79,7 @@ def _check(session_start: float, dry_run: bool) -> None:
         if last_action is None:
             # No actions in last 2h
             conn.close()
-            _stop("sin actividad 2h — terminando sesión automáticamente", dry_run)
+            _stop("no activity for 2h — terminating session automatically", dry_run)
             return  # unreachable after _stop, but for dry_run
 
         # 2. Token limit check — current session_id (passed via env or latest open session)
@@ -91,7 +91,7 @@ def _check(session_start: float, dry_run: bool) -> None:
             if tok_row and tok_row[0] and tok_row[0] > TOKEN_LIMIT:
                 conn.close()
                 _stop(
-                    f"límite de tokens alcanzado ({tok_row[0]:,} > {TOKEN_LIMIT:,})",
+                    f"token limit reached ({tok_row[0]:,} > {TOKEN_LIMIT:,})",
                     dry_run,
                 )
                 return
@@ -103,7 +103,7 @@ def _check(session_start: float, dry_run: bool) -> None:
     # 3. Session duration limit
     elapsed_s = time.time() - session_start
     if elapsed_s > SESSION_MAX_S:
-        _stop("8h límite alcanzado", dry_run)
+        _stop("8h limit reached", dry_run)
 
 
 def main() -> None:
@@ -113,7 +113,7 @@ def main() -> None:
         print("[watchdog] TEST MODE — no real Telegram messages or stop flags")
         # Simulate: pretend there's no activity in last 2h
         _send_telegram(
-            "⏰ DQIII8 modo sueño sin actividad 2h — terminando sesión automáticamente",
+            "⏰ DQIII8 sleep mode — no activity for 2h — terminating session automatically",
             dry_run=True,
         )
         print("[watchdog] Test complete.")

@@ -67,11 +67,11 @@ def _validate_url(url: str) -> None:
 # ── Tabla de routing por agente ─────────────────────────────────────────────
 
 AGENT_ROUTING = {
-    # Tier 1 — Ollama local (qwen2.5-coder:7b)
+    # Tier C — Ollama local (qwen2.5-coder:7b)
     "python-specialist": ("ollama", "qwen2.5-coder:7b"),
     "git-specialist": ("ollama", "qwen2.5-coder:7b"),
     "content-automator": ("ollama", "qwen2.5-coder:7b"),
-    # Tier 2 — Cloud free
+    # Tier B — Cloud free
     "backend-builder": ("openrouter", "qwen/qwen3-coder:free"),
     "research-analyst": ("groq", "llama-3.3-70b-versatile"),
     "auditor": ("openrouter", "stepfun/step-3.5-flash:free"),
@@ -107,12 +107,54 @@ TIER_COSTS: dict[str, tuple[float, float]] = {
     "openrouter": (0.003, 0.015),  # Claude Sonnet pricing aprox.
 }
 
+# Tier map — C/B/A/S/S+ para routing explícito y clasificación
+TIER_MAP = {
+    "C": {
+        "provider": "ollama",
+        "model": "qwen2.5-coder:7b",
+        "cost_input_1k": 0.0,
+        "cost_output_1k": 0.0,
+        "desc": "Local — $0",
+    },
+    "B": {
+        "provider": "groq",
+        "model": "llama-3.3-70b-versatile",
+        "cost_input_1k": 0.0,
+        "cost_output_1k": 0.0,
+        "desc": "Cloud free — $0",
+    },
+    "A": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "cost_input_1k": 0.003,
+        "cost_output_1k": 0.015,
+        "desc": "Claude Sonnet — ~$0.01-0.05",
+    },
+    "S": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-6",
+        "cost_input_1k": 0.015,
+        "cost_output_1k": 0.075,
+        "desc": "Opus planner — ~$0.15-0.50",
+    },
+    "S+": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-6",
+        "cost_input_1k": 0.015,
+        "cost_output_1k": 0.075,
+        "desc": "Opus orchestrator — ~$0.50-2.00",
+    },
+}
+
+# Priority order for tier comparison (lower index = higher priority = cheaper)
+TIER_ORDER = {"C": 0, "B": 1, "A": 2, "S": 3, "S+": 4}
+
 # ── Routing automático por keywords (classify subcommand) ────────────────────
 # Cada entrada: (tier, provider, model, route_name, keywords)
-# Si múltiples tiers coinciden → gana el más bajo (tier 1 > tier 2 > tier 3)
+# Si múltiples tiers coinciden → gana el más barato (C > B > A > S > S+)
 ROUTING_TABLE = [
     (
-        1,
+        "C",
         "ollama",
         "qwen2.5-coder:7b",
         "code_local",
@@ -144,7 +186,7 @@ ROUTING_TABLE = [
         ],
     ),
     (
-        2,
+        "B",
         "groq",
         "llama-3.3-70b-versatile",
         "review_groq",
@@ -166,10 +208,10 @@ ROUTING_TABLE = [
         ],
     ),
     (
-        3,
-        "claude",
+        "A",
+        "anthropic",
         "claude-sonnet-4-6",
-        "claude_api",
+        "claude_sonnet",
         [
             "wacc",
             "dcf",
@@ -192,6 +234,14 @@ ROUTING_TABLE = [
             "seguridad",
             "security",
             "auth",
+        ],
+    ),
+    (
+        "S",
+        "anthropic",
+        "claude-opus-4-6",
+        "opus_planner",
+        [
             "mobilize",
             "coordinar",
             "orchestrat",
@@ -309,7 +359,9 @@ def log_to_db(
     try:
         cost_in, cost_out = TIER_COSTS.get(provider, (0.0, 0.0))
         cost_usd = (tokens_in / 1000.0) * cost_in + (tokens_out / 1000.0) * cost_out
-        tier = "A" if cost_in > 0 else ("B" if provider in ("groq", "openrouter") else "C")
+        tier = (
+            "A" if provider == "anthropic" else ("B" if provider in ("groq", "openrouter") else "C")
+        )
         conn = sqlite3.connect(str(DB_PATH), timeout=2)
         conn.execute(
             "INSERT INTO agent_actions "
@@ -378,16 +430,16 @@ def print_routing_table() -> None:
     for tier, provider, model, route, _ in ROUTING_TABLE:
         print(f"  {tier:<6} {provider:<12} {model:<30} {route}")
     print()
-    print("Fallback chain (Tier 1): Ollama → OpenRouter → Groq → llm7.io → Pollinations")
+    print("Fallback chain (Tier C): Ollama → OpenRouter → Groq → llm7.io → Pollinations")
     print()
 
 
 def classify_prompt(prompt: str) -> None:
     """
     Determina el tier óptimo para un prompt según keywords.
-    Salida: tier=N provider=X model=Y route=Z [domain=D]
-    Si múltiples tiers coinciden → tier más bajo gana.
-    Default (sin match): tier 1 code_local.
+    Salida: tier=X provider=Y model=Z route=W [domain=D]
+    Si múltiples tiers coinciden → tier más barato gana (C < B < A < S < S+).
+    Default (sin match): tier C code_local.
     """
     lowered = prompt.lower()
     matched_tier = None
@@ -395,12 +447,14 @@ def classify_prompt(prompt: str) -> None:
     for tier, provider, model, route, keywords in ROUTING_TABLE:
         for kw in keywords:
             if kw in lowered:
-                if matched_tier is None or tier < matched_tier[0]:
+                if matched_tier is None or TIER_ORDER.get(tier, 99) < TIER_ORDER.get(
+                    matched_tier[0], 99
+                ):
                     matched_tier = (tier, provider, model, route)
                 break  # ya encontró keyword en este tier, pasa al siguiente
 
     if matched_tier is None:
-        matched_tier = (1, "ollama", "qwen2.5-coder:7b", "code_local")
+        matched_tier = ("C", "ollama", "qwen2.5-coder:7b", "code_local")
 
     tier, provider, model, route = matched_tier
 
@@ -433,7 +487,7 @@ def main() -> None:
         if not raw and not sys.stdin.isatty():
             raw = sys.stdin.read().strip()
         if not raw:
-            print("tier=1 provider=ollama model=qwen2.5-coder:7b route=code_local")
+            print("tier=C provider=ollama model=qwen2.5-coder:7b route=code_local")
             sys.exit(0)
         classify_prompt(raw)
         sys.exit(0)

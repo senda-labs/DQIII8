@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DQIII8 Hook — PermissionRequest v2 (supervisor 3-layer autónomo)
+DQIII8 Hook — PermissionRequest v2 (autonomous 3-layer supervisor)
 
 Layer 1 — READ_PREFIXES fast-path:
     - Read-only tools (Read, Glob, Grep, LS, WebFetch, WebSearch, TodoRead)

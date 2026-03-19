@@ -1,27 +1,27 @@
 """
 JAL Scoring Engine v3
 =====================
-Multi-Criteria Decision Analysis (MCDA) con Shannon Entropy.
+Multi-Criteria Decision Analysis (MCDA) with Shannon Entropy.
 
-Terminología aplicada correctamente:
-- Shannon Entropy H: mide el desorden en la distribución de fallos.
-  Alta entropía = fallos dispersos en muchas categorías = sistema
-  inestable, difícil de diagnosticar.
-  Baja entropía = fallos concentrados en una categoría = problema
-  específico, más fácil de corregir.
+Terminology applied correctly:
+- Shannon Entropy H: measures disorder in the failure distribution.
+  High entropy = failures spread across many categories = unstable
+  system, hard to diagnose.
+  Low entropy = failures concentrated in one category = specific
+  problem, easier to fix.
 
-- Superposición (clásica): un paso está en estado indeterminado
-  [0.0, 1.0] hasta que Gemini lo evalúa. No es binario.
+- Superposition (classical): a step is in an indeterminate state
+  [0.0, 1.0] until Gemini evaluates it. Not binary.
 
-- Entrelazamiento de fallos: correlación medida entre categorías
-  de error. Un fallo de tipo 'dependency' tiene propagation=0.8
-  porque estadísticamente arrastra otros pasos.
+- Failure entanglement: measured correlation between error categories.
+  A 'dependency' failure has propagation=0.8 because it statistically
+  drags other steps along.
 
-- Función de densidad histórica: distribución empírica de éxito
-  de Claude Code por tipo de tarea, construida con cada ejecución.
-  Permite calcular prior probability antes de ejecutar.
+- Historical density function: empirical success distribution of
+  Claude Code by task type, built with each execution.
+  Enables calculating prior probability before executing.
 
-El score NO es una opinión. Es una ecuación reproducible.
+The score is NOT an opinion. It is a reproducible equation.
 """
 
 import math
@@ -33,34 +33,34 @@ from pathlib import Path
 
 DB = Path("/root/jarvis/database/jarvis_metrics.db")
 
-# ── Propagación base por categoría (empírica, actualizable) ──
+# ── Base propagation per category (empirical, updatable) ──
 CATEGORY_PROPAGATION = {
-    "dependency":  0.80,  # fallo externo arrastra todo
-    "permission":  0.90,  # bloqueo total del sistema
-    "config":      0.60,  # afecta múltiples pasos
-    "env":         0.70,  # variable faltante = falla todo lo que la usa
-    "logic":       0.30,  # error interno, generalmente aislado
-    "timeout":     0.20,  # raramente se propaga
-    "unknown":     0.40,  # incertidumbre máxima asignada como media
+    "dependency":  0.80,  # external failure drags everything
+    "permission":  0.90,  # total system blockage
+    "config":      0.60,  # affects multiple steps
+    "env":         0.70,  # missing variable = everything using it fails
+    "logic":       0.30,  # internal error, generally isolated
+    "timeout":     0.20,  # rarely propagates
+    "unknown":     0.40,  # maximum uncertainty assigned as average
 }
 
-PASS_THRESHOLD  = 0.85   # Ψ mínimo para aprobar
-BLOCKER_CEILING = 0.60   # techo si hay paso crítico bloqueado
-ENTROPY_WEIGHT  = 0.15   # penalización máxima por entropía
-MOMENTUM_CAP    = 0.03   # bonus máximo por mejora entre intentos
+PASS_THRESHOLD  = 0.85   # Ψ minimum to pass
+BLOCKER_CEILING = 0.60   # ceiling if a critical step is blocked
+ENTROPY_WEIGHT  = 0.15   # maximum penalty for entropy
+MOMENTUM_CAP    = 0.03   # maximum bonus for improvement between attempts
 
 
 @dataclass
 class StepMeasurement:
     """
-    Medición de un paso tras ejecución.
-    Estado indeterminado hasta que completion_pct es asignado por Gemini.
+    Measurement of a step after execution.
+    Indeterminate state until completion_pct is assigned by Gemini.
     """
     step_number:    int
     description:    str
     weight:         float        # importancia [0.0, 1.0]
     criticality:    int          # exponente [1, 2, 3]
-    completion:     float        # proporción completada [0.0, 1.0]
+    completion:     float        # proportion completed [0.0, 1.0]
     error_category: str = "unknown"
     error_message:  str = ""
 
@@ -68,20 +68,20 @@ class StepMeasurement:
     def score(self) -> float:
         """
         score_i = completion^criticality × weight
-        La exponenciación penaliza fallos en pasos críticos
-        de forma no lineal: un paso crítico(3) al 50%
-        contribuye 0.5^3 = 0.125, no 0.5.
+        Exponentiation penalizes failures in critical steps
+        non-linearly: a critical(3) step at 50%
+        contributes 0.5^3 = 0.125, not 0.5.
         """
         return (self.completion ** self.criticality) * self.weight
 
     @property
     def is_blocker(self) -> bool:
-        """Paso crítico con menos del 50% bloquea el objetivo."""
+        """Critical step below 50% blocks the objective."""
         return self.criticality == 3 and self.completion < 0.50
 
     @property
     def severity(self) -> int:
-        """Severidad derivada de criticality y completion."""
+        """Severity derived from criticality and completion."""
         if self.completion >= 1.0:
             return 0
         base = self.criticality
@@ -94,7 +94,7 @@ class StepMeasurement:
 
 @dataclass
 class ScoringResult:
-    """Resultado completo de una evaluación."""
+    """Complete result of an evaluation."""
     objective_id:    str
     attempt:         int
     steps:           list[StepMeasurement]
@@ -150,17 +150,17 @@ class ScoringResult:
 
     def _calc_entropy(self) -> float:
         """
-        Shannon Entropy sobre distribución de categorías de fallo.
+        Shannon Entropy over the failure category distribution.
 
         H = -Σ p_i × log2(p_i)
 
-        p_i = proporción de pasos fallidos en categoría i.
-        Normalizado por log2(N_categorías) → rango [0, 1].
+        p_i = proportion of failed steps in category i.
+        Normalized by log2(N_categories) → range [0, 1].
 
-        H=0: todos los fallos son de la misma categoría
-             → problema específico, solucionable.
-        H=1: fallos uniformemente distribuidos en todas las categorías
-             → sistema inestable, diagnóstico difícil.
+        H=0: all failures are in the same category
+             → specific problem, solvable.
+        H=1: failures uniformly distributed across all categories
+             → unstable system, hard to diagnose.
         """
         failed = [s for s in self.steps if s.completion < 0.5]
         if not failed:
@@ -175,30 +175,30 @@ class ScoringResult:
             (c / total) * math.log2(c / total)
             for c in counts.values() if c > 0
         )
-        # Normalizar por log2(categorias_observadas), no por el total posible.
-        # Así H=1.0 cuando los fallos están uniformemente dispersos entre
-        # todas las categorías que realmente aparecen (máximo desorden).
+        # Normalize by log2(observed_categories), not by the total possible.
+        # This way H=1.0 when failures are uniformly spread across
+        # all categories that actually appear (maximum disorder).
         n_cats = len(counts)
         max_H  = math.log2(n_cats) if n_cats > 1 else 1.0
         return H / max_H if max_H > 0 else 0.0
 
     def _calc_convergence(self) -> tuple[bool, Optional[float]]:
         """
-        Estima si el sistema converge a PASS_THRESHOLD y en cuántos intentos.
-        Usa el delta actual como estimador lineal de progreso.
+        Estimates whether the system converges to PASS_THRESHOLD and in how many attempts.
+        Uses the current delta as a linear progress estimator.
         """
         if self.score_final >= PASS_THRESHOLD:
             return True, 0.0
         if self.delta_score <= 0:
-            return False, None  # No converge con estrategia actual
+            return False, None  # Does not converge with current strategy
         remaining = PASS_THRESHOLD - self.score_final
         return True, round(remaining / self.delta_score, 1)
 
     def _classify_errors(self) -> list[dict]:
         """
-        Clasifica errores por criticidad matemática.
+        Classifies errors by mathematical criticality.
         critical_score = (severity × propagation × fix_complexity) / 25
-        Rango [0, 1]: 1.0 = error fatal que bloquea todo y es difícil de arreglar.
+        Range [0, 1]: 1.0 = fatal error that blocks everything and is hard to fix.
         """
         errors = []
         for i, s in enumerate(self.steps):
@@ -221,10 +221,10 @@ class ScoringResult:
                 "fix_complexity": fix_complex,
                 "critical_score": cscore,
                 "label": (
-                    "BLOQUEANTE" if cscore >= 0.60 else
-                    "CRITICO"    if cscore >= 0.30 else
-                    "MODERADO"   if cscore >= 0.10 else
-                    "MENOR"
+                    "BLOCKER"  if cscore >= 0.60 else
+                    "CRITICAL" if cscore >= 0.30 else
+                    "MODERATE" if cscore >= 0.10 else
+                    "MINOR"
                 ),
                 "message": s.error_message[:300],
             })
@@ -264,7 +264,7 @@ class ScoringResult:
         }
 
     def save(self):
-        """Persiste snapshot inmutable en BD."""
+        """Persists immutable snapshot to DB."""
         d = self.to_dict()
         conn = sqlite3.connect(DB)
         conn.execute("""
@@ -291,7 +291,7 @@ class ScoringResult:
 
 
 def load_from_db(objective_id: str, attempt: int) -> ScoringResult:
-    """Carga el estado de pasos desde BD y construye ScoringResult."""
+    """Loads step state from DB and builds ScoringResult."""
     conn = sqlite3.connect(DB)
     rows = conn.execute("""
         SELECT step_number, description, weight, criticality,

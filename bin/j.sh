@@ -51,7 +51,7 @@ MODEL="sonnet"
 
 show_status() {
     echo "=== DQIII8 Status ==="
-    echo "Proyecto : $(basename "$JARVIS_ROOT")"
+    echo "Project  : $(basename "$JARVIS_ROOT")"
     echo "Modelo   : $MODEL_SONNET"
     echo "Tier     : 3 (sonnet) | 2 (groq) | 1 (ollama)"
     echo ""
@@ -207,7 +207,7 @@ case "$MODEL" in
     sonnet|"")
         _router_out="$(python3 "$JARVIS_ROOT/bin/model_router.py" "código" 2>/dev/null || true)"
         echo "[DQIII8] Tier 3 — Claude $MODEL_SONNET | Cost: standard" >&2
-        [[ -n "$_router_out" ]] && echo "[DQIII8] Modelo activo: $_router_out" >&2
+        [[ -n "$_router_out" ]] && echo "[DQIII8] Active model: $_router_out" >&2
         cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT"
         ;;
 

@@ -30,7 +30,7 @@ files = [
 project = os.environ.get("JARVIS_PROJECT", "jarvis-core")
 
 # ── 3. Next step from projects/[project].md ───────────────────────
-next_step = f"Ver projects/{project}.md"
+next_step = f"See projects/{project}.md"
 pm = JARVIS / "projects" / f"{project}.md"
 if pm.exists():
     lines = pm.read_text(encoding="utf-8").splitlines()
@@ -94,8 +94,8 @@ print(f"[HANDOVER] Session saved in {session_path.relative_to(JARVIS)}")
 # ── 6. Update projects/[project].md ───────────────────────────────
 if pm.exists():
     text = pm.read_text(encoding="utf-8")
-    marker = "**Ultima sesion:**"
-    new_line = f"**Ultima sesion:** {DATE} — handover manual"
+    marker = "**Last session:**"
+    new_line = f"**Last session:** {DATE} — manual handover"
     if marker in text:
         lines = text.splitlines()
         updated = [new_line if marker in l else l for l in lines]

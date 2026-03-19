@@ -17,7 +17,7 @@ Accept optional reviewer feedback to improve a previous attempt.
 ## Protocol
 1. Read the topic, duration, language, mode, and optional feedback from the prompt.
 2. Generate a script following all VIRAL HOOK RULES below.
-3. **REGLA DE IDIOMA CRÍTICA**: The script MUST be generated STRICTLY in the requested
+3. **CRITICAL LANGUAGE RULE**: The script MUST be generated STRICTLY in the requested
    language (e.g. `es` = Español, `en` = English, `pt` = Português, `fr` = Français).
    NEVER mix languages. A Spanish topic must produce a Spanish script if language=es.
 4. If feedback is provided, address it specifically in the new script.

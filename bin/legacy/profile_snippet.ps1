@@ -1,17 +1,17 @@
-# ── Añadir esto a tu PowerShell profile ──────────────────────────
-# Para editar el profile: notepad $PROFILE
-# O ejecutar directamente: . $PROFILE  (para recargar sin reiniciar)
+# ── Add this to your PowerShell profile ───────────────────────────
+# To edit the profile: notepad $PROFILE
+# Or run directly: . $PROFILE  (to reload without restarting)
 
-# Alias global para JARVIS
+# Global alias for JARVIS
 function j {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$args)
     & "C:\jarvis\bin\j.ps1" @args
 }
 
-# Variable de entorno base
+# Base environment variable
 $env:JARVIS_ROOT = "C:\jarvis"
 
-# Autocompletion básico (proyectos conocidos)
+# Basic autocompletion (known projects)
 Register-ArgumentCompleter -CommandName j -ScriptBlock {
     param($word)
     @("content-automation","hult-finance","leyendas-del-este",

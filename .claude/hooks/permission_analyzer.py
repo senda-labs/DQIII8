@@ -4,7 +4,7 @@ DQIII8 — PermissionAnalyzer v3
 Centralized permission evaluation for pre_tool_use hooks.
 
 v2: SQLite timeout + ALLOWED_DELETIONS + ESCALATE loop
-v3: Dual-channel rejections (BD + JSON buzón) + budget check +
+v3: Dual-channel rejections (DB + JSON inbox) + budget check +
     autonomous auto-approve + FIX ESCALATE count (DENY+ESCALATE)
 """
 

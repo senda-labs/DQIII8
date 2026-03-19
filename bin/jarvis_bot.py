@@ -1,6 +1,6 @@
 """
-DQIII8 Telegram Bot — terminal móvil completo.
-Requiere: python-telegram-bot>=20, JARVIS_BOT_TOKEN en .env
+DQIII8 Telegram Bot — full mobile terminal.
+Requires: python-telegram-bot>=20, JARVIS_BOT_TOKEN in .env
 """
 
 import asyncio
@@ -24,17 +24,17 @@ from telegram.ext import (
     filters,
 )
 
-# ── Rutas ──────────────────────────────────────────────────────────────────────
+# ── Paths ──────────────────────────────────────────────────────────────────────
 JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB = JARVIS / "database" / "jarvis_metrics.db"
 LOG_FILE = JARVIS / "database" / "audit_reports" / "jarvis_bot.log"
 QUEUE_DIR = JARVIS / "objectives" / "queue"
 REFERENCE_IMAGE_PATH = JARVIS / "tasks" / "reference_image.jpg"
 
-# ── Configuración ──────────────────────────────────────────────────────────────
+# ── Configuration ──────────────────────────────────────────────────────────────
 load_dotenv(JARVIS / ".env")
 BOT_TOKEN = os.getenv("JARVIS_BOT_TOKEN", "")
-ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")  # vacío = sin restricción
+ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")  # empty = no restriction
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -48,14 +48,14 @@ logging.basicConfig(
 )
 log = logging.getLogger("jarvis_bot")
 
-# ── Referencia global a la app (se asigna en main()) ───────────────────────────
+# ── Global app reference (set in main()) ───────────────────────────────────────
 APP: Application = None  # type: ignore[assignment]
 
-# ── Estado de tareas activas ────────────────────────────────────────────────────
+# ── Active tasks state ──────────────────────────────────────────────────────────
 # {task_id: {start_time, description, chat_id, proc, monitor: asyncio.Task}}
 ACTIVE_TASKS: dict[str, dict] = {}
 
-# ── Satisfacción pendiente de respuesta ─────────────────────────────────────────
+# ── Pending satisfaction responses ──────────────────────────────────────────────
 # {pending_key: {session_id, model_used, task_type, task_description, duration_ms,
 #                technical_success, tier_used}}
 PENDING_SATISFACTION: dict[str, dict] = {}
@@ -86,14 +86,14 @@ def db_query(sql: str, params: tuple = ()) -> list:
 
 
 async def send_chunks(update: Update, text: str) -> None:
-    """Divide mensajes largos en chunks de 4000 chars."""
+    """Splits long messages into 4000-char chunks."""
     chunk_size = 4000
     for i in range(0, len(text), chunk_size):
         await update.message.reply_text(text[i : i + chunk_size])
 
 
 def run_cmd(cmd: list[str], timeout: int = 120) -> str:
-    """Ejecuta un subproceso y devuelve stdout+stderr combinados."""
+    """Runs a subprocess and returns combined stdout+stderr."""
     try:
         result = subprocess.run(
             cmd,
@@ -111,7 +111,7 @@ def run_cmd(cmd: list[str], timeout: int = 120) -> str:
 
 
 def _load_env_dict() -> dict:
-    """os.environ + .env como dict para subprocesos."""
+    """os.environ + .env as dict for subprocesses."""
     env = dict(os.environ)
     env_file = JARVIS / ".env"
     if env_file.exists():
@@ -189,12 +189,12 @@ def _log_satisfaction(
         log.error("Error logging satisfaction: %s", exc)
 
 
-# ── Ejecución de tarea (subprocess asyncio) ─────────────────────────────────────
+# ── Task execution (asyncio subprocess) ─────────────────────────────────────────
 async def _run_task(task_id: str, description: str, chat_id: str) -> None:
     """
-    Ejecuta claude -p en un subprocess asyncio.
-    Manda update cada 30s si sigue corriendo.
-    Manda resultado completo al terminar.
+    Runs claude -p in an asyncio subprocess.
+    Sends update every 30s if still running.
+    Sends full result when done.
     """
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -210,8 +210,8 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
         if task_id in ACTIVE_TASKS:
             ACTIVE_TASKS[task_id]["proc"] = proc
 
-        # communicate() recoge todo el output; shield() evita que wait_for
-        # lo cancele en cada iteración del bucle de 30s
+        # communicate() collects all output; shield() prevents wait_for
+        # from cancelling it on each iteration of the 30s loop
         communicate_task = asyncio.create_task(proc.communicate())
         start = time.time()
 
@@ -233,18 +233,18 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
             stdout, stderr = communicate_task.result()
             output = (stdout or b"").decode("utf-8").strip()
             if not output:
-                output = (stderr or b"").decode("utf-8").strip() or "(sin respuesta)"
+                output = (stderr or b"").decode("utf-8").strip() or "(no response)"
         else:
-            output = "Timeout (300s) — tarea terminada forzosamente."
+            output = "Task forcibly terminated (300s timeout)."
 
     except Exception as exc:
-        output = f"Error lanzando claude: {exc}"
+        output = f"Error launching claude: {exc}"
     finally:
         task_info = ACTIVE_TASKS.pop(task_id, {})
         task_start = task_info.get("start_time", time.time())
         duration_ms = int((time.time() - task_start) * 1000)
 
-    # Enviar resultado en chunks si es largo
+    # Send result in chunks if long
     chunks = [output[i : i + 3800] for i in range(0, max(len(output), 1), 3800)]
     for i, chunk in enumerate(chunks):
         prefix = f"✅ `{task_id}`:\n" if i == 0 else f"`{task_id}` (cont.):\n"
@@ -253,9 +253,9 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
             text=f"{prefix}```\n{chunk}\n```",
             parse_mode="Markdown",
         )
-    log.info("Tarea completada: %s (%d chars)", task_id, len(output))
+    log.info("Task completed: %s (%d chars)", task_id, len(output))
 
-    # Prompt de satisfacción con botones inline
+    # Satisfaction prompt with inline buttons
     technical_success = 0 if output.startswith("Error") or "Timeout" in output else 1
     task_type = _infer_task_type(description)
     pending_key = f"sat_{task_id}"
@@ -278,7 +278,7 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
     )
     await APP.bot.send_message(
         chat_id=chat_id,
-        text=f"_{description[:60]}_ — ¿fue útil?",
+        text=f"_{description[:60]}_ — was it useful?",
         reply_markup=keyboard,
         parse_mode="Markdown",
     )
@@ -305,7 +305,7 @@ async def handle_satisfaction_callback(update: Update, context: ContextTypes.DEF
 
 
 async def _spawn_task(update: Update, description: str) -> str:
-    """Registra la tarea y lanza _run_task en background. Retorna task_id."""
+    """Registers the task and launches _run_task in background. Returns task_id."""
     task_id = f"t{int(time.time()) % 100000}"
     chat_id = str(update.effective_chat.id)
 
@@ -319,25 +319,25 @@ async def _spawn_task(update: Update, description: str) -> str:
     monitor = asyncio.create_task(_run_task(task_id, description, chat_id))
     ACTIVE_TASKS[task_id]["monitor"] = monitor
 
-    log.info("Tarea spawned: %s | %s", task_id, description[:60])
+    log.info("Task spawned: %s | %s", task_id, description[:60])
     return task_id
 
 
-# ── Handlers de tareas ──────────────────────────────────────────────────────────
+# ── Task handlers ───────────────────────────────────────────────────────────────
 async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     description = " ".join(context.args).strip()
     if not description:
         await update.message.reply_text(
-            "Uso: `/task [descripción de la tarea]`", parse_mode="Markdown"
+            "Usage: `/task [task description]`", parse_mode="Markdown"
         )
         return
     task_id = await _spawn_task(update, description)
     await update.message.reply_text(
-        f"🚀 `{task_id}` lanzado\n_{description[:80]}_\n\n"
-        f"Notificaré con el resultado. Update cada 30s si tarda.",
+        f"🚀 `{task_id}` launched\n_{description[:80]}_\n\n"
+        f"I'll notify you with the result. Update every 30s if it takes long.",
         parse_mode="Markdown",
     )
     log.info("/task: %s | %s", task_id, description[:60])
@@ -345,13 +345,13 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     if not ACTIVE_TASKS:
-        await update.message.reply_text("No hay tareas activas.")
+        await update.message.reply_text("No active tasks.")
         return
     now = time.time()
-    lines = ["*Tareas activas:*\n"]
+    lines = ["*Active tasks:*\n"]
     for tid, info in ACTIVE_TASKS.items():
         elapsed = int(now - info["start_time"])
         m, s = divmod(elapsed, 60)
@@ -363,37 +363,37 @@ async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_output(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     if not context.args:
-        await update.message.reply_text("Uso: `/output [task_id]`", parse_mode="Markdown")
+        await update.message.reply_text("Usage: `/output [task_id]`", parse_mode="Markdown")
         return
     task_id = context.args[0]
     if task_id not in ACTIVE_TASKS:
-        await update.message.reply_text(f"Tarea `{task_id}` no encontrada.", parse_mode="Markdown")
+        await update.message.reply_text(f"Task `{task_id}` not found.", parse_mode="Markdown")
         return
     info = ACTIVE_TASKS[task_id]
     elapsed = int(time.time() - info["start_time"])
     proc = info.get("proc")
-    status = "en progreso" if (proc and proc.returncode is None) else "finalizando"
+    status = "in progress" if (proc and proc.returncode is None) else "finishing"
     await update.message.reply_text(
         f"`{task_id}` — {status} ({elapsed}s)\n"
         f"_{info['description'][:80]}_\n\n"
-        f"El resultado completo se enviará al terminar.",
+        f"Full result will be sent when done.",
         parse_mode="Markdown",
     )
 
 
 async def cmd_kill(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     if not context.args:
-        await update.message.reply_text("Uso: `/kill [task_id]`", parse_mode="Markdown")
+        await update.message.reply_text("Usage: `/kill [task_id]`", parse_mode="Markdown")
         return
     task_id = context.args[0]
     if task_id not in ACTIVE_TASKS:
-        await update.message.reply_text(f"Tarea `{task_id}` no encontrada.", parse_mode="Markdown")
+        await update.message.reply_text(f"Task `{task_id}` not found.", parse_mode="Markdown")
         return
     proc = ACTIVE_TASKS[task_id].get("proc")
     if proc and proc.returncode is None:
@@ -408,45 +408,45 @@ async def cmd_kill(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_reply_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     await update.message.reply_text(
-        "Las tareas corren con `claude -p` (no interactivo).\n"
-        "Para interacción usa `/task` con instrucciones completas.",
+        "Tasks run with `claude -p` (non-interactive).\n"
+        "For interaction use `/task` with complete instructions.",
         parse_mode="Markdown",
     )
 
 
-# ── Handlers existentes ─────────────────────────────────────────────────────────
+# ── Existing handlers ───────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     chat_id = update.effective_chat.id
     text = (
-        f"*DQIII8 Bot — terminal móvil*\n\n"
+        f"*DQIII8 Bot — mobile terminal*\n\n"
         f"Chat ID: `{chat_id}`\n\n"
-        "*Tareas Claude Code:*\n"
-        "/task [desc] — lanza claude -p en background\n"
-        "/tasks — lista tareas activas\n"
-        "/output [id] — estado de la tarea\n"
-        "/kill [id] — cancelar tarea\n\n"
-        "*Sistema JAL:*\n"
-        "/status — objetivos activos en BD\n"
-        "/score — ultimo scoring snapshot\n"
-        "/logs — ultimas 20 lineas del log\n"
-        "/audit — ejecuta gemini\\_review.py\n"
-        "/run [nombre.md] — ejecuta jal\\_run.py\n\n"
-        "Mensaje libre: verbo de acción o \\>15 palabras → /task automático.\n"
-        "Resto → respuesta rápida."
+        "*Claude Code tasks:*\n"
+        "/task [desc] — launches claude -p in background\n"
+        "/tasks — list active tasks\n"
+        "/output [id] — task status\n"
+        "/kill [id] — cancel task\n\n"
+        "*JAL system:*\n"
+        "/status — active objectives in DB\n"
+        "/score — latest scoring snapshot\n"
+        "/logs — last 20 log lines\n"
+        "/audit — runs gemini\\_review.py\n"
+        "/run [name.md] — runs jal\\_run.py\n\n"
+        "Free message: action verb or \\>15 words → automatic /task.\n"
+        "Otherwise → quick response."
     )
     await update.message.reply_text(text, parse_mode="Markdown")
-    log.info("/start desde chat_id=%s", chat_id)
+    log.info("/start from chat_id=%s", chat_id)
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     args = context.args
     project = args[0] if args else "math-image-generator"
@@ -480,7 +480,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 ]
             )
             if metrics
-            else "  Sin datos aún"
+            else "  No data yet"
         )
         score = ranking[8] if ranking else 0
         await update.message.reply_text(
@@ -497,7 +497,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def cmd_score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     rows = db_query("""
         SELECT s.objective_id, s.attempt, s.evaluated_at, s.score_raw,
@@ -507,7 +507,7 @@ async def cmd_score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         LIMIT 1
         """)
     if not rows:
-        await update.message.reply_text("No hay snapshots de scoring.")
+        await update.message.reply_text("No scoring snapshots yet.")
         return
     obj_id, attempt, evaluated_at, score_raw, score_final, converges, steps_done, steps_total = (
         rows[0]
@@ -520,50 +520,50 @@ async def cmd_score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Evaluado: {evaluated_at}\n"
         f"Score raw: {score_raw:.3f}\n"
         f"Score final: {score_final:.3f}\n"
-        f"Pasos: {steps_done}/{steps_total}\n"
+        f"Steps: {steps_done}/{steps_total}\n"
         f"Convergencia: {converge_str}"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
-    log.info("/score consultado")
+    log.info("/score queried")
 
 
 async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     try:
         lines = LOG_FILE.read_text(encoding="utf-8").splitlines()
-        tail = "\n".join(lines[-20:]) if lines else "(log vacio)"
+        tail = "\n".join(lines[-20:]) if lines else "(empty log)"
     except FileNotFoundError:
-        tail = "(log aun no creado)"
-    await send_chunks(update, f"*Log del bot (ultimas 20 lineas):*\n```\n{tail}\n```")
-    log.info("/logs consultado")
+        tail = "(not yet created)"
+    await send_chunks(update, f"*Bot log (last 20 lines):*\n```\n{tail}\n```")
+    log.info("/logs queried")
 
 
 async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
-    await update.message.reply_text("Ejecutando gemini_review.py... (puede tardar)")
-    log.info("/audit iniciado")
+    await update.message.reply_text("Running gemini_review.py... (may take a while)")
+    log.info("/audit started")
     output = run_cmd(["python3", "bin/gemini_review.py"], timeout=180)
     await send_chunks(update, f"*Resultado audit:*\n```\n{output[:3800]}\n```")
-    log.info("/audit completado")
+    log.info("/audit completed")
 
 
 async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     args = context.args
     if not args:
         queue_files = sorted(QUEUE_DIR.glob("*.md")) if QUEUE_DIR.exists() else []
         if not queue_files:
-            await update.message.reply_text("Cola vacia. Usa `/run nombre.md` para ejecutar.")
+            await update.message.reply_text("Queue empty. Use `/run name.md` to execute.")
             return
         names = "\n".join(f"- `{f.name}`" for f in queue_files)
         await update.message.reply_text(
-            f"*Objetivos en queue:*\n{names}\n\nUsa `/run nombre.md` para ejecutar.",
+            f"*Objectives in queue:*\n{names}\n\nUse `/run name.md` to execute.",
             parse_mode="Markdown",
         )
         return
@@ -601,7 +601,7 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         f"🚀 *OrchestratorLoop* lanzado en background\n"
         f"Proyecto: `{project}` | Ciclos: `{cycles}` | Tier: `{tier}`\n"
-        f"_Te notificaré cuando termine. Puedes cerrar el chat._",
+        f"_I'll notify you when done. You can close the chat._",
         parse_mode="Markdown",
     )
     log.info("/loop project=%s cycles=%s tier=%s", project, cycles, tier)
@@ -647,8 +647,8 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_images(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    /images [proyecto]
-    Envía las últimas imágenes generadas del proyecto.
+    /images [project]
+    Sends the latest generated images from the project.
     """
     if not authorized(update):
         return
@@ -658,7 +658,7 @@ async def cmd_images(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     output_dir = Path(f"/root/{project}/output")
 
     if not output_dir.exists():
-        await update.message.reply_text(f"No hay imágenes en {project} todavía.")
+        await update.message.reply_text(f"No images in {project} yet.")
         return
 
     png_files = sorted(
@@ -668,11 +668,11 @@ async def cmd_images(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )[:5]
 
     if not png_files:
-        await update.message.reply_text("Sin imágenes generadas.")
+        await update.message.reply_text("No generated images.")
         return
 
     await update.message.reply_text(
-        f"📸 Enviando {len(png_files)} imágenes de `{project}`...",
+        f"📸 Sending {len(png_files)} images from `{project}`...",
         parse_mode="Markdown",
     )
 
@@ -686,16 +686,16 @@ async def cmd_images(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                     parse_mode="Markdown",
                 )
         except Exception as e:
-            await update.message.reply_text(f"Error enviando {png.name}: {e}")
+            await update.message.reply_text(f"Error sending {png.name}: {e}")
 
     log.info("/images project=%s count=%d", project, len(png_files))
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Guarda la foto enviada como imagen de referencia cuando el caption
-    contiene 'reference' o '/reference'.
-    Uso: enviar una foto con caption 'reference' o '/reference'
+    Saves the sent photo as a reference image when the caption
+    contains 'reference' or '/reference'.
+    Usage: send a photo with caption 'reference' or '/reference'
     """
     if not authorized(update):
         return
@@ -703,14 +703,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if "reference" not in caption:
         return
 
-    photo = update.message.photo[-1]  # mayor resolución disponible
+    photo = update.message.photo[-1]  # highest resolution available
     file = await context.bot.get_file(photo.file_id)
     await file.download_to_drive(str(REFERENCE_IMAGE_PATH))
 
     await update.message.reply_text(
-        f"Imagen de referencia guardada.\n"
-        f"El proximo `/loop` la usara como criterio visual.\n"
-        f"Para lanzar: `/loop math-image-generator 5 tier3`",
+        f"Reference image saved.\n"
+        f"The next `/loop` will use it as a visual criterion.\n"
+        f"To launch: `/loop math-image-generator 5 tier3`",
         parse_mode="Markdown",
     )
     log.info("Reference image saved to %s", REFERENCE_IMAGE_PATH)
@@ -718,7 +718,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     user_msg = (update.message.text or "").strip()
     if not user_msg:
@@ -730,15 +730,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if is_action:
         task_id = await _spawn_task(update, user_msg)
         await update.message.reply_text(
-            f"🚀 `{task_id}` lanzado\n_{user_msg[:80]}_",
+            f"🚀 `{task_id}` launched\n_{user_msg[:80]}_",
             parse_mode="Markdown",
         )
-        log.info("Mensaje → task: %s | %s", task_id, user_msg[:60])
+        log.info("Message → task: %s | %s", task_id, user_msg[:60])
         return
 
-    # Respuesta rápida vía OpenRouter (sin claude CLI)
-    await update.message.reply_text("Procesando...")
-    log.info("Mensaje rápido: %s", user_msg[:80])
+    # Quick response via OpenRouter (no claude CLI)
+    await update.message.reply_text("Processing...")
+    log.info("Quick message: %s", user_msg[:80])
     prompt = (
         "You are DQIII8, an AI orchestration system. "
         f"Respond concisely and technically:\n\n{user_msg}"
@@ -757,23 +757,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         timeout=60,
         env=_load_env_dict(),
     )
-    output = result.stdout.strip() or "(sin respuesta)"
+    output = result.stdout.strip() or "(no response)"
     await send_chunks(update, output)
-    log.info("Respuesta rápida enviada (%d chars)", len(output))
+    log.info("Quick response sent (%d chars)", len(output))
 
 
-# ── Bloque 4: Auto-mejora + Modo Sueño commands ─────────────────────────────────
+# ── Block 4: Auto-improvement + Sleep Mode commands ──────────────────────────────
 
 
 async def cmd_research_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Muestra estado de research_items por status."""
+    """Shows research_items state by status."""
     conn = sqlite3.connect(str(DB), timeout=5)
     rows = conn.execute(
         "SELECT status, COUNT(*) FROM research_items GROUP BY status ORDER BY COUNT(*) DESC"
     ).fetchall()
     conn.close()
     if not rows:
-        await update.message.reply_text("No hay research items aún.")
+        await update.message.reply_text("No research items yet.")
         return
     lines = ["*Research Items:*"]
     for status, count in rows:
@@ -782,8 +782,8 @@ async def cmd_research_status(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def cmd_sandbox_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Ejecuta sandbox_tester.py --process-queue en background."""
-    await update.message.reply_text("[DQIII8] Lanzando sandbox tester...")
+    """Runs sandbox_tester.py --process-queue in background."""
+    await update.message.reply_text("[DQIII8] Launching sandbox tester...")
     result = subprocess.run(
         [sys.executable, str(JARVIS / "bin" / "sandbox_tester.py"), "--process-queue"],
         capture_output=True,
@@ -791,76 +791,76 @@ async def cmd_sandbox_run(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         timeout=120,
         cwd=str(JARVIS),
     )
-    output = (result.stdout + result.stderr).strip()[-800:] or "(sin output)"
+    output = (result.stdout + result.stderr).strip()[-800:] or "(no output)"
     await send_chunks(update, output)
 
 
 async def _handle_integrar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Marca un research item como INTEGRADO. Uso: /integrar_<id>"""
+    """Marks a research item as INTEGRADO. Usage: /integrar_<id>"""
     text = update.message.text or ""
     m = re.match(r"/integrar[_\s]+(\d+)", text)
     if not m:
-        await update.message.reply_text("Uso: /integrar_<id>")
+        await update.message.reply_text("Usage: /integrar_<id>")
         return
     item_id = int(m.group(1))
     conn = sqlite3.connect(str(DB), timeout=5)
     conn.execute("UPDATE research_items SET status='INTEGRADO' WHERE id=?", (item_id,))
     conn.commit()
     conn.close()
-    await update.message.reply_text(f"[DQIII8] Item {item_id} marcado como INTEGRADO.")
+    await update.message.reply_text(f"[DQIII8] Item {item_id} marked as INTEGRADO.")
 
 
 async def _handle_rechazar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Marca un research item como RECHAZADO. Uso: /rechazar_<id>"""
+    """Marks a research item as RECHAZADO. Usage: /rechazar_<id>"""
     text = update.message.text or ""
     m = re.match(r"/rechazar[_\s]+(\d+)", text)
     if not m:
-        await update.message.reply_text("Uso: /rechazar_<id>")
+        await update.message.reply_text("Usage: /rechazar_<id>")
         return
     item_id = int(m.group(1))
     conn = sqlite3.connect(str(DB), timeout=5)
     conn.execute("UPDATE research_items SET status='RECHAZADO_MANUAL' WHERE id=?", (item_id,))
     conn.commit()
     conn.close()
-    await update.message.reply_text(f"[DQIII8] Item {item_id} rechazado.")
+    await update.message.reply_text(f"[DQIII8] Item {item_id} rejected.")
 
 
 async def _handle_aprobar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Aprueba una solicitud de permiso del Modo Sueño. Uso: /aprobar_<id>"""
+    """Approves a Sleep Mode permission request. Usage: /aprobar_<id>"""
     text = update.message.text or ""
     m = re.match(r"/aprobar[_\s]+([0-9a-f]+)", text)
     if not m:
-        await update.message.reply_text("Uso: /aprobar_<id>")
+        await update.message.reply_text("Usage: /aprobar_<id>")
         return
     perm_id = m.group(1)
     perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
-    perm_file.write_text('{"decision":"allow","reason":"usuario aprobó"}', encoding="utf-8")
-    await update.message.reply_text(f"[DQIII8] Permiso {perm_id} APROBADO.")
+    perm_file.write_text('{"decision":"allow","reason":"user approved"}', encoding="utf-8")
+    await update.message.reply_text(f"[DQIII8] Permission {perm_id} APPROVED.")
 
 
 async def _handle_denegar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Deniega una solicitud de permiso del Modo Sueño. Uso: /denegar_<id>"""
+    """Denies a Sleep Mode permission request. Usage: /denegar_<id>"""
     text = update.message.text or ""
     m = re.match(r"/denegar[_\s]+([0-9a-f]+)", text)
     if not m:
-        await update.message.reply_text("Uso: /denegar_<id>")
+        await update.message.reply_text("Usage: /denegar_<id>")
         return
     perm_id = m.group(1)
     perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
-    perm_file.write_text('{"decision":"deny","reason":"usuario denegó"}', encoding="utf-8")
-    await update.message.reply_text(f"[DQIII8] Permiso {perm_id} DENEGADO.")
+    perm_file.write_text('{"decision":"deny","reason":"user denied"}', encoding="utf-8")
+    await update.message.reply_text(f"[DQIII8] Permission {perm_id} DENIED.")
 
 
 async def cmd_stop_autonomous(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Escribe stop flag para detener la próxima sesión autónoma."""
+    """Writes stop flag to halt the next autonomous session."""
     if not authorized(update):
-        await update.message.reply_text("No autorizado.")
+        await update.message.reply_text("Unauthorized.")
         return
     stop_flag = JARVIS / "tasks" / ".stop_flag"
     stop_flag.write_text(f"stop requested at {time.time()}", encoding="utf-8")
     await update.message.reply_text(
-        "Stop flag escrito en `tasks/.stop_flag`.\n"
-        "La sesión autónoma se detendrá antes del próximo inicio.",
+        "Stop flag written to `tasks/.stop_flag`.\n"
+        "The autonomous session will halt before the next start.",
         parse_mode="Markdown",
     )
     log.info("/stop: stop flag written to %s", stop_flag)
@@ -870,10 +870,10 @@ async def cmd_stop_autonomous(update: Update, context: ContextTypes.DEFAULT_TYPE
 def main() -> None:
     global APP
     if not BOT_TOKEN:
-        log.error("JARVIS_BOT_TOKEN no configurado en .env -- abortando.")
+        log.error("JARVIS_BOT_TOKEN not configured in .env -- aborting.")
         sys.exit(1)
 
-    log.info("Iniciando DQIII8 Bot (terminal móvil)...")
+    log.info("Starting DQIII8 Bot (mobile terminal)...")
     APP = Application.builder().token(BOT_TOKEN).build()
 
     APP.add_handler(CommandHandler("start", cmd_start))
@@ -900,7 +900,7 @@ def main() -> None:
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     APP.add_handler(CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:"))
 
-    log.info("Bot en polling. Ctrl+C para detener.")
+    log.info("Bot polling. Ctrl+C to stop.")
     APP.run_polling(drop_pending_updates=True)
 
 
@@ -987,15 +987,15 @@ def send_morning_report() -> None:
     except Exception:
         pass
 
-    spc_line = "\n   • ".join(spc_alerts) if spc_alerts else "ninguno"
+    spc_line = "\n   • ".join(spc_alerts) if spc_alerts else "none"
     msg = (
         f"☀️ DQIII8 Morning Report — {today_str}\n"
-        f"Score: {score:.0f}/100 | Sesiones ayer: {sessions_yesterday}\n"
+        f"Score: {score:.0f}/100 | Sessions yesterday: {sessions_yesterday}\n"
         f"SPC alerts: {spc_line}\n"
-        f"Research queue: {research_pending} items pendientes\n"
-        f"Proyecto activo: {active_project}\n"
-        f"Próximo paso: {next_step}\n"
-        f"Lecciones nuevas ayer: {lessons_yesterday}"
+        f"Research queue: {research_pending} pending items\n"
+        f"Active project: {active_project}\n"
+        f"Next step: {next_step}\n"
+        f"New lessons yesterday: {lessons_yesterday}"
     )
 
     try:

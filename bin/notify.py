@@ -8,7 +8,7 @@ import requests
 
 def send_telegram(message: str, parse_mode: str = None) -> bool:
     """Send a message via Telegram API directly (no bot daemon needed)."""
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "") or os.environ.get("JARVIS_BOT_TOKEN", "")
+    token = os.environ.get("DQIII8_BOT_TOKEN", "") or os.environ.get("TELEGRAM_BOT_TOKEN", "") or os.environ.get("JARVIS_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
 
     if not token or not chat_id:

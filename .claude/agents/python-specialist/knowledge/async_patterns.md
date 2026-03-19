@@ -1,31 +1,31 @@
-# Async/Await — Patrones DQIII8
+# Async/Await — DQIII8 Patterns
 
-## Regla Fundamental
+## Core Rule
 
-Async SOLO para trabajo I/O-bound. NUNCA para trabajo CPU puro.
+Async ONLY for I/O-bound work. NEVER for CPU-only work.
 
 ```python
-# CORRECTO — I/O bound: llamadas API, lectura de archivos, red
+# CORRECT — I/O bound: API calls, file reads, network
 async def fetch_data(url: str) -> dict:
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             return await response.json()
 
-# INCORRECTO — CPU puro no se beneficia de async
-async def process_matrix(data: list) -> list:  # no async necesario
+# INCORRECT — CPU-only work does not benefit from async
+async def process_matrix(data: list) -> list:  # async not needed
     return [x * 2 for x in data]
 ```
 
-## Patrón: Batch de API Calls en Paralelo
+## Pattern: Parallel API Call Batch
 
-Usado en DQIII8 para TTS multi-segmento y requests a OpenRouter/Groq.
+Used in DQIII8 for multi-segment TTS and OpenRouter/Groq requests.
 
 ```python
 import asyncio
 import aiohttp
 
 async def generate_tts_batch(segments: list[str], api_key: str) -> list[bytes]:
-    """Genera TTS para múltiples segmentos en paralelo."""
+    """Generate TTS for multiple segments in parallel."""
     async def _one(session: aiohttp.ClientSession, text: str) -> bytes:
         async with session.post(
             "https://api.elevenlabs.io/v1/text-to-speech/voice_id",
@@ -40,11 +40,11 @@ async def generate_tts_batch(segments: list[str], api_key: str) -> list[bytes]:
         return await asyncio.gather(*tasks)
 ```
 
-## Patrón: asyncio.gather con manejo de errores
+## Pattern: asyncio.gather with error handling
 
 ```python
 async def gather_with_fallback(coros: list) -> list:
-    """gather que retorna None en errores individuales sin abortar el batch."""
+    """gather that returns None on individual errors without aborting the batch."""
     results = await asyncio.gather(*coros, return_exceptions=True)
     return [
         None if isinstance(r, Exception) else r
@@ -52,9 +52,9 @@ async def gather_with_fallback(coros: list) -> list:
     ]
 ```
 
-## Patrón: Semáforo para Rate Limiting
+## Pattern: Semaphore for Rate Limiting
 
-Usado en batch de llamadas a APIs con límites de concurrencia.
+Used in batch API calls with concurrency limits.
 
 ```python
 async def rate_limited_batch(items: list, max_concurrent: int = 5) -> list:
@@ -67,13 +67,13 @@ async def rate_limited_batch(items: list, max_concurrent: int = 5) -> list:
     return await asyncio.gather(*[_process_one(item) for item in items])
 ```
 
-## Patrón: subprocess async (pipeline FFmpeg)
+## Pattern: Async subprocess (FFmpeg pipeline)
 
 ```python
 import asyncio
 
 async def run_ffmpeg_async(cmd: list[str]) -> tuple[int, str, str]:
-    """Lanza FFmpeg de forma no bloqueante con asyncio."""
+    """Launch FFmpeg non-blocking with asyncio."""
     proc = await asyncio.create_subprocess_shell(
         " ".join(cmd),
         stdout=asyncio.subprocess.PIPE,
@@ -83,43 +83,43 @@ async def run_ffmpeg_async(cmd: list[str]) -> tuple[int, str, str]:
     return proc.returncode, stdout.decode("utf-8"), stderr.decode("utf-8")
 ```
 
-## Patrón: Streaming Generator (evitar OOM)
+## Pattern: Streaming Generator (avoid OOM)
 
-Lección DQIII8: acumular frames en List[np.ndarray] causa OOM.
-Solución: generators + render_to_dir en lugar de acumular en memoria.
+Lesson: accumulating frames in List[np.ndarray] causes OOM.
+Solution: generators + render_to_dir instead of accumulating in memory.
 
 ```python
-# INCORRECTO — acumula todo en memoria
+# INCORRECT — accumulates everything in memory
 async def render_all_frames(clips: list) -> list:
     frames = []
     for clip in clips:
-        frames.extend(await render_clip(clip))  # OOM con 900 frames x 6MB
+        frames.extend(await render_clip(clip))  # OOM with 900 frames x 6MB
     return frames
 
-# CORRECTO — generator que libera inmediatamente
+# CORRECT — generator that frees immediately
 async def render_frames_streaming(clips: list):
     for clip in clips:
         frame = await render_clip(clip)
         yield frame
-        del frame  # liberar inmediatamente
+        del frame  # free immediately
 ```
 
-## Ejecutar Coroutines desde Código Síncrono
+## Running Coroutines from Synchronous Code
 
 ```python
 import asyncio
 
-# En scripts CLI o main()
+# In CLI scripts or main()
 def main():
     result = asyncio.run(async_main())
 
-# Si ya hay un event loop activo (Jupyter, FastAPI handlers)
+# If an event loop is already active (Jupyter, FastAPI handlers)
 import nest_asyncio
 nest_asyncio.apply()
 result = asyncio.get_event_loop().run_until_complete(async_main())
 ```
 
-## Timeout en Llamadas Async
+## Timeout on Async Calls
 
 ```python
 async def fetch_with_timeout(url: str, timeout_s: float = 30.0) -> dict:
@@ -130,12 +130,12 @@ async def fetch_with_timeout(url: str, timeout_s: float = 30.0) -> dict:
         raise TimeoutError(f"Request to {url} timed out after {timeout_s}s")
 ```
 
-## Anti-Patrones Comunes en DQIII8
+## Common Anti-Patterns
 
-| Anti-patrón | Problema | Solución |
-|-------------|---------|---------|
-| async en función CPU pura | Overhead sin beneficio | Eliminar async |
-| await en loop sin gather | Serializa las llamadas | Usar asyncio.gather |
-| Nueva session por cada request | Overhead de conexión | Reusar ClientSession |
-| time.sleep() en coroutine | Bloquea el event loop | await asyncio.sleep() |
-| Acumular frames async en lista | OOM en pipelines video | Generator + del inmediato |
+| Anti-pattern | Problem | Solution |
+|-------------|---------|----------|
+| async on CPU-only function | Overhead with no benefit | Remove async |
+| await in loop without gather | Serializes calls | Use asyncio.gather |
+| New session per request | Connection overhead | Reuse ClientSession |
+| time.sleep() in coroutine | Blocks the event loop | await asyncio.sleep() |
+| Accumulate async frames in list | OOM in video pipelines | Generator + del immediately |

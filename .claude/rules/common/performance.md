@@ -56,6 +56,6 @@ If build fails:
 
 ---
 ## ⚠️ DQIII8 OVERRIDE — Model Routing
-DQIII8 usa un sistema de 3 tiers, NO la selección directa Haiku/Sonnet/Opus.
-Ver CLAUDE.md § Model Routing. Regla: tier más bajo que resuelva la tarea.
-Tier-1: Ollama local | Tier-2: Groq/OpenRouter gratis | Tier-3: Claude API pagado.
+DQIII8 uses a 3-tier system, NOT direct Haiku/Sonnet/Opus selection.
+See CLAUDE.md § Model Routing. Rule: lowest tier that resolves the task.
+Tier-1: Ollama local | Tier-2: Groq/OpenRouter free | Tier-3: Claude API paid.

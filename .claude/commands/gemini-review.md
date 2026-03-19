@@ -1,36 +1,36 @@
 # /gemini-review — Gemini Pro Code Reviewer
 
-Lanza una auditoría de eficiencia sobre archivos Python no revisados usando Aider + Gemini 2.0 Flash.
+Launches an efficiency audit on unreviewed Python files using Aider + Gemini 2.0 Flash.
 
-## Uso
+## Usage
 
 ```
-/gemini-review              # Revisar todos los .py modificados pendientes
-/gemini-review <archivo>    # Revisar un archivo específico
-/gemini-review --check-only # Ver cuántos archivos hay pendientes (sin revisar)
+/gemini-review              # Review all pending modified .py files
+/gemini-review <file>       # Review a specific file
+/gemini-review --check-only # See how many files are pending (without reviewing)
 ```
 
-## Qué hace
+## What it does
 
-1. Detecta archivos `.py` modificados en git que no han sido revisados aún (via BD).
-2. Pasa cada archivo a Aider con el modelo `gemini/gemini-2.0-flash`.
-3. Analiza: bugs, eficiencia, legibilidad, seguridad.
-4. Guarda reporte Markdown en `database/audit_reports/gemini_review_<ts>.md`.
-5. Registra el review en `jarvis_metrics.db` (tabla `audit_reports`).
-6. Git push → reporte disponible en Obsidian en ~1 min.
+1. Detects modified `.py` files in git that have not been reviewed yet (via DB).
+2. Passes each file to Aider with the `gemini/gemini-2.0-flash` model.
+3. Analyzes: bugs, efficiency, readability, security.
+4. Saves Markdown report to `database/audit_reports/gemini_review_<ts>.md`.
+5. Registers the review in `jarvis_metrics.db` (table `audit_reports`).
+6. Git push → report available in Obsidian in ~1 min.
 
-## Requisitos
+## Requirements
 
-- `GEMINI_API_KEY` configurada en `/root/dqiii8/.env`
-- `aider` instalado: `pip install aider-chat --break-system-packages`
+- `GEMINI_API_KEY` configured in `$JARVIS_ROOT/.env`
+- `aider` installed: `pip install aider-chat --break-system-packages`
 
-## Integración automática
+## Auto-integration
 
-Se ejecuta automáticamente al final de cada sesión ≥15 min (via `stop.py`)
-si hay archivos pendientes. El proceso corre en background y no bloquea el cierre.
+Runs automatically at the end of sessions ≥15 min (via `stop.py`)
+if there are pending files. The process runs in the background and does not block shutdown.
 
-## Implementación
+## Implementation
 
 ```bash
-python3 /root/dqiii8/bin/gemini_review.py $ARGUMENTS
+python3 bin/gemini_review.py $ARGUMENTS
 ```

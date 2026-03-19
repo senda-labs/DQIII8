@@ -3,7 +3,7 @@ name: binance-spot
 description: Binance Spot API skill for systematic trading. Provides K-line/candlestick data, spot order placement (MARKET/LIMIT/OCO), account info, and trade history. Use for backtesting data ingestion, live order execution, and portfolio tracking.
 source: binance/binance-skills-hub/skills/binance/spot
 reviewed: 2026-03-18
-approved_by: Iker + Claude
+approved_by: reviewed
 status: APROBADA
 ---
 

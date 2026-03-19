@@ -1,69 +1,69 @@
-# Video Pipeline — Arquitectura y Flujo
+# Video Pipeline — Architecture and Flow
 
-## Entrypoint Principal
+## Main Entrypoint
 
-`/root/content-automation-faceless/scripts/professional_pipeline_v3.py`
+`scripts/professional_pipeline_v3.py`
 
-Función principal: `run_pipeline(topic, mode, channel, duration, language, dry_run)`
-- Sin parámetro `publish` — la publicación es paso separado
-- `dry_run=True` salta render FFmpeg, útil para test de TTS y subtítulos
+Main function: `run_pipeline(topic, mode, channel, duration, language, dry_run)`
+- No `publish` parameter — publishing is a separate step
+- `dry_run=True` skips FFmpeg render, useful for TTS and subtitle testing
 
-## Módulos del Pipeline
+## Pipeline Modules
 
 ### 1. Script Generation
-- Genera guión por segmentos según `mode` (viral_hook, finance, edu, etc.)
-- Fuente: Groq llama-3.3-70b o OpenRouter según disponibilidad
-- Output: lista de dicts `{text, duration_s, segment_type}`
+- Generates script by segments according to `mode` (viral_hook, finance, edu, etc.)
+- Source: Groq llama-3.3-70b or OpenRouter depending on availability
+- Output: list of dicts `{text, duration_s, segment_type}`
 
 ### 2. TTS — ElevenLabs / Edge Fallback
-- Principal: `backend/services/elevenlabs_tts.py`
-- Fallback automático: Edge TTS si ElevenLabs falla o está vacío
-- Chunking obligatorio: textos > 450 chars → dividir antes de enviar
-- Output: archivos .mp3 por segmento en /tmp/
+- Primary: `backend/services/elevenlabs_tts.py`
+- Automatic fallback: Edge TTS if ElevenLabs fails or key is empty
+- Mandatory chunking: texts > 450 chars → split before sending
+- Output: .mp3 files per segment in /tmp/
 
 ### 3. Subtitle Generation
-- Motor: `backend/services/netflix_subtitle_generator.py`
-- Formatos: ASS (primario) y SRT (fallback)
-- Paletas de fuente: `backend/graphics/typographic/palettes.py`
-- FONT_BOLD_PREMIUM (LiberationSans-Bold) → solo paletas `viral_hook` y `finance`
+- Engine: `backend/services/netflix_subtitle_generator.py`
+- Formats: ASS (primary) and SRT (fallback)
+- Font palettes: `backend/graphics/typographic/palettes.py`
+- FONT_BOLD_PREMIUM (LiberationSans-Bold) → only `viral_hook` and `finance` palettes
 
 ### 4. Video Composition / FFmpeg
-- Combina audio TTS + imágenes/clips de fondo + subtítulos ASS
-- Ruta crítica: `Path(...).resolve().as_posix()` para filtros FFmpeg
-- NUNCA poner comillas en paths de filtros `-vf`: `f"ass={path}"` ✓
-- Zoompan: escalar imagen a 1080×1920 antes del filtro (evita timeout >600s)
+- Combines TTS audio + background images/clips + ASS subtitles
+- Critical path: `Path(...).resolve().as_posix()` for FFmpeg filters
+- NEVER put quotes in filter paths `-vf`: `f"ass={path}"` ✓
+- Zoompan: scale image to 1080×1920 before filter (avoids timeout >600s)
 
 ### 5. Output
-- Vídeo final: `tasks/results/` o directorio configurado en YAML
-- Verificar primeros 5s con `ffprobe` tras cualquier cambio en subtítulos
+- Final video: `tasks/results/` or directory configured in YAML
+- Verify first 5s with `ffprobe` after any subtitle changes
 
-## Configuración
+## Configuration
 
-- YAMLs en `config/` — NUNCA editar directamente, usar config loader
-- `.env` carga desde `config/.env` con `override=True` → tiene prioridad
-- Al rotar API key: sincronizar AMBOS `/root/dqiii8/.env` y `config/.env`
+- YAMLs in `config/` — NEVER edit directly, use config loader
+- `.env` loads from `config/.env` with `override=True` → takes priority
+- When rotating API key: sync BOTH the root `.env` and `config/.env`
 
-## Modos Disponibles
+## Available Modes
 
-| mode | Descripción | Paleta fuente |
-|------|------------|--------------|
-| viral_hook | Gancho viral redes sociales | FONT_BOLD_PREMIUM |
-| finance | Contenido financiero/investing | FONT_BOLD_PREMIUM |
-| edu | Educativo / explainer | Standard |
-| storytime | Narrativa / historia | Standard |
+| mode | Description | Font palette |
+|------|-------------|-------------|
+| viral_hook | Viral social media hook | FONT_BOLD_PREMIUM |
+| finance | Financial/investing content | FONT_BOLD_PREMIUM |
+| edu | Educational / explainer | Standard |
+| storytime | Narrative / story | Standard |
 
-## Dependencias de Sistema
+## System Dependencies
 
-- FFmpeg instalado en PATH
+- FFmpeg installed in PATH
 - LiberationSans-Bold: `apt-get install -y fonts-liberation && fc-cache -fv`
-- ElevenLabs API key en config/.env y /root/dqiii8/.env
+- ElevenLabs API key in config/.env and root .env
 
-## Errores Frecuentes
+## Common Errors
 
-| Error | Causa | Fix |
+| Error | Cause | Fix |
 |-------|-------|-----|
-| ASS filter not found | Comillas en path FFmpeg | Eliminar comillas del path |
-| TTS timeout | Chunk > 500 chars | Dividir a <= 450 chars |
-| zoompan lento | Imagen full-res en filtro | Escalar a 1080×1920 antes |
-| ElevenLabs 401 | Key desincronizada | Sincronizar ambos .env |
-| ModuleNotFoundError | Clase renombrada | grep "^class" antes de importar |
+| ASS filter not found | Quotes in FFmpeg path | Remove quotes from path |
+| TTS timeout | Chunk > 500 chars | Split to <= 450 chars |
+| zoompan slow | Full-res image in filter | Scale to 1080×1920 first |
+| ElevenLabs 401 | Out-of-sync key | Sync both .env files |
+| ModuleNotFoundError | Class renamed | grep "^class" before importing |

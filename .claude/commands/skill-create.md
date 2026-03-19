@@ -1,70 +1,70 @@
 ---
 name: skill-create
-description: Analiza el historial git de DQIII8 (y content-automation-faceless) para extraer patrones y generar SKILL.md en skills-registry/custom/. Versión adaptada de ECC skill-create para el ecosistema DQIII8.
+description: Analyzes the DQIII8 git history to extract patterns and generate SKILL.md files in skills-registry/custom/. Adapted version of ECC skill-create for the DQIII8 ecosystem.
 allowed_tools: ["Bash", "Read", "Write", "Grep", "Glob"]
 ---
 
-# /skill-create — Generación de Skills desde Git History
+# /skill-create — Skill Generation from Git History
 
-Analiza los repositorios de Iker para extraer patrones reales y generar skills
-reutilizables en `skills-registry/custom/`.
+Analyzes DQIII8 repositories to extract real patterns and generate
+reusable skills in `skills-registry/custom/`.
 
-## Uso
+## Usage
 
 ```
-/skill-create                        # Analiza /root/dqiii8 (últimos 50 commits)
-/skill-create --commits 100          # Más commits
-/skill-create --repo content         # Analiza /root/content-automation-faceless
-/skill-create --repo all             # Analiza ambos repos
-/skill-create --instincts            # También genera instincts para continuous-learning-v2
+/skill-create                        # Analyze /root/jarvis (last 50 commits)
+/skill-create --commits 100          # More commits
+/skill-create --repo <path>          # Analyze a specific repo path
+/skill-create --repo all             # Analyze all configured repos
+/skill-create --instincts            # Also generate instincts for continuous-learning
 ```
 
-## Qué hace
+## What it does
 
-1. **Parsea el historial git** — commits reales, archivos cambiados, frecuencia de co-cambio
-2. **Filtra ruido** — excluye: merge commits, "session handover", "gemini review", "auto-commit", stop hook
-3. **Detecta patrones** — workflows repetidos, arquitectura, convenciones
-4. **Genera SKILL.md** — compatible con INDEX.md de DQIII8
-5. **Actualiza INDEX.md** — añade la skill con estado PENDIENTE_REVISION
+1. **Parses git history** — real commits, changed files, co-change frequency
+2. **Filters noise** — excludes: merge commits, "session handover", "gemini review", "auto-commit", stop hook
+3. **Detects patterns** — repeated workflows, architecture, conventions
+4. **Generates SKILL.md** — compatible with DQIII8 INDEX.md
+5. **Updates INDEX.md** — adds the skill with status PENDING_REVIEW
 
-## Pasos de análisis
+## Analysis steps
 
-### Paso 1: Recopilar datos git
+### Step 1: Collect git data
 
 ```bash
-REPO=${REPO:-/root/dqiii8}
+REPO=${REPO:-$JARVIS_ROOT}
 cd $REPO
 
-# Commits significativos (excluir ruido)
+# Significant commits (exclude noise)
 git log --oneline -${COMMITS:-50} --no-merges \
   --pretty=format:"%H|%s|%ad" --date=short \
   | grep -v "session handover\|gemini review\|auto-commit\|chore(review)"
 
-# Archivos que más cambian juntos
+# Files that change together most often
 git log --oneline -${COMMITS:-50} --name-only --pretty=format:"%s" \
   | grep -v "session handover\|gemini review\|^$\|^[a-f0-9]" \
   | sort | uniq -c | sort -rn | head -20
 
-# Tipos de commit
+# Commit types
 git log --oneline -${COMMITS:-50} --no-merges \
   | grep -v "session handover\|gemini review" \
   | cut -d' ' -f2- | sed 's/:.*$//' | sort | uniq -c | sort -rn
 ```
 
-### Paso 2: Detectar patrones
+### Step 2: Detect patterns
 
-| Patrón | Señal de detección |
-|--------|--------------------|
-| **Routing multi-provider** | Cambios en `bin/*_wrapper.py` + CLAUDE.md juntos |
-| **Creación de agentes** | Cambios en `.claude/agents/*.md` (2+ archivos a la vez) |
-| **JAL workflow** | Cambios en `bin/jal_*.py` (4 archivos coordinados) |
-| **Hooks lifecycle** | Cambios en `.claude/hooks/` + `bin/` juntos |
-| **Commit conventions** | Prefijos feat/fix/chore/docs con emoji o sin él |
-| **Session patterns** | Frecuencia y estructura de sessions/ |
+| Pattern | Detection signal |
+|---------|-----------------|
+| **Multi-provider routing** | Changes in `bin/*_wrapper.py` + CLAUDE.md together |
+| **Agent creation** | Changes in `.claude/agents/*.md` (2+ files at once) |
+| **JAL workflow** | Changes in `bin/jal_*.py` (4 coordinated files) |
+| **Hooks lifecycle** | Changes in `.claude/hooks/` + `bin/` together |
+| **Commit conventions** | feat/fix/chore/docs prefixes with or without emoji |
+| **Session patterns** | Frequency and structure of sessions/ |
 
-### Paso 3: Generar SKILL.md
+### Step 3: Generate SKILL.md
 
-Output en `skills-registry/custom/{skill-name}/SKILL.md`:
+Output in `skills-registry/custom/{skill-name}/SKILL.md`:
 
 ```markdown
 ---
@@ -73,48 +73,48 @@ version: 1.0.0
 source: git-analysis/{repo-name}
 analyzed_commits: {count}
 analyzed_date: {YYYY-MM-DD}
-repos: [/root/dqiii8, /root/content-automation-faceless]  # según aplique
+repos: [{repo-paths}]
 ---
 
 # {Skill Name}
 
-## Patrón detectado
-{descripción del patrón con evidencia del historial}
+## Detected pattern
+{pattern description with evidence from history}
 
-## Cuándo usar esta skill
-{triggers específicos}
+## When to use this skill
+{specific triggers}
 
 ## Workflow
-{pasos concretos con ejemplos reales del repo}
+{concrete steps with real repo examples}
 
-## Archivos involucrados
-{lista de archivos típicamente tocados}
+## Files involved
+{list of files typically touched}
 
-## Ejemplos del historial
-{commits reales como evidencia}
+## History examples
+{real commits as evidence}
 
-## Anti-patrones
-{qué evitar, basado en commits de fix:}
+## Anti-patterns
+{what to avoid, based on fix: commits}
 ```
 
-### Paso 4: Actualizar INDEX.md
+### Step 4: Update INDEX.md
 
-Añadir a `skills-registry/INDEX.md`:
+Add to `skills-registry/INDEX.md`:
 
 ```markdown
-| {skill-name} | git-analysis/{repo} | ⏸ PENDIENTE_REVISION | — | {descripción} |
+| {skill-name} | git-analysis/{repo} | ⏸ PENDING_REVIEW | — | {description} |
 ```
 
-Columnas requeridas por DQIII8: `Skill | Fuente | Status | Aprobada por | Notas`
+Required columns: `Skill | Source | Status | Approved by | Notes`
 
-### Paso 5 (opcional): Generar instincts
+### Step 5 (optional): Generate instincts
 
-Si `--instincts`, crear también `skills-registry/custom/{skill-name}/instinct.yaml`:
+If `--instincts`, also create `skills-registry/custom/{skill-name}/instinct.yaml`:
 
 ```yaml
 ---
 id: {repo}-{pattern-id}
-trigger: "{cuándo aplica}"
+trigger: "{when it applies}"
 confidence: 0.8
 domain: {git|python|routing|agents}
 source: git-analysis/{repo}
@@ -124,21 +124,20 @@ evidence_commits: {count}
 # {Instinct Name}
 
 ## Action
-{qué hacer}
+{what to do}
 
 ## Evidence
-- Analizado: {n} commits en {repo}
-- Frecuencia: {percentage}% de feat commits siguen este patrón
+- Analyzed: {n} commits in {repo}
+- Frequency: {percentage}% of feat commits follow this pattern
 ```
 
-## Repos analizados
+## Repos analyzed
 
-| Repo | Path | Foco |
-|------|------|------|
-| dqiii8 | `/root/dqiii8` | Infraestructura, agentes, JAL, routing |
-| content-automation | `/root/content-automation-faceless` | Pipeline media, TTS, video |
+| Repo | Path | Focus |
+|------|------|-------|
+| dqiii8 | `$JARVIS_ROOT` | Infrastructure, agents, JAL, routing |
 
-## Output esperado
+## Expected output
 
 ```
 skills-registry/custom/
@@ -146,17 +145,17 @@ skills-registry/custom/
 │   └── SKILL.md
 ├── dqiii8-agent-creation/
 │   └── SKILL.md
-└── {nombre-detectado}/
+└── {detected-name}/
     ├── SKILL.md
-    └── instinct.yaml  # si --instincts
+    └── instinct.yaml  # if --instincts
 ```
 
-## Notas DQIII8
+## Notes
 
-- Output: `skills-registry/custom/` (NO `~/.claude/skills/`)
-- Status inicial siempre: `⏸ PENDIENTE_REVISION`
-- Para aprobar: Iker revisa → `✅ APROBADA` → añadir a combo en INDEX.md
-- Prohibición: no cargar skills de `cache/` sin revisión (ver dqiii8-prohibitions.md)
+- Output: `skills-registry/custom/` (NOT `~/.claude/skills/`)
+- Initial status always: `⏸ PENDING_REVIEW`
+- To approve: review → `✅ APPROVED` → add to combo in INDEX.md
+- Prohibition: do not load skills from `cache/` without review (see jarvis-prohibitions.md)
 
 ---
-*Adaptado de ECC /skill-create para DQIII8 — ver /tmp/ecc/commands/skill-create.md para original*
+*Adapted from ECC /skill-create for DQIII8*

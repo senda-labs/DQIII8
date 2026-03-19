@@ -4,127 +4,127 @@ version: 1.0.0
 source: git-analysis/dqiii8
 analyzed_commits: 50
 analyzed_date: 2026-03-12
-repos: [/root/dqiii8]
+repos: [$JARVIS_ROOT]
 ---
 
 # DQIII8 Multi-Provider Routing
 
-## Patrón detectado
+## Detected pattern
 
-DQIII8 usa un sistema de 3 tiers con fallback automático para enrutar prompts
-al proveedor más barato que pueda resolver la tarea.
+DQIII8 uses a 3-tier system with automatic fallback to route prompts
+to the cheapest provider that can resolve the task.
 
-**Evidencia del historial:**
-- `feat: routing unificado 3 tiers — Ollama+Groq+OpenRouter+Sonnet + j.sh Linux` (ba60bc7)
-- `fix: CLAUDE.md Model Routing 3 tiers` (398cc6e, a407078) — 2 fixes en la misma sesión
-- `feat: OpenRouter wrapper + routing 4 niveles` — iteración anterior
-- Archivos que siempre cambian juntos: `bin/openrouter_wrapper.py` + `CLAUDE.md`
+**Evidence from history:**
+- `feat: unified routing 3 tiers — Ollama+Groq+OpenRouter+Sonnet + j.sh Linux` (ba60bc7)
+- `fix: CLAUDE.md Model Routing 3 tiers` (398cc6e, a407078) — 2 fixes in the same session
+- `feat: OpenRouter wrapper + routing 4 levels` — prior iteration
+- Files that always change together: `bin/openrouter_wrapper.py` + `CLAUDE.md`
 
-## Cuándo usar esta skill
+## When to use this skill
 
-- Añadir un nuevo proveedor de LLM a DQIII8
-- Añadir un nuevo agente y asignarle modelo
-- Debuggear por qué una llamada usa el tier incorrecto
-- Añadir fallback a un provider existente
+- Add a new LLM provider to DQIII8
+- Add a new agent and assign it a model
+- Debug why a call is using the wrong tier
+- Add fallback to an existing provider
 
-## Arquitectura de 3 tiers
+## 3-tier architecture
 
 ```
-Tier 1 — Local (gratis, sin latencia de red)
+Tier 1 — Local (free, no network latency)
   Provider: Ollama
-  Modelo:   qwen2.5-coder:7b
-  Usar para: Python, refactor, debug, git ops
+  Model:    qwen2.5-coder:7b
+  Use for:  Python, refactor, debug, git ops
 
-Tier 2 — Cloud gratis (latencia baja, rate limits)
+Tier 2 — Free cloud (low latency, rate limits)
   Provider: Groq → llama-3.3-70b-versatile    (review, analysis)
-  Provider: OpenRouter → qwen3:free             (investigación/documentación)
+  Provider: OpenRouter → qwen3:free             (research/documentation)
   Provider: OpenRouter → nemotron:free          (video/TTS/media)
   Fallback chain: OpenRouter → Groq → llm7.io → Pollinations
 
-Tier 3 — Cloud pagado (máxima capacidad, sin límites)
+Tier 3 — Paid cloud (maximum capacity, no limits)
   Provider: Claude API → claude-sonnet-4-6
-  Usar para: finanzas, creative writing, arquitectura, /mobilize
+  Use for:  finance, creative writing, architecture, /mobilize
 ```
 
-## Workflow: añadir nuevo proveedor
+## Workflow: add a new provider
 
-### 1. Añadir en `bin/openrouter_wrapper.py`
+### 1. Add in `bin/openrouter_wrapper.py`
 
 ```python
 PROVIDERS = {
-    "nuevo-provider": {
-        "base_url": "https://api.nuevo-provider.com/v1",
-        "api_key_env": "NUEVO_PROVIDER_API_KEY",
+    "new-provider": {
+        "base_url": "https://api.new-provider.com/v1",
+        "api_key_env": "NEW_PROVIDER_API_KEY",
         "headers_extra": {},
     },
-    # ... providers existentes
+    # ... existing providers
 }
 ```
 
-### 2. Añadir al AGENT_ROUTING si es para un agente específico
+### 2. Add to AGENT_ROUTING if for a specific agent
 
 ```python
 AGENT_ROUTING = {
-    "mi-agente": ("nuevo-provider", "modelo-id"),
+    "my-agent": ("new-provider", "model-id"),
     # ...
 }
 ```
 
-### 3. Añadir al FALLBACK_CHAIN si debe ser fallback
+### 3. Add to FALLBACK_CHAIN if it should be a fallback
 
 ```python
 FALLBACK_CHAIN = {
-    "openrouter": ["groq", "nuevo-provider", "llm7", "pollinations"],
+    "openrouter": ["groq", "new-provider", "llm7", "pollinations"],
     # ...
 }
 FALLBACK_MODELS = {
-    "nuevo-provider": ("nuevo-provider", "modelo-fallback"),
+    "new-provider": ("new-provider", "fallback-model"),
     # ...
 }
 ```
 
-### 4. Añadir API key a `.env`
+### 4. Add API key to `.env`
 
 ```bash
-NUEVO_PROVIDER_API_KEY=sk-...
+NEW_PROVIDER_API_KEY=sk-...
 ```
 
-### 5. Actualizar CLAUDE.md § Model Routing
+### 5. Update CLAUDE.md § Model Routing
 
-Añadir fila a la tabla con: Condition | Tier | Provider | Model
+Add row to the table with: Condition | Tier | Provider | Model
 
-### 6. Verificar con classify
+### 6. Verify with classify
 
 ```bash
-python3 bin/openrouter_wrapper.py classify "prompt de prueba"
-# Salida: tier=N provider=X model=Y route=Z
+python3 bin/openrouter_wrapper.py classify "test prompt"
+# Output: tier=N provider=X model=Y route=Z
 ```
 
-## Archivos involucrados
+## Files involved
 
-| Archivo | Rol |
-|---------|-----|
+| File | Role |
+|------|------|
 | `bin/openrouter_wrapper.py` | Core: PROVIDERS, AGENT_ROUTING, FALLBACK_CHAIN, stream_response() |
-| `bin/ollama_wrapper.py` | Tier 1 local: llamadas a Ollama |
-| `bin/j.sh` | Entry point CLI: flags --model local/groq/sonnet |
-| `CLAUDE.md` | Tabla de routing documentada (siempre actualizar junto con wrapper) |
+| `bin/ollama_wrapper.py` | Tier 1 local: Ollama calls |
+| `bin/j.sh` | CLI entry point: flags --model local/groq/sonnet |
+| `CLAUDE.md` | Documented routing table (always update together with wrapper) |
 | `.env` | API keys: OPENROUTER_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY |
 
-## Anti-patrones detectados (de commits fix:)
+## Detected anti-patterns (from fix: commits)
 
-- **No actualizar CLAUDE.md junto con el wrapper** → `fix: CLAUDE.md Model Routing 3 tiers` (2 commits correctivos)
-- **Hardcodear ANTHROPIC_API_KEY** en código Python → usar `os.getenv()` + `.env`
-- **Llamar claude CLI desde dentro de Claude Code** → nested session error; usar OpenRouter o subprocess con env limpio
-- **No implementar fallback** → si el provider falla sin fallback, el sistema se cae silenciosamente
+- **Not updating CLAUDE.md together with the wrapper** → `fix: CLAUDE.md Model Routing 3 tiers` (2 corrective commits)
+- **Hardcoding ANTHROPIC_API_KEY** in Python code → use `os.getenv()` + `.env`
+- **Calling claude CLI from inside Claude Code** → nested session error; use OpenRouter or subprocess with clean env
+- **Not implementing fallback** → if provider fails without fallback, system fails silently
 
-## Clasificación automática
+## Automatic classification
 
 ```python
 # bin/openrouter_wrapper.py — classify subcommand
 python3 bin/openrouter_wrapper.py classify "[prompt]"
-# Retorna: tier=N provider=X model=Y route=Z
+# Returns: tier=N provider=X model=Y route=Z
 ```
 
 Keywords tier-1: python, refactor, debug, test, git, commit, script, bug, fix
-Keywords tier-2: review, analiz, research, evaluar, audit, explica
-Keywords tier-3: wacc, dcf, finanz, novel, xianxia, arquitectura, mobilize
+Keywords tier-2: review, analiz, research, evaluate, audit, explain
+Keywords tier-3: wacc, dcf, finance, novel, architecture, mobilize

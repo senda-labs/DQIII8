@@ -1,31 +1,31 @@
 # /handover — Session Handover Note
 
 ## Trigger
-Usuario escribe `/handover` al final de una sesión de trabajo.
+User writes `/handover` at the end of a work session.
 
-## Comportamiento
+## Behavior
 
-Ejecuta el script de handover con una sola llamada:
+Executes the handover script with a single call:
 
 ```bash
-python3 /root/dqiii8/bin/handover.py
+python3 bin/handover.py
 ```
 
-El script hace todo sin herramientas adicionales de Claude:
-- Recoge archivos modificados via `git diff --stat HEAD`
-- Lee `projects/[proyecto].md` para el próximo paso
-- Lee `tasks/lessons.md` (entradas de hoy)
-- Escribe `sessions/YYYY-MM-DD_session.md`
-- Actualiza `projects/[proyecto].md` (sección "Ultima sesion")
+The script does everything without additional Claude tools:
+- Collects modified files via `git diff --stat HEAD`
+- Reads `projects/[project].md` for the next step
+- Reads `tasks/lessons.md` (today's entries)
+- Writes `sessions/YYYY-MM-DD_session.md`
+- Updates `projects/[project].md` (section "Last session")
 - `git add sessions/ projects/` → commit → push origin master
 
-## Invocación no-interactiva
+## Non-interactive invocation
 
 ```bash
-python3 /root/dqiii8/bin/handover.py
+python3 bin/handover.py
 ```
 
-## Notas
-- Si git push falla (red/auth), el archivo .md queda guardado localmente — no bloquea
-- Nunca incluir información sensible (API keys, passwords) en el handover
-- Variable `DQIII8_PROJECT` controla el proyecto activo (default: `dqiii8-core`)
+## Notes
+- If git push fails (network/auth), the .md file is saved locally — does not block
+- Never include sensitive information (API keys, passwords) in the handover
+- Variable `DQIII8_PROJECT` controls the active project (default: `dqiii8-core`)

@@ -50,7 +50,7 @@ For complex problems, use split role sub-agents:
 
 ---
 ## ⚠️ DQIII8 OVERRIDE
-Los agentes definidos en `.claude/agents/` de DQIII8 reemplazan la tabla anterior.
-Agentes activos: python-specialist, git-specialist, code-reviewer, orchestrator,
+Agents defined in `.claude/agents/` of DQIII8 replace the table above.
+Active agents: python-specialist, git-specialist, code-reviewer, orchestrator,
 content-automator, data-analyst, creative-writer, auditor.
-Tabla de delegación: ver CLAUDE.md § Delegation.
+Delegation table: see CLAUDE.md § Delegation.

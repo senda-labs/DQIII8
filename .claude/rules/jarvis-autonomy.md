@@ -7,6 +7,6 @@
 - Autonomous mode (VPS): execute plans with ≤5 steps and no destructive actions without asking.
 - Destructive actions (delete, drop, force-push) or ambiguous intent → notify user, wait for confirmation.
 
-## Relación con common/development-workflow.md
-El workflow de ECC (Research → Plan → TDD → Review → Commit) es compatible.
-DQIII8 añade: notificación Telegram en decisiones críticas vía jarvis_bot.
+## Relationship with common/development-workflow.md
+The ECC workflow (Research → Plan → TDD → Review → Commit) is compatible.
+DQIII8 adds: Telegram notification for critical decisions via jarvis_bot.

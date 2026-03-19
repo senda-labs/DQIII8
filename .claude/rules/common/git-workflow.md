@@ -25,5 +25,5 @@ When creating PRs:
 
 ---
 ## ⚠️ DQIII8 NOTE — Commit Attribution
-DQIII8 commits incluyen "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>".
-La línea "Attribution disabled" de ECC no aplica aquí.
+DQIII8 commits include "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>".
+The "Attribution disabled" line from ECC does not apply here.

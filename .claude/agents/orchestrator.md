@@ -31,47 +31,47 @@ Agents: [list] | Issues: [N] → see tasks/results/
 Before dispatching agents, delegate intent analysis to **Director v3**:
 
 ```
-usuario → director.analyze_intent() → plan JSON → despacho por grafo → síntesis
+user → director.analyze_intent() → plan JSON → dispatch by graph → synthesis
 ```
 
 ```bash
-python3 $JARVIS_ROOT/bin/director.py "solicitud del usuario"
+python3 $JARVIS_ROOT/bin/director.py "user request"
 ```
 
-Director v3 produce un plan con prioridad:
-1. **Instincts DB** (confidence > 0.7) — fast path sin LLM
-2. **LLM tier2** via openrouter_wrapper (research-analyst, gratis)
-3. **Keyword fallback** — análisis estático sin red
+Director v3 produces a plan with priority:
+1. **Instincts DB** (confidence > 0.7) — fast path without LLM
+2. **LLM tier2** via openrouter_wrapper (research-analyst, free)
+3. **Keyword fallback** — static analysis without network
 
-El JSON resultante incluye `task_type`, `subtasks[]` con `agent` y `depends_on[]`,
-`output_format`, `complexity`, `recommended_tier`, y `recommended_model` por subtarea
-(desde model_router.get_recommendation).
+The resulting JSON includes `task_type`, `subtasks[]` with `agent` and `depends_on[]`,
+`output_format`, `complexity`, `recommended_tier`, and `recommended_model` per subtask
+(from model_router.get_recommendation).
 
 ## Tier Dispatch
 
-El orchestrator adapta el mecanismo de despacho según el `recommended_tier` del plan:
+The orchestrator adapts the dispatch mechanism based on the plan's `recommended_tier`:
 
-**Tier 1 (código, pipeline)** — Ejecutar vía wrapper directamente, sin Agent tool:
+**Tier 1 (code, pipeline)** — Run via wrapper directly, without Agent tool:
 ```bash
-python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent python-specialist "<tarea>"
-python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent git-specialist "<tarea>"
-python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent content-automator "<tarea>"
+python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent python-specialist "<task>"
+python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent git-specialist "<task>"
+python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent content-automator "<task>"
 ```
-Captura stdout → aplica con Edit/Write → escribe resultado a `tasks/results/[agent]-[ts].md`.
-Esto elimina el overhead de Sonnet para tareas de código puro.
+Capture stdout → apply with Edit/Write → write result to `tasks/results/[agent]-[ts].md`.
+This eliminates Sonnet overhead for pure code tasks.
 
-**Tier 2 (research, review)** — Agent tool con modelo libre:
+**Tier 2 (research, review)** — Agent tool with free model:
 ```
-Task(research-analyst | code-reviewer, context mínimo)
-```
-
-**Tier 3 (análisis, trading, escritura, mixto)** — Agent tool con Sonnet/Opus:
-```
-Task(data-analyst | quant-analyst | creative-writer | orchestrator, context mínimo)
+Task(research-analyst | code-reviewer, minimum context)
 ```
 
-Regla: el Agent tool invoca Sonnet 4.6 independientemente del campo `model:` del agente.
-Para tier=1 usar siempre Bash → wrapper en lugar de Task() para respetar el routing real.
+**Tier 3 (analysis, trading, writing, mixed)** — Agent tool with Sonnet/Opus:
+```
+Task(data-analyst | quant-analyst | creative-writer | orchestrator, minimum context)
+```
+
+Rule: the Agent tool invokes Sonnet 4.6 regardless of the agent's `model:` field.
+For tier=1 always use Bash → wrapper instead of Task() to respect the real routing.
 
 ## When NOT to use
 - Single-domain tasks (one file, one bug) → python-specialist or git-specialist directly

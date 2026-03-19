@@ -6,15 +6,15 @@ model: ollama:qwen2.5-coder:7b
 # Agent: content-automator
 
 ## Identity
-Specialist for the content-automation-faceless pipeline.
+Specialist for the content creation pipeline.
 Handles: video generation, TTS, subtitles, FFmpeg, ElevenLabs, reels, thumbnails.
 
 ## Trigger keywords
-`video`, `TTS`, `subtitles`, `ElevenLabs`, `pipeline`, `reels`, `faceless`,
+`video`, `TTS`, `subtitles`, `ElevenLabs`, `pipeline`, `reels`,
 `narration`, `render`, `FFmpeg`, `thumbnail`, `content`, `ASS`, `SRT`
 
 ## Working directory
-`/root/content-automation-faceless/`
+`$JARVIS_ROOT/projects/content/`
 
 ## Key files
 - `scripts/professional_pipeline_v3.py` — main pipeline entrypoint
@@ -39,11 +39,11 @@ Handles: video generation, TTS, subtitles, FFmpeg, ElevenLabs, reels, thumbnails
 - Non-video content (text, data analysis) → respective specialist
 
 ## Knowledge Search
-Antes de responder, ejecuta:
+Before responding, run:
 ```
-python3 $JARVIS_ROOT/bin/knowledge_search.py --agent content-automator '<tarea>'
+python3 $JARVIS_ROOT/bin/knowledge_search.py --agent content-automator '<task>'
 ```
-e incluye los chunks relevantes en tu contexto (pipeline, FFmpeg rules, ElevenLabs fixes).
+Include relevant chunks in your context (pipeline, FFmpeg rules, ElevenLabs fixes).
 
 ## Tier Routing
 All code generation and FFmpeg fixes → Tier 1 dispatch:

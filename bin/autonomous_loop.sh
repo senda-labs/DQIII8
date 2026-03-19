@@ -3,9 +3,9 @@
 # Launches claude in autonomous mode with 3-layer supervisor active.
 # Usage: autonomous_loop.sh 'objective' [max_hours]
 #
-# El supervisor intercepta herramientas via hooks:
-#   Layer 1: READ_PREFIXES → auto-approve sin LLM
-#   Layer 2: LLM supervisor (openrouter, 3s timeout → PERMITE)
+# The supervisor intercepts tools via hooks:
+#   Layer 1: READ_PREFIXES → auto-approve without LLM
+#   Layer 2: LLM supervisor (openrouter, 3s timeout → ALLOW)
 #   Layer 3: CRITICAL_PATTERNS → Telegram escalation (10min → deny)
 
 set -euo pipefail
@@ -71,17 +71,17 @@ fi
 # Clear stop flag from previous sessions (watchdog leaves it between runs)
 rm -f /tmp/jarvis_autonomous_stop.flag
 
-# Lanzar claude con tiempo límite
-# < /dev/null: en tmux detached, stdin es un PTY que no envía EOF;
-#   claude -p podría bloquearse leyendo stdin. /dev/null da EOF inmediato.
+# Launch claude with time limit
+# < /dev/null: in detached tmux, stdin is a PTY that does not send EOF;
+#   claude -p could block reading stdin. /dev/null gives immediate EOF.
 timeout "$MAX_SECONDS" claude \
     --add-dir /root/jarvis \
     -p "$OBJECTIVE" \
     < /dev/null \
     || EXIT_CODE=$?
 
-# timeout devuelve 124 si alcanza el límite
+# timeout returns 124 if the limit is reached
 if [ "${EXIT_CODE:-0}" -eq 124 ]; then
     echo ""
-    echo "⏰ Tiempo máximo ($MAX_HOURS h) alcanzado — sesión terminada automáticamente"
+    echo "⏰ Maximum time ($MAX_HOURS h) reached — session terminated automatically"
 fi

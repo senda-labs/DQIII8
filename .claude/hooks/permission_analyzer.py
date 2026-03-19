@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 DQIII8 — PermissionAnalyzer v3
-Evaluación centralizada de permisos para hooks pre_tool_use.
+Centralized permission evaluation for pre_tool_use hooks.
 
 v2: SQLite timeout + ALLOWED_DELETIONS + ESCALATE loop
 v3: Dual-channel rejections (BD + JSON buzón) + budget check +
@@ -85,7 +85,7 @@ AUTO_APPROVE_TOOLS = {
 }
 
 MAX_SESSION_COST_USD = 5.0
-MAX_SAME_REJECTION = 2  # Tras 2 rechazos idénticos → ESCALATE
+MAX_SAME_REJECTION = 2  # After 2 identical rejections → ESCALATE
 
 # Informational hints per denial type (help Claude self-correct)
 DENIAL_HINTS: dict[str, str] = {
@@ -179,7 +179,7 @@ class PermissionAnalyzer:
                         "Edit directly from terminal or ask the user.",
                     )
 
-        # 3b. Resource claims — bloquear si otro agente tiene el archivo
+        # 3b. Resource claims — block if another agent holds the file
         if tool in ("Edit", "Write", "MultiEdit"):
             path = inp.get("file_path", inp.get("path", ""))
             claim_deny = self._check_resource_claim(tool, path, _session)
@@ -244,12 +244,12 @@ class PermissionAnalyzer:
         rule_triggered: str,
         suggested_fix: str,
     ) -> dict:
-        # Enriquecer reason con hint de autocorrección (MEJORA 3)
+        # Enrich reason with self-correction hint
         enriched_reason = reason
         if rule_triggered:
             for key, hint in DENIAL_HINTS.items():
                 if key in rule_triggered:
-                    enriched_reason = f"{reason} | Alternativa: {hint}"
+                    enriched_reason = f"{reason} | Alternative: {hint}"
                     break
         return {
             "decision": "DENY",
@@ -496,7 +496,7 @@ def record_rejection(tool: str, inp: dict, result: dict) -> None:
         "suggested_fix": result.get("suggested_fix", ""),
     }
 
-    # Canal 1: BD
+    # Channel 1: DB
     try:
         conn = sqlite3.connect(str(DB_PATH), timeout=10)
         conn.execute(
@@ -522,7 +522,7 @@ def record_rejection(tool: str, inp: dict, result: dict) -> None:
     except Exception:
         pass
 
-    # Canal 2: JSON buzón (append al array)
+    # Channel 2: JSON mailbox (append to array)
     try:
         reject_path = JARVIS_ROOT / "tasks" / "permission_rejection.json"
         existing: list = []

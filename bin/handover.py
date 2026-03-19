@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 DQIII8 — Handover script
-Genera sessions/YYYY-MM-DD_session.md, actualiza projects/[project].md,
-y hace git commit+push. Sin interacción — diseñado para 'claude -p /handover'.
+Generates sessions/YYYY-MM-DD_session.md, updates projects/[project].md,
+and runs git commit+push. Non-interactive — designed for 'claude -p /handover'.
 """
 import os
 import subprocess
@@ -15,7 +15,7 @@ NOW = datetime.now()
 DATE = NOW.strftime("%Y-%m-%d")
 TIME = NOW.strftime("%H:%M")
 
-# ── 1. Archivos modificados via git diff ───────────────────────────
+# ── 1. Modified files via git diff ───────────────────────────────
 diff = subprocess.run(
     ["git", "-C", str(JARVIS), "diff", "--stat", "HEAD"],
     capture_output=True, text=True, timeout=10
@@ -26,10 +26,10 @@ files = [
     if "|" in line and not line.strip().startswith("Bin")
 ]
 
-# ── 2. Proyecto activo ─────────────────────────────────────────────
+# ── 2. Active project ─────────────────────────────────────────────
 project = os.environ.get("JARVIS_PROJECT", "jarvis-core")
 
-# ── 3. Próximo paso desde projects/[project].md ───────────────────
+# ── 3. Next step from projects/[project].md ───────────────────────
 next_step = f"Ver projects/{project}.md"
 pm = JARVIS / "projects" / f"{project}.md"
 if pm.exists():
@@ -43,7 +43,7 @@ if pm.exists():
                     break
             break
 
-# ── 4. Lecciones recientes (hoy) ──────────────────────────────────
+# ── 4. Recent lessons (today) ─────────────────────────────────────
 lessons_today = []
 lessons_file = JARVIS / "tasks" / "lessons.md"
 if lessons_file.exists():
@@ -51,9 +51,9 @@ if lessons_file.exists():
         if line.startswith(f"[{DATE}]"):
             lessons_today.append(f"- {line.strip()}")
 
-lessons_block = "\n".join(lessons_today) if lessons_today else "- (ninguna esta sesión)"
+lessons_block = "\n".join(lessons_today) if lessons_today else "- (none this session)"
 
-# ── 5. Escribir sessions/YYYY-MM-DD_session.md ────────────────────
+# ── 5. Write sessions/YYYY-MM-DD_session.md ───────────────────────
 sessions_dir = JARVIS / "sessions"
 sessions_dir.mkdir(exist_ok=True)
 
@@ -63,7 +63,7 @@ while session_path.exists():
     session_path = sessions_dir / f"{DATE}_session_{idx}.md"
     idx += 1
 
-files_block = "\n".join(f"- `{f}`" for f in files[:20]) or "- (sin cambios pendientes)"
+files_block = "\n".join(f"- `{f}`" for f in files[:20]) or "- (no pending changes)"
 
 content = f"""---
 date: {DATE}
@@ -72,26 +72,26 @@ project: {project}
 agent_used: claude-sonnet-4-6
 ---
 
-# Sesion {DATE}
+# Session {DATE}
 
-## Que hicimos
-- Sesion manual de handover — {project}
-- (Ver archivos modificados abajo para detalle)
+## What we did
+- Manual handover session — {project}
+- (See modified files below for details)
 
-## Archivos modificados
+## Modified files
 {files_block}
 
-## Proximo paso
+## Next step
 {next_step}
 
-## Lecciones aprendidas
+## Lessons learned
 {lessons_block}
 """
 
 session_path.write_text(content, encoding="utf-8")
-print(f"[HANDOVER] Sesion guardada en {session_path.relative_to(JARVIS)}")
+print(f"[HANDOVER] Session saved in {session_path.relative_to(JARVIS)}")
 
-# ── 6. Actualizar projects/[project].md ───────────────────────────
+# ── 6. Update projects/[project].md ───────────────────────────────
 if pm.exists():
     text = pm.read_text(encoding="utf-8")
     marker = "**Ultima sesion:**"
@@ -126,12 +126,12 @@ if commit.returncode == 0:
     if push.returncode == 0:
         print(f"[HANDOVER] Push OK -> origin/master")
     else:
-        print(f"[HANDOVER] Push fallido (red/auth) — archivo guardado localmente")
+        print(f"[HANDOVER] Push failed (network/auth) — file saved locally")
         print(push.stderr.strip()[:200])
 else:
     if "nothing to commit" in commit.stdout:
-        print("[HANDOVER] Sin cambios nuevos que commitear")
+        print("[HANDOVER] No new changes to commit")
     else:
-        print(f"[HANDOVER] Commit fallido: {commit.stderr.strip()[:200]}")
+        print(f"[HANDOVER] Commit failed: {commit.stderr.strip()[:200]}")
 
-print(f"[HANDOVER] Completado — {session_path.name}")
+print(f"[HANDOVER] Complete — {session_path.name}")

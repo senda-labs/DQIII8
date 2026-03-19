@@ -1,6 +1,6 @@
-# DQIII8 — Prohibiciones (NEVER)
+# DQIII8 — Prohibitions (NEVER)
 
-> Reglas absolutas del sistema. Prioridad máxima sobre cualquier otra rule.
+> Absolute system rules. Maximum priority over any other rule.
 
 - NEVER write to .env, secrets, API keys, or any credential file.
 - NEVER modify .claude/settings.json, CLAUDE.md, or database/schema.sql without explicit user request.

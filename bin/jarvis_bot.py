@@ -127,7 +127,7 @@ def _load_env_dict() -> dict:
 
 def _infer_task_type(description: str) -> str:
     d = description.lower()
-    if any(k in d for k in ("video", "tts", "subtitle", "pipeline", "ffmpeg", "reels", "faceless")):
+    if any(k in d for k in ("video", "tts", "subtitle", "pipeline", "ffmpeg", "reels", "content")):
         return "pipeline"
     if any(
         k in d

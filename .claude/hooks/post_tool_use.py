@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 DQIII8 Hook — PostToolUse
-Patch 5: bloque SQLite en try/except — nunca bloquea trabajo real
-Auto-format Python con Black tras cada edición.
+Patch 5: SQLite block in try/except — never blocks real work
+Auto-format Python with Black after each edit.
 """
 
 import sys, json, time, os, subprocess
@@ -45,7 +45,7 @@ if tool in ("Edit", "Write", "MultiEdit"):
         except Exception:
             pass
 
-# ── Patch 5: métricas en try/except — nunca bloquean trabajo real ──
+# ── Patch 5: metrics in try/except — never block real work ──
 try:
     import sqlite3
 
@@ -80,8 +80,8 @@ try:
                 error_msg = ""
         content = inp.get("new_content", inp.get("content", ""))
         bytes_wr = len(content.encode("utf-8", errors="replace")) if content else 0
-        # Cuando falla sin stderr: registrar tool + motivo genérico para auditoría
-        stored_error = error_msg or (f"{tool} falló (sin stderr)" if not success else None)
+        # When failing without stderr: log tool + generic reason for audit
+        stored_error = error_msg or (f"{tool} failed (no stderr)" if not success else None)
 
         conn = sqlite3.connect(DB, timeout=2)
         # Find the open action row first (to get its id for error_log FK)
@@ -93,7 +93,7 @@ try:
         ).fetchone()
         _action_id = _action_row[0] if _action_row else None
 
-        # Cerrar la acción abierta por pre_tool_use
+        # Close the open action from pre_tool_use
         if _action_id:
             conn.execute(
                 "UPDATE agent_actions "
@@ -136,7 +136,7 @@ try:
         conn.commit()
         conn.close()
 except Exception:
-    pass  # logging falla silenciosamente
+    pass  # logging fails silently
 
 # ── Implicit correction capture ──────────────────────────────────────
 # Pattern: tool fails → same agent+file → tool succeeds = silent fix → lesson

@@ -64,9 +64,9 @@ def _read_active_project() -> dict | None:
         # Extract model
         m_model = re.search(r"^model:\s*(.+)$", text, re.MULTILINE)
         model = m_model.group(1).strip() if m_model else "unknown"
-        # Extract next step — matches "Próximo paso", "Proximo paso concreto", etc.
+        # Extract next step — matches "Next step", "Próximo paso", etc.
         # Skips blank lines between header and content
-        m_next = re.search(r"##\s*[Pp]r[oó]ximo paso[^\n]*\n\s*\n*\**(.+)", text, re.IGNORECASE)
+        m_next = re.search(r"##\s*(?:[Nn]ext step|[Pp]r[oó]ximo paso)[^\n]*\n\s*\n*\**(.+)", text, re.IGNORECASE)
         next_step = m_next.group(1).strip().strip("*").strip() if m_next else ""
         # Truncate next_step to 120 chars
         if len(next_step) > 120:
@@ -188,7 +188,7 @@ def main() -> None:
         print(
             f"─────────────────────────────────\n"
             f"[DQIII8 Context]\n"
-            f"Proyecto activo: {project['name']} | Modelo: {project['model']}\n"
+            f"Active project: {project['name']} | Model: {project['model']}\n"
             f"─────────────────────────────────"
         )
         sys.exit(0)
@@ -201,20 +201,20 @@ def main() -> None:
     lines = [
         "─────────────────────────────────",
         "[DQIII8 Context]",
-        f"Proyecto activo: {project['name']} | Modelo: {project['model']}",
+        f"Active project: {project['name']} | Model: {project['model']}",
     ]
 
     if project["next_step"]:
-        lines.append(f"Próximo paso: {project['next_step']}")
+        lines.append(f"Next step: {project['next_step']}")
 
     if lessons:
-        lines.append("Lecciones relevantes:")
+        lines.append("Relevant lessons:")
         for lesson in lessons:
             lines.append(f"  · {lesson}")
     else:
-        lines.append("Lecciones relevantes: ninguna para este prompt")
+        lines.append("Relevant lessons: none for this prompt")
 
-    lines.append(f"SPC alert: {spc if spc else 'ninguno'}")
+    lines.append(f"SPC alert: {spc if spc else 'none'}")
     lines.append("─────────────────────────────────")
 
     output = "\n".join(lines)

@@ -30,7 +30,7 @@ JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB_PATH = JARVIS_ROOT / "database" / "jarvis_metrics.db"
 WRAPPER = JARVIS_ROOT / "bin" / "openrouter_wrapper.py"
 
-# ── Tablas de mapping estático ────────────────────────────────────────────────
+# ── Static mapping tables ─────────────────────────────────────────────────────
 
 TASK_AGENT_MAP: dict[str, str] = {
     "code": "python-specialist",
@@ -54,7 +54,7 @@ TASK_TIER_MAP: dict[str, int] = {
     "mixed": 3,
 }
 
-# Keywords → task_type para fast-path (instincts + fallback de keywords)
+# Keywords → task_type for fast-path (instincts + keyword fallback)
 KEYWORD_TASK_TYPE: dict[str, str] = {
     "backtesting": "trading",
     "backtest": "trading",
@@ -148,9 +148,9 @@ Respond ONLY with the JSON. No markdown, no additional text."""
 
 def _query_instincts_fast_path(user_request: str) -> tuple[str | None, float]:
     """
-    Busca instincts con confidence > 0.7 cuyo keyword aparezca en el request.
-    Si hay match → devuelve (task_type, confidence) para saltarse la llamada LLM.
-    Devuelve (None, 0.0) si no hay match suficiente.
+    Searches instincts with confidence > 0.7 whose keyword appears in the request.
+    If there is a match → returns (task_type, confidence) to skip the LLM call.
+    Returns (None, 0.0) if there is no sufficient match.
     """
     if not DB_PATH.exists():
         return None, 0.0
@@ -181,8 +181,8 @@ def _query_instincts_fast_path(user_request: str) -> tuple[str | None, float]:
 
 def _get_model_for_task(task_type: str) -> tuple[str, float]:
     """
-    Consulta model_router.get_recommendation() para el task_type dado.
-    Devuelve (model_name, score). Fallback a defaults si import falla.
+    Queries model_router.get_recommendation() for the given task_type.
+    Returns (model_name, score). Falls back to defaults if import fails.
     """
     bin_dir = str(JARVIS_ROOT / "bin")
     if bin_dir not in sys.path:
@@ -210,9 +210,9 @@ def _get_model_for_task(task_type: str) -> tuple[str, float]:
 
 def _call_llm_for_intent(user_request: str) -> dict | None:
     """
-    Llama al modelo tier2 (research-analyst) via openrouter_wrapper para
-    análisis de intent. Captura stdout (respuesta JSON), ignora stderr.
-    Devuelve el dict parseado, o None si la llamada o el parse fallan.
+    Calls the tier2 model (research-analyst) via openrouter_wrapper for
+    intent analysis. Captures stdout (JSON response), ignores stderr.
+    Returns the parsed dict, or None if the call or parse fails.
     """
     prompt = _ANALYSIS_PROMPT.format(request=user_request.replace('"', '\\"'))
     try:
@@ -226,7 +226,7 @@ def _call_llm_for_intent(user_request: str) -> dict | None:
         raw = result.stdout.strip()
         if not raw:
             return None
-        # Extraer primer bloque JSON del output (el LLM puede añadir texto)
+        # Extract first JSON block from output (the LLM may add extra text)
         json_match = re.search(r"\{[\s\S]*\}", raw)
         if not json_match:
             return None
@@ -235,13 +235,13 @@ def _call_llm_for_intent(user_request: str) -> dict | None:
         return None
 
 
-# ── Fallback: keyword-only analysis (sin LLM) ────────────────────────────────
+# ── Fallback: keyword-only analysis (no LLM) ─────────────────────────────────
 
 
 def _keyword_fallback(user_request: str) -> dict:
     """
-    Análisis sin LLM: keywords estáticas + tablas de mapping.
-    Usado cuando el LLM no está disponible o hay timeout.
+    Analysis without LLM: static keywords + mapping tables.
+    Used when the LLM is unavailable or times out.
     """
     lowered = user_request.lower()
 

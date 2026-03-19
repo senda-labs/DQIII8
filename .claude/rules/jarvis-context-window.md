@@ -11,5 +11,5 @@ Auto-compact triggers at 50% (~500 K tokens) via `CLAUDE_AUTOCOMPACT_PCT_OVERRID
 | Red    | >75%   | >750 K       | Trigger /clear-context immediately. |
 
 - After /clear-context: stop.py saves state → 5-line summary → /clear → session_start.py reloads essentials.
-- PostCompact hook reinjests: modelo activo, proyecto, últimas 3 lecciones, score de auditoría.
+- PostCompact hook reinjests: active model, project, last 3 lessons, audit score.
 - Every worktree starts with clean context. Orchestrator does NOT share its context with subagents.

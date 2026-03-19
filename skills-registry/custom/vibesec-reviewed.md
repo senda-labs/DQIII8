@@ -3,7 +3,7 @@ name: vibesec
 description: Security review skill for DQIII8 code-reviewer agent. Covers OWASP top vulnerabilities with detection checklists and bypass technique tables. Use when reviewing Python/FastAPI/SQLite code for SQL injection, XSS, CSRF, path traversal, secret exposure, SSRF, file upload, XXE, JWT, and API security issues.
 source: BehiSecc/VibeSec-Skill
 reviewed: 2026-03-18
-approved_by: Iker + Claude
+approved_by: maintainers
 status: APROBADA
 ---
 
@@ -203,7 +203,7 @@ Any endpoint where server makes requests to user-provided URLs must be validated
 
 ### Insecure File Upload
 
-> **DQIII8 note**: High priority for content-automation pipeline (video/audio/image uploads).
+> **DQIII8 note**: High priority for content creation pipeline (video/audio/image uploads).
 
 #### Validation Requirements
 

@@ -101,8 +101,8 @@ CRITICAL_PATTERNS = [
 ]
 
 POLL_INTERVAL_S = 5
-MAX_WAIT_LAYER3_S = 600  # 10 minutos para críticos
-MAX_WAIT_TELEGRAM_S = 300  # 5 min si no hay config Telegram (no bloquea mucho)
+MAX_WAIT_LAYER3_S = 600  # 10 minutes for critical actions
+MAX_WAIT_TELEGRAM_S = 300  # 5 min if no Telegram config (doesn't block much)
 
 
 def _allow(reason: str = "") -> None:
@@ -114,13 +114,13 @@ def _deny(reason: str) -> None:
 
 
 def _is_read_prefix(command: str) -> bool:
-    """Layer 1: True si el comando Bash empieza con un prefijo seguro de lectura."""
+    """Layer 1: True if Bash command starts with a safe read prefix."""
     cmd = command.strip()
     return any(cmd.startswith(prefix) for prefix in READ_PREFIXES)
 
 
 def _has_critical_pattern(tool_input: dict) -> str | None:
-    """Layer 3: Devuelve el patrón crítico encontrado, o None."""
+    """Layer 3: Returns the critical pattern found, or None."""
     searchable = json.dumps(tool_input, ensure_ascii=False).lower()
     for pattern in CRITICAL_PATTERNS:
         if pattern.lower() in searchable:
@@ -168,7 +168,7 @@ def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> di
         )
         if result.returncode == 0 and result.stdout.strip():
             out = result.stdout.strip()
-            # Extraer JSON del output
+            # Extract JSON from output
             start = out.find("{")
             end = out.rfind("}") + 1
             if start != -1 and end > start:
@@ -182,7 +182,7 @@ def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> di
     except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
         pass
 
-    # Timeout o error → PERMITE (no bloquear autonomía por fallo del LLM)
+    # Timeout or error → PERMITE (do not block autonomy on LLM failure)
     return {"decision": "PERMITE", "reason": "llm-timeout-3s"}
 
 
@@ -324,7 +324,7 @@ def main() -> None:
             tool_name,
             tool_input,
             start,
-            label="patrón crítico",
+            label="critical pattern",
             trigger_reason=f"CRITICAL_PATTERN:{critical}",
         )
         return
@@ -351,7 +351,7 @@ def main() -> None:
     elapsed = time.time() - start
 
     if llm_decision == "ESCALA":
-        # LLM pide escalación → Layer 3
+        # LLM requests escalation → Layer 3
         _layer3_telegram_flow(
             session_id,
             tool_name,
@@ -368,7 +368,7 @@ def main() -> None:
         _deny(f"Supervisor: action not aligned with objective — {llm_reason}")
         return
 
-    # PERMITE (o desconocido) → allow
+    # PERMITE (or unknown) → allow
     _log_decision(session_id, tool_name, "allow", f"layer2-permite:{llm_reason}", elapsed)
     _allow("layer2-permite")
 

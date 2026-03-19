@@ -23,7 +23,7 @@ project = os.environ.get("JARVIS_PROJECT", "")
 if not project:
     cwd = Path(data.get("cwd", "."))
     for part in cwd.parts:
-        if part in ("content-automation",):
+        if part in ("content",):
             project = part
             break
     if not project:
@@ -109,9 +109,9 @@ _profile_path = CONTEXT_DIR / "user_profile.md"
 if _profile_path.exists():
     _user_profile_block = "\n\nUSER PROFILE:\n" + _profile_path.read_text(encoding="utf-8")
 
-# youtube_channels.md: ONLY if project is content-automation
+# youtube_channels.md: ONLY if project is content
 _channels_block = ""
-if project in ("content-automation",):
+if project in ("content",):
     _channels_path = CONTEXT_DIR / "youtube_channels.md"
     if _channels_path.exists():
         _channels_block = "\n\nYOUTUBE CHANNELS:\n" + _channels_path.read_text(encoding="utf-8")

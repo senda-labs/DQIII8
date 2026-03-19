@@ -1,9 +1,9 @@
 """
 JAL Planner v3
 ==============
-Descompone objetivos en pasos ejecutables.
-Antes de planificar, consulta el historial de fallos de Claude Code
-para asignar pesos y criticality basados en datos reales.
+Breaks down objectives into executable steps.
+Before planning, queries the Claude Code failure history
+to assign weights and criticality based on real data.
 """
 
 import json
@@ -34,7 +34,7 @@ _ALLOWED_HOSTS = frozenset(
 def _validate_url(url: str) -> None:
     host = urlparse(url).hostname or ""
     if not any(host == h or host.endswith(f".{h}") for h in _ALLOWED_HOSTS):
-        raise ValueError(f"URL no permitida: {url}")
+        raise ValueError(f"URL not allowed: {url}")
 
 
 def load_env():
@@ -48,9 +48,9 @@ def load_env():
 
 def get_claude_reliability_context() -> str:
     """
-    Extrae el historial de fallos de Claude Code desde la BD.
-    Este contexto se inyecta en el prompt del planner para que
-    asigne mayor criticality a tareas donde Claude falla más.
+    Extracts Claude Code failure history from the DB.
+    This context is injected into the planner prompt so that
+    it assigns higher criticality to tasks where Claude fails more.
     """
     try:
         conn = sqlite3.connect(DB)
@@ -65,18 +65,18 @@ def get_claude_reliability_context() -> str:
         conn.close()
 
         if not patterns:
-            return "Sin historial de fallos previo."
+            return "No previous failure history."
 
-        lines = ["Patrones de fallo conocidos de Claude Code:"]
+        lines = ["Known Claude Code failure patterns:"]
         for p in patterns:
             lines.append(
-                f"- [{p[0]}] tasa_fallo={p[2]:.0%} "
-                f"severidad_media={p[3]:.1f}: {p[1][:80]}"
-                + (f" -> PREVENCION: {p[4]}" if p[4] else "")
+                f"- [{p[0]}] failure_rate={p[2]:.0%} "
+                f"avg_severity={p[3]:.1f}: {p[1][:80]}"
+                + (f" -> PREVENTION: {p[4]}" if p[4] else "")
             )
         return "\n".join(lines)
     except Exception:
-        return "BD no disponible para consulta de historial."
+        return "DB not available for history query."
 
 
 def _call_openrouter(prompt: str, model: str = "qwen/qwen3-coder:free") -> str:

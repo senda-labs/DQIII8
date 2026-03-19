@@ -98,6 +98,15 @@ FALLBACK_CHAIN = {
     "pollinations": [],
 }
 
+# Coste por 1K tokens (input, output) en USD — 0.0 = gratuito/local
+TIER_COSTS: dict[str, tuple[float, float]] = {
+    "ollama": (0.0, 0.0),
+    "groq": (0.0, 0.0),
+    "llm7": (0.0, 0.0),
+    "pollinations": (0.0, 0.0),
+    "openrouter": (0.003, 0.015),  # Claude Sonnet pricing aprox.
+}
+
 # ── Routing automático por keywords (classify subcommand) ────────────────────
 # Cada entrada: (tier, provider, model, route_name, keywords)
 # Si múltiples tiers coinciden → gana el más bajo (tier 1 > tier 2 > tier 3)
@@ -227,14 +236,17 @@ def build_request(provider_name: str, model: str, prompt: str):
     return url, headers, payload
 
 
-def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, int, bool]:
+def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, int, int, bool]:
     """
     Realiza la petición y hace streaming a stdout.
-    Devuelve (texto_completo, tokens_estimados, exito).
+    Devuelve (texto_completo, tokens_input, tokens_output, exito).
+    Usa tokens reales de la API si están disponibles; estima por chars si no.
     """
     url, headers, payload = build_request(provider_name, model, prompt)
     req = urllib.request.Request(url, data=payload, headers=headers)
     full_text = ""
+    tokens_in = 0
+    tokens_out = 0
 
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # nosemgrep
@@ -250,7 +262,12 @@ def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, i
                     continue
                 # Detectar error embebido en el stream
                 if "error" in chunk:
-                    return full_text, 0, False
+                    return full_text, tokens_in, tokens_out, False
+                # Capturar tokens reales si la API los devuelve (OpenRouter/Groq)
+                if "usage" in chunk:
+                    usage = chunk["usage"]
+                    tokens_in = usage.get("prompt_tokens", tokens_in)
+                    tokens_out = usage.get("completion_tokens", tokens_out)
                 choices = chunk.get("choices", [])
                 if not choices:
                     continue
@@ -261,47 +278,85 @@ def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, i
                     full_text += token
     except urllib.error.HTTPError as e:
         if e.code in (429, 500, 502, 503):
-            return full_text, 0, False
-        return full_text, 0, False
+            return full_text, tokens_in, tokens_out, False
+        return full_text, tokens_in, tokens_out, False
     except (urllib.error.URLError, TimeoutError):
-        return full_text, 0, False
+        return full_text, tokens_in, tokens_out, False
 
     if full_text:
         print()  # newline final
-    return full_text, len(full_text) // 4, bool(full_text)  # tokens estimados ~4 chars/token
+    # Fallback a estimación si la API no devolvió usage
+    if not tokens_in and not tokens_out:
+        tokens_in = len(prompt) // 4
+        tokens_out = len(full_text) // 4
+    return full_text, tokens_in, tokens_out, bool(full_text)
 
 
 def log_to_db(
     agent: str,
     model: str,
     provider: str,
-    tokens: int,
+    tokens_in: int,
+    tokens_out: int,
     duration_ms: int,
     success: bool,
     session_id: str = "cli",
     error_message: str = "",
 ) -> None:
-    """Registra la llamada en agent_actions, incluyendo error_message si falla."""
+    """Registra la llamada en agent_actions con tokens reales y coste estimado."""
     if not DB_PATH.exists():
         return
     try:
+        cost_in, cost_out = TIER_COSTS.get(provider, (0.0, 0.0))
+        cost_usd = (tokens_in / 1000.0) * cost_in + (tokens_out / 1000.0) * cost_out
+        tier = "A" if cost_in > 0 else ("B" if provider in ("groq", "openrouter") else "C")
         conn = sqlite3.connect(str(DB_PATH), timeout=2)
         conn.execute(
             "INSERT INTO agent_actions "
             "(session_id, agent_name, tool_used, action_type, model_used, "
-            "tokens_used, duration_ms, success, error_message, start_time_ms) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "tokens_used, tokens_input, tokens_output, estimated_cost_usd, tier, "
+            "duration_ms, success, error_message, start_time_ms) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 agent,
                 "openrouter_wrapper",
                 "api_call",
                 f"{provider}/{model}",
-                tokens,
+                tokens_in + tokens_out,
+                tokens_in,
+                tokens_out,
+                round(cost_usd, 6),
+                tier,
                 duration_ms,
                 1 if success else 0,
                 error_message[:500] if error_message else None,
                 int(time.time() * 1000) - duration_ms,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def _log_escalation(
+    session_id: str, agent: str, from_provider: str, from_model: str, reason: str
+) -> None:
+    """Registra un escalado de fallback en error_log con keyword ESCALATION."""
+    if not DB_PATH.exists():
+        return
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=2)
+        conn.execute(
+            "INSERT INTO error_log "
+            "(timestamp, session_id, agent_name, error_type, error_message, keywords, resolved) "
+            "VALUES (datetime('now'), ?, ?, 'ESCALATION', ?, ?, 0)",
+            (
+                session_id,
+                agent,
+                f"Escalated from {from_provider}/{from_model}: {reason[:300]}",
+                json.dumps([agent, "ESCALATION", from_provider]),
             ),
         )
         conn.commit()
@@ -420,16 +475,26 @@ def main() -> None:
     for provider, model in chain:
         print(f"[JARVIS] {agent_name} | {provider} | {model}", file=sys.stderr)
         t0 = int(time.time() * 1000)
-        text, tokens, ok = stream_response(provider, model, prompt)
+        text, tokens_in, tokens_out, ok = stream_response(provider, model, prompt)
         duration_ms = int(time.time() * 1000) - t0
 
         err_msg = "" if ok else f"{provider}/{model} falló — sin respuesta o HTTP error"
-        log_to_db(agent_name, model, provider, tokens, duration_ms, ok, error_message=err_msg)
+        log_to_db(
+            agent_name,
+            model,
+            provider,
+            tokens_in,
+            tokens_out,
+            duration_ms,
+            ok,
+            error_message=err_msg,
+        )
 
         if ok:
             sys.exit(0)
 
         print(f"[JARVIS] {provider} falló — intentando siguiente...", file=sys.stderr)
+        _log_escalation("cli", agent_name, provider, model, err_msg)
 
     print("\n[openrouter_wrapper] Error: todos los providers fallaron.", file=sys.stderr)
     sys.exit(1)

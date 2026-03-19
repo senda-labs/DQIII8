@@ -123,7 +123,7 @@ if os.environ.get("JARVIS_PROPOSITO") == "1":
     if _proposito_path.exists():
         _proposito_block = "\n\nPROPOSITO:\n" + _proposito_path.read_text(encoding="utf-8")
 
-# ── Memorias recientes (mem0 + fallback SQLite) ────────────────────
+# ── Memorias recientes (vault_memory SQLite) ───────────────────────
 _memories_block = ""
 try:
     import sys as _sys

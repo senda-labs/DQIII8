@@ -83,3 +83,35 @@ tasks/permission_rejection.json
 # Node (Claude Code)
 node_modules/
 .mcp.json
+
+# === Internal/Private — never push to public repo ===
+CLAUDE.md
+CLAUDE.md.save
+claude-progress.txt
+PLAN_MAESTRO.md
+00_DASHBOARD.md
+CHANGELOG.md
+pyproject.toml
+
+# Internal directories
+context/
+sessions/
+projects/
+tasks/
+decisions/
+database/audit_reports/
+database/system_metrics.log
+database/qdrant/
+
+# MCP local config
+.claude/.mcp.json
+.claude/settings.json
+
+# Internal bin scripts
+bin/script_benchmark.py
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+*~

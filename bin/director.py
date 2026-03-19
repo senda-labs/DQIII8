@@ -188,7 +188,7 @@ def _get_model_for_task(task_type: str) -> tuple[str, float]:
     if bin_dir not in sys.path:
         sys.path.insert(0, bin_dir)
     try:
-        from model_router import get_recommendation  # type: ignore
+        from openrouter_wrapper import get_recommendation  # type: ignore
 
         model, score, _ = get_recommendation(task_type)
         return model, score

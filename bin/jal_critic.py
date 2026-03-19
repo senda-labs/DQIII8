@@ -17,8 +17,8 @@ import time
 from pathlib import Path
 from datetime import datetime
 
-JARVIS = Path("/root/jarvis")
-DB     = JARVIS / "database" / "jarvis_metrics.db"
+JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+DB = JARVIS / "database" / "jarvis_metrics.db"
 
 # Import scoring engine (same directory)
 sys.path.insert(0, str(JARVIS / "bin"))
@@ -42,6 +42,7 @@ def load_env():
 # ─────────────────────────────────────────────
 # GEMINI: evaluacion por paso
 # ─────────────────────────────────────────────
+
 
 def evaluate_with_gemini(obj_content: str, steps_summary: str) -> dict:
     api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -102,9 +103,8 @@ Responde SOLO con JSON valido:
 # APRENDIZAJE: actualizar patrones de Claude Code
 # ─────────────────────────────────────────────
 
-def learn_from_errors(
-    obj_id: str, attempt: int, result: ScoringResult, gemini_eval: dict
-):
+
+def learn_from_errors(obj_id: str, attempt: int, result: ScoringResult, gemini_eval: dict):
     """
     Actualiza jal_error_patterns con los fallos observados.
     Este es el mecanismo por el que el sistema aprende que
@@ -117,14 +117,18 @@ def learn_from_errors(
         if not sig:
             continue
 
-        existing = conn.execute("""
+        existing = conn.execute(
+            """
             SELECT id, frequency, total_executions
             FROM jal_error_patterns
             WHERE error_signature=? AND category=?
-        """, (sig, err["category"])).fetchone()
+        """,
+            (sig, err["category"]),
+        ).fetchone()
 
         if existing:
-            conn.execute("""
+            conn.execute(
+                """
                 UPDATE jal_error_patterns SET
                     frequency = frequency + 1,
                     total_executions = total_executions + 1,
@@ -134,41 +138,56 @@ def learn_from_errors(
                     avg_propagation = (avg_propagation + ?) / 2,
                     last_seen = datetime('now')
                 WHERE id=?
-            """, (err["severity"], err["propagation"], existing[0]))
+            """,
+                (err["severity"], err["propagation"], existing[0]),
+            )
         else:
             pattern_id = f"PAT-{err['category'].upper()[:3]}-"
             pattern_id += datetime.now().strftime("%Y%m%d%H%M%S")
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO jal_error_patterns
                 (pattern_id, category, error_signature,
                  frequency, total_executions, failure_rate,
                  avg_severity, avg_propagation, last_seen)
                 VALUES (?,?,?,1,1,1.0,?,?,datetime('now'))
-            """, (
-                pattern_id,
-                err["category"],
-                sig,
-                err["severity"],
-                err["propagation"],
-            ))
+            """,
+                (
+                    pattern_id,
+                    err["category"],
+                    sig,
+                    err["severity"],
+                    err["propagation"],
+                ),
+            )
 
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO jal_error_taxonomy
             (objective_id, attempt, step_number, error_code,
              category, severity, propagation, fix_complexity,
              critical_score, priority_label, error_message,
              fix_suggested)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            obj_id, attempt, err["step"],
-            err["error_code"], err["category"],
-            err["severity"], err["propagation"],
-            err["fix_complexity"], err["critical_score"],
-            err["label"], err["message"],
-            gemini_eval.get("root_cause", ""),
-        ))
+        """,
+            (
+                obj_id,
+                attempt,
+                err["step"],
+                err["error_code"],
+                err["category"],
+                err["severity"],
+                err["propagation"],
+                err["fix_complexity"],
+                err["critical_score"],
+                err["label"],
+                err["message"],
+                gemini_eval.get("root_cause", ""),
+            ),
+        )
 
-    conn.execute("""
+    conn.execute(
+        """
         UPDATE jal_error_patterns SET
             total_executions = total_executions + 1,
             failure_rate = CAST(frequency AS REAL) /
@@ -177,7 +196,9 @@ def learn_from_errors(
             SELECT DISTINCT category FROM jal_error_taxonomy
             WHERE objective_id=? AND attempt=?
         )
-    """, (obj_id, attempt))
+    """,
+        (obj_id, attempt),
+    )
 
     conn.commit()
     conn.close()
@@ -187,8 +208,9 @@ def learn_from_errors(
 # TELEGRAM
 # ─────────────────────────────────────────────
 
+
 def send_telegram(text: str, obj_id: str = "", score: float = 0.0):
-    token   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
         print(f"[TELEGRAM] {text[:200]}")
@@ -211,12 +233,15 @@ def _save_conv(
     update_id: int = 0,
 ):
     conn = sqlite3.connect(DB)
-    conn.execute("""
+    conn.execute(
+        """
         INSERT INTO jal_conversations
         (objective_id, direction, message_text,
          intent, score_at_time, update_id)
         VALUES (?,?,?,?,?,?)
-    """, (obj_id, direction, text, intent, score, update_id))
+    """,
+        (obj_id, direction, text, intent, score, update_id),
+    )
     conn.commit()
     conn.close()
 
@@ -226,7 +251,7 @@ def get_telegram_reply(obj_id: str, timeout_s: int = 600) -> tuple[str, int]:
     Escucha respuesta de Telegram.
     Retorna (texto, update_id) o ('', 0) si timeout.
     """
-    token   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
         return "", 0
@@ -301,8 +326,13 @@ approve | retry_full | retry_critical | audit | next_objective | abandon | clari
         return "clarify"
 
     valid = {
-        "approve", "retry_full", "retry_critical",
-        "audit", "next_objective", "abandon", "clarify",
+        "approve",
+        "retry_full",
+        "retry_critical",
+        "audit",
+        "next_objective",
+        "abandon",
+        "clarify",
     }
     return intent if intent in valid else "clarify"
 
@@ -311,22 +341,23 @@ approve | retry_full | retry_critical | audit | next_objective | abandon | clari
 # FORMATEO DEL REPORTE
 # ─────────────────────────────────────────────
 
-def format_report(
-    result: ScoringResult, gemini_eval: dict, title: str
-) -> str:
-    s     = result.score_final
-    pct   = round(s * 100, 1)
-    conv  = result.convergence_est
+
+def format_report(result: ScoringResult, gemini_eval: dict, title: str) -> str:
+    s = result.score_final
+    pct = round(s * 100, 1)
+    conv = result.convergence_est
 
     status = (
-        "COMPLETADO"  if s >= 0.95 else
-        "APROBADO"    if s >= PASS_THRESHOLD else
-        "PARCIAL"     if s >= 0.60 else
-        "CRITICO"     if s >= 0.30 else
-        "FALLIDO"
+        "COMPLETADO"
+        if s >= 0.95
+        else (
+            "APROBADO"
+            if s >= PASS_THRESHOLD
+            else "PARCIAL" if s >= 0.60 else "CRITICO" if s >= 0.30 else "FALLIDO"
+        )
     )
 
-    r  = f"{status} -- *{title[:50]}*\n\n"
+    r = f"{status} -- *{title[:50]}*\n\n"
     r += f"*Score: {pct}%* (intento {result.attempt})\n"
     r += "```\n"
     r += f"score_raw:   {result.score_raw*100:.1f}%\n"
@@ -346,9 +377,9 @@ def format_report(
         for e in result.errors[:3]:
             label_map = {
                 "BLOQUEANTE": "[BLOQ]",
-                "CRITICO":    "[CRIT]",
-                "MODERADO":   "[MOD]",
-                "MENOR":      "[MEN]",
+                "CRITICO": "[CRIT]",
+                "MODERADO": "[MOD]",
+                "MENOR": "[MEN]",
             }
             icon = label_map.get(e["label"], "[?]")
             r += (
@@ -366,12 +397,7 @@ def format_report(
 
     r += "\n" + "=" * 20 + "\n"
     if s >= PASS_THRESHOLD:
-        r += (
-            "*Que hacemos?*\n"
-            "- auditoria rapida\n"
-            "- siguiente objetivo\n"
-            "- aprobado\n"
-        )
+        r += "*Que hacemos?*\n" "- auditoria rapida\n" "- siguiente objetivo\n" "- aprobado\n"
     else:
         r += (
             f"*Como continuamos?*\n"
@@ -386,11 +412,12 @@ def format_report(
 # MAIN
 # ─────────────────────────────────────────────
 
+
 def main():
     load_env()
 
     conn = sqlite3.connect(DB)
-    row  = conn.execute("""
+    row = conn.execute("""
         SELECT objective_id, title, current_attempt, max_attempts
         FROM jal_objectives WHERE status='active'
         ORDER BY started_at DESC LIMIT 1
@@ -406,15 +433,18 @@ def main():
 
     print(f"[CRITIC] {obj_id} -- intento {attempt}/{max_attempts}")
 
-    obj_files   = sorted((JARVIS / "objectives" / "active").glob("*.md"))
+    obj_files = sorted((JARVIS / "objectives" / "active").glob("*.md"))
     obj_content = obj_files[0].read_text("utf-8") if obj_files else title
 
     conn = sqlite3.connect(DB)
-    steps_rows = conn.execute("""
+    steps_rows = conn.execute(
+        """
         SELECT step_number, description, status, result_summary, error_raw
         FROM jal_steps WHERE objective_id=? AND attempt=?
         ORDER BY step_number
-    """, (obj_id, attempt)).fetchall()
+    """,
+        (obj_id, attempt),
+    ).fetchall()
     conn.close()
 
     steps_summary = "\n".join(
@@ -429,7 +459,8 @@ def main():
 
     conn = sqlite3.connect(DB)
     for step_data in gemini_eval.get("steps", []):
-        conn.execute("""
+        conn.execute(
+            """
             UPDATE jal_steps SET
                 completion_pct = ?,
                 weight         = ?,
@@ -437,14 +468,18 @@ def main():
                 error_category = ?,
                 result_summary = ?
             WHERE objective_id=? AND attempt=? AND step_number=?
-        """, (
-            step_data.get("completion_pct", 0.0),
-            step_data.get("weight_suggested", 0.33),
-            step_data.get("criticality", 1),
-            step_data.get("error_category", "unknown"),
-            step_data.get("error_message", "") or step_data.get("fix_action", ""),
-            obj_id, attempt, step_data["step_number"],
-        ))
+        """,
+            (
+                step_data.get("completion_pct", 0.0),
+                step_data.get("weight_suggested", 0.33),
+                step_data.get("criticality", 1),
+                step_data.get("error_category", "unknown"),
+                step_data.get("error_message", "") or step_data.get("fix_action", ""),
+                obj_id,
+                attempt,
+                step_data["step_number"],
+            ),
+        )
     conn.commit()
     conn.close()
 
@@ -460,7 +495,8 @@ def main():
     learn_from_errors(obj_id, attempt, result, gemini_eval)
 
     conn = sqlite3.connect(DB)
-    conn.execute("""
+    conn.execute(
+        """
         UPDATE jal_objectives SET
             score_final = ?, score_raw = ?, entropy_H = ?,
             passed = ?,
@@ -470,13 +506,18 @@ def main():
                 ELSE 'active'
             END
         WHERE objective_id=?
-    """, (
-        result.score_final, result.score_raw, result.entropy_H,
-        1 if result.score_final >= PASS_THRESHOLD else 0,
-        result.score_final,
-        attempt, max_attempts,
-        obj_id,
-    ))
+    """,
+        (
+            result.score_final,
+            result.score_raw,
+            result.entropy_H,
+            1 if result.score_final >= PASS_THRESHOLD else 0,
+            result.score_final,
+            attempt,
+            max_attempts,
+            obj_id,
+        ),
+    )
     conn.commit()
     conn.close()
 
@@ -511,8 +552,12 @@ def _handle_pass(obj_id, title, result, attempt, max_attempts):
 
         intent = classify_intent_with_claude(user_msg, result.score_final)
         _save_conv(
-            obj_id, "in", user_msg,
-            intent=intent, score=result.score_final, update_id=upd_id,
+            obj_id,
+            "in",
+            user_msg,
+            intent=intent,
+            score=result.score_final,
+            update_id=upd_id,
         )
         print(f"[CRITIC] Intent: {intent}")
 
@@ -533,9 +578,12 @@ def _handle_pass(obj_id, title, result, attempt, max_attempts):
 
         elif intent == "approve":
             conn = sqlite3.connect(DB)
-            conn.execute("""UPDATE jal_objectives SET
+            conn.execute(
+                """UPDATE jal_objectives SET
                 status='completed', completed_at=datetime('now'),
-                iker_approved=1 WHERE objective_id=?""", (obj_id,))
+                iker_approved=1 WHERE objective_id=?""",
+                (obj_id,),
+            )
             conn.commit()
             conn.close()
             send_telegram("Aprobado. En espera de proximo objetivo.", obj_id=obj_id)
@@ -571,42 +619,45 @@ def _handle_max_attempts(obj_id, title, result, attempt):
     if user_msg:
         intent = classify_intent_with_claude(user_msg, result.score_final)
         _save_conv(
-            obj_id, "in", user_msg,
-            intent=intent, score=result.score_final, update_id=upd_id,
+            obj_id,
+            "in",
+            user_msg,
+            intent=intent,
+            score=result.score_final,
+            update_id=upd_id,
         )
         if intent == "retry_full":
             _extend_and_retry(obj_id, "ampliado")
         elif intent in ("approve", "next_objective"):
             conn = sqlite3.connect(DB)
-            conn.execute("""UPDATE jal_objectives SET
+            conn.execute(
+                """UPDATE jal_objectives SET
                 status='completed', completed_at=datetime('now'),
-                iker_approved=1 WHERE objective_id=?""", (obj_id,))
+                iker_approved=1 WHERE objective_id=?""",
+                (obj_id,),
+            )
             conn.commit()
             conn.close()
             _activate_next(obj_id)
         elif intent == "abandon":
             conn = sqlite3.connect(DB)
-            conn.execute("""UPDATE jal_objectives SET
-                status='abandoned' WHERE objective_id=?""", (obj_id,))
+            conn.execute(
+                """UPDATE jal_objectives SET
+                status='abandoned' WHERE objective_id=?""",
+                (obj_id,),
+            )
             conn.commit()
             conn.close()
-            obj_files = list(
-                (JARVIS / "objectives" / "active").glob(f"{obj_id}*.md")
-            )
+            obj_files = list((JARVIS / "objectives" / "active").glob(f"{obj_id}*.md"))
             if obj_files:
-                obj_files[0].rename(
-                    JARVIS / "objectives" / "failed" / obj_files[0].name
-                )
+                obj_files[0].rename(JARVIS / "objectives" / "failed" / obj_files[0].name)
             send_telegram("Objetivo abandonado.", obj_id=obj_id)
 
 
 def _handle_retry(obj_id, result, gemini_eval):
-    errors_str = " - ".join(
-        e["message"][:50] for e in result.errors[:2]
-    ) or "ver BD para detalles"
+    errors_str = " - ".join(e["message"][:50] for e in result.errors[:2]) or "ver BD para detalles"
     send_telegram(
-        f"Replanificando (H={result.entropy_H:.2f})...\n"
-        f"Errores: {errors_str}",
+        f"Replanificando (H={result.entropy_H:.2f})...\n" f"Errores: {errors_str}",
         obj_id=obj_id,
     )
     subprocess.run(
@@ -617,10 +668,13 @@ def _handle_retry(obj_id, result, gemini_eval):
 
 def _extend_and_retry(obj_id: str, mode: str):
     conn = sqlite3.connect(DB)
-    conn.execute("""UPDATE jal_objectives SET
+    conn.execute(
+        """UPDATE jal_objectives SET
         max_attempts = max_attempts + 3,
         status = 'active'
-        WHERE objective_id=?""", (obj_id,))
+        WHERE objective_id=?""",
+        (obj_id,),
+    )
     conn.commit()
     conn.close()
     send_telegram(f"Ampliados intentos (+3). Reiniciando ({mode})...")
@@ -632,18 +686,17 @@ def _extend_and_retry(obj_id: str, mode: str):
 
 def _activate_next(obj_id: str):
     conn = sqlite3.connect(DB)
-    conn.execute("""UPDATE jal_objectives SET
+    conn.execute(
+        """UPDATE jal_objectives SET
         status='completed', completed_at=datetime('now'),
-        iker_approved=1 WHERE objective_id=?""", (obj_id,))
+        iker_approved=1 WHERE objective_id=?""",
+        (obj_id,),
+    )
     conn.commit()
     conn.close()
-    obj_files = list(
-        (JARVIS / "objectives" / "active").glob(f"{obj_id}*.md")
-    )
+    obj_files = list((JARVIS / "objectives" / "active").glob(f"{obj_id}*.md"))
     if obj_files:
-        obj_files[0].rename(
-            JARVIS / "objectives" / "completed" / obj_files[0].name
-        )
+        obj_files[0].rename(JARVIS / "objectives" / "completed" / obj_files[0].name)
     queue = sorted((JARVIS / "objectives" / "queue").glob("*.md"))
     if queue:
         next_obj = queue[0]

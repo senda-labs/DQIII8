@@ -8,25 +8,28 @@ import subprocess
 import sys
 from pathlib import Path
 
-JARVIS = Path("/root/jarvis")
-DB     = JARVIS / "database" / "jarvis_metrics.db"
+JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+DB = JARVIS / "database" / "jarvis_metrics.db"
 
 
 def get_active_plan() -> tuple:
-    conn  = sqlite3.connect(DB)
-    row   = conn.execute("""
+    conn = sqlite3.connect(DB)
+    row = conn.execute("""
         SELECT objective_id, current_attempt FROM jal_objectives
         WHERE status='active' ORDER BY started_at DESC LIMIT 1
     """).fetchone()
     if not row:
         conn.close()
         return None, None
-    steps = conn.execute("""
+    steps = conn.execute(
+        """
         SELECT step_number, description, description
         FROM jal_steps
         WHERE objective_id=? AND attempt=? AND status='pending'
         ORDER BY step_number
-    """, (row[0], row[1])).fetchall()
+    """,
+        (row[0], row[1]),
+    ).fetchall()
     conn.close()
     return row[0], steps or []
 
@@ -40,11 +43,14 @@ def mark_step(
     error: str = "",
 ):
     conn = sqlite3.connect(DB)
-    conn.execute("""
+    conn.execute(
+        """
         UPDATE jal_steps SET status=?, result_summary=?,
             error_raw=?, completed_at=datetime('now')
         WHERE objective_id=? AND attempt=? AND step_number=?
-    """, (status, result[:500], error[:500], obj_id, attempt, step_n))
+    """,
+        (status, result[:500], error[:500], obj_id, attempt, step_n),
+    )
     conn.commit()
     conn.close()
 
@@ -128,8 +134,12 @@ def main():
                 env.setdefault(k.strip(), v.strip())
 
     subprocess.run(
-        ["python3", str(JARVIS / "bin" / "openrouter_wrapper.py"),
-         "--model", "qwen/qwen3-coder:free"],
+        [
+            "python3",
+            str(JARVIS / "bin" / "openrouter_wrapper.py"),
+            "--model",
+            "qwen/qwen3-coder:free",
+        ],
         input=executor_prompt,
         text=True,
         cwd=str(JARVIS),

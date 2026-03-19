@@ -13,13 +13,14 @@ Usage:
 
 import json
 import math
+import os
 import sys
 import time
 from pathlib import Path
 
 import requests
 
-JARVIS_ROOT = Path("/root/jarvis")
+JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 AGENTS_DIR = JARVIS_ROOT / ".claude" / "agents"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text"
@@ -92,15 +93,11 @@ def search(agent_name: str, query: str, top_k: int = 5) -> list[dict]:
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Semantic search over JARVIS agent knowledge"
-    )
+    parser = argparse.ArgumentParser(description="Semantic search over JARVIS agent knowledge")
     parser.add_argument("--agent", required=True, help="Agent name")
     parser.add_argument("query", help="Natural language search query")
     parser.add_argument("--top-k", type=int, default=5, dest="top_k")
-    parser.add_argument(
-        "--json", action="store_true", dest="json_out", help="Output raw JSON"
-    )
+    parser.add_argument("--json", action="store_true", dest="json_out", help="Output raw JSON")
     args = parser.parse_args()
 
     t0 = time.perf_counter()

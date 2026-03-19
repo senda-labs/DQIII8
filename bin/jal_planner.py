@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
-JARVIS = Path("/root/jarvis")
+JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB = JARVIS / "database" / "jarvis_metrics.db"
 
 _ALLOWED_HOSTS = frozenset(

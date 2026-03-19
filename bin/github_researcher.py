@@ -16,8 +16,8 @@ import httpx
 
 sys.path.insert(0, "/root/content-automation-faceless")
 
-DB = "/root/jarvis/database/jarvis_metrics.db"
-JARVIS = Path("/root/jarvis")
+JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+DB = str(JARVIS / "database" / "jarvis_metrics.db")
 OUT_DIR = JARVIS / "tasks" / "github_reports"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 

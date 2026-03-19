@@ -385,7 +385,7 @@ def print_routing_table() -> None:
 def classify_prompt(prompt: str) -> None:
     """
     Determina el tier óptimo para un prompt según keywords.
-    Salida: tier=N provider=X model=Y route=Z
+    Salida: tier=N provider=X model=Y route=Z [domain=D]
     Si múltiples tiers coinciden → tier más bajo gana.
     Default (sin match): tier 1 code_local.
     """
@@ -403,7 +403,24 @@ def classify_prompt(prompt: str) -> None:
         matched_tier = (1, "ollama", "qwen2.5-coder:7b", "code_local")
 
     tier, provider, model, route = matched_tier
-    print(f"tier={tier} provider={provider} model={model} route={route}")
+
+    # Domain enrichment (best-effort — no falla si domain_classifier no está disponible)
+    domain_suffix = ""
+    try:
+        _dc_path = Path(__file__).parent / "domain_classifier.py"
+        if _dc_path.exists():
+            import importlib.util as _ilu
+
+            _spec = _ilu.spec_from_file_location("domain_classifier", _dc_path)
+            _dc = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(_dc)
+            _domain, _score, _method = _dc.classify_domain(prompt)
+            if _method != "default":
+                domain_suffix = f" domain={_domain}"
+    except Exception:
+        pass
+
+    print(f"tier={tier} provider={provider} model={model} route={route}{domain_suffix}")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

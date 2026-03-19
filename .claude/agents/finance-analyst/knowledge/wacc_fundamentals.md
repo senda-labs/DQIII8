@@ -1,75 +1,79 @@
-# WACC — Fundamentos
+# WACC — Fundamentals
 
-## Fórmula General
+## General Formula
 
 WACC = Ke × (E/V) + Kd × (1 − t) × (D/V)
 
-Donde:
-- Ke = coste del equity (accionistas)
-- Kd = coste de la deuda (antes de impuestos)
-- E = valor de mercado del equity
-- D = valor de mercado de la deuda financiera neta
-- V = E + D (valor total de la empresa)
-- t = tasa impositiva efectiva
+Where:
+- Ke = cost of equity (shareholders)
+- Kd = cost of debt (pre-tax)
+- E = market value of equity
+- D = market value of net financial debt
+- V = E + D (total enterprise value)
+- t = effective tax rate
 
-## Coste del Equity — CAPM
+## Cost of Equity — CAPM
 
 Ke = Rf + β × Pm
 
-- Rf = tasa libre de riesgo (bono soberano 10Y)
-- β = beta del activo (sensibilidad al mercado)
-- Pm = prima de riesgo de mercado (equity risk premium)
+- Rf = risk-free rate (10Y sovereign bond)
+- β = asset beta (market sensitivity)
+- Pm = equity risk premium (ERP)
 
-### Beta apalancada vs. desapalancada
+### Levered vs. Unlevered Beta
 
 β_L = β_U × [1 + (D/E) × (1 − t)]
 
-- β_U = beta desapalancada (comparable de sector, sin efecto financiero)
-- β_L = beta apalancada (refleja estructura de capital de la empresa)
+- β_U = unlevered beta (sector comparable, without financial leverage effect)
+- β_L = levered beta (reflects the company's capital structure)
 
-## Referencia España (2026)
+## International Reference Parameters (2026)
 
-- Rf: bono español 10Y ≈ 3.1–3.4%
-- Prima de riesgo España (Damodaran): ≈ 6.0–6.5%
-- Prima de riesgo mercado IBEX (histórico 20Y): ≈ 5.5–6.0%
-- Beta sectorial media (industriales IBEX): 0.85–1.10
-- Tasa impositiva IS España: 25% (efectiva suele ser 20–23%)
+Use the appropriate parameters for the target market:
 
-## Coste de la Deuda
+- Rf: 10Y sovereign bond of the relevant country (e.g. 3.0–4.5% for developed markets)
+- ERP (Damodaran): typically 5.0–7.0% depending on country risk
+- Sectoral beta (industrials): 0.80–1.10 (vary by sector and market cycle)
+- Corporate tax rate: country-specific (common range: 20–30%)
 
-Kd = tipo de interés medio ponderado de la deuda financiera
+> Sources: Damodaran Online (annual update), Bloomberg, Reuters
 
-Fuentes en orden de preferencia:
-1. Intereses financieros / deuda financiera media (P&L / balance)
-2. Rating crediticio → spread sobre swap rate
-3. Proxy: Euribor 12M + spread sectorial
+## Cost of Debt
 
-Kd neto de impuestos = Kd × (1 − t)
+Kd = weighted average interest rate on financial debt
 
-## Ejemplo Numérico — Empresa Industrial Española
+Sources in order of preference:
+1. Financial interest / average financial debt (P&L / balance sheet)
+2. Credit rating → spread over swap rate
+3. Proxy: reference interbank rate + sector spread
 
-Datos:
-- Equity: 800 M€, Deuda neta: 400 M€ → V = 1.200 M€
-- Rf = 3.2%, β_L = 0.95, Pm = 6.0%
+After-tax cost of debt = Kd × (1 − t)
+
+## Numerical Example — Generic Industrial Company
+
+Data:
+- Equity: 800 M, Net debt: 400 M → V = 1,200 M
+- Rf = 3.2%, β_L = 0.95, ERP = 6.0%
 - Kd = 4.5%, t = 23%
 
-Cálculo:
+Calculation:
 - Ke = 3.2% + 0.95 × 6.0% = 8.9%
-- Kd neto = 4.5% × (1 − 0.23) = 3.5%
-- Ponderaciones: E/V = 67%, D/V = 33%
+- After-tax Kd = 4.5% × (1 − 0.23) = 3.5%
+- Weights: E/V = 67%, D/V = 33%
 - WACC = 8.9% × 0.67 + 3.5% × 0.33 = **7.1%**
 
-## Consideraciones CNMV / Regulatorias
+## Regulatory / Valuation Advisory Considerations
 
-- Informes de valoración para OPAs deben justificar Rf y prima de riesgo
-- Beta: usar media 2Y semanal o 5Y mensual (fuente: Bloomberg, Reuters)
-- Si empresa no cotiza: β desapalancada de peers cotizados + reapalancamiento
-- CNMV exige sensibilidad del valor final a ±0.5% en WACC en informes de OPA
+- Valuation reports for M&A and public offerings must justify Rf and ERP choices
+- Beta: use 2Y weekly average or 5Y monthly (source: Bloomberg, Reuters)
+- If the company is unlisted: use unlevered beta from listed peers + re-levering
+- Regulators typically require sensitivity of final value to ±0.5% WACC in formal reports
 
-## Sensibilidad del WACC
+## WACC Sensitivity
 
-Regla práctica: ±1% en WACC → ±15–25% en valoración DCF
-Factores que más mueven el WACC:
-1. Beta (especialmente en ciclo económico)
-2. Prima de riesgo de mercado (revisión anual Damodaran)
-3. Estructura D/E objetivo (si cambia el apalancamiento)
+Practical rule: ±1% in WACC → ±15–25% in DCF valuation
+
+Key drivers of WACC changes:
+1. Beta (especially during the economic cycle)
+2. Equity risk premium (annual Damodaran update)
+3. Target D/E structure (if leverage changes)

@@ -1,7 +1,7 @@
 ---
 name: fal-ai-media
-description: Use this skill when generating images or videos via fal.ai in the content-automation-faceless pipeline. Covers flux-general, negative prompts, reference images, and cost estimation.
-origin: ECC/affaan-m (adaptado para content-automation-faceless — flux-general, Seedance, ElevenLabs)
+description: Use this skill when generating images or videos via fal.ai in the content pipeline. Covers flux-general, negative prompts, reference images, and cost estimation.
+origin: ECC/affaan-m (adapted for media pipeline — flux-general, Seedance, ElevenLabs)
 status: APROBADA
 ---
 
@@ -16,7 +16,7 @@ status: APROBADA
 
 ## Image Generation
 
-### flux-general (modelo activo — contenido viral)
+### flux-general (active model — viral content)
 
 ```python
 import fal_client
@@ -26,11 +26,11 @@ result = fal_client.subscribe(
     arguments={
         "prompt": scene.fal_prompt,
         "negative_prompt": NEGATIVE_PROMPT,
-        "image_size": "portrait_4_3",         # 9:16 para Reels/TikTok → usar portrait_4_3
+        "image_size": "portrait_4_3",         # 9:16 for Reels/TikTok → use portrait_4_3
         "num_inference_steps": 28,
         "guidance_scale": 3.5,
         "reference_image_url": scenes[0].image_url if scene.index > 0 else None,
-        "reference_strength": 0.35,           # coherencia visual sin clonación
+        "reference_strength": 0.35,           # visual coherence without cloning
         "output_format": "jpeg",
         "num_images": 1,
         "enable_safety_checker": False,
@@ -39,7 +39,7 @@ result = fal_client.subscribe(
 image_url = result["images"][0]["url"]
 ```
 
-### NEGATIVE_PROMPT estándar (anti-artifacts)
+### Standard NEGATIVE_PROMPT (anti-artifacts)
 
 ```python
 NEGATIVE_PROMPT = (
@@ -50,15 +50,15 @@ NEGATIVE_PROMPT = (
 )
 ```
 
-### Parámetros comunes
+### Common parameters
 
-| Parámetro | Valor recomendado | Notas |
+| Parameter | Recommended value | Notes |
 |-----------|------------------|-------|
-| `image_size` | `"portrait_4_3"` | 1024×1365 — óptimo para Reels |
-| `guidance_scale` | `3.5` | Menor = más creativo, mayor = más fiel al prompt |
-| `num_inference_steps` | `28` | Balance calidad/velocidad |
-| `reference_strength` | `0.35` | Solo para escenas 1-4 (coherencia de paleta) |
-| `output_format` | `"jpeg"` | Más rápido que PNG para pipeline |
+| `image_size` | `"portrait_4_3"` | 1024×1365 — optimal for Reels |
+| `guidance_scale` | `3.5` | Lower = more creative, higher = closer to prompt |
+| `num_inference_steps` | `28` | Quality/speed balance |
+| `reference_strength` | `0.35` | Only for scenes 1-4 (palette coherence) |
+| `output_format` | `"jpeg"` | Faster than PNG for pipeline |
 
 ## Video Generation
 
@@ -69,7 +69,7 @@ result = fal_client.subscribe(
     "fal-ai/seedance-1-0-pro",
     arguments={
         "prompt": "camera slowly zooms out, gentle wind, cinematic",
-        "image_url": scene.image_url,        # imagen generada en fase anterior
+        "image_url": scene.image_url,        # image generated in prior phase
         "duration": "5s",
         "aspect_ratio": "9:16",
     }
@@ -77,7 +77,7 @@ result = fal_client.subscribe(
 video_url = result["video"]["url"]
 ```
 
-### Kling Video v3 Pro (alta fidelidad)
+### Kling Video v3 Pro (high fidelity)
 
 ```python
 result = fal_client.subscribe(
@@ -85,23 +85,23 @@ result = fal_client.subscribe(
     arguments={
         "prompt": "cinematic slow push, film grain, amber light",
         "image_url": scene.image_url,
-        "duration": "5",                     # segundos como string
+        "duration": "5",                     # seconds as string
         "aspect_ratio": "9:16",
     }
 )
 ```
 
-## Estimación de costes
+## Cost estimation
 
-| Operación | Coste aprox. |
+| Operation | Approx. cost |
 |-----------|-------------|
-| flux-general imagen | ~$0.003-0.006 |
+| flux-general image | ~$0.003-0.006 |
 | Seedance 5s video | ~$0.05-0.10 |
 | Kling 5s video | ~$0.10-0.20 |
-| Pipeline completo (5 escenas, solo imágenes) | ~$0.02-0.04 |
-| Pipeline completo (5 escenas, imagen+video) | ~$0.30-0.60 |
+| Full pipeline (5 scenes, images only) | ~$0.02-0.04 |
+| Full pipeline (5 scenes, image+video) | ~$0.30-0.60 |
 
-## Descargar y guardar imagen
+## Download and save image
 
 ```python
 import httpx
@@ -118,31 +118,31 @@ def download_image(url: str, dest: Path) -> Path:
 ## Model Discovery
 
 ```python
-# Listar modelos disponibles
+# List available models
 result = fal_client.subscribe("fal-ai/any-llm", arguments={"model": "list"})
 ```
 
-O buscar en https://fal.ai/models con filtro `image-to-image`, `text-to-image`.
+Or search at https://fal.ai/models with filter `image-to-image`, `text-to-image`.
 
-## Tips DQIII8
+## DQIII8 Tips
 
-1. **Escena 0 primero** — Generar escena 0 sola, obtener `image_url`, luego usar como `reference_image_url` para escenas 1-4.
-2. **Paralelismo** — Escenas 1-4 pueden generarse en paralelo con `asyncio.gather()` una vez se tiene la URL de referencia.
-3. **Reintentos** — fal.ai puede timeoutear. Máximo 2 reintentos, espera 5s entre intentos.
-4. **Logging** — Guardar `image_url`, `image_path`, y `image_score` en `scene_scripts` tabla.
-5. **FAL_KEY** — Cargar desde `/root/content-automation-faceless/config/.env` (prioridad) o `/root/dqiii8/.env`.
+1. **Scene 0 first** — Generate scene 0 alone, get `image_url`, then use as `reference_image_url` for scenes 1-4.
+2. **Parallelism** — Scenes 1-4 can be generated in parallel with `asyncio.gather()` once the reference URL is available.
+3. **Retries** — fal.ai can timeout. Maximum 2 retries, wait 5s between attempts.
+4. **Logging** — Save `image_url`, `image_path`, and `image_score` in `scene_scripts` table.
+5. **FAL_KEY** — Load from pipeline `config/.env` (priority) or `$JARVIS_ROOT/.env`.
 
-## Errores comunes
+## Common errors
 
-| Error | Causa | Fix |
+| Error | Cause | Fix |
 |-------|-------|-----|
-| `model_not_found` | Model ID incorrecto | Verificar en fal.ai/models |
-| `quota_exceeded` | Límite de API | Esperar o usar modelo alternativo |
-| `invalid_reference_image` | URL expirada | Re-generar escena 0 antes de usarla |
-| `timeout` | Red o modelo lento | Retry con backoff exponencial |
+| `model_not_found` | Incorrect model ID | Check at fal.ai/models |
+| `quota_exceeded` | API limit reached | Wait or use alternative model |
+| `invalid_reference_image` | Expired URL | Re-generate scene 0 before using it |
+| `timeout` | Network or slow model | Retry with exponential backoff |
 
 ## Related
 
-- `visual_matcher.py` — implementación del cliente fal.ai
-- `scene_director.py` — generación de prompts (`_build_fal_prompts`)
-- Plan arquitectónico: `tasks/gemini_reports/` — análisis de flux-general vs flux/dev
+- `visual_matcher.py` — fal.ai client implementation
+- `scene_director.py` — prompt generation (`_build_fal_prompts`)
+- Architecture plans: `tasks/gemini_reports/` — flux-general vs flux/dev analysis

@@ -1,101 +1,101 @@
-# Ratios Financieros — Referencia
+# Financial Ratios — Reference
 
-## Valoración por Múltiplos
+## Valuation Multiples
 
 ### P/E (Price-to-Earnings)
 
-P/E = Precio por acción / BPA (beneficio por acción)
+P/E = Share price / EPS (earnings per share)
 
-- Mide cuánto paga el mercado por cada euro de beneficio
-- Limitación: distorsionado por apalancamiento y elementos extraordinarios
-- Preferir P/E normalizado (sin extraordinarios) o forward P/E
+- Measures how much the market pays per unit of earnings
+- Limitation: distorted by leverage and extraordinary items
+- Prefer normalized P/E (without extraordinaries) or forward P/E
 
 Benchmarks 2025–2026:
-| Sector | P/E típico |
-|--------|-----------|
-| Tecnología (growth) | 25–45× |
+| Sector | Typical P/E |
+|--------|------------|
+| Technology (growth) | 25–45× |
 | Utilities | 12–18× |
-| Banca | 8–12× |
-| Industriales | 14–20× |
-| Consumo defensivo | 18–25× |
+| Banking | 8–12× |
+| Industrials | 14–20× |
+| Consumer staples | 18–25× |
 
 ### EV/EBITDA
 
 EV/EBITDA = Enterprise Value / EBITDA
 
-- Ratio agnóstico a estructura de capital e impuestos
-- El más usado en M&A y LBOs
-- EBITDA ≠ caja libre (ignora CAPEX y variación de circulante)
+- Ratio agnostic to capital structure and taxes
+- Most used in M&A and LBOs
+- EBITDA ≠ free cash flow (ignores CAPEX and working capital changes)
 
 Benchmarks:
-| Sector | EV/EBITDA típico |
+| Sector | Typical EV/EBITDA |
 |--------|-----------------|
-| Tecnología SaaS | 15–30× |
-| Tecnología hardware | 8–14× |
-| Industriales | 7–11× |
-| Utilities reguladas | 9–13× |
+| SaaS Technology | 15–30× |
+| Hardware Technology | 8–14× |
+| Industrials | 7–11× |
+| Regulated utilities | 9–13× |
 | Retail | 5–9× |
-| Telecomunicaciones | 5–8× |
+| Telecoms | 5–8× |
 
 ### EV/EBIT
 
-Mejor que EV/EBITDA cuando CAPEX es alto (utilities, telecoms, industriales)
-porque D&A aproxima el CAPEX de mantenimiento real.
+Better than EV/EBITDA when CAPEX is high (utilities, telecoms, industrials)
+because D&A approximates the real maintenance CAPEX.
 
-## Rentabilidad
+## Profitability
 
 ### ROE (Return on Equity)
 
-ROE = Beneficio Neto / Patrimonio Neto Medio
+ROE = Net Income / Average Shareholders' Equity
 
-- Mide rentabilidad para el accionista
-- Descomposición DuPont: ROE = Margen Neto × Rotación Activos × Apalancamiento
-- ROE alto con apalancamiento alto no necesariamente bueno
-- Referencia: ROE > WACC_equity = creación de valor
+- Measures return for shareholders
+- DuPont decomposition: ROE = Net Margin × Asset Turnover × Leverage
+- High ROE with high leverage is not necessarily good
+- Reference: ROE > equity WACC = value creation
 
 ### ROIC (Return on Invested Capital)
 
-ROIC = NOPAT / Capital Invertido
+ROIC = NOPAT / Invested Capital
 
-Capital Invertido = Equity + Deuda Neta (= Activos − Pasivos Operativos)
+Invested Capital = Equity + Net Debt (= Assets − Operating Liabilities)
 
-- El ratio más riguroso de eficiencia de capital
-- ROIC > WACC = la empresa crea valor económico
-- ROIC < WACC = la empresa destruye valor aunque tenga beneficios contables
+- The most rigorous capital efficiency ratio
+- ROIC > WACC = company creates economic value
+- ROIC < WACC = company destroys value even with accounting profits
 
 Benchmarks:
-| Tipo empresa | ROIC esperado |
+| Company type | Expected ROIC |
 |-------------|--------------|
-| Negocio con ventaja competitiva duradera | >15% |
-| Negocio commodity | 6–10% |
-| Utiliy regulada | 7–9% |
-| Startup growth (fase inversión) | Negativo → irrelevante |
+| Business with durable competitive advantage | >15% |
+| Commodity business | 6–10% |
+| Regulated utility | 7–9% |
+| Growth startup (investment phase) | Negative → irrelevant |
 
-## Endeudamiento
+## Leverage
 
-### Deuda Neta / EBITDA
+### Net Debt / EBITDA
 
-Mide el número de años para repagar la deuda con EBITDA.
+Measures the number of years to repay debt with EBITDA.
 
-Referencia:
-- < 1.5× = conservador (margen para inversión)
-- 1.5–3.0× = moderado (estándar industrial)
-- 3.0–4.5× = elevado (típico post-LBO)
-- > 4.5× = muy apalancado (riesgo de refinanciación)
+Reference:
+- < 1.5× = conservative (room for investment)
+- 1.5–3.0× = moderate (industrial standard)
+- 3.0–4.5× = elevated (typical post-LBO)
+- > 4.5× = highly leveraged (refinancing risk)
 
-Agencias de rating: umbral BBB− generalmente < 3.5× para industriales.
+Rating agencies: BBB− threshold generally < 3.5× for industrials.
 
-### Cobertura de Intereses (Interest Coverage)
+### Interest Coverage
 
-EBIT / Gastos Financieros
+EBIT / Interest Expense
 
-- > 5× = sólido
-- 2–5× = vigilar
-- < 2× = señal de alerta
+- > 5× = solid
+- 2–5× = monitor
+- < 2× = warning signal
 
-## Interpretación Sectorial
+## Sector Interpretation
 
-- Comparar siempre contra peers del mismo sector y ciclo económico
-- Múltiplos de crecimiento (tech) no son comparables con value (utilities)
-- En recesión: usar EV/EBITDA normalizado (media 3–5 años) en cíclicos
-- Para bancos: P/BV y ROE/CoE (coste del equity) son los ratios relevantes
+- Always compare against peers in the same sector and economic cycle
+- Growth multiples (tech) are not comparable with value (utilities)
+- In recession: use normalized EV/EBITDA (3–5 year average) for cyclicals
+- For banks: P/BV and ROE/CoE (cost of equity) are the relevant ratios

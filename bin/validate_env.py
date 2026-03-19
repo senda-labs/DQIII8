@@ -143,6 +143,27 @@ def main():
         )
 
     print("────────────────────────────────")
+
+    # Security hardening
+    try:
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location("db_security", Path(__file__).parent / "db_security.py")
+        _db_sec = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_db_sec)
+        _db_sec.secure_db_permissions()
+        _db_sec.secure_env_permissions()
+    except Exception as _e:
+        print(f"  ⚠️  Security hardening skipped: {_e}")
+
+    # Verify .env is not tracked by git
+    ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+    _tracked = subprocess.run(
+        ["git", "ls-files", ".env"],
+        capture_output=True, text=True, cwd=str(ROOT)
+    )
+    if _tracked.stdout.strip():
+        print("  ⚠️  CRITICAL: .env is tracked by git! Run: git rm --cached .env")
+
     return 0
 
 

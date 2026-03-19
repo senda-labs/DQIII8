@@ -61,8 +61,13 @@ echo "  DB size: $(du -h $JARVIS_ROOT/database/jarvis_metrics.db | cut -f1)"
 echo "  Uptime: $(uptime -p)"
 echo ""
 
-# ── 6. Git commit (no push) ──
-echo "## 6. Git status"
+# ── 6. Telemetry (opt-in) ──
+echo "## 6. Telemetry"
+python3 "$JARVIS_ROOT/bin/telemetry.py" --send 2>&1 || echo "  Telemetry: disabled or failed"
+echo ""
+
+# ── 7. Git commit (no push) ──
+echo "## 7. Git status"
 git add -A
 if git diff --cached --quiet; then
     echo "  No changes to commit"

@@ -64,6 +64,20 @@ try:
                 else 1
             )
         error_msg = (resp.get("stderr") or resp.get("error") or "")[:500]
+        # ── False-positive filter: JSON stdout misclassified as error ──────────
+        # ctx_execute / context-mode MCP tools write {"stdout":"..."} JSON output
+        # which can end up in stderr/error fields — that's output, not an error.
+        # Also suppress "sin stderr" entries where stdout contains JSON output.
+        if not success:
+            _raw_out = resp.get("stdout") or ""
+            _looks_json = error_msg.lstrip().startswith('{"stdout"') or (
+                not error_msg
+                and isinstance(_raw_out, str)
+                and _raw_out.lstrip().startswith('{"stdout"')
+            )
+            if _looks_json:
+                success = 1
+                error_msg = ""
         content = inp.get("new_content", inp.get("content", ""))
         bytes_wr = len(content.encode("utf-8", errors="replace")) if content else 0
         # Cuando falla sin stderr: registrar tool + motivo genérico para auditoría

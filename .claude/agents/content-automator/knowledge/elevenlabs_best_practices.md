@@ -1,16 +1,16 @@
 # ElevenLabs — Best Practices
 
-## Chunking Óptimo
+## Optimal Chunking
 
-Regla crítica: NUNCA enviar texto > 450 chars a la API.
-- Textos entre 450–500 chars causan timeout intermitente
-- Textos > 500 chars causan timeout garantizado
-- Dividir siempre ANTES de llamar a la API, no como retry
+Critical rule: NEVER send text > 450 chars to the API.
+- Texts between 450–500 chars cause intermittent timeouts
+- Texts > 500 chars cause guaranteed timeouts
+- Always split BEFORE calling the API, not as a retry
 
-Algoritmo de chunking:
+Chunking algorithm:
 ```python
 def chunk_text(text: str, max_chars: int = 450) -> list[str]:
-    # Dividir por oraciones primero (respeta prosodia)
+    # Split by sentences first (preserves prosody)
     sentences = re.split(r'(?<=[.!?])\s+', text)
     chunks, current = [], ""
     for sentence in sentences:
@@ -25,72 +25,72 @@ def chunk_text(text: str, max_chars: int = 450) -> list[str]:
     return chunks
 ```
 
-## Voces Disponibles (ElevenLabs v2)
+## Available Voices (ElevenLabs v2)
 
-Categorías principales:
-- `Rachel` — narración femenina neutral, ideal para edu/finance
-- `Adam` — narración masculina profesional
-- `Bella` — femenina expresiva, viral_hook y storytime
-- `Antoni` — masculino cálido, narración larga
-- `Josh` — masculino profundo, finanzas y noticias
+Main categories:
+- `Rachel` — neutral female narration, ideal for edu/finance
+- `Adam` — professional male narration
+- `Bella` — expressive female, viral_hook and storytime
+- `Antoni` — warm male, long narration
+- `Josh` — deep male, finance and news
 
-Parámetros de calidad:
-- `model_id`: `eleven_multilingual_v2` para español (recomendado)
-- `voice_settings.stability`: 0.5–0.7 (más alto = más consistente)
+Quality parameters:
+- `model_id`: `eleven_multilingual_v2` for non-English content (recommended)
+- `voice_settings.stability`: 0.5–0.7 (higher = more consistent)
 - `voice_settings.similarity_boost`: 0.75–0.85
-- `output_format`: `mp3_44100_128` para calidad estándar
+- `output_format`: `mp3_44100_128` for standard quality
 
-## Verificación de Clase y Método
+## Class and Method Verification
 
-Antes de integrar: siempre verificar nombres exactos.
+Before integrating: always verify exact names.
 ```bash
 grep -n "^class\|^    def " backend/services/elevenlabs_tts.py | head -20
 ```
 
-Errores comunes de naming (lessons aprendidas):
-- El cliente se inicializa con `ElevenLabs(api_key=...)` no `ElevenLabsClient`
-- El método TTS puede ser `.generate()` o `.text_to_speech.convert()`
-- Verificar siempre contra la versión instalada: `pip show elevenlabs`
+Common naming errors (learned lessons):
+- Client initializes with `ElevenLabs(api_key=...)` not `ElevenLabsClient`
+- TTS method may be `.generate()` or `.text_to_speech.convert()`
+- Always verify against the installed version: `pip show elevenlabs`
 
-## Fallback a Edge TTS
+## Fallback to Edge TTS
 
-Activar fallback cuando:
-- ElevenLabs key vacía o inválida (401)
-- Créditos agotados (402)
-- Timeout después de retry
+Activate fallback when:
+- ElevenLabs key empty or invalid (401)
+- Credits exhausted (402)
+- Timeout after retry
 
 ```python
 try:
     audio = elevenlabs_generate(text, voice_id)
 except (ElevenLabsError, requests.Timeout):
-    audio = edge_tts_generate(text, voice="es-ES-AlvaroNeural")
+    audio = edge_tts_generate(text, voice="en-US-GuyNeural")
 ```
 
-## Sincronización de API Keys
+## API Key Synchronization
 
-Keys en DOS lugares — deben estar sincronizadas:
-1. `/root/dqiii8/.env` — configuración global DQIII8
-2. `/root/content-automation-faceless/config/.env` — pipeline (override=True)
+Keys in TWO places — must stay in sync:
+1. `$JARVIS_ROOT/.env` — global DQIII8 configuration
+2. Pipeline config `.env` — pipeline (override=True)
 
-Si una key se rota y solo se actualiza en un lugar:
-- config/.env tiene prioridad (override=True) → dqiii8/.env ignorado
-- Pipeline usará key caducada silenciosamente hasta error 401
+If a key is rotated and only updated in one place:
+- config/.env has priority (override=True) → root .env ignored
+- Pipeline will silently use the expired key until 401 error
 
-Procedimiento al rotar key:
+Rotation procedure:
 ```bash
-# Actualizar ambos archivos
-sed -i 's/ELEVENLABS_API_KEY=.*/ELEVENLABS_API_KEY=nueva_key/' /root/dqiii8/.env
-sed -i 's/ELEVENLABS_API_KEY=.*/ELEVENLABS_API_KEY=nueva_key/' /root/content-automation-faceless/config/.env
-# Verificar
-grep ELEVENLABS /root/dqiii8/.env
-grep ELEVENLABS /root/content-automation-faceless/config/.env
+# Update both files
+sed -i 's/ELEVENLABS_API_KEY=.*/ELEVENLABS_API_KEY=new_key/' "$JARVIS_ROOT/.env"
+sed -i 's/ELEVENLABS_API_KEY=.*/ELEVENLABS_API_KEY=new_key/' /path/to/pipeline/config/.env
+# Verify
+grep ELEVENLABS "$JARVIS_ROOT/.env"
+grep ELEVENLABS /path/to/pipeline/config/.env
 ```
 
-## Diagnóstico de Errores
+## Error Diagnosis
 
-| Error | Síntoma | Causa | Fix |
+| Error | Symptom | Cause | Fix |
 |-------|---------|-------|-----|
-| 401 Unauthorized | TTS cae a Edge silenciosamente | Key caducada o vacía | Sincronizar ambos .env |
-| 422 Unprocessable | Sin audio generado | Texto con chars especiales | Sanitizar texto antes de enviar |
-| Timeout >30s | TTS muy lento | Chunk > 500 chars | Dividir texto a ≤ 450 |
-| AttributeError | Método no encontrado | Versión API distinta | grep "^def" en el módulo |
+| 401 Unauthorized | TTS silently falls back to Edge | Expired or empty key | Sync both .env files |
+| 422 Unprocessable | No audio generated | Text with special chars | Sanitize text before sending |
+| Timeout >30s | TTS very slow | Chunk > 500 chars | Split text to ≤ 450 |
+| AttributeError | Method not found | Different API version | grep "^def" in the module |

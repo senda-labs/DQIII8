@@ -21,7 +21,7 @@ Lanza una auditoría de eficiencia sobre archivos Python no revisados usando Aid
 
 ## Requisitos
 
-- `GEMINI_API_KEY` configurada en `/root/jarvis/.env`
+- `GEMINI_API_KEY` configurada en `/root/dqiii8/.env`
 - `aider` instalado: `pip install aider-chat --break-system-packages`
 
 ## Integración automática
@@ -32,5 +32,5 @@ si hay archivos pendientes. El proceso corre en background y no bloquea el cierr
 ## Implementación
 
 ```bash
-python3 /root/jarvis/bin/gemini_review.py $ARGUMENTS
+python3 /root/dqiii8/bin/gemini_review.py $ARGUMENTS
 ```

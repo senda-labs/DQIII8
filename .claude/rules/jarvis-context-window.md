@@ -1,4 +1,4 @@
-# JARVIS — Context Window Management
+# DQIII8 — Context Window Management
 
 Context limit: **1 000 000 tokens** (Claude Sonnet 4.6, plan Max).
 Auto-compact triggers at 50% (~500 K tokens) via `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`.

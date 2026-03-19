@@ -301,7 +301,7 @@ def consolidate_learning(db_path: str | Path | None = None) -> int:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="JARVIS auto-learner")
+    parser = argparse.ArgumentParser(description="DQIII8 auto-learner")
     parser.add_argument("--session", help="Session ID for detect mode")
     parser.add_argument("--consolidate", action="store_true", help="Run consolidator")
     parser.add_argument("--db", help="Path to jarvis_metrics.db")

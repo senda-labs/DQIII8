@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — UserPromptSubmit
+DQIII8 Hook — UserPromptSubmit
 Injects dynamic context into every user prompt Claude receives.
 
 Output via stdout (plain text) is prepended to the prompt automatically
@@ -187,7 +187,7 @@ def main() -> None:
     if word_count < 10:
         print(
             f"─────────────────────────────────\n"
-            f"[JARVIS Context]\n"
+            f"[DQIII8 Context]\n"
             f"Proyecto activo: {project['name']} | Modelo: {project['model']}\n"
             f"─────────────────────────────────"
         )
@@ -200,7 +200,7 @@ def main() -> None:
 
     lines = [
         "─────────────────────────────────",
-        "[JARVIS Context]",
+        "[DQIII8 Context]",
         f"Proyecto activo: {project['name']} | Modelo: {project['model']}",
     ]
 

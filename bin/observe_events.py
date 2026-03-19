@@ -1,5 +1,5 @@
 """
-observe_events.py — Sync context-mode SessionDB → agent_actions (JARVIS).
+observe_events.py — Sync context-mode SessionDB → agent_actions (DQIII8).
 
 Lee session_events de la DB de context-mode para un project_dir dado,
 transforma los tipos al schema de agent_actions, e inserta en jarvis_metrics.db.
@@ -197,7 +197,7 @@ def sync_context_mode_events(
     dry_run: bool = False,
 ) -> int:
     """
-    Sync new context-mode session_events into JARVIS agent_actions.
+    Sync new context-mode session_events into DQIII8 agent_actions.
     Called from stop.py at session end. Returns rows inserted.
     """
     session_db = _session_db_path(project_dir)

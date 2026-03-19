@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Domain Classifier
+DQIII8 — Domain Classifier
 
 Clasifica prompts en 5 dominios del conocimiento:
   formal_sciences · natural_sciences · social_sciences

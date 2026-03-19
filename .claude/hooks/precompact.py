@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — PreCompact
-Saves JARVIS-specific state before context-mode compaction runs.
+DQIII8 Hook — PreCompact
+Saves DQIII8-specific state before context-mode compaction runs.
 
 Runs BEFORE context-mode/hooks/precompact.mjs (ordered by settings.json).
 Does NOT replace context-mode — it is complementary.

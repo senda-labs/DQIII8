@@ -313,7 +313,7 @@ approve | retry_full | retry_critical | audit | next_objective | abandon | clari
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "HTTP-Referer": "https://jarvis.local",
-                "X-Title": "JARVIS",
+                "X-Title": "DQIII8",
             },
             json={
                 "model": "stepfun/step-3.5-flash:free",

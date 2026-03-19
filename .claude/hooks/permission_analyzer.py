@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — PermissionAnalyzer v3
+DQIII8 — PermissionAnalyzer v3
 Evaluación centralizada de permisos para hooks pre_tool_use.
 
 v2: SQLite timeout + ALLOWED_DELETIONS + ESCALATE loop

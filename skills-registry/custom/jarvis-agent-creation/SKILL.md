@@ -1,17 +1,17 @@
 ---
-name: jarvis-agent-creation
+name: dqiii8-agent-creation
 version: 1.0.0
-source: git-analysis/jarvis
+source: git-analysis/dqiii8
 analyzed_commits: 50
 analyzed_date: 2026-03-12
-repos: [/root/jarvis]
+repos: [/root/dqiii8]
 ---
 
-# JARVIS Agent Creation
+# DQIII8 Agent Creation
 
 ## Patrón detectado
 
-Los agentes JARVIS se crean en "olas" (batches) con estructura idéntica.
+Los agentes DQIII8 se crean en "olas" (batches) con estructura idéntica.
 Cada agente define: trigger, role, protocol (numerado), feedback format, y rules.
 
 **Evidencia del historial:**
@@ -30,7 +30,7 @@ Cada agente define: trigger, role, protocol (numerado), feedback format, y rules
 - Revisar si un agente existente cubre el trigger antes de crear uno nuevo
 - Definir el modelo correcto por tier para el agente
 
-## Estructura canónica de un agente JARVIS
+## Estructura canónica de un agente DQIII8
 
 Archivo: `.claude/agents/{nombre-agente}.md`
 
@@ -85,7 +85,7 @@ isolation: worktree  # solo si escribe código que puede romper el repo
 ### 1. Verificar que no existe cobertura
 
 ```bash
-grep -r "trigger\|Trigger" /root/jarvis/.claude/agents/ | grep -i "{tu-keyword}"
+grep -r "trigger\|Trigger" /root/dqiii8/.claude/agents/ | grep -i "{tu-keyword}"
 ```
 
 ### 2. Elegir modelo según CLAUDE.md tier routing

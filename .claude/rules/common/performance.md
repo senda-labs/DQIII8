@@ -55,7 +55,7 @@ If build fails:
 4. Verify after each fix
 
 ---
-## ⚠️ JARVIS OVERRIDE — Model Routing
-JARVIS usa un sistema de 3 tiers, NO la selección directa Haiku/Sonnet/Opus.
+## ⚠️ DQIII8 OVERRIDE — Model Routing
+DQIII8 usa un sistema de 3 tiers, NO la selección directa Haiku/Sonnet/Opus.
 Ver CLAUDE.md § Model Routing. Regla: tier más bajo que resuelva la tarea.
 Tier-1: Ollama local | Tier-2: Groq/OpenRouter gratis | Tier-3: Claude API pagado.

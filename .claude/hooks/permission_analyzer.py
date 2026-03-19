@@ -15,13 +15,13 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-# ── Configuración ───────────────────────────────────────────────────────────
+# ── Configuration ───────────────────────────────────────────────────────────
 JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB_PATH = JARVIS_ROOT / "database" / "jarvis_metrics.db"
 SESSION_ID = os.environ.get("CLAUDE_SESSION_ID", "unknown")
 JARVIS_MODE = os.environ.get("JARVIS_MODE", "supervised")
 
-# ── Constantes de riesgo ────────────────────────────────────────────────────
+# ── Risk constants ──────────────────────────────────────────────────────────
 BLOCKED_PATHS = [
     ".env",
     "secrets",
@@ -63,15 +63,14 @@ ALLOWED_DELETIONS = [
     ".ruff_cache",
 ]
 
-# Directorios de proyecto siempre seguros para escritura
+# Project directories always safe for writing
 SAFE_PROJECT_DIRS = [
     "/root/jarvis/",
     "/root/math-image-generator",
-    "/root/content-automation-faceless/output",
     "/tmp/",
 ]
 
-# Herramientas que se auto-aprueban en modo autónomo (tras pasar checks)
+# Tools auto-approved in autonomous mode (after passing checks)
 AUTO_APPROVE_TOOLS = {
     "Read",
     "Glob",
@@ -88,83 +87,84 @@ AUTO_APPROVE_TOOLS = {
 MAX_SESSION_COST_USD = 5.0
 MAX_SAME_REJECTION = 2  # Tras 2 rechazos idénticos → ESCALATE
 
-# Hints informativos por tipo de denegación (ayudan a Claude a autocorregirse)
+# Informational hints per denial type (help Claude self-correct)
 DENIAL_HINTS: dict[str, str] = {
     "blocked_path:.env": (
-        "Usa os.environ['KEY'] para leer variables temporales. "
-        "O usa export KEY=valor en bash sin tocar el archivo."
+        "Use os.environ['KEY'] to read temporary variables. "
+        "Or use export KEY=value in bash without touching the file."
     ),
     "blocked_path:schema.sql": (
-        "Añade la migración SQL en un archivo nuevo: "
-        "database/migrations/YYYYMMDD_descripcion.sql"
+        "Add the SQL migration in a new file: "
+        "database/migrations/YYYYMMDD_description.sql"
     ),
     "blocked_path:CLAUDE.md": (
-        "Las instrucciones del sistema no se modifican desde código. "
-        "El usuario las actualiza manualmente."
+        "System instructions are not modified from code. "
+        "The user updates them manually."
     ),
     "blocked_path:jarvis_metrics.db": (
-        "Usa INSERT/UPDATE via sqlite3 con el wrapper existente. "
-        "No modificar el archivo de BD directamente."
+        "Use INSERT/UPDATE via sqlite3 with the existing wrapper. "
+        "Do not modify the DB file directly."
     ),
     "blocked_path:context/proposito.md": (
-        "El propósito del sistema solo puede ser modificado por Iker directamente. "
-        "Ningún agente puede editar este archivo."
+        "The system purpose can only be modified by the user directly. "
+        "No agent can edit this file."
     ),
     "high_risk_pattern": (
-        "Usa rutas relativas específicas en lugar de wildcards. "
-        "O añade el patrón a ALLOWED_DELETIONS si es limpieza de caché."
+        "Use specific relative paths instead of wildcards. "
+        "Or add the pattern to ALLOWED_DELETIONS if it is cache cleanup."
     ),
     "budget_exceeded": (
-        "Dividir el objetivo en subtareas más pequeñas. " "Iniciar nueva sesión con j --autonomous"
+        "Split the objective into smaller subtasks. "
+        "Start a new session with j --autonomous"
     ),
     "repeat_rejection": (
-        "Esta acción fue rechazada múltiples veces. "
-        "Cambia de estrategia: usa una herramienta diferente o "
-        "consulta al usuario antes de reintentar."
+        "This action was rejected multiple times. "
+        "Change strategy: use a different tool or "
+        "ask the user before retrying."
     ),
 }
 
 
 class PermissionAnalyzer:
-    """Evaluador centralizado de permisos para herramientas de Claude Code."""
+    """Centralized permission evaluator for Claude Code tools."""
 
     def evaluate(self, tool: str, inp: dict, session_id: str | None = None) -> dict:
         """
-        Evalúa si una herramienta puede ejecutarse.
+        Evaluates whether a tool can execute.
         decision ∈ {APPROVE, DENY, ESCALATE}
 
-        session_id: ID de sesión del evento hook (prioridad sobre variable de entorno).
+        session_id: Hook event session ID (takes priority over environment variable).
         """
         _session = session_id or SESSION_ID
         detail = str(inp.get("file_path", inp.get("command", "")))
 
-        # 0a. Directorios de proyecto seguros — fast-path (respeta BLOCKED_PATHS)
+        # 0a. Safe project directories — fast-path (respects BLOCKED_PATHS)
         if tool in ("Write", "Edit", "MultiEdit"):
             file_path = inp.get("file_path", inp.get("path", ""))
             if any(safe in file_path for safe in SAFE_PROJECT_DIRS):
                 if not any(blocked in file_path for blocked in BLOCKED_PATHS):
-                    return self._approve("Directorio de proyecto seguro", "LOW", "safe_project_dir")
+                    return self._approve("Safe project directory", "LOW", "safe_project_dir")
         elif tool == "Bash":
-            # Para Bash: solo fast-path en directorios de output/tmp (no en rutas de proyecto)
-            bash_safe = ["/root/content-automation-faceless/output", "/tmp/"]
+            # For Bash: fast-path only for output/tmp directories (not project paths)
+            bash_safe = ["/tmp/"]
             if any(safe in detail for safe in bash_safe):
-                return self._approve("Directorio de output seguro", "LOW", "safe_project_dir")
+                return self._approve("Safe output directory", "LOW", "safe_project_dir")
 
-        # 0b. learned_approvals — fast-path para patrones históricamente seguros
+        # 0b. learned_approvals — fast-path for historically safe patterns
         if self._is_learned_safe(tool, detail):
-            return self._approve("Patrón aprobado por historial", "LOW", "learned_approval")
+            return self._approve("Pattern approved by history", "LOW", "learned_approval")
 
-        # 1. ESCALATE — cierra loops infinitos
+        # 1. ESCALATE — closes infinite loops
         escalate = self._check_repeat_rejections(tool, detail, _session)
         if escalate:
             return escalate
 
-        # 2. Budget — bloquear si se supera el presupuesto de sesión
+        # 2. Budget — block if session budget is exceeded
         budget_deny = self._check_budget(_session)
         if budget_deny:
             return budget_deny
 
-        # 3. Paths bloqueados (Write, Edit, MultiEdit)
+        # 3. Blocked paths (Write, Edit, MultiEdit)
         if tool in ("Edit", "Write", "MultiEdit"):
             path = inp.get("file_path", inp.get("path", ""))
             for blocked in BLOCKED_PATHS:
@@ -172,11 +172,11 @@ class PermissionAnalyzer:
                     return self._deny(
                         tool,
                         path,
-                        f"Escritura bloqueada en '{path}'. "
-                        "Modifica este archivo manualmente si es necesario.",
+                        f"Write blocked at '{path}'. "
+                        "Edit this file manually if needed.",
                         "CRITICAL",
                         f"blocked_path:{blocked}",
-                        "Editar directamente desde terminal o pedir al usuario.",
+                        "Edit directly from terminal or ask the user.",
                     )
 
         # 3b. Resource claims — bloquear si otro agente tiene el archivo
@@ -186,7 +186,7 @@ class PermissionAnalyzer:
             if claim_deny:
                 return claim_deny
 
-        # 4. Comandos de alto riesgo con excepción ALLOWED_DELETIONS
+        # 4. High-risk commands with ALLOWED_DELETIONS exception
         if tool == "Bash":
             cmd = inp.get("command", "")
             for pattern in HIGH_RISK_PATTERNS:
@@ -198,22 +198,22 @@ class PermissionAnalyzer:
                         return self._deny(
                             tool,
                             cmd,
-                            f"Comando de alto riesgo en modo autónomo: {cmd[:80]}",
+                            f"High-risk command in autonomous mode: {cmd[:80]}",
                             "HIGH",
                             f"high_risk_pattern:{pattern}",
-                            "Usar ALLOWED_DELETIONS o ejecutar en modo supervisado.",
+                            "Use ALLOWED_DELETIONS or run in supervised mode.",
                         )
                     else:
                         return self._deny(
                             tool,
                             cmd,
-                            f"Comando bloqueado: '{cmd[:80]}'",
+                            f"Blocked command: '{cmd[:80]}'",
                             "CRITICAL",
                             f"high_risk_pattern:{pattern}",
-                            "Este comando es destructivo e irreversible.",
+                            "This command is destructive and irreversible.",
                         )
 
-        # 5. Modo autónomo — auto-aprobar herramientas estándar (tras checks)
+        # 5. Autonomous mode — auto-approve standard tools (after checks)
         if JARVIS_MODE == "autonomous" and tool in AUTO_APPROVE_TOOLS:
             return self._approve("autonomous_mode")
 
@@ -263,9 +263,9 @@ class PermissionAnalyzer:
         self, tool: str, detail: str, session_id: str | None = None
     ) -> dict | None:
         """
-        Si el mismo tool+action_detail ha sido rechazado MAX_SAME_REJECTION
-        veces (DENY o ESCALATE) en esta sesión → devolver ESCALATE.
-        FIX C: cuenta tanto DENY como ESCALATE.
+        If the same tool+action_detail has been rejected MAX_SAME_REJECTION
+        times (DENY or ESCALATE) in this session → return ESCALATE.
+        FIX C: counts both DENY and ESCALATE.
         """
         _session = session_id or SESSION_ID
         try:
@@ -288,17 +288,17 @@ class PermissionAnalyzer:
                 return {
                     "decision": "ESCALATE",
                     "reason": (
-                        f"Acción '{tool}: {detail[:60]}' rechazada "
-                        f"{count} veces en esta sesión. "
-                        "Requiere decisión humana."
+                        f"Action '{tool}: {detail[:60]}' rejected "
+                        f"{count} times in this session. "
+                        "Requires human decision."
                     ),
                     "risk_level": "HIGH",
                     "rule_triggered": f"repeat_rejection:{count}",
                     "suggested_fix": (
-                        "El OrchestratorLoop debe pausar y notificar al usuario. "
-                        "El agente necesita una estrategia diferente que no "
-                        "requiera esta acción bloqueada. "
-                        f"Intentos previos: {count}."
+                        "OrchestratorLoop must pause and notify the user. "
+                        "The agent needs a different strategy that does not "
+                        "require this blocked action. "
+                        f"Previous attempts: {count}."
                     ),
                 }
         except Exception:
@@ -307,8 +307,8 @@ class PermissionAnalyzer:
 
     def _is_learned_safe(self, tool: str, detail: str) -> bool:
         """
-        Comprueba si este tool+pattern ya fue aprobado >= 3 veces (active=1).
-        Fast-path antes de todos los checks de seguridad.
+        Checks if this tool+pattern has already been approved >= 3 times (active=1).
+        Fast-path before all security checks.
         """
         try:
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
@@ -329,8 +329,8 @@ class PermissionAnalyzer:
 
     def _check_resource_claim(self, tool: str, path: str, session_id: str) -> dict | None:
         """
-        Bloquea si otro agente/sesión tiene un claim activo sobre este recurso.
-        Claims expiran automáticamente por TTL (expires_at).
+        Blocks if another agent/session holds an active claim on this resource.
+        Claims expire automatically by TTL (expires_at).
         """
         if not path:
             return None
@@ -352,18 +352,18 @@ class PermissionAnalyzer:
                 return self._deny(
                     tool,
                     path,
-                    f"Recurso '{path}' bloqueado por agente '{holder_agent}' "
-                    f"(sesión {holder_session[:8]}…). Espera a que expire el claim.",
+                    f"Resource '{path}' locked by agent '{holder_agent}' "
+                    f"(session {holder_session[:8]}…). Wait for the claim to expire.",
                     "MEDIUM",
                     "resource_claim",
-                    "Espera 30 min o pide al agente propietario que libere el recurso.",
+                    "Wait 30 min or ask the owning agent to release the resource.",
                 )
         except Exception:
             pass
         return None
 
     def _check_budget(self, session_id: str) -> dict | None:
-        """Bloquea si el coste estimado de la sesión supera MAX_SESSION_COST_USD."""
+        """Blocks if estimated session cost exceeds MAX_SESSION_COST_USD."""
         try:
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
             row = conn.execute(
@@ -378,19 +378,19 @@ class PermissionAnalyzer:
                 return self._deny(
                     "budget",
                     f"${estimated_cost:.2f}",
-                    f"Presupuesto de sesión excedido: "
+                    f"Session budget exceeded: "
                     f"${estimated_cost:.2f} > ${MAX_SESSION_COST_USD}",
                     "HIGH",
                     "budget_exceeded",
-                    "Dividir el objetivo en subtareas más pequeñas. "
-                    "Iniciar nueva sesión con j --autonomous",
+                    "Split the objective into smaller subtasks. "
+                    "Start a new session with j --autonomous",
                 )
         except Exception:
             pass
         return None
 
 
-# ── Funciones standalone (usadas por pre_tool_use.py) ───────────────────────
+# ── Standalone functions (used by pre_tool_use.py) ──────────────────────────
 
 
 def _notify_telegram_activation(tool_name: str, pattern: str) -> None:
@@ -405,9 +405,9 @@ def _notify_telegram_activation(tool_name: str, pattern: str) -> None:
         if not token or not chat_id:
             return
         msg = (
-            "🔓 *Auto-aprobación activada*\n"
+            "🔓 *Auto-approval activated*\n"
             f"`{tool_name}` → `{pattern[:80]}`\n"
-            "Vistas: 3 veces. Activa para futuros usos."
+            "Seen: 3 times. Active for future uses."
         )
         requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
@@ -420,9 +420,9 @@ def _notify_telegram_activation(tool_name: str, pattern: str) -> None:
 
 def record_decision(tool: str, inp: dict, result: dict) -> None:
     """
-    Registra decisiones APPROVE en la BD.
-    Para aprobaciones LOW risk: auto-aprende el patrón en learned_approvals
-    cuando se ha visto >= 3 veces (activa el registro).
+    Records APPROVE decisions in the DB.
+    For LOW risk approvals: auto-learns the pattern in learned_approvals
+    when seen >= 3 times (activates the record).
     """
     if result["decision"] != "APPROVE":
         return
@@ -444,7 +444,7 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
                 result.get("risk_level", "LOW"),
             ),
         )
-        # Auto-aprendizaje para patrones de bajo riesgo
+        # Auto-learning for low-risk patterns
         if result.get("risk_level") == "LOW" and result.get("reason") != "learned_approval":
             pattern = action_detail[:50].strip()
             if pattern:
@@ -476,10 +476,10 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
 
 def record_rejection(tool: str, inp: dict, result: dict) -> None:
     """
-    Registra DENY y ESCALATE en dos canales:
-    Canal 1 — BD: tabla permission_decisions
-    Canal 2 — JSON buzón: tasks/permission_rejection.json (leído por OrchestratorLoop)
-    FIX A: añadido canal JSON.
+    Records DENY and ESCALATE in two channels:
+    Channel 1 — DB: permission_decisions table
+    Channel 2 — JSON mailbox: tasks/permission_rejection.json (read by OrchestratorLoop)
+    FIX A: added JSON channel.
     """
     if result["decision"] not in ("DENY", "ESCALATE"):
         return

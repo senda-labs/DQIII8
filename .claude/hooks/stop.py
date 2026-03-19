@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 DQIII8 Hook — Stop
-Cierra sesión en BD, actualiza lessons.md, auto-commit, flag de auditoría.
+Closes session in DB, updates lessons.md, auto-commit, audit flag.
 """
 
 import sys, json, os, subprocess
@@ -20,9 +20,9 @@ LESSONS = JARVIS / "tasks" / "lessons.md"
 PROJECTS = JARVIS / "projects"
 NOW = datetime.now().isoformat()
 
-# ── 0. Contar lecciones añadidas esta sesión ───────────────────────
+# ── 0. Count lessons added this session ───────────────────────────
 lessons_added = 0
-result = None  # mantenido para extracción de instincts en paso 0b
+result = None  # kept for instinct extraction in step 0b
 try:
     # git diff para instincts (paso 0b) — no se usa para el conteo principal
     result = subprocess.run(
@@ -37,10 +37,10 @@ try:
         return line.startswith("+- [20") or line.startswith("+[20")
 
     def _count_lesson_lines(text: str) -> int:
-        """Cuenta líneas de lección con formato [YYYY-...]"""
+        """Count lesson lines with format [YYYY-...]"""
         return sum(1 for l in text.splitlines() if l.startswith("- [20") or l.startswith("[20"))
 
-    # Patrón correcto: líneas_antes (HEAD) vs líneas_después (working tree)
+    # Correct pattern: lines_before (HEAD) vs lines_after (working tree)
     lines_before = 0
     head_show = subprocess.run(
         ["git", "-C", str(JARVIS), "show", "HEAD:tasks/lessons.md"],
@@ -100,12 +100,12 @@ try:
             count2 = sum(1 for line in result2.stdout.splitlines() if _is_lesson_line(line))
             if count2 > 0:
                 lessons_added = count2
-                result = result2  # actualizar para instincts
+                result = result2  # update for instincts
                 break
 except Exception:
     pass
 
-# ── 0a-supplement. Sumar implicit lessons capturadas por post_tool_use ──
+# ── 0a-supplement. Add implicit lessons captured by post_tool_use ──
 try:
     import sqlite3 as _vls3
 
@@ -141,11 +141,11 @@ try:
     _auto_count, _patterns_count = _detect(session_id=session, db_path=str(DB))
     if _auto_count:
         lessons_added += _auto_count
-        print(f"[DQIII8] {_auto_count} auto-lesson(s) detectada(s) ({_patterns_count} patrones)")
+        print(f"[DQIII8] {_auto_count} auto-lesson(s) detected ({_patterns_count} patterns)")
 except Exception as _ale:
     pass
 
-# ── 0b. Extraer instincts de lessons.md ───────────────────────────
+# ── 0b. Extract instincts from lessons.md ─────────────────────────
 try:
     import sqlite3 as _sl3, re as _re
 
@@ -193,11 +193,11 @@ try:
         _ic.commit()
         _ic.close()
         if _inserted:
-            print(f"[DQIII8] {_inserted} instinct(s) extraidos de lessons.md")
+            print(f"[DQIII8] {_inserted} instinct(s) extracted from lessons.md")
 except Exception:
     pass
 
-# ── 0c. Vault Memory extraction (sesión ≥ 10 min) ────────────────
+# ── 0c. Vault Memory extraction (session ≥ 10 min) ───────────────
 try:
     import sqlite3 as _vsl3
     import json as _vjson
@@ -334,7 +334,7 @@ try:
 except Exception:
     pass
 
-# ── 1. Cerrar sesión en BD ─────────────────────────────────────────
+# ── 1. Close session in DB ────────────────────────────────────────
 try:
     import sqlite3
 
@@ -381,7 +381,7 @@ try:
 except Exception:
     pass
 
-# ── 1b. Reconcile error_log con agent_actions ─────────────────────
+# ── 1b. Reconcile error_log with agent_actions ────────────────────
 try:
     import subprocess as _rec_sub
 
@@ -444,7 +444,7 @@ try:
 except Exception:
     pass
 
-# ── 2b. Git push después del auto-commit ──────────────────────────
+# ── 2b. Git push after auto-commit ────────────────────────────────
 try:
     result = subprocess.run(
         ["git", "push", "origin", "master"], cwd=str(JARVIS), capture_output=True, timeout=30
@@ -456,7 +456,7 @@ try:
 except Exception as e:
     print(f"[stop] git push error: {e}")
 
-# ── 3. Auto-handover si sesión duró 15+ minutos ───────────────────
+# ── 3. Auto-handover if session lasted 15+ minutes ────────────────
 try:
     import sqlite3, time as _time
 
@@ -470,7 +470,7 @@ try:
         _duration_min = ((_time.time() * 1000 - _first_ms) / 60000) if _first_ms else 0
 
         if _duration_min >= 15:
-            # Guard: máximo 1 commit de handover por fecha calendario
+            # Guard: maximum 1 handover commit per calendar date
             _today = NOW[:10]
             _log_today = subprocess.run(
                 [
@@ -530,7 +530,7 @@ try:
                 _idx += 1
 
             _files_block = (
-                "\n".join(f"- `{f}`" for f in _files[:20]) or "- (sin cambios commiteados)"
+                "\n".join(f"- `{f}`" for f in _files[:20]) or "- (no committed changes)"
             )
             _duration_str = f"{int(_duration_min)}m"
             _session_md = f"""---
@@ -542,24 +542,24 @@ session_id: {session[:8]}
 duration: {_duration_str}
 ---
 
-# Sesión {_date}
+# Session {_date}
 
-## Qué hicimos
-- Sesión de {_duration_str} · {_project}
-- (Ver archivos modificados abajo para detalle)
+## What we did
+- Session of {_duration_str} · {_project}
+- (See modified files below for details)
 
-## Archivos modificados
+## Modified files
 {_files_block}
 
-## Próximo paso
+## Next step
 {_next}
 
-## Lecciones aprendidas
-{("- " + chr(10) + "- ").join(["(ninguna esta sesión)"]) if not lessons_added else f"- {lessons_added} lección(es) añadidas — ver tasks/lessons.md"}
+## Lessons learned
+{("- " + chr(10) + "- ").join(["(none this session)"]) if not lessons_added else f"- {lessons_added} lesson(s) added — see tasks/lessons.md"}
 """
             _session_path.write_text(_session_md, encoding="utf-8")
 
-            # Git add + commit + push (máximo 1 commit de handover por día)
+            # Git add + commit + push (maximum 1 handover commit per day)
             subprocess.run(
                 [
                     "git",
@@ -593,7 +593,7 @@ duration: {_duration_str}
                     text=True,
                     timeout=15,
                 )
-                if "0 archivos" not in _review_check.stdout and _review_check.returncode == 0:
+                if "0 files" not in _review_check.stdout and _review_check.returncode == 0:
                     _log = JARVIS / "database" / "audit_reports" / "gemini_last.log"
                     subprocess.Popen(
                         ["python3", str(JARVIS / "bin" / "gemini_review.py")],
@@ -601,7 +601,7 @@ duration: {_duration_str}
                         stderr=subprocess.STDOUT,
                     )
                     print(
-                        "[DQIII8] Gemini review iniciado en background — reporte en Obsidian en ~5min"
+                        "[DQIII8] Gemini review started in background — report ready in ~5min"
                     )
             except Exception as _ge:
                 print(f"[DQIII8] Gemini review skip: {_ge}")
@@ -621,8 +621,8 @@ try:
         _reason = _spc_result.get("reason", "SPC trigger")
         _priority = _spc_result.get("priority", "MEDIUM")
         (JARVIS / "tasks" / "audit_pending.flag").write_text(
-            f"Auditoría pendiente [{_priority}] — {_reason}\n"
-            "Ejecuta /audit al inicio de la próxima sesión."
+            f"Audit pending [{_priority}] — {_reason}\n"
+            "Run /audit at the start of the next session."
         )
         print(f"[DQIII8 SPC] Audit flag set — {_reason}")
 except Exception as _spc_e:
@@ -640,7 +640,7 @@ except Exception as _spc_e:
                 _fb_needs = (datetime.now() - datetime.fromisoformat(_fb_last)) > timedelta(days=7)
             if _fb_needs:
                 (JARVIS / "tasks" / "audit_pending.flag").write_text(
-                    "Auditoría pendiente — ejecuta /audit al inicio de la próxima sesión."
+                    "Audit pending — run /audit at the start of the next session."
                 )
     except Exception:
         pass
@@ -689,26 +689,26 @@ try:
         _now_str = _dt.now().strftime("%Y-%m-%d %H:%M")
 
         _lines = [
-            f"# DQIII8 — Estado Persistente Inter-sesión\n",
-            f"Última actualización: {_now_str}\n",
-            f"Sesiones totales: {_total_sessions}\n",
-            f"Score actual: {_score:.1f}/100 ({_audit_ts})\n",
-            f"\n## Recomendaciones pendientes\n",
+            f"# DQIII8 — Persistent Inter-session State\n",
+            f"Last updated: {_now_str}\n",
+            f"Total sessions: {_total_sessions}\n",
+            f"Current score: {_score:.1f}/100 ({_audit_ts})\n",
+            f"\n## Pending recommendations\n",
         ]
         if _recs:
             for _r in _recs[:5]:
                 _lines.append(f"- {str(_r).strip()}\n")
         else:
-            _lines.append("- (ninguna)\n")
+            _lines.append("- (none)\n")
 
-        _lines.append("\n## Últimas 5 integraciones\n")
+        _lines.append("\n## Last 5 integrations\n")
         if _integrations:
             for (_t,) in _integrations:
                 _lines.append(f"- {_t[:80]}\n")
         else:
-            _lines.append("(ninguna aún)\n")
+            _lines.append("(none yet)\n")
 
-        _lines.append("\n## Patrones consolidados\n")
+        _lines.append("\n## Consolidated patterns\n")
         _lessons_file = JARVIS / "tasks" / "lessons.md"
         if _lessons_file.exists():
             import re as _re
@@ -719,25 +719,15 @@ try:
                 for _p in _patterns:
                     _lines.append(f"- {_p}\n")
             else:
-                _lines.append("(ninguno aún)\n")
+                _lines.append("(none yet)\n")
         else:
-            _lines.append("(ninguno aún)\n")
+            _lines.append("(none yet)\n")
 
         _progress_file.write_text("".join(_lines), encoding="utf-8")
         print(
-            f"[stop] claude-progress.txt actualizado ({_total_sessions} sesiones, score={_score:.1f})"
+            f"[stop] claude-progress.txt updated ({_total_sessions} sessions, score={_score:.1f})"
         )
 except Exception as _pe:
     print(f"[stop] progress update skipped: {_pe}")
 
 sys.exit(0)
-
-# Backup automático de credenciales OAuth al final de cada sesión
-import shutil
-from pathlib import Path
-
-_backup_dir = Path("/root/jarvis/.claude/backups/oauth")
-_backup_dir.mkdir(parents=True, exist_ok=True)
-for _f in ["/root/.claude.json", "/root/.claude/.credentials.json"]:
-    if Path(_f).exists():
-        shutil.copy2(_f, _backup_dir / Path(_f).name)

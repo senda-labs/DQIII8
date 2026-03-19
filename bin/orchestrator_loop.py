@@ -2,9 +2,9 @@
 """
 OrchestratorLoop — DQIII8 autonomous project management.
 
-Ciclo: analyze → plan → build_prompt → execute → capture → store → repeat
-Ejecutar: python3 bin/orchestrator_loop.py --project content-automation
-En modo autónomo: JARVIS_MODE=autonomous python3 bin/orchestrator_loop.py ...
+Cycle: analyze → plan → build_prompt → execute → capture → store → repeat
+Run: python3 bin/orchestrator_loop.py --project my-project
+Autonomous mode: JARVIS_MODE=autonomous python3 bin/orchestrator_loop.py ...
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ from pathlib import Path
 
 JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB_PATH = JARVIS_ROOT / "database" / "jarvis_metrics.db"
-MAX_RETRIES = 3  # Por objetivo — si falla 3 veces → BLOCKED
-MAX_CYCLES = 10  # Por sesión del loop
+MAX_RETRIES = 3  # Per objective — fails 3 times → BLOCKED
+MAX_CYCLES = 10  # Per loop session
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 

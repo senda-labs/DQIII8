@@ -1,10 +1,10 @@
 -- JARVIS — jarvis_metrics.db schema
--- Patch 3: WAL mode + índices para concurrencia y velocidad del auditor
+-- Patch 3: WAL mode + indexes for concurrency and auditor speed
 
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 
--- ── Cada acción de cada agente ──────────────────────────────────
+-- ── Every action of every agent ─────────────────────────────────
 CREATE TABLE IF NOT EXISTS agent_actions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS agent_actions (
     blocked_by_hook INTEGER DEFAULT 0
 );
 
--- ── Errores con keywords (análisis de causa raíz) ───────────────
+-- ── Errors with keywords (root cause analysis) ──────────────────
 CREATE TABLE IF NOT EXISTS error_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS error_log (
     lesson_added    INTEGER DEFAULT 0
 );
 
--- ── Resumen por sesión ──────────────────────────────────────────
+-- ── Session summary ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sessions (
     session_id          TEXT PRIMARY KEY,
     start_time          TEXT NOT NULL DEFAULT (datetime('now')),
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     clear_contexts      INTEGER DEFAULT 0
 );
 
--- ── Performance de skills ───────────────────────────────────────
+-- ── Skill performance ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS skill_metrics (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     skill_name      TEXT NOT NULL,
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS skill_metrics (
     review_notes    TEXT
 );
 
--- ── Reportes del agente auditor ─────────────────────────────────
+-- ── Auditor agent reports ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS audit_reports (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp           TEXT NOT NULL DEFAULT (datetime('now')),
@@ -118,14 +118,14 @@ CREATE TABLE IF NOT EXISTS instincts (
 CREATE INDEX IF NOT EXISTS idx_instincts_keyword ON instincts(keyword);
 CREATE INDEX IF NOT EXISTS idx_instincts_project ON instincts(project, confidence);
 
--- ── Patch 3: índices ────────────────────────────────────────────
+-- ── Patch 3: indexes ────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_actions_agent   ON agent_actions(agent_name, timestamp);
 CREATE INDEX IF NOT EXISTS idx_actions_session ON agent_actions(session_id);
 CREATE INDEX IF NOT EXISTS idx_actions_success ON agent_actions(success, timestamp);
 CREATE INDEX IF NOT EXISTS idx_errors_session  ON error_log(session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_proj   ON sessions(project, start_time);
 
--- ── Vistas para el auditor ──────────────────────────────────────
+-- ── Views for auditor ───────────────────────────────────────────
 CREATE VIEW IF NOT EXISTS agent_performance AS
 SELECT
     agent_name,
@@ -152,7 +152,7 @@ WHERE e.keywords IS NOT NULL AND e.keywords != '[]'
 GROUP BY je.value
 ORDER BY frequency DESC;
 
--- ── PermissionAnalyzer v2 — Historial de decisiones de permisos ─────────────
+-- ── PermissionAnalyzer v2 — Permission decision history ──────────────────────
 CREATE TABLE IF NOT EXISTS permission_decisions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS permission_decisions (
 CREATE INDEX IF NOT EXISTS idx_perm_session_tool
     ON permission_decisions(session_id, tool_name, decision, timestamp);
 
--- ── OrchestratorLoop — Objetivos de proyecto ────────────────────────────────
+-- ── OrchestratorLoop — Project objectives ───────────────────────────────────
 CREATE TABLE IF NOT EXISTS objectives (
     id               TEXT PRIMARY KEY,   -- UUID corto (8 chars)
     project          TEXT NOT NULL,
@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS objectives (
 CREATE INDEX IF NOT EXISTS idx_objectives_project_status
     ON objectives(project, status);
 
--- ── PermissionAnalyzer — Patrones seguros aprendidos ────────────────────────
+-- ── PermissionAnalyzer — Learned safe patterns ──────────────────────────────
 CREATE TABLE IF NOT EXISTS learned_approvals (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     project     TEXT NOT NULL DEFAULT '*',
@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS learned_approvals (
 CREATE INDEX IF NOT EXISTS idx_learned_approvals_tool
     ON learned_approvals(tool_name, active);
 
--- ── OrchestratorLoop — Efectividad por proyecto ─────────────────────────────
+-- ── OrchestratorLoop — Effectiveness by project ────────────────────────────
 CREATE VIEW IF NOT EXISTS loop_effectiveness AS
 SELECT
     project,
@@ -224,7 +224,7 @@ SELECT
 FROM objectives
 GROUP BY project;
 
--- ── Multi-Tier Benchmark — Resultados por modelo ────────────────────────────
+-- ── Multi-Tier Benchmark — Results by model ─────────────────────────────────
 CREATE VIEW IF NOT EXISTS benchmark_results AS
 SELECT
     model_tier,

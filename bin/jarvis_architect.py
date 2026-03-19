@@ -64,7 +64,7 @@ DIAGRAM = r"""
 ║  │  code-reviewer     ── Groq:llama-3.3-70b     [review, after feat]  │    ║
 ║  │  content-automator ── OpenRouter:nemotron    [video, TTS, reels]   │    ║
 ║  │  data-analyst      ── Claude:sonnet-4-6      [WACC, DCF, charts]   │    ║
-║  │  creative-writer   ── Claude:sonnet-4-6      [novel, xianxia]      │    ║
+║  │  creative-writer   ── Claude:sonnet-4-6      [novel, story, fiction]│   ║
 ║  │  auditor           ── Claude:sonnet-4-6      [/audit, metrics]     │    ║
 ║  │  orchestrator      ── Claude:sonnet-4-6      [/mobilize, 3+ domains]│   ║
 ║  └─────────────────────────────────────────────────────────────────────┘    ║

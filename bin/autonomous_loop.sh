@@ -1,7 +1,7 @@
 #!/bin/bash
 # DQIII8 — Autonomous Loop
-# Lanza claude en modo autónomo con supervisor 3-layer activo.
-# Uso: autonomous_loop.sh 'objetivo' [horas_max]
+# Launches claude in autonomous mode with 3-layer supervisor active.
+# Usage: autonomous_loop.sh 'objective' [max_hours]
 #
 # El supervisor intercepta herramientas via hooks:
 #   Layer 1: READ_PREFIXES → auto-approve sin LLM
@@ -17,8 +17,8 @@ OBJECTIVE="${1:-}"
 MAX_HOURS="${2:-8}"
 
 if [ -z "$OBJECTIVE" ]; then
-    echo "Uso: autonomous_loop.sh 'objetivo' [horas_max]"
-    echo "Ejemplo: autonomous_loop.sh 'Auditar sistema y corregir errores' 4"
+    echo "Usage: autonomous_loop.sh 'objective' [max_hours]"
+    echo "Example: autonomous_loop.sh 'Audit system and fix errors' 4"
     exit 1
 fi
 
@@ -27,26 +27,26 @@ OBJECTIVE_FILE="$JARVIS_ROOT_PATH/tasks/current_objective.txt"
 WATCHDOG_PID_FILE="/tmp/jarvis_watchdog.pid"
 STOP_FLAG="$JARVIS_ROOT_PATH/tasks/.stop_flag"
 
-echo "🌙 DQIII8 Autonomous Mode — Supervisor: ACTIVO"
-echo "   Objetivo : $OBJECTIVE"
-echo "   Max horas: $MAX_HOURS"
-echo "   Modo     : JARVIS_MODE=autonomous (hooks 3-layer activos)"
+echo "🌙 DQIII8 Autonomous Mode — Supervisor: ACTIVE"
+echo "   Objective: $OBJECTIVE"
+echo "   Max hours: $MAX_HOURS"
+echo "   Mode     : JARVIS_MODE=autonomous (hooks 3-layer active)"
 echo ""
 
-# Escribir objetivo para Layer 2 (LLM supervisor lee este archivo)
+# Write objective for Layer 2 (LLM supervisor reads this file)
 printf '%s\nStarted: %s\n' "$OBJECTIVE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OBJECTIVE_FILE"
 
-# Lanzar watchdog en background
+# Launch watchdog in background
 python3 "$JARVIS_ROOT_PATH/bin/autonomous_watchdog.py" &
 WATCHDOG_PID=$!
 echo $WATCHDOG_PID > "$WATCHDOG_PID_FILE"
 echo "   Watchdog PID: $WATCHDOG_PID"
 echo ""
 
-# Cleanup en exit (CTRL-C, timeout, etc.)
+# Cleanup on exit (CTRL-C, timeout, etc.)
 cleanup() {
     echo ""
-    echo "🧹 Limpiando sesión autónoma..."
+    echo "🧹 Cleaning up autonomous session..."
     kill "$(cat "$WATCHDOG_PID_FILE" 2>/dev/null)" 2>/dev/null || true
     rm -f "$WATCHDOG_PID_FILE" "$OBJECTIVE_FILE"
     echo "✅ Autonomous session completed"
@@ -55,20 +55,20 @@ trap cleanup EXIT
 
 cd "$JARVIS_ROOT_PATH"
 
-# Asegurar directorio de resultados
+# Ensure results directory exists
 mkdir -p "$JARVIS_ROOT_PATH/tasks/results"
 
-# Calcular timeout en segundos
+# Calculate timeout in seconds
 MAX_SECONDS=$(( MAX_HOURS * 3600 ))
 
-# Verificar stop flag antes de iniciar
+# Check stop flag before starting
 if [ -f "$STOP_FLAG" ]; then
-    echo "Stop flag detectado — abortando antes de iniciar."
+    echo "Stop flag detected — aborting before start."
     rm -f "$STOP_FLAG"
     exit 0
 fi
 
-# Limpiar stop flag de sesiones anteriores (watchdog lo deja entre runs)
+# Clear stop flag from previous sessions (watchdog leaves it between runs)
 rm -f /tmp/jarvis_autonomous_stop.flag
 
 # Lanzar claude con tiempo límite
@@ -76,7 +76,6 @@ rm -f /tmp/jarvis_autonomous_stop.flag
 #   claude -p podría bloquearse leyendo stdin. /dev/null da EOF inmediato.
 timeout "$MAX_SECONDS" claude \
     --add-dir /root/jarvis \
-    --add-dir /root/content-automation-faceless \
     -p "$OBJECTIVE" \
     < /dev/null \
     || EXIT_CODE=$?

@@ -6,17 +6,74 @@ Memoria persistente entre sesiones con mem0 + fallback SQLite (vault_memory).
 Uso CLI:
   python3 bin/memory_manager.py add <session_id> <project> "<content>"
   python3 bin/memory_manager.py search <project> "<query>" [top_k]
+  python3 bin/memory_manager.py semantic <project> "<query>" [top_k]
+  python3 bin/memory_manager.py link <source_id> <target_id> <type>
+  python3 bin/memory_manager.py related <memory_id>
+  python3 bin/memory_manager.py decay
+  python3 bin/memory_manager.py export [project]
+  python3 bin/memory_manager.py import <file.json>
+  python3 bin/memory_manager.py migrate
 """
 
 import sys
 import json
 import sqlite3
+import struct
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from datetime import datetime
 
 JARVIS_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = JARVIS_ROOT / "database" / "jarvis_metrics.db"
+
+# ── Embedding ──────────────────────────────────────────────────────
+_OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
+_EMBED_MODEL = "nomic-embed-text"
+
+# Decay rates por scope (factor diario multiplicativo)
+DECAY_RATES = {
+    "session": 0.90,  # pierde 10%/día
+    "project": 0.99,  # pierde 1%/día
+    "system": 1.00,  # permanente
+}
+
+VALID_SCOPES = ("session", "project", "system")
+VALID_LINK_TYPES = ("related_to", "contradicts", "supersedes", "prerequisite", "derived_from")
+
+
+def _get_nomic_embedding(text: str) -> list[float] | None:
+    """Genera embedding nomic-embed-text vía Ollama. Devuelve None si no disponible."""
+    payload = json.dumps({"model": _EMBED_MODEL, "prompt": text}).encode("utf-8")
+    req = urllib.request.Request(
+        _OLLAMA_EMBED_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:  # nosemgrep
+            data = json.loads(resp.read())
+            return data.get("embedding")
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return None
+
+
+def _pack_vec(vec: list[float]) -> bytes:
+    return struct.pack(f"{len(vec)}f", *vec)
+
+
+def _unpack_vec(blob: bytes) -> list[float]:
+    n = len(blob) // 4
+    return list(struct.unpack(f"{n}f", blob))
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x**2 for x in a) ** 0.5
+    nb = sum(x**2 for x in b) ** 0.5
+    return dot / (na * nb + 1e-9)
+
 
 # ── mem0 config: Ollama embeddings + qdrant local ──────────────────
 _MEM0_CONFIG = {
@@ -190,6 +247,365 @@ def search_memories(project: str, query: str, top_k: int = 10) -> list[str]:
     return results
 
 
+# ── vault_memory v2 — nuevas funciones ────────────────────────────
+
+
+def migrate_vault_memory() -> dict:
+    """
+    Migra vault_memory al esquema v2:
+    - Añade columnas: scope, embedding, transferable
+    - Crea tabla memory_links
+    - Actualiza scope para filas existentes según entry_type
+    """
+    if not DB_PATH.exists():
+        return {"ok": False, "error": "DB not found"}
+
+    conn = sqlite3.connect(str(DB_PATH), timeout=5)
+    changes: list[str] = []
+
+    # Añadir columnas nuevas (ignorar si ya existen)
+    for col_sql in [
+        "ALTER TABLE vault_memory ADD COLUMN scope TEXT DEFAULT 'session'",
+        "ALTER TABLE vault_memory ADD COLUMN embedding BLOB",
+        "ALTER TABLE vault_memory ADD COLUMN transferable INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(col_sql)
+            changes.append(col_sql.split("ADD COLUMN")[1].strip().split()[0])
+        except sqlite3.OperationalError:
+            pass  # columna ya existe
+
+    # Tabla memory_links
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS memory_links (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id   INTEGER NOT NULL REFERENCES vault_memory(id) ON DELETE CASCADE,
+            target_id   INTEGER NOT NULL REFERENCES vault_memory(id) ON DELETE CASCADE,
+            link_type   TEXT    NOT NULL DEFAULT 'related_to',
+            strength    REAL    DEFAULT 1.0,
+            created_at  TEXT    DEFAULT (datetime('now')),
+            UNIQUE(source_id, target_id, link_type)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_links_source ON memory_links (source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_links_target ON memory_links (target_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_vault_scope ON vault_memory (scope)")
+    changes.append("memory_links table")
+
+    # Migrar scope según entry_type
+    conn.execute("""
+        UPDATE vault_memory SET scope = CASE
+            WHEN entry_type IN ('lesson', 'adr')   THEN 'system'
+            WHEN entry_type = 'project_state'       THEN 'project'
+            ELSE 'session'
+        END
+        WHERE scope = 'session' OR scope IS NULL
+    """)
+
+    # Marcar lessons y ADRs como transferables
+    conn.execute("""
+        UPDATE vault_memory SET transferable = 1
+        WHERE entry_type IN ('lesson', 'adr') AND transferable = 0
+    """)
+
+    conn.commit()
+    conn.close()
+    return {"ok": True, "columns_added": changes}
+
+
+def store_with_embedding(
+    session_id: str,
+    project: str,
+    content: str,
+    scope: str = "session",
+    transferable: bool = False,
+) -> dict:
+    """Guarda en vault_memory con embedding nomic-embed-text si Ollama disponible."""
+    if scope not in VALID_SCOPES:
+        scope = "session"
+
+    vec = _get_nomic_embedding(content)
+    embedding_blob = _pack_vec(vec) if vec else None
+
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=3)
+        conn.execute(
+            """
+            INSERT INTO vault_memory
+                (subject, predicate, object, entry_type, project, last_seen,
+                 scope, embedding, transferable)
+            VALUES (?, 'recuerda', ?, 'checkpoint', ?, ?, ?, ?, ?)
+            ON CONFLICT(subject, predicate, object) DO UPDATE SET
+                last_seen   = excluded.last_seen,
+                times_seen  = times_seen + 1,
+                scope       = excluded.scope,
+                embedding   = COALESCE(excluded.embedding, embedding),
+                transferable= excluded.transferable
+            """,
+            (
+                session_id,
+                content,
+                project,
+                datetime.now().isoformat(),
+                scope,
+                embedding_blob,
+                1 if transferable else 0,
+            ),
+        )
+        conn.commit()
+        conn.close()
+        return {"ok": True, "embedded": vec is not None, "scope": scope}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def search_semantic(project: str, query: str, top_k: int = 10) -> list[dict]:
+    """
+    Búsqueda semántica en vault_memory usando embeddings nomic-embed-text.
+    Fallback a búsqueda por keywords si Ollama no disponible.
+    """
+    query_vec = _get_nomic_embedding(query)
+
+    if not DB_PATH.exists():
+        return []
+
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=3)
+        rows = conn.execute(
+            """
+            SELECT id, subject, object, project, scope, confidence, embedding
+            FROM vault_memory
+            WHERE (project = ? OR project = '' OR ? = '')
+              AND entry_type IN ('lesson', 'checkpoint', 'project_state', 'adr')
+            ORDER BY last_seen DESC
+            LIMIT 200
+            """,
+            (project, project),
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return []
+
+    if query_vec:
+        scored: list[tuple[float, dict]] = []
+        for row_id, subject, obj, proj, scope, conf, emb_blob in rows:
+            if emb_blob:
+                row_vec = _unpack_vec(emb_blob)
+                score = _cosine(query_vec, row_vec)
+            else:
+                # texto match fallback
+                score = 0.1 if query.lower() in (obj or "").lower() else 0.0
+            scored.append(
+                (
+                    score,
+                    {
+                        "id": row_id,
+                        "subject": subject,
+                        "content": obj,
+                        "project": proj,
+                        "scope": scope,
+                        "confidence": conf,
+                        "score": round(score, 4),
+                    },
+                )
+            )
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [item for _, item in scored[:top_k]]
+    else:
+        # Sin embeddings → keywords
+        results = _db_search(project, query, top_k)
+        return [{"content": r, "score": 0.0, "method": "keyword"} for r in results]
+
+
+def link_memories(
+    source_id: int, target_id: int, link_type: str = "related_to", strength: float = 1.0
+) -> dict:
+    """Crea un enlace bidireccional entre dos memorias."""
+    if link_type not in VALID_LINK_TYPES:
+        return {"ok": False, "error": f"link_type inválido: {link_type}. Usa: {VALID_LINK_TYPES}"}
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=3)
+        conn.execute(
+            "INSERT OR IGNORE INTO memory_links (source_id, target_id, link_type, strength) VALUES (?,?,?,?)",
+            (source_id, target_id, link_type, strength),
+        )
+        conn.commit()
+        conn.close()
+        return {"ok": True, "source": source_id, "target": target_id, "type": link_type}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def get_related(memory_id: int, max_depth: int = 2) -> list[dict]:
+    """Recorre el grafo de memory_links hasta max_depth saltos."""
+    if not DB_PATH.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=3)
+        visited: set[int] = set()
+        frontier = [memory_id]
+        results: list[dict] = []
+
+        for _ in range(max_depth):
+            if not frontier:
+                break
+            next_frontier: list[int] = []
+            placeholders = ",".join("?" * len(frontier))
+            rows = conn.execute(
+                f"SELECT source_id, target_id, link_type, strength FROM memory_links"
+                f" WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})",
+                frontier + frontier,
+            ).fetchall()
+            for src, tgt, ltype, strength in rows:
+                neighbor = tgt if src in frontier else src
+                if neighbor not in visited and neighbor != memory_id:
+                    visited.add(neighbor)
+                    next_frontier.append(neighbor)
+                    mem = conn.execute(
+                        "SELECT id, subject, object, scope, confidence FROM vault_memory WHERE id=?",
+                        (neighbor,),
+                    ).fetchone()
+                    if mem:
+                        results.append(
+                            {
+                                "id": mem[0],
+                                "subject": mem[1],
+                                "content": mem[2],
+                                "scope": mem[3],
+                                "confidence": mem[4],
+                                "link_type": ltype,
+                                "strength": strength,
+                            }
+                        )
+            frontier = next_frontier
+
+        conn.close()
+        return results
+    except Exception:
+        return []
+
+
+def apply_decay(dry_run: bool = False) -> dict:
+    """
+    Aplica decay a vault_memory según scope.
+    session: × 0.90/día · project: × 0.99/día · system: sin cambio.
+    Retorna estadísticas.
+    """
+    if not DB_PATH.exists():
+        return {"ok": False, "error": "DB not found"}
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        stats: dict[str, int] = {}
+        for scope, rate in DECAY_RATES.items():
+            if rate >= 1.0:
+                continue
+            count = conn.execute(
+                "SELECT COUNT(*) FROM vault_memory WHERE scope = ? AND decay_score > 0.01",
+                (scope,),
+            ).fetchone()[0]
+            stats[scope] = count
+            if not dry_run:
+                conn.execute(
+                    "UPDATE vault_memory SET decay_score = MAX(0.01, decay_score * ?) WHERE scope = ?",
+                    (rate, scope),
+                )
+        if not dry_run:
+            conn.commit()
+        conn.close()
+        return {"ok": True, "dry_run": dry_run, "updated": stats}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def export_knowledge(project: str = "") -> dict:
+    """Exporta memorias transferables como Knowledge Passport JSON."""
+    if not DB_PATH.exists():
+        return {"ok": False, "error": "DB not found"}
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=3)
+        query = """
+            SELECT id, subject, predicate, object, project, confidence,
+                   entry_type, scope, created_at, last_seen
+            FROM vault_memory
+            WHERE transferable = 1
+        """
+        params: list = []
+        if project:
+            query += " AND (project = ? OR project = '' OR scope = 'system')"
+            params.append(project)
+        query += " ORDER BY confidence DESC, last_seen DESC"
+        rows = conn.execute(query, params).fetchall()
+        conn.close()
+
+        memories = [
+            {
+                "id": r[0],
+                "subject": r[1],
+                "predicate": r[2],
+                "object": r[3],
+                "project": r[4],
+                "confidence": r[5],
+                "entry_type": r[6],
+                "scope": r[7],
+                "created_at": r[8],
+                "last_seen": r[9],
+            }
+            for r in rows
+        ]
+        passport = {
+            "version": "2.0",
+            "exported_at": datetime.now().isoformat(),
+            "source_project": project or "all",
+            "count": len(memories),
+            "memories": memories,
+        }
+        return {"ok": True, "passport": passport}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def import_knowledge(passport: dict, target_project: str = "") -> dict:
+    """Importa un Knowledge Passport. Skips duplicates (ON CONFLICT IGNORE)."""
+    memories = passport.get("memories", [])
+    if not memories:
+        return {"ok": False, "error": "passport vacío o sin memorias"}
+
+    imported = 0
+    skipped = 0
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        for m in memories:
+            project = target_project or m.get("project", "")
+            try:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO vault_memory
+                        (subject, predicate, object, project, confidence, entry_type,
+                         scope, transferable, created_at, last_seen)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                    """,
+                    (
+                        m.get("subject", "import"),
+                        m.get("predicate", "recuerda"),
+                        m.get("object", ""),
+                        project,
+                        m.get("confidence", 1.0),
+                        m.get("entry_type", "lesson"),
+                        m.get("scope", "system"),
+                        m.get("created_at", datetime.now().isoformat()),
+                        m.get("last_seen", datetime.now().isoformat()),
+                    ),
+                )
+                imported += 1
+            except sqlite3.IntegrityError:
+                skipped += 1
+        conn.commit()
+        conn.close()
+        return {"ok": True, "imported": imported, "skipped": skipped}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ── CLI ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -223,6 +639,79 @@ if __name__ == "__main__":
         else:
             print("(sin resultados)")
 
+    elif cmd == "semantic":
+        if len(args) < 3:
+            print("Uso: memory_manager.py semantic <project> '<query>' [top_k]")
+            sys.exit(1)
+        project = args[1]
+        query = args[2]
+        top_k = int(args[3]) if len(args) > 3 else 10
+        results = search_semantic(project, query, top_k)
+        if results:
+            for i, r in enumerate(results, 1):
+                score = r.get("score", 0)
+                print(
+                    f"{i}. [{r.get('scope','?')}] (score={score:.3f}) {r.get('content','')[:120]}"
+                )
+        else:
+            print("(sin resultados)")
+
+    elif cmd == "link":
+        if len(args) < 4:
+            print("Uso: memory_manager.py link <source_id> <target_id> <type>")
+            sys.exit(1)
+        result = link_memories(int(args[1]), int(args[2]), args[3])
+        print(json.dumps(result, ensure_ascii=False))
+
+    elif cmd == "related":
+        if len(args) < 2:
+            print("Uso: memory_manager.py related <memory_id>")
+            sys.exit(1)
+        results = get_related(int(args[1]))
+        if results:
+            for r in results:
+                print(f"  [{r['link_type']}] id={r['id']} {r.get('content','')[:100]}")
+        else:
+            print("(sin enlaces)")
+
+    elif cmd == "decay":
+        dry_run = "--dry-run" in args
+        result = apply_decay(dry_run=dry_run)
+        print(json.dumps(result, ensure_ascii=False))
+
+    elif cmd == "export":
+        project = args[1] if len(args) > 1 else ""
+        result = export_knowledge(project)
+        if result["ok"]:
+            passport = result["passport"]
+            out_path = JARVIS_ROOT / "tasks" / f"knowledge_passport_{project or 'all'}.json"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(
+                json.dumps(passport, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            print(f"✓ Exportadas {passport['count']} memorias → {out_path}")
+        else:
+            print(f"Error: {result.get('error')}")
+
+    elif cmd == "import":
+        if len(args) < 2:
+            print("Uso: memory_manager.py import <file.json> [target_project]")
+            sys.exit(1)
+        file_path = Path(args[1])
+        if not file_path.exists():
+            print(f"Archivo no encontrado: {file_path}")
+            sys.exit(1)
+        passport = json.loads(file_path.read_text(encoding="utf-8"))
+        target = args[2] if len(args) > 2 else ""
+        result = import_knowledge(passport, target)
+        print(json.dumps(result, ensure_ascii=False))
+
+    elif cmd == "migrate":
+        result = migrate_vault_memory()
+        print(json.dumps(result, ensure_ascii=False))
+
     else:
-        print(f"Comando desconocido: {cmd}. Usa add o search.")
+        print(
+            f"Comando desconocido: {cmd}. Usa add, search, semantic, link, related, decay, export, import, migrate."
+        )
         sys.exit(1)

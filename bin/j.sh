@@ -27,6 +27,9 @@ OLLAMA_FALLBACK="qwen/qwen3-235b-a22b:free"
 # Cargar variables de entorno
 [[ -f "$JARVIS_ROOT/.env" ]] && set -a && source "$JARVIS_ROOT/.env" && set +a
 
+# Environment validation
+python3 "$(dirname "$0")/validate_env.py" || echo "[warn] Environment check failed"
+
 # Flag A/B: propósito activo si existe .jarvis_proposito
 # Activar: touch /root/jarvis/.jarvis_proposito
 # Desactivar: rm /root/jarvis/.jarvis_proposito

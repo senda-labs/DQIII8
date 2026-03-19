@@ -12,11 +12,12 @@ Output:
     <model_used> score: <X.XX> — <N> tareas
 """
 
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
-DB = Path("/root/jarvis/database/jarvis_metrics.db")
+DB = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")) / "database" / "jarvis_metrics.db"
 
 # Defaults por tipo cuando no hay datos suficientes
 DEFAULT_BY_TYPE: dict[str, tuple[str, str]] = {

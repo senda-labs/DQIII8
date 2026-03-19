@@ -31,6 +31,7 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-19] [AUTO:openrouter_wrapperError] Error repetido 4x en 7d → revisar causa raíz. Último: pollinations/openai falló — sin respuesta o HTTP error
 - [2026-03-19] [AUTO:ReadError] Error repetido 14x en 7d → revisar causa raíz. Último: FileNotFoundError: No such file or directory: /tmp/nonexiste
 - [2026-03-19] [AUTO:BashError] Error repetido 27x en 7d → revisar causa raíz. Último: {"stdout":"❌ XLabs v1 + weight_name: Could not load pipeline
+- [2026-03-19] [HookFix] post_tool_use.py clasificaba stdout JSON de context-mode como error → filtro: si error_msg empieza con {"stdout" → success=1. 24 falsos positivos resueltos; unresolved 54→30.
 - [2026-03-19] [ErrorPipeline] error_log no capturaba fallos de agent_actions → fix: write-through en post_tool_use.py + reconcile_errors.py en stop.py. 35 huérfanos reconciliados.
 - [2026-03-19] [TokenEstimation] len(text)//4 tiene error 20-40% → capturar usage.prompt_tokens/completion_tokens del stream; fallback a estimación si API no devuelve usage.
 - [2026-03-19] [FallbackEscalation] Escalados de fallback chain silenciosos → ahora se registran en error_log con keyword ESCALATION para trazabilidad.

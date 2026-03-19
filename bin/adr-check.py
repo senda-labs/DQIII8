@@ -216,7 +216,7 @@ def run_checks(
     Check all invariants across all ADRs.
 
     project_roots maps ADR project names to filesystem roots, e.g.:
-        {"content-automation": Path("/root/content-automation-faceless"),
+        {"my-project": Path("/path/to/my-project"),
          "jarvis-core": Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))}
     When provided, each ADR uses the root matching its 'project' field.
     Falls back to project_root if the project name is not in the mapping.
@@ -322,7 +322,7 @@ def run_adr_check(
         adr_root:      Directory containing ADR markdown files.
                        Defaults to project_root/decisions.
         project_roots: Optional per-project root overrides, keyed by ADR 'project' field.
-                       Example: {"content-automation": Path("/root/content-automation-faceless"),
+                       Example: {"my-project": Path("/path/to/my-project"),
                                  "jarvis-core": Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))}
                        When an ADR's project matches a key, that root is used instead of
                        project_root. Callers (e.g. auditor agent) should pass this.
@@ -356,7 +356,6 @@ def run_adr_check(
 
 _DEFAULT_PROJECT_ROOTS: dict[str, Path] = {
     "jarvis-core": Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")),
-    "content-automation": Path("/root/content-automation-faceless"),
     "all": Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")),
 }
 
@@ -387,7 +386,7 @@ def main() -> None:
         metavar="JSON",
         help=(
             "JSON mapping of project names to filesystem roots. "
-            'Example: \'{"content-automation":"/root/content-automation-faceless"}\''
+            'Example: \'{"my-project":"/path/to/my-project"}\''
         ),
     )
     args = parser.parse_args()

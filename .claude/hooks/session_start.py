@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 DQIII8 Hook — SessionStart
-Inyecta contexto del proyecto, últimas lecciones y estado del sistema.
+Injects project context, recent lessons, and system state.
 """
 
 import sys, json, os
@@ -18,12 +18,12 @@ DB = JARVIS / "database" / "jarvis_metrics.db"
 LESSONS = JARVIS / "tasks" / "lessons.md"
 FLAG = JARVIS / "tasks" / "audit_pending.flag"
 
-# ── Proyecto activo ────────────────────────────────────────────────
+# ── Active project ─────────────────────────────────────────────────
 project = os.environ.get("JARVIS_PROJECT", "")
 if not project:
     cwd = Path(data.get("cwd", "."))
     for part in cwd.parts:
-        if part in ("content-automation", "hult-finance", "leyendas-del-este"):
+        if part in ("content-automation",):
             project = part
             break
     if not project:
@@ -35,8 +35,8 @@ try:
 except Exception:
     pass
 
-# ── Próximo paso del proyecto ──────────────────────────────────────
-next_step = "No definido"
+# ── Project next step ──────────────────────────────────────────────
+next_step = "Not defined"
 pm = JARVIS / "projects" / f"{project}.md"
 if pm.exists():
     lines = pm.read_text(encoding="utf-8").splitlines()
@@ -46,14 +46,14 @@ if pm.exists():
                 next_step = lines[i + 1].strip()
             break
 
-# ── Últimas 10 lecciones ───────────────────────────────────────────
+# ── Last 10 lessons ────────────────────────────────────────────────
 lessons = []
 if LESSONS.exists():
     all_lines = LESSONS.read_text(encoding="utf-8").splitlines()
     lessons = [l for l in all_lines if l.strip().startswith("[20")][-10:]
 
-# ── Última auditoría ───────────────────────────────────────────────
-audit_info = "Sin auditoría aún"
+# ── Last audit ─────────────────────────────────────────────────────
+audit_info = "No audit yet"
 try:
     import sqlite3
 
@@ -68,10 +68,10 @@ try:
 except Exception:
     pass
 
-# ── Alerta auditoría pendiente ─────────────────────────────────────
+# ── Pending audit alert ────────────────────────────────────────────
 audit_alert = ""
 if FLAG.exists():
-    audit_alert = "\n⚠️  AUDITORÍA PENDIENTE — ejecuta /audit ahora."
+    audit_alert = "\n⚠️  AUDIT PENDING — run /audit now."
     try:
         FLAG.unlink()
     except Exception:
@@ -100,30 +100,30 @@ try:
 except Exception:
     pass
 
-# ── Carga lazy de contexto ─────────────────────────────────────────
+# ── Lazy context load ──────────────────────────────────────────────
 CONTEXT_DIR = JARVIS / "context"
 
-# iker_profile.md: SIEMPRE (contexto universal ~1KB)
-_iker_profile_block = ""
-_profile_path = CONTEXT_DIR / "iker_profile.md"
+# user_profile.md: ALWAYS (universal context ~1KB)
+_user_profile_block = ""
+_profile_path = CONTEXT_DIR / "user_profile.md"
 if _profile_path.exists():
-    _iker_profile_block = "\n\nPERFIL USUARIO:\n" + _profile_path.read_text(encoding="utf-8")
+    _user_profile_block = "\n\nUSER PROFILE:\n" + _profile_path.read_text(encoding="utf-8")
 
-# youtube_channels.md: SOLO si proyecto es content-automation
+# youtube_channels.md: ONLY if project is content-automation
 _channels_block = ""
-if project in ("content-automation", "content-automation-faceless"):
+if project in ("content-automation",):
     _channels_path = CONTEXT_DIR / "youtube_channels.md"
     if _channels_path.exists():
-        _channels_block = "\n\nCANALES YOUTUBE:\n" + _channels_path.read_text(encoding="utf-8")
+        _channels_block = "\n\nYOUTUBE CHANNELS:\n" + _channels_path.read_text(encoding="utf-8")
 
-# proposito.md: SOLO si existe y JARVIS_PROPOSITO=1
+# proposito.md: ONLY if exists and JARVIS_PROPOSITO=1
 _proposito_block = ""
 if os.environ.get("JARVIS_PROPOSITO") == "1":
     _proposito_path = CONTEXT_DIR / "proposito.md"
     if _proposito_path.exists():
-        _proposito_block = "\n\nPROPOSITO:\n" + _proposito_path.read_text(encoding="utf-8")
+        _proposito_block = "\n\nPURPOSE:\n" + _proposito_path.read_text(encoding="utf-8")
 
-# ── Memorias recientes (vault_memory SQLite) ───────────────────────
+# ── Recent memories (vault_memory SQLite) ─────────────────────────
 _memories_block = ""
 try:
     import sys as _sys
@@ -148,10 +148,10 @@ try:
         _sig.signal(_sig.SIGALRM, _timeout_handler)
         _sig.alarm(2)
         try:
-            _mems = _mm.search_memories(project, "contexto sesión anterior", top_k=5)
+            _mems = _mm.search_memories(project, "previous session context", top_k=5)
             _sig.alarm(0)
             if _mems:
-                _memories_block = "\n\nMEMORIAS RECIENTES:\n" + "\n".join(f"- {m}" for m in _mems)
+                _memories_block = "\n\nRECENT MEMORIES:\n" + "\n".join(f"- {m}" for m in _mems)
         finally:
             _sig.alarm(0)
 except Exception:
@@ -169,9 +169,9 @@ except Exception:
     pass
 
 _MODE_BEHAVIORS = {
-    "coder": "MODO CODER: codigo primero, prosa minima, Black siempre, show diffs.",
-    "analyst": "MODO ANALYST: tablas, metricas, verificar numeros, sin especulacion.",
-    "creative": "MODO CREATIVE: narrativa, espanol literario, sin formato tecnico.",
+    "coder": "CODER MODE: code first, minimal prose, Black always, show diffs.",
+    "analyst": "ANALYST MODE: tables, metrics, verify numbers, no speculation.",
+    "creative": "CREATIVE MODE: narrative, literary style, no technical formatting.",
 }
 
 _vault_block = ""
@@ -186,19 +186,19 @@ try:
     _progress_file = JARVIS / "claude-progress.txt"
     if _progress_file.exists():
         _raw = _progress_file.read_text(encoding="utf-8").strip()
-        _progress_block = "\n\nPROGRESO:\n" + _raw
+        _progress_block = "\n\nPROGRESS:\n" + _raw
 except Exception:
     pass
 
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DQIII8 — {datetime.now().strftime('%Y-%m-%d %H:%M')}
-Modelo  : {model}
-Proyecto: {project}
-Próximo : {next_step}{audit_alert}
-Última auditoría: {audit_info}{_mode_line}{_progress_block}{_vault_block}{_memories_block}{_iker_profile_block}{_channels_block}{_proposito_block}
+Model   : {model}
+Project : {project}
+Next    : {next_step}{audit_alert}
+Last audit: {audit_info}{_mode_line}{_progress_block}{_vault_block}{_memories_block}{_user_profile_block}{_channels_block}{_proposito_block}
 
-LECCIONES RECIENTES:
-{chr(10).join(lessons) if lessons else '  (ninguna aún)'}
+RECENT LESSONS:
+{chr(10).join(lessons) if lessons else '  (none yet)'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
 print(json.dumps({"additionalContext": ctx}))

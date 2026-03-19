@@ -103,11 +103,11 @@ def run_cmd(cmd: list[str], timeout: int = 120) -> str:
             cwd=DQIII8,
             encoding="utf-8",
         )
-        return (result.stdout + result.stderr).strip() or "(sin salida)"
+        return (result.stdout + result.stderr).strip() or "(no output)"
     except subprocess.TimeoutExpired:
-        return "Timeout: el proceso tardo demasiado."
+        return "Timeout: process took too long."
     except Exception as exc:
-        return f"Error al ejecutar: {exc}"
+        return f"Error executing: {exc}"
 
 
 def _load_env_dict() -> dict:
@@ -122,7 +122,7 @@ def _load_env_dict() -> dict:
     return env
 
 
-# ── Satisfacción de modelos ──────────────────────────────────────────────────────
+# ── Model satisfaction ───────────────────────────────────────────────────────────
 
 
 def _infer_task_type(description: str) -> str:
@@ -131,11 +131,11 @@ def _infer_task_type(description: str) -> str:
         return "pipeline"
     if any(
         k in d
-        for k in ("chapter", "scene", "novel", "xianxia", "narrative", "creative", "escritura")
+        for k in ("chapter", "scene", "novel", "narrative", "creative", "writing")
     ):
-        return "escritura"
+        return "writing"
     if any(k in d for k in ("review", "analiz", "research", "audit", "investiga", "explain")):
-        return "análisis"
+        return "analysis"
     if any(
         k in d
         for k in (
@@ -147,11 +147,11 @@ def _infer_task_type(description: str) -> str:
             "commit",
             "bug",
             "script",
-            "código",
+            "code",
             "codigo",
         )
     ):
-        return "código"
+        return "code"
     return "research"
 
 
@@ -740,8 +740,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text("Procesando...")
     log.info("Mensaje rápido: %s", user_msg[:80])
     prompt = (
-        "Eres DQIII8, el sistema de orquestacion de Iker. "
-        f"Responde de forma concisa y tecnica:\n\n{user_msg}"
+        "You are DQIII8, an AI orchestration system. "
+        f"Respond concisely and technically:\n\n{user_msg}"
     )
     result = subprocess.run(
         [

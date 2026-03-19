@@ -25,7 +25,7 @@ from telegram.ext import (
 )
 
 # ── Rutas ──────────────────────────────────────────────────────────────────────
-JARVIS = Path("/root/jarvis")
+JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB = JARVIS / "database" / "jarvis_metrics.db"
 LOG_FILE = JARVIS / "database" / "audit_reports" / "jarvis_bot.log"
 QUEUE_DIR = JARVIS / "objectives" / "queue"

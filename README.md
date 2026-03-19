@@ -7,7 +7,7 @@
 > Built by a finance student with zero coding background using vibe coding.
 > If I could build it, you can use it.
 
-- ☕ **[Buy me a coffee](link)** — supports development
+- ☕ **[Buy me a coffee](https://ko-fi.com/ikermartiins)** — supports development
 
 ---
 

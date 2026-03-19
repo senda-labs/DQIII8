@@ -1,7 +1,7 @@
 ---
 name: strategic-compact
-description: Suggests manual context compaction at logical task boundaries to avoid mid-task context loss. Complements jarvis-context-window.md thresholds with boundary-aware compaction timing.
-origin: ECC/affaan-m (adaptado para JARVIS — complementa jarvis-context-window.md)
+description: Suggests manual context compaction at logical task boundaries to avoid mid-task context loss. Complements dqiii8-context-window.md thresholds with boundary-aware compaction timing.
+origin: ECC/affaan-m (adaptado para DQIII8 — complementa dqiii8-context-window.md)
 status: APROBADA
 ---
 
@@ -10,7 +10,7 @@ status: APROBADA
 ## Problem
 
 Auto-compaction triggers at arbitrary points — often mid-task, losing active context.
-JARVIS's Red threshold (>75%) triggers `/clear-context` but doesn't account for logical boundaries.
+DQIII8's Red threshold (>75%) triggers `/clear-context` but doesn't account for logical boundaries.
 
 ## When to Compact Manually
 
@@ -21,7 +21,7 @@ Compact at these boundaries, NOT mid-phase:
 | After planning | Plan written to `tasks/todo.md`, before coding starts |
 | After debugging | Root cause found and fixed, before new feature work |
 | After a complete commit | Session milestone reached |
-| Before major context shift | Switching from jarvis-core to content-automation |
+| Before major context shift | Switching from dqiii8-core to content-automation |
 | After research phase | Facts indexed in ctx sandbox, before implementation |
 
 ## When NOT to Compact
@@ -53,7 +53,7 @@ Example:
 - `precompact_state.json` available at `tasks/precompact_state.json`
 - Resume from the summary you wrote before compacting
 
-## JARVIS Context Thresholds (from jarvis-context-window.md)
+## DQIII8 Context Thresholds (from dqiii8-context-window.md)
 
 | Color | % Used | Action |
 |-------|--------|--------|
@@ -77,6 +77,6 @@ Use this skill to compact intentionally before that threshold.
 
 ## Related
 
-- `jarvis-context-window.md` — threshold rules
+- `dqiii8-context-window.md` — threshold rules
 - `tasks/precompact_state.json` — state saved by precompact.py hook
 - `/checkpoint` — git-based state save (complementary, not redundant)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Director Central v3
+DQIII8 — Director Central v3
 
 Intent parsing real: LLM (tier2) + instincts DB + model_router.
 Evoluciona el routing estático de keywords de CLAUDE.md a análisis semántico.
@@ -108,7 +108,7 @@ OUTPUT_FORMAT_KEYWORDS: dict[str, str] = {
 # ── Prompt LLM ────────────────────────────────────────────────────────────────
 
 _ANALYSIS_PROMPT = """\
-Eres un clasificador de tareas para JARVIS, un sistema de agentes de IA.
+Eres un clasificador de tareas para DQIII8, un sistema de agentes de IA.
 
 Analiza la solicitud del usuario y produce ÚNICAMENTE un objeto JSON válido
 (sin texto adicional, sin bloques markdown, sin explicaciones).

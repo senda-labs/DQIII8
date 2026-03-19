@@ -7,9 +7,9 @@ approved_by: Iker + Claude
 status: APROBADA
 ---
 
-# Binance Spot API — JARVIS Trading Skill
+# Binance Spot API — DQIII8 Trading Skill
 
-## Scope Adjustment for JARVIS Stack
+## Scope Adjustment for DQIII8 Stack
 
 - **Primary use**: trading-sistemático project — backtesting data + live execution
 - **Testnet first**: always validate strategies on Binance testnet before mainnet
@@ -108,7 +108,7 @@ Testnet: https://testnet.binance.vision
 }
 ```
 
-## Python Implementation Pattern (JARVIS stack)
+## Python Implementation Pattern (DQIII8 stack)
 
 ```python
 import hmac
@@ -160,7 +160,7 @@ async def place_order(symbol: str, side: str, order_type: str, **kwargs) -> dict
 - Orders: 100 orders/10s per symbol, 200,000 orders/24h
 - Always check `X-MBX-USED-WEIGHT-1M` header in responses
 
-## JARVIS Trading Rules
+## DQIII8 Trading Rules
 
 1. Always use testnet (`testnet.binance.vision`) for strategy validation
 2. Store `BINANCE_API_KEY` and `BINANCE_SECRET_KEY` in `.env` only

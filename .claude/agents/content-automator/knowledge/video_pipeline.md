@@ -41,7 +41,7 @@ Función principal: `run_pipeline(topic, mode, channel, duration, language, dry_
 
 - YAMLs en `config/` — NUNCA editar directamente, usar config loader
 - `.env` carga desde `config/.env` con `override=True` → tiene prioridad
-- Al rotar API key: sincronizar AMBOS `/root/jarvis/.env` y `config/.env`
+- Al rotar API key: sincronizar AMBOS `/root/dqiii8/.env` y `config/.env`
 
 ## Modos Disponibles
 
@@ -56,7 +56,7 @@ Función principal: `run_pipeline(topic, mode, channel, duration, language, dry_
 
 - FFmpeg instalado en PATH
 - LiberationSans-Bold: `apt-get install -y fonts-liberation && fc-cache -fv`
-- ElevenLabs API key en config/.env y /root/jarvis/.env
+- ElevenLabs API key en config/.env y /root/dqiii8/.env
 
 ## Errores Frecuentes
 

@@ -1,6 +1,6 @@
 """
 github_researcher.py — Investiga GitHub sobre un tema.
-Busca repositorios, evalúa aplicabilidad al stack JARVIS,
+Busca repositorios, evalúa aplicabilidad al stack DQIII8,
 genera reporte y lo envía por Telegram.
 
 Uso:
@@ -23,7 +23,7 @@ DB = str(JARVIS / "database" / "jarvis_metrics.db")
 OUT_DIR = JARVIS / "tasks" / "github_reports"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Stack de JARVIS para evaluar compatibilidad
+# Stack de DQIII8 para evaluar compatibilidad
 JARVIS_STACK = {
     "languages": ["python", "bash"],
     "frameworks": ["fastapi", "asyncio", "ffmpeg", "moviepy"],
@@ -264,7 +264,7 @@ class GitHubClient:
 # ─── Evaluador de aplicabilidad ───────────────────────────────────
 class ApplicabilityEvaluator:
     """
-    Evalúa qué tan aplicable es un repo al stack JARVIS.
+    Evalúa qué tan aplicable es un repo al stack DQIII8.
     Score 0-10 basado en múltiples factores.
     """
 
@@ -416,7 +416,7 @@ class ApplicabilityEvaluator:
 def _classify_integration(
     score: float, code_structure: dict = None, gpu_blocked: bool = False
 ) -> str:
-    """Clasifica cómo integrar el repo en JARVIS."""
+    """Clasifica cómo integrar el repo en DQIII8."""
     if gpu_blocked:
         return "REFERENCE — GPU requerida, no viable en VPS actual"
     if score >= 8.0:
@@ -508,7 +508,7 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
         f"# GitHub Research — {topic}",
         f"**Fecha:** {timestamp}",
         f"**Repos analizados:** {len(repos_data)}",
-        f"**Stack JARVIS:** Python + FFmpeg + ElevenLabs + Fal.ai\n",
+        f"**Stack DQIII8:** Python + FFmpeg + ElevenLabs + Fal.ai\n",
         "---\n",
         "## 🏆 TOP 5 — Más aplicables\n",
     ]
@@ -607,14 +607,14 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
         for r in quick_wins[:3]:
             repo = r["repo"]
             ev = r["eval"]
-            # Inferir qué problema JARVIS resuelve
+            # Inferir qué problema DQIII8 resuelve
             matches = ev.get("stack_matches", [])
             jarvis_gap = (
                 "funcionalidad relacionada con " + ", ".join(matches[:3]) if matches else "pipeline"
             )
             lines += [
                 f"### {repo['name']} ({ev['score']}/10)",
-                f"**Problema JARVIS que resuelve:** {jarvis_gap}",
+                f"**Problema DQIII8 que resuelve:** {jarvis_gap}",
                 f"**Tipo integración:** {ev.get('integration_type','?')}",
                 f"**Install:** `pip install` desde {repo['html_url']}",
                 f"**Tiempo estimado:** {'1-2h' if ev['score'] >= 8.0 else '2-4h'}",

@@ -51,7 +51,7 @@ Started: {timestamp}
 
 ## Constraints
 - Max 5 parallel agents.
-- Each agent: isolated worktree at `/tmp/jarvis-wt/{agent_id}`.
+- Each agent: isolated worktree at `/tmp/dqiii8-wt/{agent_id}`.
 - Orchestrator does NOT share its context window with subagents.
 - Destructive actions always require user confirmation before spawning agents.
 - If decomposition is unclear, ask the user ONE clarifying question before proceeding.

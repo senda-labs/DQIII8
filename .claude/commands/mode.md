@@ -1,12 +1,12 @@
 ---
 name: mode
-description: Activa un modo de trabajo para JARVIS. Opciones: analyst | coder | creative. El modo persiste hasta fin de sesion o reinicio del VPS.
+description: Activa un modo de trabajo para DQIII8. Opciones: analyst | coder | creative. El modo persiste hasta fin de sesion o reinicio del VPS.
 allowed_tools: ["Bash"]
 ---
 
 # /mode — Activar Modo de Trabajo
 
-Escribe el modo en `/tmp/jarvis_mode.txt`. El hook `session_start.py` lo lee
+Escribe el modo en `/tmp/dqiii8_mode.txt`. El hook `session_start.py` lo lee
 al inicio de cada sesion e inyecta las instrucciones de comportamiento correspondientes.
 
 ## Uso
@@ -35,7 +35,7 @@ python3 -c "
 import sys
 from pathlib import Path
 
-MODE_FILE = Path('/tmp/jarvis_mode.txt')
+MODE_FILE = Path('/tmp/dqiii8_mode.txt')
 VALID_MODES = {'coder', 'analyst', 'creative'}
 
 args = sys.argv[1:]
@@ -56,10 +56,10 @@ print('Persiste hasta fin de sesion (/mode status para verificar)')
 " "$@"
 ```
 
-## Notas JARVIS
+## Notas DQIII8
 
-- El modo se inyecta via `session_start.py` en el bloque JARVIS inicial
-- `/tmp/jarvis_mode.txt` se borra al reiniciar el VPS (por diseno — no persiste entre reinicios)
-- Para persistir entre reinicios: set `JARVIS_MODE=[modo]` en `.env`
+- El modo se inyecta via `session_start.py` en el bloque DQIII8 inicial
+- `/tmp/dqiii8_mode.txt` se borra al reiniciar el VPS (por diseno — no persiste entre reinicios)
+- Para persistir entre reinicios: set `DQIII8_MODE=[modo]` en `.env`
 - Cambiar modo en mitad de sesion no afecta el contexto actual — solo la siguiente sesion
 - Definido en CLAUDE.md § Personality Modes

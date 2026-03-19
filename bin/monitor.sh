@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# JARVIS system monitor — escribe métricas cada 30s a system_metrics.log
+# DQIII8 system monitor — escribe métricas cada 30s a system_metrics.log
 LOG=/root/jarvis/database/system_metrics.log
 
 while true; do

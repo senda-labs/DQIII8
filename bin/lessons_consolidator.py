@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Lessons Consolidator
+DQIII8 — Lessons Consolidator
 Groups lessons.md entries by keyword. When a keyword has >= 3 entries,
 compresses them into a pattern line and archives originals.
 
@@ -50,7 +50,7 @@ def parse_lessons(lines: list[str]) -> tuple[dict[str, list[str]], list[str]]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="JARVIS lessons consolidator")
+    parser = argparse.ArgumentParser(description="DQIII8 lessons consolidator")
     parser.add_argument("--dry-run", action="store_true", help="Stats only, no changes")
     args = parser.parse_args()
 

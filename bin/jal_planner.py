@@ -88,7 +88,7 @@ def _call_openrouter(prompt: str, model: str = "qwen/qwen3-coder:free") -> str:
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
         "HTTP-Referer": "https://jarvis.local",
-        "X-Title": "JARVIS",
+        "X-Title": "DQIII8",
     }
     fallback_chain = [
         model,
@@ -119,7 +119,7 @@ def _call_openrouter(prompt: str, model: str = "qwen/qwen3-coder:free") -> str:
 
 
 def plan_with_claude(obj_content: str, reliability_ctx: str) -> list:
-    prompt = f"""Eres el planificador de JARVIS, sistema autonomo.
+    prompt = f"""Eres el planificador de DQIII8, sistema autonomo.
 
 OBJETIVO:
 {obj_content}

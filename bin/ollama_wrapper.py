@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Ollama Wrapper
+DQIII8 — Ollama Wrapper
 Envía un prompt a Ollama y hace streaming limpio de la respuesta.
 
 Uso:

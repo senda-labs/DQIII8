@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — SubagentStart
+DQIII8 Hook — SubagentStart
 Fires when Claude Code spawns a subagent via the Task tool.
 Payload fields: agent_id, agent_type, session_id, prompt (truncated).
 
 Responsibilities:
 1. Write /tmp/jarvis_agent_{agent_id}.json for pre_tool_use lookup.
 2. INSERT into agent_registry table.
-3. Inject additionalContext with the resolved JARVIS agent name.
+3. Inject additionalContext with the resolved DQIII8 agent name.
 """
 import sys
 import json
@@ -25,7 +25,7 @@ agent_type = data.get("agent_type", "")
 session_id = data.get("session_id", "unknown")
 timestamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
 
-# ── Map agent_type to JARVIS agent name ─────────────────────────────────────
+# ── Map agent_type to DQIII8 agent name ─────────────────────────────────────
 AGENT_TYPE_MAP = {
     "python-specialist": "python-specialist",
     "git-specialist": "git-specialist",
@@ -99,7 +99,7 @@ except Exception:
 
 # ── Step 3: Inject additionalContext ────────────────────────────────────────
 ctx = (
-    f"[JARVIS] You are the '{resolved_name}' agent. "
+    f"[DQIII8] You are the '{resolved_name}' agent. "
     f"agent_id={agent_id} parent_session={session_id}. "
     f"Write results to tasks/results/{resolved_name}-{timestamp[:10]}.md."
 )

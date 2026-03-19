@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — OpenRouter Wrapper
+DQIII8 — OpenRouter Wrapper
 Routing multi-provider con fallback automático.
 
 Uso:
@@ -34,7 +34,7 @@ PROVIDERS = {
         "api_key_env": "OPENROUTER_API_KEY",
         "headers_extra": {
             "HTTP-Referer": "https://jarvis.local",
-            "X-Title": "JARVIS",
+            "X-Title": "DQIII8",
         },
     },
     "groq": {
@@ -418,7 +418,7 @@ def _log_escalation(
 
 
 def print_routing_table() -> None:
-    print("\nJARVIS — Tabla de routing OpenRouter\n")
+    print("\nDQIII8 — Tabla de routing OpenRouter\n")
     print(f"{'Agente':<22} {'Provider':<12} {'Modelo'}")
     print("-" * 72)
     for agent, (provider, model) in AGENT_ROUTING.items():
@@ -493,10 +493,10 @@ def main() -> None:
         sys.exit(0)
 
     parser = argparse.ArgumentParser(
-        description="JARVIS OpenRouter Wrapper — routing multi-provider con fallback."
+        description="DQIII8 OpenRouter Wrapper — routing multi-provider con fallback."
     )
     parser.add_argument(
-        "--agent", "-a", default="default", help="Agente JARVIS (define modelo y provider)"
+        "--agent", "-a", default="default", help="Agente DQIII8 (define modelo y provider)"
     )
     parser.add_argument(
         "--model", "-m", default=None, help="Modelo explícito (sobreescribe --agent)"
@@ -545,7 +545,7 @@ def main() -> None:
                 if _knowledge_chunks > 0:
                     _enriched_domain = _domain
                     print(
-                        f"[JARVIS] knowledge enrichment: domain={_domain} chunks={_knowledge_chunks}",
+                        f"[DQIII8] knowledge enrichment: domain={_domain} chunks={_knowledge_chunks}",
                         file=sys.stderr,
                     )
     except Exception:
@@ -571,7 +571,7 @@ def main() -> None:
 
     # Intentar cada proveedor en orden
     for provider, model in chain:
-        print(f"[JARVIS] {agent_name} | {provider} | {model}", file=sys.stderr)
+        print(f"[DQIII8] {agent_name} | {provider} | {model}", file=sys.stderr)
         t0 = int(time.time() * 1000)
         text, tokens_in, tokens_out, ok = stream_response(provider, model, prompt)
         duration_ms = int(time.time() * 1000) - t0
@@ -591,7 +591,7 @@ def main() -> None:
         if ok:
             sys.exit(0)
 
-        print(f"[JARVIS] {provider} falló — intentando siguiente...", file=sys.stderr)
+        print(f"[DQIII8] {provider} falló — intentando siguiente...", file=sys.stderr)
         _log_escalation("cli", agent_name, provider, model, err_msg)
 
     print("\n[openrouter_wrapper] Error: todos los providers fallaron.", file=sys.stderr)

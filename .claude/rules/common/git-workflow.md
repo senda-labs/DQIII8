@@ -24,6 +24,6 @@ When creating PRs:
 > see [development-workflow.md](./development-workflow.md).
 
 ---
-## ⚠️ JARVIS NOTE — Commit Attribution
-JARVIS commits incluyen "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>".
+## ⚠️ DQIII8 NOTE — Commit Attribution
+DQIII8 commits incluyen "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>".
 La línea "Attribution disabled" de ECC no aplica aquí.

@@ -86,7 +86,7 @@ node_modules/
 
 # === Internal/Private — never push to public repo ===
 CLAUDE.md
-CLAUDE.md.save
+CLAUDE.md.save*
 claude-progress.txt
 PLAN_MAESTRO.md
 00_DASHBOARD.md

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Integration Proposer
+DQIII8 — Integration Proposer
 Reads APROBADO_PENDIENTE_INTEGRACION items from research_items,
 writes a proposal.md, and sends a Telegram notification.
 
@@ -39,7 +39,7 @@ def _send_telegram(message: str) -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="JARVIS integration proposer")
+    parser = argparse.ArgumentParser(description="DQIII8 integration proposer")
     parser.add_argument("--dry-run", action="store_true", help="Print without writing/sending")
     args = parser.parse_args()
 
@@ -79,7 +79,7 @@ def main() -> None:
             f"URL: {url or 'N/A'}\n\n"
             f"## Summary\n{summary or 'N/A'}\n\n"
             f"## Suggested Integration\n"
-            f"Review the linked resource and determine if JARVIS can benefit from:\n"
+            f"Review the linked resource and determine if DQIII8 can benefit from:\n"
             f"- Adopting the technique/pattern described\n"
             f"- Adding a new skill or agent capability\n"
             f"- Updating an existing component\n\n"
@@ -97,7 +97,7 @@ def main() -> None:
 
             # Telegram notification
             tg_msg = (
-                f"[JARVIS] Nueva propuesta de integracion\n"
+                f"[DQIII8] Nueva propuesta de integracion\n"
                 f"Score: {score:.1f} | Shannon: {test_info.get('shannon', '?')}\n"
                 f"{title[:80]}\n"
                 f"Ver: tasks/integration_proposals/{proposal_file.name}\n\n"

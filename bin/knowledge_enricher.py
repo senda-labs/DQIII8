@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Knowledge Enricher
+DQIII8 — Knowledge Enricher
 
 Enriquece prompts con chunks relevantes del dominio antes de enviarlos al modelo.
 Requiere que el dominio haya sido indexado con knowledge_indexer.py --domain.

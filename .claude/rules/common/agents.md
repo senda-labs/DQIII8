@@ -49,8 +49,8 @@ For complex problems, use split role sub-agents:
 - Redundancy checker
 
 ---
-## ⚠️ JARVIS OVERRIDE
-Los agentes definidos en `.claude/agents/` de JARVIS reemplazan la tabla anterior.
+## ⚠️ DQIII8 OVERRIDE
+Los agentes definidos en `.claude/agents/` de DQIII8 reemplazan la tabla anterior.
 Agentes activos: python-specialist, git-specialist, code-reviewer, orchestrator,
 content-automator, data-analyst, creative-writer, auditor.
 Tabla de delegación: ver CLAUDE.md § Delegation.

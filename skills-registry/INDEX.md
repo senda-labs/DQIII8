@@ -22,28 +22,28 @@ Proceso: cache/ → revisión Iker → revisión Claude → APROBADA → custom/
 - Cache: `skills-registry/cache/obsidian-skills/skills/`
 - Custom (producción): `skills-registry/custom/`
 
-## Rules integradas (ECC + JARVIS)
+## Rules integradas (ECC + DQIII8)
 
 | Rule | Fuente | Status | Conflicto | Notas |
 |------|--------|--------|-----------|-------|
 | common/coding-style | ECC/affaan-m | ✅ APROBADA | No | Inmutabilidad, organización archivos |
-| common/git-workflow | ECC/affaan-m | ✅ APROBADA (con override) | Leve | JARVIS NOTE aplicado: atribución Co-Authored-By activa |
-| common/agents | ECC/affaan-m | ✅ APROBADA (con override) | **Sí** | Override aplicado: agentes JARVIS reemplazan tabla ECC |
-| common/performance | ECC/affaan-m | ✅ APROBADA (con override) | **Sí** | Override aplicado: routing 3-tier JARVIS reemplaza Haiku/Sonnet/Opus |
-| common/security | ECC/affaan-m | ✅ APROBADA | No | Compatible con jarvis-prohibitions |
+| common/git-workflow | ECC/affaan-m | ✅ APROBADA (con override) | Leve | DQIII8 NOTE aplicado: atribución Co-Authored-By activa |
+| common/agents | ECC/affaan-m | ✅ APROBADA (con override) | **Sí** | Override aplicado: agentes DQIII8 reemplazan tabla ECC |
+| common/performance | ECC/affaan-m | ✅ APROBADA (con override) | **Sí** | Override aplicado: routing 3-tier DQIII8 reemplaza Haiku/Sonnet/Opus |
+| common/security | ECC/affaan-m | ✅ APROBADA | No | Compatible con dqiii8-prohibitions |
 | common/testing | ECC/affaan-m | ✅ APROBADA | No | 80% coverage, TDD |
-| common/hooks | ECC/affaan-m | ✅ APROBADA | No | "no dangerously-skip-permissions" alineado con jarvis-prohibitions |
+| common/hooks | ECC/affaan-m | ✅ APROBADA | No | "no dangerously-skip-permissions" alineado con dqiii8-prohibitions |
 | common/patterns | ECC/affaan-m | ✅ APROBADA | No | Repository pattern, skeleton projects |
 | common/development-workflow | ECC/affaan-m | ✅ APROBADA | No | Research→Plan→TDD→Review→Commit |
-| python/coding-style | ECC/affaan-m | ✅ APROBADA | No | PEP8, type hints — ver jarvis-python para overrides |
-| python/hooks | ECC/affaan-m | ✅ APROBADA | No | Black/ruff auto-format — compatible con PostToolUse JARVIS |
+| python/coding-style | ECC/affaan-m | ✅ APROBADA | No | PEP8, type hints — ver dqiii8-python para overrides |
+| python/hooks | ECC/affaan-m | ✅ APROBADA | No | Black/ruff auto-format — compatible con PostToolUse DQIII8 |
 | python/patterns | ECC/affaan-m | ✅ APROBADA | No | Protocol, dataclasses, async |
 | python/security | ECC/affaan-m | ✅ APROBADA | No | dotenv, KeyError si falta secret |
 | python/testing | ECC/affaan-m | ✅ APROBADA | No | pytest, coverage |
-| jarvis-prohibitions | JARVIS | ✅ APROBADA | — | Reglas absolutas JARVIS, máxima prioridad |
-| jarvis-python | JARVIS | ✅ APROBADA | — | Black, pathlib, encoding, async |
-| jarvis-autonomy | JARVIS | ✅ APROBADA | — | Modo VPS, acciones destructivas |
-| jarvis-context-window | JARVIS | ✅ APROBADA | — | Green/Yellow/Orange/Red thresholds |
+| dqiii8-prohibitions | DQIII8 | ✅ APROBADA | — | Reglas absolutas DQIII8, máxima prioridad |
+| dqiii8-python | DQIII8 | ✅ APROBADA | — | Black, pathlib, encoding, async |
+| dqiii8-autonomy | DQIII8 | ✅ APROBADA | — | Modo VPS, acciones destructivas |
+| dqiii8-context-window | DQIII8 | ✅ APROBADA | — | Green/Yellow/Orange/Red thresholds |
 
 ## Revisión de agentes externos — VoltAgent/awesome-claude-code-subagents (2026-03-18)
 
@@ -52,11 +52,11 @@ Fecha: 2026-03-18 | Revisado por: Iker + Claude
 
 ### Fase 1 — Agentes principales (research, data, creative)
 
-| Agente JARVIS | Candidato VoltAgent | Veredicto | Motivo |
+| Agente DQIII8 | Candidato VoltAgent | Veredicto | Motivo |
 |---------------|---------------------|-----------|--------|
-| research-analyst | Sin equivalente (closest: technical-writer, content-marketer) | ✅ JARVIS GANA | VoltAgent no tiene agente de síntesis de fuentes. technical-writer = docs, content-marketer = SEO/ROI. Ninguno hace research briefs. |
-| data-analyst | data-analyst (haiku) + quant-analyst (opus) | ✅ JARVIS GANA + ADOPCIÓN PARCIAL | data-analyst VoltAgent usa Haiku orientado a BI (Tableau/Power BI). quant-analyst (opus) es el agente correcto para trading sistemático con perfil financiero Carlos III. **Instalado**: quant-analyst como agente nuevo, no reemplazo de data-analyst. Separación de responsabilidades: data-analyst = WACC/DCF académico, quant-analyst = backtesting/VaR/GARCH/trading. |
-| creative-writer | Sin equivalente (closest: content-marketer) | ✅ JARVIS GANA | VoltAgent no tiene escritura narrativa creativa. content-marketer = SEO/conversiones/leads — opuesto a prosa literaria española xianxia. |
+| research-analyst | Sin equivalente (closest: technical-writer, content-marketer) | ✅ DQIII8 GANA | VoltAgent no tiene agente de síntesis de fuentes. technical-writer = docs, content-marketer = SEO/ROI. Ninguno hace research briefs. |
+| data-analyst | data-analyst (haiku) + quant-analyst (opus) | ✅ DQIII8 GANA + ADOPCIÓN PARCIAL | data-analyst VoltAgent usa Haiku orientado a BI (Tableau/Power BI). quant-analyst (opus) es el agente correcto para trading sistemático con perfil financiero Carlos III. **Instalado**: quant-analyst como agente nuevo, no reemplazo de data-analyst. Separación de responsabilidades: data-analyst = WACC/DCF académico, quant-analyst = backtesting/VaR/GARCH/trading. |
+| creative-writer | Sin equivalente (closest: content-marketer) | ✅ DQIII8 GANA | VoltAgent no tiene escritura narrativa creativa. content-marketer = SEO/conversiones/leads — opuesto a prosa literaria española xianxia. |
 
 ### Fase 2 — Agentes especializados para trading sistemático (2026-03-18)
 
@@ -73,22 +73,22 @@ Fecha: 2026-03-18 | Revisado por: Iker + Claude
 
 | Skill | Fuente | Status | Aprobada por | Notas |
 |-------|--------|--------|--------------|-------|
-| jarvis-multi-provider-routing | git-analysis/jarvis (50 commits) | ✅ APROBADA | Iker | Patrón 3-tier routing: cuándo añadir providers, fallback chain, anti-patrones. Modelos Tier-2 corregidos (nemotron:free, qwen3:free) |
-| jarvis-agent-creation | git-analysis/jarvis (50 commits) | ✅ APROBADA | Iker | Estructura canónica de agentes, modelo correcto por tier, archivos co-cambiados. data-analyst corregido a claude-sonnet-4-6 |
+| dqiii8-multi-provider-routing | git-analysis/dqiii8 (50 commits) | ✅ APROBADA | Iker | Patrón 3-tier routing: cuándo añadir providers, fallback chain, anti-patrones. Modelos Tier-2 corregidos (nemotron:free, qwen3:free) |
+| dqiii8-agent-creation | git-analysis/dqiii8 (50 commits) | ✅ APROBADA | Iker | Estructura canónica de agentes, modelo correcto por tier, archivos co-cambiados. data-analyst corregido a claude-sonnet-4-6 |
 | continuous-learning-v2 | ECC/affaan-m (adaptado) | ✅ APROBADA | Iker | Instincts SQLite + stop.py integration + /instinct-status command |
 
 ## Skills externas revisadas (2026-03-18)
 
 | Skill | Fuente | Status | Aprobada por | Notas |
 |-------|--------|--------|--------------|-------|
-| vibesec | BehiSecc/VibeSec-Skill | ✅ APROBADA | Iker + Claude | OWASP top-10: SQL injection, SSRF, path traversal, secret exposure, file upload, XSS, CSRF, JWT, API security. Adaptada al stack Python/FastAPI/SQLite de JARVIS. Integrada en code-reviewer. |
+| vibesec | BehiSecc/VibeSec-Skill | ✅ APROBADA | Iker + Claude | OWASP top-10: SQL injection, SSRF, path traversal, secret exposure, file upload, XSS, CSRF, JWT, API security. Adaptada al stack Python/FastAPI/SQLite de DQIII8. Integrada en code-reviewer. |
 | binance-spot | binance/binance-skills-hub | ✅ APROBADA | Iker + Claude | Binance Spot API completa: K-lines, order placement (MARKET/LIMIT/OCO/STOP), account info, trade history. Testnet + mainnet. Para proyecto trading-sistemático. |
 
 ## Combos activos (actualizado)
 
 | Proyecto | Skills cargadas |
 |----------|----------------|
-| jarvis-core | obsidian-markdown, obsidian-bases, evolved/ssim |
+| dqiii8-core | obsidian-markdown, obsidian-bases, evolved/ssim |
 | content-automation | obsidian-markdown, fal-ai-media |
 | hult-finance | obsidian-markdown, defuddle |
 | leyendas-del-este | obsidian-markdown |
@@ -111,9 +111,9 @@ Fecha: 2026-03-18 | Revisado por: Iker + Claude
 
 | Skill | Fuente | Status | Aprobada por | Notas |
 |-------|--------|--------|--------------|-------|
-| security-review | ECC/affaan-m (adaptado Python/SQLite) | ✅ APROBADA | Iker | OWASP checklist JARVIS-adaptado: secrets, SQL injection, shell safety, hook safety |
+| security-review | ECC/affaan-m (adaptado Python/SQLite) | ✅ APROBADA | Iker | OWASP checklist DQIII8-adaptado: secrets, SQL injection, shell safety, hook safety |
 | verification-loop | ECC/affaan-m (adaptado Black/pytest) | ✅ APROBADA | Iker | Pipeline post-código: black → ruff → mypy → pytest → security scan → diff |
 | tdd-workflow | ECC/affaan-m (adaptado pytest) | ✅ APROBADA | Iker | TDD con pytest: RED→GREEN→REFACTOR, fixtures SQLite in-memory, smoke tests CLI |
 | fal-ai-media | ECC/affaan-m (adaptado content-automation) | ✅ APROBADA | Iker | flux-general + negative_prompt + reference_image_url + Seedance video + costes |
-| strategic-compact | ECC/affaan-m (adaptado JARVIS) | ✅ APROBADA | Iker | Compactar en boundaries lógicos, no mid-task; complementa jarvis-context-window.md |
+| strategic-compact | ECC/affaan-m (adaptado DQIII8) | ✅ APROBADA | Iker | Compactar en boundaries lógicos, no mid-task; complementa dqiii8-context-window.md |
 | evolved/ssim | /evolve auto (4 instincts) | ✅ APROBADA | Iker | R1-R4: delta-injection prohibida, resolucion scorer exacta, anomalia >0.1 = hacking, lever estructural |

@@ -1,7 +1,7 @@
 ---
 name: verification-loop
 description: Use this skill after writing or modifying Python code. Runs a structured verification pipeline — format → lint → type → test → diff — and blocks progression if any phase fails.
-origin: ECC/affaan-m (adaptado para JARVIS — Black + pytest + mypy)
+origin: ECC/affaan-m (adaptado para DQIII8 — Black + pytest + mypy)
 status: APROBADA
 ---
 
@@ -19,7 +19,7 @@ status: APROBADA
 ### Phase 1 — Format (Black)
 
 ```bash
-cd /root/jarvis
+cd /root/dqiii8
 black --check . 2>&1 | tail -10
 ```
 
@@ -45,7 +45,7 @@ Fix `error:` lines. `note:` lines are informational.
 ### Phase 4 — Test Suite (pytest)
 
 ```bash
-cd /root/jarvis
+cd /root/dqiii8
 python3 -m pytest tests/ -x -q 2>&1 | tail -30
 ```
 

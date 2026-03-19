@@ -1,6 +1,6 @@
 ---
 name: skill-create
-description: Analiza el historial git de JARVIS (y content-automation-faceless) para extraer patrones y generar SKILL.md en skills-registry/custom/. Versión adaptada de ECC skill-create para el ecosistema JARVIS.
+description: Analiza el historial git de DQIII8 (y content-automation-faceless) para extraer patrones y generar SKILL.md en skills-registry/custom/. Versión adaptada de ECC skill-create para el ecosistema DQIII8.
 allowed_tools: ["Bash", "Read", "Write", "Grep", "Glob"]
 ---
 
@@ -12,7 +12,7 @@ reutilizables en `skills-registry/custom/`.
 ## Uso
 
 ```
-/skill-create                        # Analiza /root/jarvis (últimos 50 commits)
+/skill-create                        # Analiza /root/dqiii8 (últimos 50 commits)
 /skill-create --commits 100          # Más commits
 /skill-create --repo content         # Analiza /root/content-automation-faceless
 /skill-create --repo all             # Analiza ambos repos
@@ -24,7 +24,7 @@ reutilizables en `skills-registry/custom/`.
 1. **Parsea el historial git** — commits reales, archivos cambiados, frecuencia de co-cambio
 2. **Filtra ruido** — excluye: merge commits, "session handover", "gemini review", "auto-commit", stop hook
 3. **Detecta patrones** — workflows repetidos, arquitectura, convenciones
-4. **Genera SKILL.md** — compatible con INDEX.md de JARVIS
+4. **Genera SKILL.md** — compatible con INDEX.md de DQIII8
 5. **Actualiza INDEX.md** — añade la skill con estado PENDIENTE_REVISION
 
 ## Pasos de análisis
@@ -32,7 +32,7 @@ reutilizables en `skills-registry/custom/`.
 ### Paso 1: Recopilar datos git
 
 ```bash
-REPO=${REPO:-/root/jarvis}
+REPO=${REPO:-/root/dqiii8}
 cd $REPO
 
 # Commits significativos (excluir ruido)
@@ -73,7 +73,7 @@ version: 1.0.0
 source: git-analysis/{repo-name}
 analyzed_commits: {count}
 analyzed_date: {YYYY-MM-DD}
-repos: [/root/jarvis, /root/content-automation-faceless]  # según aplique
+repos: [/root/dqiii8, /root/content-automation-faceless]  # según aplique
 ---
 
 # {Skill Name}
@@ -105,7 +105,7 @@ Añadir a `skills-registry/INDEX.md`:
 | {skill-name} | git-analysis/{repo} | ⏸ PENDIENTE_REVISION | — | {descripción} |
 ```
 
-Columnas requeridas por JARVIS: `Skill | Fuente | Status | Aprobada por | Notas`
+Columnas requeridas por DQIII8: `Skill | Fuente | Status | Aprobada por | Notas`
 
 ### Paso 5 (opcional): Generar instincts
 
@@ -135,28 +135,28 @@ evidence_commits: {count}
 
 | Repo | Path | Foco |
 |------|------|------|
-| jarvis | `/root/jarvis` | Infraestructura, agentes, JAL, routing |
+| dqiii8 | `/root/dqiii8` | Infraestructura, agentes, JAL, routing |
 | content-automation | `/root/content-automation-faceless` | Pipeline media, TTS, video |
 
 ## Output esperado
 
 ```
 skills-registry/custom/
-├── jarvis-multi-provider-routing/
+├── dqiii8-multi-provider-routing/
 │   └── SKILL.md
-├── jarvis-agent-creation/
+├── dqiii8-agent-creation/
 │   └── SKILL.md
 └── {nombre-detectado}/
     ├── SKILL.md
     └── instinct.yaml  # si --instincts
 ```
 
-## Notas JARVIS
+## Notas DQIII8
 
 - Output: `skills-registry/custom/` (NO `~/.claude/skills/`)
 - Status inicial siempre: `⏸ PENDIENTE_REVISION`
 - Para aprobar: Iker revisa → `✅ APROBADA` → añadir a combo en INDEX.md
-- Prohibición: no cargar skills de `cache/` sin revisión (ver jarvis-prohibitions.md)
+- Prohibición: no cargar skills de `cache/` sin revisión (ver dqiii8-prohibitions.md)
 
 ---
-*Adaptado de ECC /skill-create para JARVIS — ver /tmp/ecc/commands/skill-create.md para original*
+*Adaptado de ECC /skill-create para DQIII8 — ver /tmp/ecc/commands/skill-create.md para original*

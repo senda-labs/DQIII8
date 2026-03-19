@@ -36,13 +36,13 @@ WHERE timestamp >= datetime('now', '-7 days');
 
 ```markdown
 ---
-title: JARVIS Dashboard
+title: DQIII8 Dashboard
 date_updated: YYYY-MM-DD HH:MM
 week_number: W[N] YYYY
 tags: [dashboard, weekly]
 ---
 
-# JARVIS Dashboard
+# DQIII8 Dashboard
 **Actualizado:** YYYY-MM-DD · Semana W[N]
 
 ## Estado de Proyectos
@@ -52,7 +52,7 @@ tags: [dashboard, weekly]
 | [[content-automation]] | 🟢 Activo | [1-liner] | [próximo paso] |
 | [[hult-finance]] | 🟡 Activo | [1-liner] | [próximo paso] |
 | [[leyendas-del-este]] | 🔵 Pausado | [1-liner] | [próximo paso] |
-| [[jarvis-core]] | 🟢 Activo | [1-liner] | [próximo paso] |
+| [[dqiii8-core]] | 🟢 Activo | [1-liner] | [próximo paso] |
 
 ## Sesiones esta semana
 

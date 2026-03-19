@@ -1,5 +1,5 @@
 #!/bin/bash
-# JARVIS — Autonomous Loop
+# DQIII8 — Autonomous Loop
 # Lanza claude en modo autónomo con supervisor 3-layer activo.
 # Uso: autonomous_loop.sh 'objetivo' [horas_max]
 #

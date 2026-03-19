@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — PermissionRequest v2 (supervisor 3-layer autónomo)
+DQIII8 Hook — PermissionRequest v2 (supervisor 3-layer autónomo)
 
 Layer 1 — READ_PREFIXES fast-path:
     - Read-only tools (Read, Glob, Grep, LS, WebFetch, WebSearch, TodoRead)
@@ -145,7 +145,7 @@ def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> di
     """
     inp_summary = json.dumps(tool_input, ensure_ascii=False)[:300]
     prompt = (
-        f"JARVIS autonomous supervisor. Evaluate if this tool use aligns with the objective.\n"
+        f"DQIII8 autonomous supervisor. Evaluate if this tool use aligns with the objective.\n"
         f"Objective: {objective}\n"
         f"Tool: {tool_name}\n"
         f"Input: {inp_summary}\n\n"
@@ -264,7 +264,7 @@ def _layer3_telegram_flow(
     inp_summary = json.dumps(tool_input, ensure_ascii=False)[:200]
 
     msg = (
-        f"⚠️ JARVIS ESCALA — {label}\n"
+        f"⚠️ DQIII8 ESCALA — {label}\n"
         f"Motivo: {trigger_reason[:200]}\n"
         f"Tool: {tool_name}\n"
         f"Input: {inp_summary}\n"

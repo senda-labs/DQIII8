@@ -283,7 +283,7 @@ def print_summary(conn: sqlite3.Connection) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Train JARVIS instincts from session data")
+    parser = argparse.ArgumentParser(description="Train DQIII8 instincts from session data")
     parser.add_argument("--dry-run", action="store_true", help="Print without writing")
     parser.add_argument(
         "--lookback-days",

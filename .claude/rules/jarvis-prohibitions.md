@@ -1,4 +1,4 @@
-# JARVIS — Prohibiciones (NEVER)
+# DQIII8 — Prohibiciones (NEVER)
 
 > Reglas absolutas del sistema. Prioridad máxima sobre cualquier otra rule.
 

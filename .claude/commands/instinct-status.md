@@ -12,7 +12,7 @@ Muestra los instincts de aprendizaje continuo almacenados en `jarvis_metrics.db`
 
 ```
 /instinct-status
-/instinct-status --project jarvis-core
+/instinct-status --project dqiii8-core
 /instinct-status --top 10
 ```
 
@@ -29,7 +29,7 @@ Muestra los instincts de aprendizaje continuo almacenados en `jarvis_metrics.db`
 python3 -c "
 import sqlite3, os, sys
 
-DB = '/root/jarvis/database/jarvis_metrics.db'
+DB = '/root/dqiii8/database/jarvis_metrics.db'
 project_filter = None
 top_n = 20
 
@@ -95,7 +95,7 @@ for kw, pattern, conf, applied, successful, proj, created in rows:
   INSTINCT STATUS — 5 total
 ============================================================
 
-## JARVIS-CORE
+## DQIII8-CORE
   ████████░░  80%  [nested-claude]{tag}
     aplicado: 3x  exitoso: 100%  desde: 2026-03-12
     [2026-03-12] [nested-claude] usar claude CLI dentro de session → usar OpenRouter
@@ -105,7 +105,7 @@ for kw, pattern, conf, applied, successful, proj, created in rows:
     aplicado: 1x  exitoso: 0%  desde: 2026-03-12
 ```
 
-## Notas JARVIS
+## Notas DQIII8
 
 - Fuente: `database/jarvis_metrics.db` tabla `instincts`
 - Se actualiza en cada stop.py cuando hay lecciones nuevas en `tasks/lessons.md`

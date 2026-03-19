@@ -29,7 +29,7 @@ los agrupa por keyword raiz, y genera skill drafts para clusters con 3+ instinct
 ## Implementacion
 
 ```bash
-python3 /root/jarvis/bin/evolve.py "$@"
+python3 /root/dqiii8/bin/evolve.py "$@"
 ```
 
 ## Flujo de aprobacion
@@ -39,7 +39,7 @@ python3 /root/jarvis/bin/evolve.py "$@"
 3. Cambiar status en `INDEX.md` a `✅ APROBADA`
 4. Mover de `custom/evolved/` a `custom/[nombre]/SKILL.md`
 
-## Notas JARVIS
+## Notas DQIII8
 
 - Threshold por defecto: `confidence >= 0.7 OR times_applied >= 5`
 - Las skills en `custom/evolved/` NO se cargan en sesion — requieren aprobacion manual

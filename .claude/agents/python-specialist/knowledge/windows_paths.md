@@ -1,4 +1,4 @@
-# Windows / Cross-Platform Paths — Lecciones JARVIS
+# Windows / Cross-Platform Paths — Lecciones DQIII8
 
 ## Regla Fundamental
 
@@ -7,11 +7,11 @@ SIEMPRE usar `pathlib.Path()`. NUNCA concatenar strings para rutas.
 ```python
 # CORRECTO
 from pathlib import Path
-output = Path("/root/jarvis/tasks/results") / "output.mp4"
+output = Path("/root/dqiii8/tasks/results") / "output.mp4"
 ffmpeg_path = output.resolve().as_posix()
 
 # INCORRECTO
-output = "/root/jarvis/tasks/results" + "/" + "output.mp4"
+output = "/root/dqiii8/tasks/results" + "/" + "output.mp4"
 ```
 
 ## FFmpeg y Paths con Espacios
@@ -77,16 +77,16 @@ subprocess.run(cmd, cwd=str(working_dir), check=True)
 
 ## Paths Relativos vs. Absolutos
 
-En scripts JARVIS: usar siempre absolutos desde JARVIS_ROOT.
+En scripts DQIII8: usar siempre absolutos desde JARVIS_ROOT.
 
 ```python
-JARVIS_ROOT = Path("/root/jarvis")
+JARVIS_ROOT = Path("/root/dqiii8")
 TASKS_DIR = JARVIS_ROOT / "tasks" / "results"
 AGENTS_DIR = JARVIS_ROOT / ".claude" / "agents"
 
 # Para scripts que se llaman desde distintos cwd:
 SCRIPT_DIR = Path(__file__).parent
-PROJECT_ROOT = SCRIPT_DIR.parent  # bin/ → jarvis/
+PROJECT_ROOT = SCRIPT_DIR.parent  # bin/ → dqiii8/
 ```
 
 ## Patrones de Validación

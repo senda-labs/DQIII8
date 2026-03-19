@@ -1,7 +1,7 @@
 ---
 name: security-review
-description: Use this skill when adding authentication, handling user input, working with secrets, creating API endpoints, or implementing any feature that touches credentials or external services. Provides JARVIS-adapted security checklist.
-origin: ECC/affaan-m (adaptado para JARVIS — Python/SQLite/FastAPI)
+description: Use this skill when adding authentication, handling user input, working with secrets, creating API endpoints, or implementing any feature that touches credentials or external services. Provides DQIII8-adapted security checklist.
+origin: ECC/affaan-m (adaptado para DQIII8 — Python/SQLite/FastAPI)
 status: APROBADA
 ---
 
@@ -30,7 +30,7 @@ os.system(f"curl -H 'Auth: {key}'")    # secret in shell log
 ```python
 from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv(Path("/root/jarvis/.env"))
+load_dotenv(Path("/root/dqiii8/.env"))
 key = os.getenv("OPENROUTER_API_KEY", "")
 if not key:
     raise KeyError("OPENROUTER_API_KEY missing from .env")
@@ -38,7 +38,7 @@ if not key:
 
 **Verify:**
 - [ ] No secrets in source files (`grep -r "sk-" . --include="*.py"`)
-- [ ] All keys load from `/root/jarvis/.env` via dotenv
+- [ ] All keys load from `/root/dqiii8/.env` via dotenv
 - [ ] `.env` in `.gitignore`
 
 ### 2. SQL Injection Prevention
@@ -124,7 +124,7 @@ logger.info(f"Using key: {api_key[:8]}***")
 
 **Verify:**
 - [ ] No full API keys or tokens in log statements
-- [ ] Error messages don't leak internal paths beyond `/root/jarvis`
+- [ ] Error messages don't leak internal paths beyond `/root/dqiii8`
 
 ## Pre-Commit Security Checklist
 
@@ -136,6 +136,6 @@ logger.info(f"Using key: {api_key[:8]}***")
 
 ## Resources
 
-- JARVIS prohibitions: `.claude/rules/jarvis-prohibitions.md`
+- DQIII8 prohibitions: `.claude/rules/dqiii8-prohibitions.md`
 - Python security rules: `.claude/rules/python/security.md`
 - OWASP Top 10: https://owasp.org/www-project-top-ten/

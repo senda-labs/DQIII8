@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — PreToolUse v5
+DQIII8 Hook — PreToolUse v5
 Thin wrapper: parse stdin → PermissionAnalyzer → handle result + metrics.
 Toda la lógica de permisos (budget, JARVIS_MODE, ALLOWED_DELETIONS…)
 vive exclusivamente en permission_analyzer.py.

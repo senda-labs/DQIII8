@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — PostToolUseFailure
+DQIII8 Hook — PostToolUseFailure
 Dedicated error capture for tool-level failures.
 
 Triggered by Claude Code's PostToolUseFailure event (tool crash, permission

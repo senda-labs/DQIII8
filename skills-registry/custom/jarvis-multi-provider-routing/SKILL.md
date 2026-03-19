@@ -1,17 +1,17 @@
 ---
-name: jarvis-multi-provider-routing
+name: dqiii8-multi-provider-routing
 version: 1.0.0
-source: git-analysis/jarvis
+source: git-analysis/dqiii8
 analyzed_commits: 50
 analyzed_date: 2026-03-12
-repos: [/root/jarvis]
+repos: [/root/dqiii8]
 ---
 
-# JARVIS Multi-Provider Routing
+# DQIII8 Multi-Provider Routing
 
 ## Patrón detectado
 
-JARVIS usa un sistema de 3 tiers con fallback automático para enrutar prompts
+DQIII8 usa un sistema de 3 tiers con fallback automático para enrutar prompts
 al proveedor más barato que pueda resolver la tarea.
 
 **Evidencia del historial:**
@@ -22,7 +22,7 @@ al proveedor más barato que pueda resolver la tarea.
 
 ## Cuándo usar esta skill
 
-- Añadir un nuevo proveedor de LLM a JARVIS
+- Añadir un nuevo proveedor de LLM a DQIII8
 - Añadir un nuevo agente y asignarle modelo
 - Debuggear por qué una llamada usa el tier incorrecto
 - Añadir fallback a un provider existente

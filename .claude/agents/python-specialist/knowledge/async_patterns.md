@@ -1,4 +1,4 @@
-# Async/Await — Patrones JARVIS
+# Async/Await — Patrones DQIII8
 
 ## Regla Fundamental
 
@@ -18,7 +18,7 @@ async def process_matrix(data: list) -> list:  # no async necesario
 
 ## Patrón: Batch de API Calls en Paralelo
 
-Usado en JARVIS para TTS multi-segmento y requests a OpenRouter/Groq.
+Usado en DQIII8 para TTS multi-segmento y requests a OpenRouter/Groq.
 
 ```python
 import asyncio
@@ -85,7 +85,7 @@ async def run_ffmpeg_async(cmd: list[str]) -> tuple[int, str, str]:
 
 ## Patrón: Streaming Generator (evitar OOM)
 
-Lección JARVIS: acumular frames en List[np.ndarray] causa OOM.
+Lección DQIII8: acumular frames en List[np.ndarray] causa OOM.
 Solución: generators + render_to_dir en lugar de acumular en memoria.
 
 ```python
@@ -130,7 +130,7 @@ async def fetch_with_timeout(url: str, timeout_s: float = 30.0) -> dict:
         raise TimeoutError(f"Request to {url} timed out after {timeout_s}s")
 ```
 
-## Anti-Patrones Comunes en JARVIS
+## Anti-Patrones Comunes en DQIII8
 
 | Anti-patrón | Problema | Solución |
 |-------------|---------|---------|

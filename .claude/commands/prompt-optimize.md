@@ -1,6 +1,6 @@
-# /prompt-optimize — Optimize a Prompt for JARVIS/Pipeline
+# /prompt-optimize — Optimize a Prompt for DQIII8/Pipeline
 
-Analyze and optimize a prompt for maximum effectiveness in the JARVIS ecosystem
+Analyze and optimize a prompt for maximum effectiveness in the DQIII8 ecosystem
 (LLM routing, scene director, TTS, Telegram bot, or agent instructions).
 
 ## Usage
@@ -33,7 +33,7 @@ Given the prompt in `$ARGUMENTS`:
 
 ### 3. Produce optimized version
 
-Apply these JARVIS-specific improvements:
+Apply these DQIII8-specific improvements:
 
 **For LLM prompts:**
 - Add `Output ONLY JSON (no markdown):` if structured output needed

@@ -1,6 +1,6 @@
 # /quality-gate — On-Demand Quality Pipeline
 
-Run the JARVIS quality pipeline for a file or directory scope.
+Run the DQIII8 quality pipeline for a file or directory scope.
 
 ## Usage
 

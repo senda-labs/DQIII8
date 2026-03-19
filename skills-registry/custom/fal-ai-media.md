@@ -124,13 +124,13 @@ result = fal_client.subscribe("fal-ai/any-llm", arguments={"model": "list"})
 
 O buscar en https://fal.ai/models con filtro `image-to-image`, `text-to-image`.
 
-## Tips JARVIS
+## Tips DQIII8
 
 1. **Escena 0 primero** — Generar escena 0 sola, obtener `image_url`, luego usar como `reference_image_url` para escenas 1-4.
 2. **Paralelismo** — Escenas 1-4 pueden generarse en paralelo con `asyncio.gather()` una vez se tiene la URL de referencia.
 3. **Reintentos** — fal.ai puede timeoutear. Máximo 2 reintentos, espera 5s entre intentos.
 4. **Logging** — Guardar `image_url`, `image_path`, y `image_score` en `scene_scripts` tabla.
-5. **FAL_KEY** — Cargar desde `/root/content-automation-faceless/config/.env` (prioridad) o `/root/jarvis/.env`.
+5. **FAL_KEY** — Cargar desde `/root/content-automation-faceless/config/.env` (prioridad) o `/root/dqiii8/.env`.
 
 ## Errores comunes
 

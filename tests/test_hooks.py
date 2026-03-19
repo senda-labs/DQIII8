@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Hook Unit Tests
+DQIII8 — Hook Unit Tests
 Covers: precompact, pre_tool_use._model_tier, post_tool_use implicit correction,
         and concurrent resource claim conflict detection.
 """

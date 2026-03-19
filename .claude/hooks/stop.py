@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — Stop
+DQIII8 Hook — Stop
 Cierra sesión en BD, actualiza lessons.md, auto-commit, flag de auditoría.
 """
 
@@ -141,7 +141,7 @@ try:
     _auto_count, _patterns_count = _detect(session_id=session, db_path=str(DB))
     if _auto_count:
         lessons_added += _auto_count
-        print(f"[JARVIS] {_auto_count} auto-lesson(s) detectada(s) ({_patterns_count} patrones)")
+        print(f"[DQIII8] {_auto_count} auto-lesson(s) detectada(s) ({_patterns_count} patrones)")
 except Exception as _ale:
     pass
 
@@ -193,7 +193,7 @@ try:
         _ic.commit()
         _ic.close()
         if _inserted:
-            print(f"[JARVIS] {_inserted} instinct(s) extraidos de lessons.md")
+            print(f"[DQIII8] {_inserted} instinct(s) extraidos de lessons.md")
 except Exception:
     pass
 
@@ -285,7 +285,7 @@ try:
                         _vic.commit()
                         _vic.close()
                         if _vcnt:
-                            print(f"[JARVIS] {_vcnt} vault fact(s) extracted")
+                            print(f"[DQIII8] {_vcnt} vault fact(s) extracted")
 except Exception:
     pass
 
@@ -330,7 +330,7 @@ try:
             _ic.commit()
             _ic.close()
             if _updated:
-                print(f"[JARVIS] intelligence loop: {_updated} instinct(s) updated")
+                print(f"[DQIII8] intelligence loop: {_updated} instinct(s) updated")
 except Exception:
     pass
 
@@ -601,10 +601,10 @@ duration: {_duration_str}
                         stderr=subprocess.STDOUT,
                     )
                     print(
-                        "[JARVIS] Gemini review iniciado en background — reporte en Obsidian en ~5min"
+                        "[DQIII8] Gemini review iniciado en background — reporte en Obsidian en ~5min"
                     )
             except Exception as _ge:
-                print(f"[JARVIS] Gemini review skip: {_ge}")
+                print(f"[DQIII8] Gemini review skip: {_ge}")
 
 except Exception:
     pass  # handover failure never blocks shutdown
@@ -624,7 +624,7 @@ try:
             f"Auditoría pendiente [{_priority}] — {_reason}\n"
             "Ejecuta /audit al inicio de la próxima sesión."
         )
-        print(f"[JARVIS SPC] Audit flag set — {_reason}")
+        print(f"[DQIII8 SPC] Audit flag set — {_reason}")
 except Exception as _spc_e:
     # Fallback: simple 7-day check if SPC module unavailable
     try:
@@ -689,7 +689,7 @@ try:
         _now_str = _dt.now().strftime("%Y-%m-%d %H:%M")
 
         _lines = [
-            f"# JARVIS — Estado Persistente Inter-sesión\n",
+            f"# DQIII8 — Estado Persistente Inter-sesión\n",
             f"Última actualización: {_now_str}\n",
             f"Sesiones totales: {_total_sessions}\n",
             f"Score actual: {_score:.1f}/100 ({_audit_ts})\n",

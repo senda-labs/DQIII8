@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — SQLite MCP wrapper
+DQIII8 — SQLite MCP wrapper
 Expone jarvis_metrics.db como MCP server stdio para Claude Code.
 Uso: python sqlite_mcp.py [ruta_a_db]
 """

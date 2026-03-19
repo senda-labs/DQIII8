@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Audit SPC Trigger
+DQIII8 — Audit SPC Trigger
 Statistical Process Control triggers for autonomous audit activation.
 
 Returns {"trigger": True, "reason": "T1 — ...", "priority": "HIGH"|"MEDIUM"}

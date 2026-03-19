@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — SessionStart
+DQIII8 Hook — SessionStart
 Inyecta contexto del proyecto, últimas lecciones y estado del sistema.
 """
 
@@ -191,7 +191,7 @@ except Exception:
     pass
 
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JARVIS — {datetime.now().strftime('%Y-%m-%d %H:%M')}
+DQIII8 — {datetime.now().strftime('%Y-%m-%d %H:%M')}
 Modelo  : {model}
 Proyecto: {project}
 Próximo : {next_step}{audit_alert}

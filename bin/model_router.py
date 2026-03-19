@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Model Router dinámico
+DQIII8 — Model Router dinámico
 
 Consulta model_satisfaction DB y recomienda el mejor modelo para un task_type.
 

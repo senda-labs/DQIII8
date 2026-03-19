@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Knowledge Search
+DQIII8 — Knowledge Search
 
 Semantic search over agent knowledge index using cosine similarity
 against nomic-embed-text embeddings.
@@ -93,7 +93,7 @@ def search(agent_name: str, query: str, top_k: int = 5) -> list[dict]:
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Semantic search over JARVIS agent knowledge")
+    parser = argparse.ArgumentParser(description="Semantic search over DQIII8 agent knowledge")
     parser.add_argument("--agent", required=True, help="Agent name")
     parser.add_argument("query", help="Natural language search query")
     parser.add_argument("--top-k", type=int, default=5, dest="top_k")

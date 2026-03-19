@@ -1,7 +1,7 @@
 ---
 name: tdd-workflow
-description: Use this skill when writing new features or fixing bugs in JARVIS or content-automation-faceless. Enforces test-driven development with pytest — write test first, implement to pass, refactor.
-origin: ECC/affaan-m (adaptado para JARVIS — pytest, pathlib, SQLite)
+description: Use this skill when writing new features or fixing bugs in DQIII8 or content-automation-faceless. Enforces test-driven development with pytest — write test first, implement to pass, refactor.
+origin: ECC/affaan-m (adaptado para DQIII8 — pytest, pathlib, SQLite)
 status: APROBADA
 ---
 
@@ -31,7 +31,7 @@ from pathlib import Path
 from bin.statusline import _print
 
 def test_print_text_format():
-    m = {"project": "jarvis-core", "session_min": 5, "actions": 10,
+    m = {"project": "dqiii8-core", "session_min": 5, "actions": 10,
          "blocked": 1, "tokens": 4000, "audit_score": 82.0, "vault_facts": 28}
     # Should not raise; output contains project name
     import io, sys
@@ -39,7 +39,7 @@ def test_print_text_format():
     sys.stdout = buf
     _print(m, as_json=False)
     sys.stdout = sys.__stdout__
-    assert "jarvis-core" in buf.getvalue()
+    assert "dqiii8-core" in buf.getvalue()
     assert "Acciones: 10" in buf.getvalue()
 ```
 
@@ -68,7 +68,7 @@ python3 -m pytest tests/ --cov=bin --cov=.claude/hooks --cov-report=term-missing
 
 Target: ≥ 80% for the module under test.
 
-## JARVIS Test Patterns
+## DQIII8 Test Patterns
 
 ### SQLite integration test (in-memory DB)
 
@@ -114,7 +114,7 @@ import subprocess, sys
 def test_statusline_runs():
     result = subprocess.run(
         [sys.executable, "bin/statusline.py", "--json"],
-        capture_output=True, text=True, cwd="/root/jarvis"
+        capture_output=True, text=True, cwd="/root/dqiii8"
     )
     assert result.returncode == 0
     import json
@@ -127,14 +127,14 @@ def test_statusline_runs():
 | Wrong | Correct |
 |-------|---------|
 | Test implementation details (internal variable names) | Test observable behavior (output, DB state) |
-| Test with real `/root/jarvis/database/jarvis_metrics.db` | Use `:memory:` or `tmp_path` fixture |
+| Test with real `/root/dqiii8/database/jarvis_metrics.db` | Use `:memory:` or `tmp_path` fixture |
 | `assert result == True` | `assert result is True` or just `assert result` |
 | Giant test functions | One behavior per test function |
 
 ## File Organization
 
 ```
-/root/jarvis/
+/root/dqiii8/
   tests/
     test_statusline.py
     test_precompact.py

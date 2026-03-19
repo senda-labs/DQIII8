@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-JARVIS — System Architect
-Generates an ASCII diagram of the JARVIS system and writes it to tasks/system_diagram.md.
+DQIII8 — System Architect
+Generates an ASCII diagram of the DQIII8 system and writes it to tasks/system_diagram.md.
 
 Usage:
     python3 bin/jarvis_architect.py
@@ -18,7 +18,7 @@ JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 
 DIAGRAM = r"""
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                         JARVIS — System Architecture                        ║
+║                         DQIII8 — System Architecture                        ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║                                                                              ║
 ║  ┌─────────────────────────────────────────────────────────────────────┐    ║
@@ -116,7 +116,7 @@ DIAGRAM = r"""
 
 def generate(stdout_only: bool = False) -> None:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-    content = f"# JARVIS System Architecture\n\n_Generated: {ts}_\n\n```\n{DIAGRAM.strip()}\n```\n"
+    content = f"# DQIII8 System Architecture\n\n_Generated: {ts}_\n\n```\n{DIAGRAM.strip()}\n```\n"
 
     if stdout_only:
         print(content)
@@ -129,7 +129,7 @@ def generate(stdout_only: bool = False) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate JARVIS system architecture diagram.")
+    parser = argparse.ArgumentParser(description="Generate DQIII8 system architecture diagram.")
     parser.add_argument("--stdout", action="store_true", help="Print to stdout instead of file")
     args = parser.parse_args()
     generate(stdout_only=args.stdout)

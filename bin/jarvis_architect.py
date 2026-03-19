@@ -125,7 +125,7 @@ def generate(stdout_only: bool = False) -> None:
     out = JARVIS_ROOT / "tasks" / "system_diagram.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(content, encoding="utf-8")
-    print(f"[jarvis_architect] Diagram written to {out}")
+    print(f"[DQ] Diagram written to {out}")
 
 
 def main() -> None:

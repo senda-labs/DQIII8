@@ -27,7 +27,7 @@ def handle(req):
         respond(id_, {
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "jarvis-sqlite", "version": "1.0"}
+            "serverInfo": {"name": "dqiii8-sqlite", "version": "1.0"}
         })
 
     elif method == "tools/list":

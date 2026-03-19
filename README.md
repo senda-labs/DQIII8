@@ -158,6 +158,19 @@ TELEGRAM_CHAT_ID=...          # Optional: remote control
 
 ---
 
+## Telemetry
+
+DQIII8 includes optional anonymous telemetry to help improve the project.
+**It is disabled by default.**
+
+To enable: add `DQIII8_TELEMETRY=true` to your `.env`.
+
+See exactly what would be sent: `python3 bin/telemetry.py --collect`
+
+See [PRIVACY.md](PRIVACY.md) for full details on what is and isn't collected.
+
+---
+
 ## Architecture
 
 ```

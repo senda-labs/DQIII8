@@ -1,84 +1,190 @@
 #!/usr/bin/env bash
-# DQIII8 — Installer for Ubuntu 22.04 / 24.04
-# Usage: chmod +x install.sh && ./install.sh [--no-model]
+# DQIII8 — Universal Installer
+# Supports: Ubuntu 22.04+, Debian 12+, macOS 13+ (Ventura)
+#
+# Usage:
+#   From cloned repo:  bash install.sh [--no-model]
+#   Via curl:          curl -fsSL https://raw.githubusercontent.com/senda-labs/DQIII8/main/install.sh | bash
 #
 # Flags:
-#   --no-model    Skip pulling qwen2.5-coder:7b (useful in CI/Docker)
+#   --no-model    Skip pulling qwen2.5-coder:7b (recommended for CI/Docker)
+#
+# Environment vars:
+#   DQIII8_DIR    Override install location (default: /opt/dqiii8 for root, ~/dqiii8 for users)
+
 set -euo pipefail
 
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
 info()  { echo -e "${CYAN}[DQIII8]${NC} $*"; }
 ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 fail()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
-# ── Parse flags ───────────────────────────────────────────────────────
+# ── Parse flags ─────────────────────────────────────────────────────────────
 SKIP_MODEL=0
 for arg in "$@"; do
     [[ "$arg" == "--no-model" ]] && SKIP_MODEL=1
 done
 
-# ── Root detection (Docker/CI runs as root without sudo) ──────────────
+# ── Root / sudo detection ────────────────────────────────────────────────────
+NO_SYSTEM_PKGS=0
 if [ "$(id -u)" = "0" ]; then
     SUDO=""
-else
+    info "Running as root"
+elif command -v sudo &>/dev/null; then
     SUDO="sudo"
+    info "Running as user with sudo"
+else
+    warn "Not root and no sudo available."
+    warn "System packages must be pre-installed: python3.11+, python3-venv, git, curl, zstd, sqlite3"
+    SUDO=""
+    NO_SYSTEM_PKGS=1
 fi
 
-# ── Check OS ─────────────────────────────────────────────────────────
-if ! grep -qE 'Ubuntu (22|24)\.' /etc/os-release 2>/dev/null; then
-    echo "Warning: This script is designed for Ubuntu 22.04/24.04."
-    echo "It may work on other Debian-based systems."
-    read -rp "Continue anyway? [y/N] " yn
-    [[ "$yn" =~ ^[Yy]$ ]] || exit 1
+# ── OS / platform detection ──────────────────────────────────────────────────
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+DISTRO=""
+OS_VERSION=""
+
+case "$OS" in
+    Linux)
+        if [ -f /etc/os-release ]; then
+            # shellcheck disable=SC1091
+            . /etc/os-release
+            DISTRO="${ID:-linux}"
+            OS_VERSION="${VERSION_ID:-}"
+        else
+            DISTRO="linux"
+        fi
+        ;;
+    Darwin)
+        DISTRO="macos"
+        OS_VERSION="$(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
+        ;;
+    *)
+        fail "Unsupported OS: $OS. DQIII8 supports Ubuntu 22.04+, Debian 12+, macOS 13+"
+        ;;
+esac
+
+info "Detected: $DISTRO $OS_VERSION ($ARCH)"
+
+# ── Install directory ────────────────────────────────────────────────────────
+if [ "$(id -u)" = "0" ]; then
+    DEFAULT_DIR="/opt/dqiii8"
+else
+    DEFAULT_DIR="$HOME/dqiii8"
 fi
 
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$PROJECT_DIR"
+# If requirements.txt exists here, we're already inside the repo
+if [ -f "requirements.txt" ] && [ -f "database/schema.sql" ]; then
+    PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
+    cd "$PROJECT_DIR"
+    info "Running from existing repo: $PROJECT_DIR"
+else
+    # Curl-pipe mode: clone the repo first
+    INSTALL_DIR="${DQIII8_DIR:-$DEFAULT_DIR}"
+    info "Target install location: $INSTALL_DIR"
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        info "Repo already exists — pulling latest..."
+        git -C "$INSTALL_DIR" pull --quiet
+    else
+        info "Cloning DQIII8..."
+        git clone --depth=1 https://github.com/senda-labs/DQIII8.git "$INSTALL_DIR"
+    fi
+    PROJECT_DIR="$INSTALL_DIR"
+    cd "$PROJECT_DIR"
+fi
 
-# ── 1. System packages ──────────────────────────────────────────────
-info "Installing system dependencies..."
-$SUDO apt-get update -qq
-$SUDO apt-get install -y -qq python3 python3-venv python3-pip git curl sqlite3 zstd > /dev/null
-ok "System packages installed"
+# ── Phase 1: System packages (needs root/sudo) ───────────────────────────────
+if [ "$NO_SYSTEM_PKGS" = "0" ]; then
+    info "Installing system dependencies..."
 
-# ── 2. Python venv ──────────────────────────────────────────────────
+    case "$DISTRO" in
+        ubuntu|debian|linuxmint|pop)
+            $SUDO apt-get update -qq
+            $SUDO apt-get install -y -qq \
+                python3 python3-venv python3-pip git curl sqlite3 zstd > /dev/null
+            ok "System packages installed (apt)"
+            ;;
+        macos)
+            if ! command -v brew &>/dev/null; then
+                info "Homebrew not found. Installing..."
+                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            fi
+            brew install python@3.12 git curl sqlite zstd --quiet
+            ok "System packages installed (brew)"
+            ;;
+        *)
+            warn "Unknown distro '$DISTRO'. Skipping system package install."
+            warn "Please ensure python3.11+, python3-venv, git, curl, sqlite3, zstd are installed."
+            ;;
+    esac
+else
+    info "Skipping system package install (no sudo/root)"
+fi
+
+# ── Phase 2: Python virtual environment ─────────────────────────────────────
 info "Creating Python virtual environment..."
-if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
+PYTHON_BIN="python3"
+# On macOS with brew, prefer the brew python3.12
+if [ "$DISTRO" = "macos" ] && command -v python3.12 &>/dev/null; then
+    PYTHON_BIN="python3.12"
 fi
-source .venv/bin/activate
+
+if [ ! -d "$PROJECT_DIR/.venv" ]; then
+    "$PYTHON_BIN" -m venv "$PROJECT_DIR/.venv"
+fi
+# shellcheck disable=SC1091
+source "$PROJECT_DIR/.venv/bin/activate"
 pip install --upgrade pip -q
-pip install -r requirements.txt -q
+pip install -r "$PROJECT_DIR/requirements.txt" -q
 ok "Python venv ready (.venv)"
 
-# ── 3. Ollama (local AI models) ─────────────────────────────────────
+# ── Phase 3: Ollama ──────────────────────────────────────────────────────────
 info "Installing Ollama..."
 if command -v ollama &>/dev/null; then
     ok "Ollama already installed"
 else
-    curl -fsSL https://ollama.com/install.sh | sh
-    ok "Ollama installed"
+    case "$DISTRO" in
+        macos)
+            if command -v brew &>/dev/null; then
+                brew install ollama --quiet
+                ok "Ollama installed (brew)"
+            else
+                warn "Homebrew not available. Download Ollama from https://ollama.com/download"
+                warn "Then re-run: bash $PROJECT_DIR/install.sh --no-model"
+                SKIP_MODEL=1
+            fi
+            ;;
+        *)
+            # Linux: official install script
+            curl -fsSL https://ollama.com/install.sh | sh
+            ok "Ollama installed"
+            ;;
+    esac
 fi
 
 if [ "$SKIP_MODEL" = "1" ]; then
-    info "Skipping model pull (--no-model flag set)"
-    ok "To pull the model later: ollama pull qwen2.5-coder:7b"
+    info "Skipping model pull (--no-model)"
+    ok "Pull later with: ollama pull qwen2.5-coder:7b"
 else
-    info "Pulling qwen2.5-coder:7b (Tier 1 model, ~4.4GB)..."
-    # Start ollama serve in background if no service is running
+    info "Pulling qwen2.5-coder:7b (~4.4GB, Tier 1 local model)..."
+    # Start ollama serve in background if server not already running
     if ! ollama list &>/dev/null 2>&1; then
-        ollama serve &>/tmp/ollama.log &
+        ollama serve &>/tmp/ollama-dqiii8.log &
         sleep 3
     fi
     ollama pull qwen2.5-coder:7b
     ok "Model qwen2.5-coder:7b ready"
 fi
 
-# ── 4. Initialize database ─────────────────────────────────────────
+# ── Phase 4: SQLite database ─────────────────────────────────────────────────
 info "Initializing SQLite database..."
 DB_PATH="$PROJECT_DIR/database/jarvis_metrics.db"
 SCHEMA_PATH="$PROJECT_DIR/database/schema.sql"
@@ -89,37 +195,57 @@ if [ ! -f "$DB_PATH" ]; then
         ok "Database created from schema.sql"
     else
         sqlite3 "$DB_PATH" "SELECT 1;" > /dev/null
-        ok "Empty database created (no schema.sql found)"
+        ok "Empty database created (schema.sql not found)"
     fi
 else
     ok "Database already exists"
 fi
 
-# ── 5. Claude Code (optional) ──────────────────────────────────────
-info "Checking Claude Code..."
+# ── Phase 5: Claude Code (optional) ──────────────────────────────────────────
+info "Checking Claude Code (optional)..."
+_install_claude_code() {
+    # For non-root users, prefer a user-local npm prefix to avoid permission errors
+    if [ -n "$SUDO" ] && [ "$(id -u)" != "0" ]; then
+        npm install -g @anthropic-ai/claude-code --quiet 2>/dev/null \
+            || npm install --prefix "$HOME/.local" @anthropic-ai/claude-code --quiet 2>/dev/null \
+            || { warn "Claude Code install failed (permissions). Install manually: npm install -g @anthropic-ai/claude-code"; return 0; }
+    else
+        npm install -g @anthropic-ai/claude-code --quiet 2>/dev/null \
+            || { warn "Claude Code install failed. Install manually: npm install -g @anthropic-ai/claude-code"; return 0; }
+    fi
+    ok "Claude Code installed"
+}
+
 if command -v claude &>/dev/null; then
     ok "Claude Code already installed"
+elif command -v npm &>/dev/null; then
+    _install_claude_code
 else
-    if command -v npm &>/dev/null; then
-        npm install -g @anthropic-ai/claude-code
-        ok "Claude Code installed"
-    else
-        info "Node.js not found. Installing via NodeSource..."
-        if [ -z "$SUDO" ]; then
-            curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-        else
-            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-        fi
-        $SUDO apt-get install -y -qq nodejs > /dev/null
-        npm install -g @anthropic-ai/claude-code
-        ok "Node.js + Claude Code installed"
-    fi
+    info "Node.js not found. Installing..."
+    case "$DISTRO" in
+        ubuntu|debian|linuxmint|pop)
+            if [ -z "$SUDO" ]; then
+                curl -fsSL https://deb.nodesource.com/setup_22.x | bash - 2>/dev/null
+            else
+                curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - 2>/dev/null
+            fi
+            $SUDO apt-get install -y -qq nodejs > /dev/null
+            _install_claude_code
+            ;;
+        macos)
+            brew install node --quiet
+            _install_claude_code
+            ;;
+        *)
+            warn "Cannot auto-install Node.js on $DISTRO. Install manually then run: npm install -g @anthropic-ai/claude-code"
+            ;;
+    esac
 fi
 
-# ── 6. Environment file ────────────────────────────────────────────
-if [ ! -f ".env" ]; then
-    if [ -f "config/.env.example" ]; then
-        cp config/.env.example .env
+# ── Phase 6: Environment file ────────────────────────────────────────────────
+if [ ! -f "$PROJECT_DIR/.env" ]; then
+    if [ -f "$PROJECT_DIR/config/.env.example" ]; then
+        cp "$PROJECT_DIR/config/.env.example" "$PROJECT_DIR/.env"
         info "Created .env from template — edit it with your API keys"
     else
         info ".env.example not found — create .env manually with your API keys"
@@ -128,14 +254,31 @@ else
     ok ".env already exists"
 fi
 
-# ── Done ────────────────────────────────────────────────────────────
+# ── Phase 7: Shell alias ─────────────────────────────────────────────────────
+SHELL_RC="$HOME/.bashrc"
+[ -f "$HOME/.zshrc" ] && SHELL_RC="$HOME/.zshrc"
+
+ALIAS_LINE="alias dq='bash $PROJECT_DIR/bin/j.sh'"
+if ! grep -q "alias dq=" "$SHELL_RC" 2>/dev/null; then
+    echo "" >> "$SHELL_RC"
+    echo "# DQIII8" >> "$SHELL_RC"
+    echo "$ALIAS_LINE" >> "$SHELL_RC"
+    ok "Added 'dq' alias to $SHELL_RC"
+else
+    ok "'dq' alias already in $SHELL_RC"
+fi
+
+# ── Done ─────────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
 echo -e "${GREEN}  DQIII8 installed successfully!${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  Location: $PROJECT_DIR${NC}"
+echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
 echo ""
-echo "Next steps:"
-echo "  1. Edit .env with your API keys (optional for local-only usage)"
-echo "  2. source .venv/bin/activate"
-echo "  3. claude   # Launch DQIII8"
+echo "  Quick start:"
+echo "    source $SHELL_RC"
+echo "    dq \"hello, who are you?\""
+echo ""
+echo "  Tier C (local, free) is ready."
+echo "  For Tier B/A: edit $PROJECT_DIR/.env"
 echo ""

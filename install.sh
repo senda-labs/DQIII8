@@ -53,6 +53,20 @@ DISTRO=""
 OS_VERSION=""
 
 case "$OS" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo ""
+        echo "══════════════════════════════════════════════════════"
+        echo "  Windows detected — DQIII8 requires WSL2"
+        echo ""
+        echo "  Install WSL2 (5 minutes, free):"
+        echo "  1. Open PowerShell as Administrator"
+        echo "  2. Run: wsl --install -d Ubuntu-24.04"
+        echo "  3. Restart your computer"
+        echo "  4. Open 'Ubuntu' from Start menu"
+        echo "  5. Run this installer again inside Ubuntu"
+        echo "══════════════════════════════════════════════════════"
+        exit 1
+        ;;
     Linux)
         if [ -f /etc/os-release ]; then
             # shellcheck disable=SC1091
@@ -71,6 +85,11 @@ case "$OS" in
         fail "Unsupported OS: $OS. DQIII8 supports Ubuntu 22.04+, Debian 12+, macOS 13+"
         ;;
 esac
+
+# WSL2 detection (runs as Linux — just log it)
+if grep -qi microsoft /proc/version 2>/dev/null; then
+    info "WSL2 detected — installing normally"
+fi
 
 info "Detected: $DISTRO $OS_VERSION ($ARCH)"
 

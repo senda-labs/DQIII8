@@ -23,6 +23,8 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-10] [matplotlib-export] Guardar .png antes de insertar en PPT → no insertar figura directamente
 
 ## jarvis-core
+- [2026-03-19] [AUTO:RetrySuccess-Agent] Agent falló 1x antes de éxito → verificar condiciones previas o timeout
+- [2026-03-19] [AUTO:RetrySuccess-mcpsqliteexecute] mcp__sqlite__execute falló 7x antes de éxito → verificar condiciones previas o timeout
 - [2026-03-19] [AUTO:RetrySuccess-Read] Read falló 1x antes de éxito → verificar condiciones previas o timeout
 - [2026-03-19] [AUTO:RetrySuccess-mcpsqlitequery] mcp__sqlite__query falló 1x antes de éxito → verificar condiciones previas o timeout
 - [2026-03-19] [AUTO:RetrySuccess-Bash] Bash falló 2x antes de éxito → verificar condiciones previas o timeout

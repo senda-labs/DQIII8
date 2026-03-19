@@ -1,8 +1,8 @@
 """
-gemini_export.py — Exporta contexto del pipeline para auditoría Gemini Pro.
-Uso: python3 gemini_export.py [módulo] [--metric X] [--question "..."]
-Genera un .md estructurado listo para pegar en Gemini Pro.
-Módulos: full | script | audio | video | subtitles
+gemini_export.py — Exports pipeline context for Gemini Pro audit.
+Usage: python3 gemini_export.py [module] [--metric X] [--question "..."]
+Generates a structured .md ready to paste into Gemini Pro.
+Modules: full | script | audio | video | subtitles
 """
 
 import os
@@ -31,22 +31,22 @@ def export_last_errors(n: int = 5) -> str:
     ).fetchall()
     conn.close()
     if not errors:
-        return "Sin errores recientes en loop_errors.\n"
-    lines = ["## Últimos errores del pipeline\n"]
+        return "No recent errors in loop_errors.\n"
+    lines = ["## Latest pipeline errors\n"]
     for e in errors:
         lines.append(
-            f"**[{e[0]}]** `{e[2]}` en objetivo `{e[1]}`\n"
+            f"**[{e[0]}]** `{e[2]}` in objective `{e[1]}`\n"
             f"```\n{e[3]}\n```\n"
-            f"Archivo: `{e[4]}:{e[5]}` | Resuelto: {'✅' if e[6] else '❌'}\n"
+            f"File: `{e[4]}:{e[5]}` | Resolved: {'✅' if e[6] else '❌'}\n"
         )
     return "\n".join(lines)
 
 
 def export_code_snippet(file_path: str, func_name: str = None) -> str:
-    # FIX 2: archivos completos hasta 8000 chars, funciones sin límite
+    # FIX 2: full files up to 8000 chars, functions without limit
     p = Path(file_path)
     if not p.exists():
-        return f"Archivo no encontrado: {file_path}\n"
+        return f"File not found: {file_path}\n"
     content = p.read_text(encoding="utf-8")
     if func_name:
         lines = content.split("\n")
@@ -89,16 +89,16 @@ def export_pipeline_metrics() -> str:
         """).fetchall()
     conn.close()
 
-    lines = ["## Métricas del pipeline\n", "### Últimos vídeos\n"]
+    lines = ["## Pipeline metrics\n", "### Latest videos\n"]
     for v in videos:
-        approved = "✅" if v[8] == 1 else ("❌" if v[8] == 0 else "⏳ pendiente")
+        approved = "✅" if v[8] == 1 else ("❌" if v[8] == 0 else "⏳ pending")
         lines.append(
             f"- **{v[0][:60]}**\n"
-            f"  Modo: `{v[1]}` | Lang: `{v[2]}` | {v[3]}s | "
+            f"  Mode: `{v[1]}` | Lang: `{v[2]}` | {v[3]}s | "
             f"{v[5]} | {v[6] // 1000 if v[6] else '?'}s render | "
-            f"Aprobado: {approved}\n"
+            f"Approved: {approved}\n"
         )
-    lines.append("\n### Objetivos del loop\n")
+    lines.append("\n### Loop objectives\n")
     for o in objectives:
         icon = "✅" if o[2] == "done" else ("❌" if o[2] == "failed" else "⏳")
         lines.append(f"{icon} **[{o[0]}]** {o[1][:80]}\n")
@@ -111,34 +111,34 @@ def generate_gemini_report(
     module: str = "full",
     include_errors: bool = True,
     code_files: list = None,
-    question: str = None,  # FIX 1: parámetro añadido
-    metric: str = "viralidad",  # FIX 1: parámetro añadido
+    question: str = None,  # FIX 1: parameter added
+    metric: str = "virality",  # FIX 1: parameter added
 ) -> str:
     """
-    Genera reporte estructurado para Gemini Pro.
+    Generates structured report for Gemini Pro.
     module:  'full' | 'audio' | 'video' | 'script' | 'subtitles'
-    metric:  'viralidad' | 'rendimiento' | 'arquitectura'
-    question: pregunta específica para el auditor (opcional)
+    metric:  'virality' | 'performance' | 'architecture'
+    question: specific question for the auditor (optional)
     """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     sections = []
 
-    # Header — FIX 1: usa metric y question
+    # Header — FIX 1: uses metric and question
     sections.append(
-        f"# DQIII8 — Reporte para Auditoría Gemini Pro\n"
+        f"# DQIII8 — Report for Gemini Pro Audit\n"
         f"**Timestamp:** {timestamp}\n"
-        f"**Módulo:** {module}\n"
-        f"**Métrica de éxito:** {metric}\n"
-        f"**Pregunta específica:** {question or 'Auditoría general'}\n\n---\n"
+        f"**Module:** {module}\n"
+        f"**Success metric:** {metric}\n"
+        f"**Specific question:** {question or 'General audit'}\n\n---\n"
     )
 
-    # Stack técnico
+    # Tech stack
     sections.append(
-        "## Stack técnico\n"
+        "## Tech stack\n"
         "- **VPS:** Ubuntu 24.04 | 8GB RAM | 4 CPUs | 100GB NVMe\n"
         "- **Pipeline:** Python + MoviePy + ElevenLabs + FFmpeg\n"
-        "- **Modelos:** Groq (LLaMA 3.3 70b) + ElevenLabs TTS + Claude API\n"
-        "- **BD:** SQLite jarvis_metrics.db\n"
+        "- **Models:** Groq (LLaMA 3.3 70b) + ElevenLabs TTS + Claude API\n"
+        "- **DB:** SQLite jarvis_metrics.db\n"
         f"- **Repo:** {PROJ}/\n\n---\n"
     )
 
@@ -165,23 +165,23 @@ def generate_gemini_report(
     }
     files_to_export = code_files or MODULE_FILES.get(module, [])
 
-    sections.append("## Código relevante\n")
+    sections.append("## Relevant code\n")
     for f in files_to_export:
         sections.append(f"### `{f}`\n")
         sections.append(export_code_snippet(str(PROJ / f)))
 
-    # Footer — FIX 1: usa question y metric
+    # Footer — FIX 1: uses question and metric
     sections.append(
-        f"---\n## Pregunta para el auditor\n\n"
-        f"Estamos optimizando para: **{metric}**\n\n"
+        f"---\n## Question for the auditor\n\n"
+        f"We are optimizing for: **{metric}**\n\n"
         + (
             question
             or (
-                "Revisa el pipeline completo e identifica:\n"
-                "1. Fallos potenciales de FFmpeg/OpenCV/NumPy antes de ejecutar\n"
-                "2. Cuellos de botella de rendimiento\n"
-                "3. Gaps de calidad para alcanzar estándar viral (1M views)\n"
-                "Sé específico con números de línea y funciones concretas."
+                "Review the full pipeline and identify:\n"
+                "1. Potential FFmpeg/OpenCV/NumPy failures before execution\n"
+                "2. Performance bottlenecks\n"
+                "3. Quality gaps to reach viral standard (1M views)\n"
+                "Be specific with line numbers and concrete functions."
             )
         )
         + "\n"
@@ -191,10 +191,10 @@ def generate_gemini_report(
     out_path = OUT_DIR / f"gemini_{module}_{timestamp}.md"
     out_path.write_text(report, encoding="utf-8")
 
-    # Formato exacto que el handler de Telegram busca (FIX 3 dependency):
-    print(f"✅ Reporte generado: {out_path}")
-    print(f"   Tamaño: {len(report)} chars")
-    print(f"\nPrimeras 300 chars:")
+    # Exact format that the Telegram handler looks for (FIX 3 dependency):
+    print(f"✅ Report generated: {out_path}")
+    print(f"   Size: {len(report)} chars")
+    print(f"\nFirst 300 chars:")
     print(report[:300])
     return str(out_path)
 
@@ -202,7 +202,7 @@ def generate_gemini_report(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Genera reporte de auditoría para Gemini Pro")
+    parser = argparse.ArgumentParser(description="Generate audit report for Gemini Pro")
     parser.add_argument(
         "module",
         nargs="?",
@@ -211,8 +211,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--metric",
-        default="viralidad",
-        choices=["viralidad", "rendimiento", "arquitectura"],
+        default="virality",
+        choices=["virality", "performance", "architecture"],
     )
     parser.add_argument("--question", default=None)
     parser.add_argument("--no-errors", action="store_true", default=False)

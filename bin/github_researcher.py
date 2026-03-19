@@ -1,9 +1,9 @@
 """
-github_researcher.py — Investiga GitHub sobre un tema.
-Busca repositorios, evalúa aplicabilidad al stack DQIII8,
-genera reporte y lo envía por Telegram.
+github_researcher.py — Researches GitHub on a topic.
+Searches repositories, evaluates applicability to the DQIII8 stack,
+generates a report and sends it via Telegram.
 
-Uso:
+Usage:
   python3 github_researcher.py "video generation python"
   python3 github_researcher.py "ffmpeg automation" --min-stars 100
   python3 github_researcher.py "tts elevenlabs" --max-repos 20
@@ -23,7 +23,7 @@ DB = str(JARVIS / "database" / "jarvis_metrics.db")
 OUT_DIR = JARVIS / "tasks" / "github_reports"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Stack de DQIII8 para evaluar compatibilidad
+# DQIII8 stack for compatibility evaluation
 JARVIS_STACK = {
     "languages": ["python", "bash"],
     "frameworks": ["fastapi", "asyncio", "ffmpeg", "moviepy"],
@@ -51,7 +51,7 @@ JARVIS_STACK = {
     "python_max": "3.12",
 }
 
-# Keywords que indican requisito de GPU — penalización severa en VPS CPU-only
+# Keywords indicating GPU requirement — severe penalty on CPU-only VPS
 GPU_KEYWORDS = [
     "cuda",
     "gpu",
@@ -71,7 +71,7 @@ GPU_KEYWORDS = [
     "video card",
 ]
 
-# Keywords que indican versión de Python bloqueada
+# Keywords indicating locked Python version
 PYTHON_EXCLUSIVE = [
     "python 3.10 only",
     "python 3.10 required",
@@ -82,7 +82,7 @@ PYTHON_EXCLUSIVE = [
     "requires python 3.9",
 ]
 
-# Keywords que confirman compatibilidad CPU — boost
+# Keywords confirming CPU compatibility — boost
 CPU_PHRASES = [
     "cpu only",
     "no gpu required",
@@ -114,18 +114,18 @@ class GitHubClient:
         if self.token:
             self.headers["Authorization"] = f"token {self.token}"
         else:
-            print("⚠️  Sin GITHUB_TOKEN — rate limit: 60 req/h")
+            print("⚠️  No GITHUB_TOKEN — rate limit: 60 req/h")
         self.scraper_key = os.getenv("SCRAPERAPI_KEY", "")
         self.scraper_available = bool(self.scraper_key)
         if self.scraper_available:
-            print("  ✅ ScraperAPI disponible — modo deep scraping")
+            print("  ✅ ScraperAPI available — deep scraping mode")
         else:
-            print("  ℹ️  Sin ScraperAPI — usando GitHub API (suficiente)")
+            print("  ℹ️  No ScraperAPI — using GitHub API (sufficient)")
 
     def search_repos(
         self, query: str, min_stars: int = 50, max_repos: int = 30, language: str = None
     ) -> list:
-        """Busca repositorios por query."""
+        """Searches repositories by query."""
         q = f"{query} stars:>{min_stars}"
         if language:
             q += f" language:{language}"
@@ -142,16 +142,16 @@ class GitHubClient:
                 f"{self.BASE}/search/repositories", headers=self.headers, params=params
             )
             if resp.status_code == 403:
-                raise RuntimeError("GitHub rate limit alcanzado. " "Añadir GITHUB_TOKEN al .env")
+                raise RuntimeError("GitHub rate limit reached. " "Add GITHUB_TOKEN to .env")
             resp.raise_for_status()
             data = resp.json()
 
         repos = data.get("items", [])
-        print(f"  Encontrados: {data.get('total_count',0)} | " f"Procesando: {len(repos)}")
+        print(f"  Found: {data.get('total_count',0)} | " f"Processing: {len(repos)}")
         return repos
 
     def get_readme(self, full_name: str) -> str:
-        """Obtiene el README de un repo."""
+        """Gets the README of a repo."""
         try:
             with httpx.Client(timeout=15) as client:
                 resp = client.get(
@@ -159,9 +159,9 @@ class GitHubClient:
                     headers={**self.headers, "Accept": "application/vnd.github.raw"},
                 )
                 if resp.status_code == 200:
-                    # Truncar README largo
+                    # Truncate long README
                     text = resp.text[:3000]
-                    # Limpiar markdown
+                    # Clean markdown
                     text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
                     text = re.sub(r"\[.*?\]\(.*?\)", "", text)
                     text = re.sub(r"#{1,6}\s", "", text)
@@ -171,7 +171,7 @@ class GitHubClient:
         return ""
 
     def get_topics(self, full_name: str) -> list:
-        """Obtiene los topics de un repo."""
+        """Gets the topics of a repo."""
         try:
             with httpx.Client(timeout=10) as client:
                 resp = client.get(
@@ -186,8 +186,8 @@ class GitHubClient:
 
     def scrape_page_markdown(self, url: str) -> str:
         """
-        Obtiene cualquier página de GitHub en formato markdown LLM-ready.
-        Usa ScraperAPI si está disponible, GitHub API como fallback.
+        Gets any GitHub page in LLM-ready markdown format.
+        Uses ScraperAPI if available, GitHub API as fallback.
         """
         if not self.scraper_available:
             repo_path = url.replace("https://github.com/", "")
@@ -212,7 +212,7 @@ class GitHubClient:
             return self.get_readme(repo_path)
 
     def get_repo_code_structure(self, full_name: str) -> dict:
-        """Obtiene estructura de archivos del repo para evaluar integración."""
+        """Gets the file structure of the repo to evaluate integration."""
         try:
             with httpx.Client(timeout=15) as client:
                 resp = client.get(
@@ -242,7 +242,7 @@ class GitHubClient:
         return {}
 
     def get_repo_issues_summary(self, full_name: str) -> dict:
-        """Obtiene issues abiertos para evaluar madurez del proyecto."""
+        """Gets open issues to evaluate project maturity."""
         try:
             with httpx.Client(timeout=10) as client:
                 resp = client.get(
@@ -261,11 +261,11 @@ class GitHubClient:
         return {}
 
 
-# ─── Evaluador de aplicabilidad ───────────────────────────────────
+# ─── Applicability evaluator ──────────────────────────────────────
 class ApplicabilityEvaluator:
     """
-    Evalúa qué tan aplicable es un repo al stack DQIII8.
-    Score 0-10 basado en múltiples factores.
+    Evaluates how applicable a repo is to the DQIII8 stack.
+    Score 0-10 based on multiple factors.
     """
 
     def evaluate(self, repo: dict, readme: str, topics: list, code_structure: dict = None) -> dict:
@@ -279,7 +279,7 @@ class ApplicabilityEvaluator:
         readme_lower = readme.lower()
         all_text = f"{name} {desc} {readme_lower} {' '.join(topics)}"
 
-        # ── Factor 1: Lenguaje compatible (0-3 pts) ──────────────
+        # ── Factor 1: Compatible language (0-3 pts) ──────────────
         if lang == "python":
             score += 3.0
             stack_matches.append("Python")
@@ -288,9 +288,9 @@ class ApplicabilityEvaluator:
             stack_matches.append("Bash")
         elif lang in JARVIS_STACK["avoid"]:
             score -= 2.0
-            reasons.append(f"Lenguaje no compatible: {lang}")
+            reasons.append(f"Incompatible language: {lang}")
 
-        # ── Factor 2: Match con focus del proyecto (0-3 pts) ─────
+        # ── Factor 2: Match with project focus (0-3 pts) ─────────
         focus_hits = 0
         for term in JARVIS_STACK["focus"]:
             if term in all_text:
@@ -300,16 +300,16 @@ class ApplicabilityEvaluator:
         focus_score = min(3.0, focus_hits * 0.5)
         score += focus_score
         if focus_hits > 0:
-            reasons.append(f"Relevancia temática: {focus_hits} matches")
+            reasons.append(f"Topic relevance: {focus_hits} matches")
 
-        # ── Factor 3: Match con frameworks del stack (0-2 pts) ───
+        # ── Factor 3: Match with stack frameworks (0-2 pts) ──────
         for fw in JARVIS_STACK["frameworks"]:
             if fw in all_text:
                 score += 0.5
                 stack_matches.append(fw)
-                reasons.append(f"Usa {fw}")
+                reasons.append(f"Uses {fw}")
 
-        # ── Factor 4: Popularidad / calidad (0-1 pt) ─────────────
+        # ── Factor 4: Popularity / quality (0-1 pt) ──────────────
         stars = repo.get("stargazers_count", 0)
         if stars >= 1000:
             score += 1.0
@@ -319,7 +319,7 @@ class ApplicabilityEvaluator:
         elif stars >= 100:
             score += 0.4
 
-        # ── Factor 5: Actividad reciente (0-1 pt) ─────────────────
+        # ── Factor 5: Recent activity (0-1 pt) ────────────────────
         updated = repo.get("updated_at", "")
         if updated:
             from datetime import datetime, timezone
@@ -330,76 +330,76 @@ class ApplicabilityEvaluator:
                 days_old = (now - last).days
                 if days_old < 90:
                     score += 1.0
-                    reasons.append(f"Actualizado hace {days_old}d")
+                    reasons.append(f"Updated {days_old}d ago")
                 elif days_old < 365:
                     score += 0.5
                 else:
-                    reasons.append(f"Sin actualizar en {days_old}d")
+                    reasons.append(f"Not updated in {days_old}d")
             except Exception:
                 pass
 
-        # ── Factor 6: Licencia compatible ────────────────────────
+        # ── Factor 6: Compatible license ─────────────────────────
         license_info = repo.get("license")
         if license_info:
             lic = license_info.get("spdx_id", "").upper()
             if lic in ["MIT", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "ISC", "CC0-1.0"]:
                 score += 0.5
-                reasons.append(f"Licencia: {lic}")
+                reasons.append(f"License: {lic}")
             elif lic == "GPL-3.0":
-                reasons.append("⚠️ GPL — revisar restricciones")
+                reasons.append("⚠️ GPL — review restrictions")
 
-        # ── Factor 7: estructura del código (0-1.5 pts) ──────────
+        # ── Factor 7: code structure (0-1.5 pts) ─────────────────
         if code_structure:
             if code_structure.get("has_requirements"):
                 score += 0.5
-                reasons.append("✅ requirements.txt — pip install directo")
+                reasons.append("✅ requirements.txt — direct pip install")
             if code_structure.get("has_tests"):
                 score += 0.5
-                reasons.append("✅ Tests incluidos — código más fiable")
+                reasons.append("✅ Tests included — more reliable code")
             if code_structure.get("has_docker"):
                 score += 0.3
-                reasons.append("✅ Dockerized — fácil de aislar")
+                reasons.append("✅ Dockerized — easy to isolate")
             py_count = code_structure.get("py_files_count", 0)
             if 5 <= py_count <= 30:
                 score += 0.2
-                reasons.append(f"📁 {py_count} archivos .py (tamaño ideal)")
+                reasons.append(f"📁 {py_count} .py files (ideal size)")
             elif py_count > 100:
-                reasons.append(f"⚠️ {py_count} archivos .py (proyecto grande)")
+                reasons.append(f"⚠️ {py_count} .py files (large project)")
 
-        # ── Factor 8: tamaño del repo (0-0.3 pts) ────────────────
+        # ── Factor 8: repo size (0-0.3 pts) ──────────────────────
         if repo.get("size", 0) < 1000:
             score += 0.3
-            reasons.append("🔧 Repo ligero — fácil de copiar partes")
+            reasons.append("🔧 Lightweight repo — easy to copy parts")
 
-        # ── Factor 9: confirmación CPU-only (evaluar primero) ────
+        # ── Factor 9: CPU-only confirmation (evaluate first) ─────
         cpu_confirmed = any(p in all_text for p in CPU_PHRASES)
         if cpu_confirmed:
             score += 1.5
-            reasons.append("✅ CPU-only confirmado — compatible con VPS")
+            reasons.append("✅ CPU-only confirmed — compatible with VPS")
 
-        # ── Factor 10: requisito GPU — penalización severa ────────
-        # cpu_confirmed short-circuits: "no gpu required" no activa GPU penalty
+        # ── Factor 10: GPU requirement — severe penalty ───────────
+        # cpu_confirmed short-circuits: "no gpu required" does not trigger GPU penalty
         gpu_blocked = (not cpu_confirmed) and any(kw in all_text for kw in GPU_KEYWORDS)
         if gpu_blocked:
             score -= 4.0
-            reasons.append("🚫 Requiere GPU/CUDA — incompatible con VPS CPU-only")
+            reasons.append("🚫 Requires GPU/CUDA — incompatible with CPU-only VPS")
 
-        # ── Factor 11: versión Python exclusiva ───────────────────
+        # ── Factor 11: exclusive Python version ───────────────────
         python_locked = any(kw in all_text for kw in PYTHON_EXCLUSIVE)
         if python_locked:
             score -= 2.0
-            reasons.append("⚠️ Python version exclusiva — riesgo de incompatibilidad")
+            reasons.append("⚠️ Exclusive Python version — incompatibility risk")
 
-        # ── Clasificar esfuerzo de integración ───────────────────
+        # ── Classify integration effort ───────────────────────────
         score = round(min(10.0, max(0.0, score)), 2)
         if score >= 8.0:
             effort = "LOW — Drop-in integration"
         elif score >= 6.0:
-            effort = "MEDIUM — Adaptar a nuestro stack"
+            effort = "MEDIUM — Adapt to our stack"
         elif score >= 4.0:
-            effort = "HIGH — Extraer partes útiles"
+            effort = "HIGH — Extract useful parts"
         else:
-            effort = "SKIP — No aplicable"
+            effort = "SKIP — Not applicable"
 
         return {
             "score": score,
@@ -416,17 +416,17 @@ class ApplicabilityEvaluator:
 def _classify_integration(
     score: float, code_structure: dict = None, gpu_blocked: bool = False
 ) -> str:
-    """Clasifica cómo integrar el repo en DQIII8."""
+    """Classifies how to integrate the repo into DQIII8."""
     if gpu_blocked:
-        return "REFERENCE — GPU requerida, no viable en VPS actual"
+        return "REFERENCE — GPU required, not viable on current VPS"
     if score >= 8.0:
-        return "COPY — Integración directa posible"
+        return "COPY — Direct integration possible"
     elif score >= 6.5:
-        return "ADAPT — Adaptar 1-2 funciones clave"
+        return "ADAPT — Adapt 1-2 key functions"
     elif score >= 5.0:
-        return "EXTRACT — Extraer solo la lógica core"
+        return "EXTRACT — Extract only core logic"
     elif score >= 3.5:
-        return "REFERENCE — Usar como referencia/inspiración"
+        return "REFERENCE — Use as reference/inspiration"
     else:
         return "SKIP"
 
@@ -463,12 +463,12 @@ QUERY_EXPANSIONS = {
 
 def multi_search(topic: str, min_stars: int = 50, max_repos: int = 40) -> list:
     """
-    Busca con múltiples queries relacionadas y deduplica.
-    Encuentra repos que una sola query perdería.
+    Searches with multiple related queries and deduplicates.
+    Finds repos that a single query would miss.
     """
     client = GitHubClient()
 
-    # Expandir queries si el topic coincide con alguna clave
+    # Expand queries if topic matches any key
     queries = [topic]
     for key, expansions in QUERY_EXPANSIONS.items():
         if key in topic.lower():
@@ -486,17 +486,17 @@ def multi_search(topic: str, min_stars: int = 50, max_repos: int = 40) -> list:
                 name = r["full_name"]
                 if name not in all_repos:
                     all_repos[name] = r
-            time.sleep(1)  # respetar rate limit entre queries
+            time.sleep(1)  # respect rate limit between queries
         except Exception as e:
-            print(f"    Error en query '{q}': {e}")
+            print(f"    Error in query '{q}': {e}")
 
-    print(f"  Total únicos tras deduplicar: {len(all_repos)}")
+    print(f"  Total unique after deduplication: {len(all_repos)}")
     return list(all_repos.values())
 
 
 # ─── Reporter ────────────────────────────────────────────────────
 def generate_report(topic: str, repos_data: list, session_id: int) -> str:
-    """Genera reporte .md listo para Gemini o lectura directa."""
+    """Generates .md report ready for Gemini or direct reading."""
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     report_path = OUT_DIR / f'github_{topic[:30].replace(" ","_")}_{timestamp}.md'
@@ -506,11 +506,11 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
 
     lines = [
         f"# GitHub Research — {topic}",
-        f"**Fecha:** {timestamp}",
-        f"**Repos analizados:** {len(repos_data)}",
+        f"**Date:** {timestamp}",
+        f"**Repos analyzed:** {len(repos_data)}",
         f"**Stack DQIII8:** Python + FFmpeg + ElevenLabs + Fal.ai\n",
         "---\n",
-        "## 🏆 TOP 5 — Más aplicables\n",
+        "## 🏆 TOP 5 — Most applicable\n",
     ]
 
     # Top 5
@@ -520,7 +520,7 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
         cs = ev.get("code_structure", {})
         lines += [
             f"### {i}. [{repo['full_name']}]({repo['html_url']})",
-            f"**Score:** {ev['score']}/10 | **Esfuerzo:** {ev['effort']}",
+            f"**Score:** {ev['score']}/10 | **Effort:** {ev['effort']}",
             f"**Integración:** {ev.get('integration_type', '?')}",
             f"**Stars:** ⭐{repo.get('stargazers_count',0):,} | "
             f"**Lang:** {repo.get('language','?')} | "
@@ -552,12 +552,12 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
                 "",
             ]
 
-    # Tabla completa
+    # Full table
     lines += [
         "---\n",
-        "## 📊 Tabla completa\n",
-        "| Repo | Score | Stars | Lang | Esfuerzo |",
-        "|------|-------|-------|------|----------|",
+        "## 📊 Full table\n",
+        "| Repo | Score | Stars | Lang | Effort |",
+        "|------|-------|-------|------|--------|",
     ]
     for r in sorted_repos:
         repo = r["repo"]
@@ -574,7 +574,7 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
     gpu_blocked_repos = [r for r in sorted_repos if r["eval"].get("gpu_blocked")]
     if gpu_blocked_repos:
         lines += ["\n---\n", "## ⛔ Bloqueados por hardware (GPU/CUDA requerido)\n"]
-        lines.append("*Guardar para cuando el VPS tenga GPU:*\n")
+        lines.append("*Save for when the VPS has a GPU:*\n")
         lines += [
             "| Repo | Score adj. | Stars | Por qué bloqueado |",
             "|------|-----------|-------|-------------------|",
@@ -584,7 +584,7 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
             ev = r["eval"]
             gpu_reason = next(
                 (reason for reason in ev["reasons"] if "GPU" in reason or "CUDA" in reason),
-                "GPU requerida",
+                "GPU required",
             )
             lines.append(
                 f"| [{repo['name']}]({repo['html_url']}) | "
@@ -610,11 +610,11 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
             # Inferir qué problema DQIII8 resuelve
             matches = ev.get("stack_matches", [])
             jarvis_gap = (
-                "funcionalidad relacionada con " + ", ".join(matches[:3]) if matches else "pipeline"
+                "functionality related to " + ", ".join(matches[:3]) if matches else "pipeline"
             )
             lines += [
                 f"### {repo['name']} ({ev['score']}/10)",
-                f"**Problema DQIII8 que resuelve:** {jarvis_gap}",
+                f"**DQIII8 problem it solves:** {jarvis_gap}",
                 f"**Tipo integración:** {ev.get('integration_type','?')}",
                 f"**Install:** `pip install` desde {repo['html_url']}",
                 f"**Tiempo estimado:** {'1-2h' if ev['score'] >= 8.0 else '2-4h'}",
@@ -623,12 +623,12 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
 
     lines += [
         "\n---\n",
-        "## 🔍 Pregunta para Gemini\n",
-        f"Stack actual: Python + FFmpeg + ElevenLabs + Fal.ai + Telegram\n",
-        f"Topic investigado: **{topic}**\n",
-        "De los repositorios listados, ¿cuál tiene mayor potencial "
-        "de integración directa? ¿Hay alguno que resuelva un problema "
-        "que actualmente estemos parcheando con código propio?",
+        "## 🔍 Question for Gemini\n",
+        f"Current stack: Python + FFmpeg + ElevenLabs + Fal.ai + Telegram\n",
+        f"Researched topic: **{topic}**\n",
+        "Among the listed repositories, which one has the greatest potential "
+        "for direct integration? Is there one that solves a problem "
+        "we are currently patching with custom code?",
     ]
 
     report = "\n".join(lines)
@@ -645,7 +645,7 @@ def research(
     send_telegram: bool = True,
 ) -> str:
     """
-    Investiga GitHub sobre un tema y genera reporte.
+    Researches GitHub on a topic and generates a report.
     """
     print(f"\n{'='*55}")
     print(f"GITHUB RESEARCHER — {topic}")
@@ -656,7 +656,7 @@ def research(
     evaluator = ApplicabilityEvaluator()
     conn = sqlite3.connect(DB)
 
-    # Crear sesión
+    # Create session
     cur = conn.execute(
         """
         INSERT INTO github_search_sessions (topic, query_used)
@@ -667,26 +667,26 @@ def research(
     session_id = cur.lastrowid
     conn.commit()
 
-    # Buscar repos (multi-query si el topic coincide con expansiones)
-    print(f"\n[1/4] Buscando repos...")
+    # Search repos (multi-query if topic matches expansions)
+    print(f"\n[1/4] Searching repos...")
     repos = multi_search(topic, min_stars=min_stars, max_repos=max_repos)
     # Si multi_search no expande (topic sin match), filtra por language si se especificó
     if language and language != "python":
         repos = [r for r in repos if (r.get("language") or "").lower() == language]
 
-    # Analizar cada repo
-    print(f"\n[2/4] Analizando {len(repos)} repos...")
+    # Analyze each repo
+    print(f"\n[2/4] Analyzing {len(repos)} repos...")
     repos_data = []
 
     for i, repo in enumerate(repos, 1):
         name = repo["full_name"]
         print(f"  [{i:2}/{len(repos)}] {name}", end="", flush=True)
 
-        # README + topics + code structure (con pausa para no exceder rate limit)
+        # README + topics + code structure (with pause to not exceed rate limit)
         readme = client.get_readme(name)
         topics_list = client.get_topics(name)
         code_structure = client.get_repo_code_structure(name)
-        time.sleep(0.4)  # respetar rate limit
+        time.sleep(0.4)  # respect rate limit
 
         # Evaluar
         ev = evaluator.evaluate(repo, readme, topics_list, code_structure=code_structure)
@@ -700,7 +700,7 @@ def research(
             }
         )
 
-        # Guardar en BD
+        # Save to DB
         try:
             conn.execute(
                 """
@@ -776,7 +776,7 @@ def research(
 
 
 def _send_telegram_report(topic, top_repos, report_path):
-    """Envía resumen por Telegram + reporte .md como documento."""
+    """Sends summary via Telegram + .md report as a document."""
     try:
         import asyncio
         from dotenv import load_dotenv
@@ -786,15 +786,15 @@ def _send_telegram_report(topic, top_repos, report_path):
         chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
         if not bot_token or not chat_id:
-            print("  ⚠️  Telegram no configurado")
+            print("  ⚠️  Telegram not configured")
             return
 
         async def send():
             async with httpx.AsyncClient(timeout=30) as client:
-                # Mensaje resumen
+                # Summary message
                 lines = [
                     f"🔍 <b>GitHub Research</b>: {topic}",
-                    f"📊 Analizados: {len(top_repos)} repos top\n",
+                    f"📊 Analyzed: {len(top_repos)} top repos\n",
                 ]
                 for i, r in enumerate(top_repos[:3], 1):
                     repo = r["repo"]
@@ -806,34 +806,34 @@ def _send_telegram_report(topic, top_repos, report_path):
                         f"{ev['effort'].split(' — ')[0]}\n"
                         f"   {repo.get('description','')[:80]}"
                     )
-                lines.append("\n📄 Reporte completo adjunto para Gemini.")
+                lines.append("\n📄 Full report attached for Gemini.")
 
                 await client.post(
                     f"https://api.telegram.org/bot{bot_token}/sendMessage",
                     data={"chat_id": chat_id, "text": "\n".join(lines), "parse_mode": "HTML"},
                 )
 
-                # Enviar .md como documento
+                # Send .md as document
                 with open(report_path, "rb") as f:
                     await client.post(
                         f"https://api.telegram.org/bot{bot_token}/sendDocument",
                         data={
                             "chat_id": chat_id,
-                            "caption": f"📊 GitHub Research: {topic}\nPega en Gemini para análisis.",
+                            "caption": f"📊 GitHub Research: {topic}\nPaste into Gemini for analysis.",
                         },
                         files={"document": f},
                     )
 
         asyncio.run(send())
-        print("  ✅ Enviado a Telegram")
+        print("  ✅ Sent to Telegram")
 
     except Exception as e:
         print(f"  Telegram error: {e}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Investiga GitHub sobre un tema")
-    parser.add_argument("topic", help='Tema a investigar (ej: "video generation python")')
+    parser = argparse.ArgumentParser(description="Research GitHub on a topic")
+    parser.add_argument("topic", help='Topic to research (e.g. "video generation python")')
     parser.add_argument("--min-stars", type=int, default=50)
     parser.add_argument("--max-repos", type=int, default=25)
     parser.add_argument("--language", default="python")

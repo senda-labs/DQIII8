@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 DQIII8 Hook — PostCompact
-Reinyecta contexto esencial tras compactación de contexto.
+Re-injects essential context after context compaction.
 
-Dispara DESPUÉS de que context-mode termina la compactación.
-Restaura: modelo activo, proyecto activo, últimas 3 lecciones, score de auditoría.
-Lee precompact_state.json escrito por precompact.py para recuperar estado anterior.
-Exit 0 siempre — nunca abortar.
+Fires AFTER context-mode finishes compaction.
+Restores: active model, active project, last 3 lessons, audit score.
+Reads precompact_state.json written by precompact.py to recover previous state.
+Always exits 0 — never abort.
 """
 
 import json
@@ -26,7 +26,7 @@ try:
 except Exception:
     data = {}
 
-# ── Recuperar estado pre-compact ────────────────────────────────────
+# ── Recover pre-compact state ────────────────────────────────────────
 pre_state: dict = {}
 try:
     if STATE_FILE.exists():
@@ -34,13 +34,13 @@ try:
 except Exception:
     pass
 
-# ── Proyecto activo ─────────────────────────────────────────────────
+# ── Active project ───────────────────────────────────────────────────
 project = pre_state.get("project") or os.environ.get("JARVIS_PROJECT", "") or "jarvis-core"
 
-# ── Modelo activo ───────────────────────────────────────────────────
+# ── Active model ─────────────────────────────────────────────────────
 model = os.environ.get("JARVIS_MODEL", "claude-sonnet-4-6")
 
-# ── Últimas 3 lecciones ─────────────────────────────────────────────
+# ── Last 3 lessons ───────────────────────────────────────────────────
 lessons: list[str] = []
 try:
     if LESSONS.exists():
@@ -49,8 +49,8 @@ try:
 except Exception:
     pass
 
-# ── Último score de auditoría ───────────────────────────────────────
-audit_info = "Sin auditoría"
+# ── Latest audit score ───────────────────────────────────────────────
+audit_info = "No audit"
 try:
     if DB.exists():
         conn = sqlite3.connect(str(DB), timeout=2)
@@ -63,35 +63,35 @@ try:
 except Exception:
     pass
 
-# ── Próximo paso del proyecto ───────────────────────────────────────
-next_step = "No definido"
+# ── Project next step ────────────────────────────────────────────────
+next_step = "Not defined"
 pm = JARVIS / "projects" / f"{project}.md"
 try:
     if pm.exists():
         lines = pm.read_text(encoding="utf-8").splitlines()
         for i, line in enumerate(lines):
-            if "Próximo paso" in line or "Next step" in line:
+            if "Next step" in line:
                 if i + 1 < len(lines) and lines[i + 1].strip():
                     next_step = lines[i + 1].strip()
                 break
 except Exception:
     pass
 
-# ── Stats de la sesión antes del compact ────────────────────────────
+# ── Session stats before compact ─────────────────────────────────────
 actions_before = pre_state.get("actions_count", "?")
 session_id = pre_state.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))
 
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DQIII8 — PostCompact {datetime.now().strftime('%H:%M')}
-Contexto compactado — estado restaurado
-Modelo  : {model}
-Proyecto: {project}
-Próximo : {next_step}
-Auditoría: {audit_info}
-Acciones sesión: {actions_before}
+Context compacted — state restored
+Model  : {model}
+Project: {project}
+Next   : {next_step}
+Audit  : {audit_info}
+Session actions: {actions_before}
 
-ÚLTIMAS LECCIONES:
-{chr(10).join(lessons) if lessons else '  (ninguna registrada)'}
+LAST LESSONS:
+{chr(10).join(lessons) if lessons else '  (none recorded)'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
 print(json.dumps({"additionalContext": ctx}))

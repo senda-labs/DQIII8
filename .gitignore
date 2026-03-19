@@ -1,22 +1,22 @@
 # JARVIS .gitignore
 
-# Base de datos (no versionar — demasiado pesada y sensible)
+# Database (not versioned — too large and sensitive)
 database/*.db
 database/*.db-wal
 database/*.db-shm
 
-# Worktrees de agentes (efímeros)
+# Agent worktrees (ephemeral)
 .claude/worktrees/
 
-# Skills cache (se descarga con /skills-sync)
+# Skills cache (downloaded via /skills-sync)
 skills-registry/cache/everything-claude-code/
 skills-registry/cache/awesome-subagents/
 
-# Flags de estado efímeros
+# Ephemeral state flags
 tasks/audit_pending.flag
 tasks/status.md
 
-# Resultados de sesión (rotan)
+# Session results (rotate)
 tasks/results/
 
 # Python

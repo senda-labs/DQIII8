@@ -24,7 +24,7 @@ NOW = datetime.now().isoformat()
 lessons_added = 0
 result = None  # kept for instinct extraction in step 0b
 try:
-    # git diff para instincts (paso 0b) — no se usa para el conteo principal
+    # git diff for instincts (step 0b) — not used for the main count
     result = subprocess.run(
         ["git", "-C", str(JARVIS), "diff", "HEAD", "--", "tasks/lessons.md"],
         capture_output=True,
@@ -63,8 +63,8 @@ try:
         if diff_count > 0:
             lessons_added = diff_count
 
-    # Fallback 2: recorrer commits recientes hasta encontrar adiciones en lessons.md
-    # Solo considera commits que ocurrieron DURANTE esta sesión (evita heredar lecciones ajenas)
+    # Fallback 2: scan recent commits for additions in lessons.md
+    # Only considers commits that occurred DURING this session (avoids inheriting others' lessons)
     if lessons_added == 0:
         _fb2_start: datetime | None = None
         try:
@@ -511,7 +511,7 @@ try:
             if _pm.exists():
                 _lines = _pm.read_text(encoding="utf-8").splitlines()
                 for _i, _l in enumerate(_lines):
-                    if "Próximo paso" in _l or "Proximo paso" in _l or "Next step" in _l:
+                    if "Next step" in _l:
                         for _j in range(_i + 1, min(_i + 4, len(_lines))):
                             _t = _lines[_j].strip().lstrip("-").lstrip("*").strip()
                             if _t:
@@ -656,7 +656,7 @@ try:
 except Exception as _oe:
     print(f"[observe_events] sync skipped: {_oe}")
 
-# ── 7. Regenerar claude-progress.txt ───────────────────────────────
+# ── 7. Regenerate claude-progress.txt ────────────────────────────────
 try:
     import json as _json
     from datetime import datetime as _dt

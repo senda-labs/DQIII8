@@ -2,8 +2,8 @@
 """
 DQIII8 Hook — PreToolUse v5
 Thin wrapper: parse stdin → PermissionAnalyzer → handle result + metrics.
-Toda la lógica de permisos (budget, JARVIS_MODE, ALLOWED_DELETIONS…)
-vive exclusivamente en permission_analyzer.py.
+All permission logic (budget, JARVIS_MODE, ALLOWED_DELETIONS…)
+lives exclusively in permission_analyzer.py.
 """
 
 import json
@@ -108,7 +108,7 @@ try:
 except Exception:
     pass
 
-# Protección adicional: credenciales OAuth (antes de sys.exit)
+# Additional protection: OAuth credentials (before sys.exit)
 _OAUTH_FILES = ["/root/.claude.json", "/root/.claude/.credentials.json"]
 if tool in ("Bash",):
     cmd = inp.get("command", "")
@@ -120,7 +120,7 @@ if tool in ("Bash",):
                         "hookSpecificOutput": {
                             "hookEventName": "PreToolUse",
                             "permissionDecision": "deny",
-                            "permissionDecisionReason": f"Protegido: credencial OAuth {_f}",
+                            "permissionDecisionReason": f"Protected: OAuth credential {_f}",
                         }
                     }
                 )

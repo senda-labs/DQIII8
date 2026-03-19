@@ -36,18 +36,24 @@ BLOCKED_PATHS = [
     "context/proposito.md",
 ]
 
+# Always CRITICAL regardless of mode
+CRITICAL_PATTERNS = [
+    r"rm\s+-rf\s+/\s*$",    # rm -rf / (exact root filesystem wipe)
+    r"rm\s+-rf\s+/\s+",     # rm -rf / followed by space (flags or paths after /)
+    r">\s+/dev/sda",         # write directly to disk device
+    r"\bmkfs\b",             # format a filesystem
+    r"\bdd\b.*\bif=",        # disk dump (potential disk wipe)
+    r":\(\)\s*\{.*:\|:.*\}", # fork bomb
+]
+
 HIGH_RISK_PATTERNS = [
-    r"rm\s+-rf\s+/",  # rm -rf /anything (includes rm -rf /)
+    r"rm\s+-rf\s+/",  # rm -rf /anything (non-root paths)
     r"rm\s+-rf\s+~",
     r"rm\s+-rf\s+\$HOME",
     r"DROP\s+TABLE",
-    r"DELETE\s+FROM\s+agent_actions\b(?!\s+WHERE)",  # solo sin WHERE (mass-delete)
+    r"DELETE\s+FROM\s+agent_actions\b(?!\s+WHERE)",  # mass-delete without WHERE
     r"DROP\s+DATABASE",
-    r">\s+/dev/sda",
-    r"\bmkfs\b",
-    r"\bdd\b.*\bif=",
     r"chmod\s+777\s+/",
-    r":\(\)\s*\{.*:\|:.*\}",  # fork bomb
 ]
 
 ALLOWED_DELETIONS = [
@@ -186,7 +192,21 @@ class PermissionAnalyzer:
             if claim_deny:
                 return claim_deny
 
-        # 4. High-risk commands with ALLOWED_DELETIONS exception
+        # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
+        if tool == "Bash":
+            cmd = inp.get("command", "")
+            for pattern in CRITICAL_PATTERNS:
+                if re.search(pattern, cmd, re.IGNORECASE):
+                    return self._deny(
+                        tool,
+                        cmd,
+                        f"Catastrophic command blocked: '{cmd[:80]}'",
+                        "CRITICAL",
+                        f"critical_pattern:{pattern}",
+                        "This command is irreversible and catastrophic.",
+                    )
+
+        # 4b. High-risk commands with ALLOWED_DELETIONS exception
         if tool == "Bash":
             cmd = inp.get("command", "")
             for pattern in HIGH_RISK_PATTERNS:

@@ -23,6 +23,8 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-10] [matplotlib-export] Guardar .png antes de insertar en PPT → no insertar figura directamente
 
 ## jarvis-core
+- [2026-03-19] [AUTO:AgentError] Error repetido 2x en 7d → revisar causa raíz. Último: Agent type 'auditor' not found. Available agents: general-pu
+- [2026-03-19] [AUTO:mcp__sqlite__executeError] Error repetido 7x en 7d → revisar causa raíz. Último: MCP error -32000: no such column: resolution_note
 - [2026-03-19] [AUTO:RetrySuccess-Agent] Agent falló 1x antes de éxito → verificar condiciones previas o timeout
 - [2026-03-19] [AUTO:RetrySuccess-mcpsqliteexecute] mcp__sqlite__execute falló 7x antes de éxito → verificar condiciones previas o timeout
 - [2026-03-19] [AUTO:RetrySuccess-Read] Read falló 1x antes de éxito → verificar condiciones previas o timeout

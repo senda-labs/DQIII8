@@ -49,6 +49,16 @@ skills-registry/cache/
 # Logs internos
 database/system_metrics.log
 database/audit_reports/jarvis_bot.log
+database/audit_reports/*.md
+database/audit-*.md
+
+# Directorios de tareas internas (no publicar)
+tasks/integration_proposals/
+tasks/research_queue/
+tasks/test_results/
+
+# Archivos internos del sistema
+.jarvis_proposito
 objectives/active/
 objectives/failed/
 

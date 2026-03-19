@@ -23,6 +23,9 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-10] [matplotlib-export] Guardar .png antes de insertar en PPT → no insertar figura directamente
 
 ## jarvis-core
+- [2026-03-19] [AUTO:RetrySuccess-Read] Read falló 1x antes de éxito → verificar condiciones previas o timeout
+- [2026-03-19] [AUTO:RetrySuccess-mcpsqlitequery] mcp__sqlite__query falló 1x antes de éxito → verificar condiciones previas o timeout
+- [2026-03-19] [AUTO:RetrySuccess-Bash] Bash falló 2x antes de éxito → verificar condiciones previas o timeout
 - [2026-03-19] [AUTO:mcp__sqlite__queryError] Error repetido 2x en 7d → revisar causa raíz. Último: MCP error -32000: no such column: score
 - [2026-03-19] [AUTO:Bash] Error repetido 3x en 7d → revisar causa raíz. Último: {"stdout":"{\n  \"sessions\": {\n    \"total\": 145,\n    \"
 - [2026-03-19] [AUTO:openrouter_wrapperError] Error repetido 4x en 7d → revisar causa raíz. Último: pollinations/openai falló — sin respuesta o HTTP error

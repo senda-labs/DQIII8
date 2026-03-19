@@ -336,48 +336,49 @@ except Exception:
 
 # ── 1. Close session in DB ────────────────────────────────────────
 try:
-    import sqlite3
+    _bin = os.path.join(os.environ.get("JARVIS_ROOT", "/root/jarvis"), "bin")
+    if _bin not in sys.path:
+        sys.path.insert(0, _bin)
+    from db import get_db as _get_db
 
     if DB.exists():
-        conn = sqlite3.connect(str(DB), timeout=5)
-        row = conn.execute(
-            "SELECT COUNT(*), SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),"
-            " SUM(bytes_written), COUNT(DISTINCT file_path) "
-            "FROM agent_actions WHERE session_id=?",
-            (session,),
-        ).fetchone()
-        _proj = os.environ.get("JARVIS_PROJECT", "jarvis-core")
-        _model = os.environ.get("JARVIS_MODEL", "claude-sonnet-4-6")
-        _total_actions = row[0] or 0
-        # Guard: skip ghost sessions (no tool calls = no meaningful data, avoids audit penalty)
-        if _total_actions > 0:
-            conn.execute(
-                """
-                INSERT INTO sessions
-                (session_id,start_time,end_time,project,model_used,
-                 total_actions,total_errors,files_touched,bytes_written,lessons_added)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(session_id) DO UPDATE SET
-                end_time=excluded.end_time, project=excluded.project,
-                model_used=excluded.model_used, total_actions=excluded.total_actions,
-                total_errors=excluded.total_errors, files_touched=excluded.files_touched,
-                bytes_written=excluded.bytes_written, lessons_added=excluded.lessons_added
-            """,
-                (
-                    session,
-                    NOW,
-                    NOW,
-                    _proj,
-                    _model,
-                    _total_actions,
-                    row[1] or 0,
-                    row[3] or 0,
-                    row[2] or 0,
-                    lessons_added,
-                ),
-            )
-            conn.commit()
-        conn.close()
+        with _get_db(timeout=5) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*), SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),"
+                " SUM(bytes_written), COUNT(DISTINCT file_path) "
+                "FROM agent_actions WHERE session_id=?",
+                (session,),
+            ).fetchone()
+            _proj = os.environ.get("JARVIS_PROJECT", "jarvis-core")
+            _model = os.environ.get("JARVIS_MODEL", "claude-sonnet-4-6")
+            _total_actions = row[0] or 0
+            # Guard: skip ghost sessions (no tool calls = no meaningful data, avoids audit penalty)
+            if _total_actions > 0:
+                conn.execute(
+                    """
+                    INSERT INTO sessions
+                    (session_id,start_time,end_time,project,model_used,
+                     total_actions,total_errors,files_touched,bytes_written,lessons_added)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(session_id) DO UPDATE SET
+                    end_time=excluded.end_time, project=excluded.project,
+                    model_used=excluded.model_used, total_actions=excluded.total_actions,
+                    total_errors=excluded.total_errors, files_touched=excluded.files_touched,
+                    bytes_written=excluded.bytes_written, lessons_added=excluded.lessons_added
+                """,
+                    (
+                        session,
+                        NOW,
+                        NOW,
+                        _proj,
+                        _model,
+                        _total_actions,
+                        row[1] or 0,
+                        row[3] or 0,
+                        row[2] or 0,
+                        lessons_added,
+                    ),
+                )
 except Exception:
     pass
 
@@ -458,14 +459,13 @@ except Exception as e:
 
 # ── 3. Auto-handover if session lasted 15+ minutes ────────────────
 try:
-    import sqlite3, time as _time
+    import time as _time
 
     if DB.exists():
-        _conn = sqlite3.connect(str(DB), timeout=3)
-        _row = _conn.execute(
-            "SELECT MIN(start_time_ms) FROM agent_actions WHERE session_id=?", (session,)
-        ).fetchone()
-        _conn.close()
+        with _get_db(timeout=3) as _conn:
+            _row = _conn.execute(
+                "SELECT MIN(start_time_ms) FROM agent_actions WHERE session_id=?", (session,)
+            ).fetchone()
         _first_ms = _row[0] if _row and _row[0] else None
         _duration_min = ((_time.time() * 1000 - _first_ms) / 60000) if _first_ms else 0
 
@@ -665,26 +665,23 @@ try:
     _progress_file = JARVIS / "claude-progress.txt"
 
     if _db_path.exists():
-        _conn = sqlite3.connect(str(_db_path), timeout=3)
+        with _get_db(timeout=3) as _conn:
+            _total_sessions = _conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
 
-        _total_sessions = _conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+            _audit_row = _conn.execute(
+                "SELECT overall_score, timestamp, recommendations FROM audit_reports ORDER BY timestamp DESC LIMIT 1"
+            ).fetchone()
+            _score = _audit_row[0] if _audit_row else 0.0
+            _audit_ts = (_audit_row[1] or "")[:10] if _audit_row else "N/A"
+            _recs_raw = _audit_row[2] if _audit_row else ""
+            try:
+                _recs = _json.loads(_recs_raw or "[]")
+            except Exception:
+                _recs = [_recs_raw[:200]] if _recs_raw else []
 
-        _audit_row = _conn.execute(
-            "SELECT overall_score, timestamp, recommendations FROM audit_reports ORDER BY timestamp DESC LIMIT 1"
-        ).fetchone()
-        _score = _audit_row[0] if _audit_row else 0.0
-        _audit_ts = (_audit_row[1] or "")[:10] if _audit_row else "N/A"
-        _recs_raw = _audit_row[2] if _audit_row else ""
-        try:
-            _recs = _json.loads(_recs_raw or "[]")
-        except Exception:
-            _recs = [_recs_raw[:200]] if _recs_raw else []
-
-        _integrations = _conn.execute(
-            "SELECT title FROM research_items WHERE status='INTEGRADO' ORDER BY id DESC LIMIT 5"
-        ).fetchall()
-
-        _conn.close()
+            _integrations = _conn.execute(
+                "SELECT title FROM research_items WHERE status='INTEGRADO' ORDER BY id DESC LIMIT 5"
+            ).fetchall()
 
         _now_str = _dt.now().strftime("%Y-%m-%d %H:%M")
 

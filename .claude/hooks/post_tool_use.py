@@ -47,12 +47,12 @@ if tool in ("Edit", "Write", "MultiEdit"):
 
 # ── Patch 5: metrics in try/except — never block real work ──
 try:
-    import sqlite3
+    _bin = os.path.join(os.environ.get("JARVIS_ROOT", "/root/jarvis"), "bin")
+    if _bin not in sys.path:
+        sys.path.insert(0, _bin)
+    from db import get_db as _get_db, DB_PATH as _DB_PATH
 
-    DB = os.path.join(
-        os.environ.get("JARVIS_ROOT", "/root/jarvis"), "database", "jarvis_metrics.db"
-    )
-    if os.path.exists(DB):
+    if _DB_PATH.exists():
         # Detect failure via exit_code (Bash) OR type/is_error/error (other tools)
         _exit_code = resp.get("exit_code")
         if _exit_code is not None:
@@ -83,58 +83,56 @@ try:
         # When failing without stderr: log tool + generic reason for audit
         stored_error = error_msg or (f"{tool} failed (no stderr)" if not success else None)
 
-        conn = sqlite3.connect(DB, timeout=2)
-        # Find the open action row first (to get its id for error_log FK)
-        _action_row = conn.execute(
-            "SELECT id FROM agent_actions "
-            "WHERE session_id=? AND tool_used=? AND end_time_ms IS NULL "
-            "ORDER BY id DESC LIMIT 1",
-            (session, tool),
-        ).fetchone()
-        _action_id = _action_row[0] if _action_row else None
+        with _get_db(timeout=2) as conn:
+            # Find the open action row first (to get its id for error_log FK)
+            _action_row = conn.execute(
+                "SELECT id FROM agent_actions "
+                "WHERE session_id=? AND tool_used=? AND end_time_ms IS NULL "
+                "ORDER BY id DESC LIMIT 1",
+                (session, tool),
+            ).fetchone()
+            _action_id = _action_row[0] if _action_row else None
 
-        # Close the open action from pre_tool_use
-        if _action_id:
-            conn.execute(
-                "UPDATE agent_actions "
-                "SET end_time_ms=?, duration_ms=?-COALESCE(start_time_ms,?), "
-                "    success=?, error_message=?, bytes_written=? "
-                "WHERE id=?",
-                (now_ms, now_ms, now_ms, success, stored_error, bytes_wr, _action_id),
-            )
-        else:
-            conn.execute(
-                """
-                UPDATE agent_actions
-                SET end_time_ms=?, duration_ms=?-COALESCE(start_time_ms,?),
-                    success=?, error_message=?, bytes_written=?
-                WHERE id=(
-                    SELECT id FROM agent_actions
-                    WHERE session_id=? AND tool_used=? AND end_time_ms IS NULL
-                    ORDER BY id DESC LIMIT 1)
-            """,
-                (now_ms, now_ms, now_ms, success, stored_error, bytes_wr, session, tool),
-            )
-
-        if not success:
-            try:
+            # Close the open action from pre_tool_use
+            if _action_id:
                 conn.execute(
-                    "INSERT INTO error_log "
-                    "(timestamp, session_id, agent_name, error_type, error_message, keywords, resolved, action_id) "
-                    "VALUES (datetime('now'), ?, ?, ?, ?, ?, 0, ?)",
-                    (
-                        session,
-                        agent,
-                        f"{tool}Error",
-                        stored_error or f"{tool} failed",
-                        json.dumps([agent, tool]),
-                        _action_id,
-                    ),
+                    "UPDATE agent_actions "
+                    "SET end_time_ms=?, duration_ms=?-COALESCE(start_time_ms,?), "
+                    "    success=?, error_message=?, bytes_written=? "
+                    "WHERE id=?",
+                    (now_ms, now_ms, now_ms, success, stored_error, bytes_wr, _action_id),
                 )
-            except Exception as _el_err:
-                print(f"[post_tool_use] error_log INSERT failed: {_el_err}", file=sys.stderr)
-        conn.commit()
-        conn.close()
+            else:
+                conn.execute(
+                    """
+                    UPDATE agent_actions
+                    SET end_time_ms=?, duration_ms=?-COALESCE(start_time_ms,?),
+                        success=?, error_message=?, bytes_written=?
+                    WHERE id=(
+                        SELECT id FROM agent_actions
+                        WHERE session_id=? AND tool_used=? AND end_time_ms IS NULL
+                        ORDER BY id DESC LIMIT 1)
+                """,
+                    (now_ms, now_ms, now_ms, success, stored_error, bytes_wr, session, tool),
+                )
+
+            if not success:
+                try:
+                    conn.execute(
+                        "INSERT INTO error_log "
+                        "(timestamp, session_id, agent_name, error_type, error_message, keywords, resolved, action_id) "
+                        "VALUES (datetime('now'), ?, ?, ?, ?, ?, 0, ?)",
+                        (
+                            session,
+                            agent,
+                            f"{tool}Error",
+                            stored_error or f"{tool} failed",
+                            json.dumps([agent, tool]),
+                            _action_id,
+                        ),
+                    )
+                except Exception as _el_err:
+                    print(f"[post_tool_use] error_log INSERT failed: {_el_err}", file=sys.stderr)
 except Exception:
     pass  # logging fails silently
 

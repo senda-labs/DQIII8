@@ -82,3 +82,4 @@ tasks/permission_rejection.json
 
 # Node (Claude Code)
 node_modules/
+.mcp.json

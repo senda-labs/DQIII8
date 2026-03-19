@@ -20,14 +20,14 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import struct
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-DB_PATH = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")) / "database" / "jarvis_metrics.db"
+sys.path.insert(0, str(Path(__file__).parent))
+from db import get_db, DB_PATH
 OLLAMA_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text"
 EMBED_DIM = 768
@@ -204,53 +204,50 @@ def setup_db(force: bool = False) -> None:
         print(f"[domain_classifier] DB not found: {DB_PATH}", file=sys.stderr)
         return
 
-    conn = sqlite3.connect(str(DB_PATH), timeout=5)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS domain_enrichment (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT    NOT NULL UNIQUE,
-            description TEXT    NOT NULL,
-            keywords    TEXT    NOT NULL,  -- JSON array
-            centroid    BLOB,              -- packed float32 embedding
-            created_at  TEXT    DEFAULT (datetime('now')),
-            updated_at  TEXT    DEFAULT (datetime('now'))
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_domain_name ON domain_enrichment (name)")
-    conn.commit()
-
-    for domain_name, info in DOMAINS.items():
-        existing = conn.execute(
-            "SELECT id, centroid FROM domain_enrichment WHERE name = ?",
-            (domain_name,),
-        ).fetchone()
-
-        if existing and not force and existing[1] is not None:
-            print(f"  ✓ {domain_name} — already has centroid (use --force to recalculate)")
-            continue
-
-        # Calculate centroid: embedding of descriptive text + keywords
-        centroid_text = info["description"] + ". Keywords: " + ", ".join(info["keywords"])
-        print(f"  → Calculating centroid for {domain_name}...", end="", flush=True)
-        vec = _get_embedding(centroid_text)
-
-        centroid_blob = _pack_embedding(vec) if vec else None
-        status = "✓" if vec else "✗ (Ollama not available — centroid null)"
-
-        if existing:
-            conn.execute(
-                "UPDATE domain_enrichment SET description=?, keywords=?, centroid=?, updated_at=datetime('now') WHERE name=?",
-                (info["description"], json.dumps(info["keywords"]), centroid_blob, domain_name),
+    with get_db(timeout=5) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS domain_enrichment (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT    NOT NULL UNIQUE,
+                description TEXT    NOT NULL,
+                keywords    TEXT    NOT NULL,  -- JSON array
+                centroid    BLOB,              -- packed float32 embedding
+                created_at  TEXT    DEFAULT (datetime('now')),
+                updated_at  TEXT    DEFAULT (datetime('now'))
             )
-        else:
-            conn.execute(
-                "INSERT INTO domain_enrichment (name, description, keywords, centroid) VALUES (?,?,?,?)",
-                (domain_name, info["description"], json.dumps(info["keywords"]), centroid_blob),
-            )
-        conn.commit()
-        print(f" {status}")
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_domain_name ON domain_enrichment (name)")
 
-    conn.close()
+        for domain_name, info in DOMAINS.items():
+            existing = conn.execute(
+                "SELECT id, centroid FROM domain_enrichment WHERE name = ?",
+                (domain_name,),
+            ).fetchone()
+
+            if existing and not force and existing[1] is not None:
+                print(f"  ✓ {domain_name} — already has centroid (use --force to recalculate)")
+                continue
+
+            # Calculate centroid: embedding of descriptive text + keywords
+            centroid_text = info["description"] + ". Keywords: " + ", ".join(info["keywords"])
+            print(f"  → Calculating centroid for {domain_name}...", end="", flush=True)
+            vec = _get_embedding(centroid_text)
+
+            centroid_blob = _pack_embedding(vec) if vec else None
+            status = "✓" if vec else "✗ (Ollama not available — centroid null)"
+
+            if existing:
+                conn.execute(
+                    "UPDATE domain_enrichment SET description=?, keywords=?, centroid=?, updated_at=datetime('now') WHERE name=?",
+                    (info["description"], json.dumps(info["keywords"]), centroid_blob, domain_name),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO domain_enrichment (name, description, keywords, centroid) VALUES (?,?,?,?)",
+                    (domain_name, info["description"], json.dumps(info["keywords"]), centroid_blob),
+                )
+            print(f" {status}")
+
     print("[domain_classifier] Setup complete.")
 
 
@@ -282,11 +279,10 @@ def _classify_by_embedding(prompt: str) -> tuple[str, float] | None:
         return None
 
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=2)
-        rows = conn.execute(
-            "SELECT name, centroid FROM domain_enrichment WHERE centroid IS NOT NULL"
-        ).fetchall()
-        conn.close()
+        with get_db(timeout=2) as conn:
+            rows = conn.execute(
+                "SELECT name, centroid FROM domain_enrichment WHERE centroid IS NOT NULL"
+            ).fetchall()
     except Exception:
         return None
 

@@ -17,7 +17,7 @@ Uso CLI:
 
 import sys
 import json
-import sqlite3
+import sqlite3  # kept for sqlite3.OperationalError / sqlite3.IntegrityError exception types
 import struct
 import time
 import urllib.error
@@ -25,8 +25,10 @@ import urllib.request
 from pathlib import Path
 from datetime import datetime
 
-JARVIS_ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = JARVIS_ROOT / "database" / "jarvis_metrics.db"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from db import get_db, DB_PATH
+
+JARVIS_ROOT = DB_PATH.parent.parent
 
 # ── Embedding ──────────────────────────────────────────────────────
 _OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
@@ -136,19 +138,17 @@ def _get_mem0():
 def _db_add(session_id: str, project: str, content: str) -> bool:
     """Saves to vault_memory. Uses entry_type='checkpoint' (valid in CHECK constraint)."""
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=3)
-        conn.execute(
-            """
-            INSERT INTO vault_memory (subject, predicate, object, entry_type, project, last_seen)
-            VALUES (?, 'recuerda', ?, 'checkpoint', ?, ?)
-            ON CONFLICT(subject, predicate, object) DO UPDATE SET
-                last_seen = excluded.last_seen,
-                times_seen = times_seen + 1
-            """,
-            (session_id, content, project, datetime.now().isoformat()),
-        )
-        conn.commit()
-        conn.close()
+        with get_db(timeout=3) as conn:
+            conn.execute(
+                """
+                INSERT INTO vault_memory (subject, predicate, object, entry_type, project, last_seen)
+                VALUES (?, 'recuerda', ?, 'checkpoint', ?, ?)
+                ON CONFLICT(subject, predicate, object) DO UPDATE SET
+                    last_seen = excluded.last_seen,
+                    times_seen = times_seen + 1
+                """,
+                (session_id, content, project, datetime.now().isoformat()),
+            )
         return True
     except Exception:
         return False
@@ -157,13 +157,12 @@ def _db_add(session_id: str, project: str, content: str) -> bool:
 def _db_search(project: str, query: str, top_k: int = 10) -> list[str]:
     """Keyword search in vault_memory."""
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=3)
         terms = query.split()[:5]  # maximum 5 terms
         conditions = " OR ".join(["object LIKE ?" for _ in terms])
         params = [f"%{t}%" for t in terms] + [project, top_k]
         # `conditions` is built as "object LIKE ? OR object LIKE ? ..." — only
         # safe ? placeholders; no user data appears in the SQL structure.
-        query = (
+        sql = (
             "SELECT object FROM vault_memory"
             " WHERE (" + conditions + ")"
             " AND (project = ? OR project = '')"
@@ -171,8 +170,8 @@ def _db_search(project: str, query: str, top_k: int = 10) -> list[str]:
             " ORDER BY last_seen DESC"
             " LIMIT ?"
         )
-        rows = conn.execute(query, params).fetchall()  # nosemgrep: sqlalchemy-execute-raw-query
-        conn.close()
+        with get_db(timeout=3) as conn:
+            rows = conn.execute(sql, params).fetchall()  # nosemgrep: sqlalchemy-execute-raw-query
         return [r[0] for r in rows]
     except Exception:
         return []
@@ -230,18 +229,16 @@ def search_memories(project: str, query: str, top_k: int = 10) -> list[str]:
     results = _db_search(project, query, top_k)
     if results:
         try:
-            _conn = sqlite3.connect(str(DB_PATH), timeout=3)
             _now = datetime.now().isoformat()
             _terms = query.split()[:5]
             _conditions = " OR ".join(["object LIKE ?" for _ in _terms])
             _params = [f"%{t}%" for t in _terms] + [project]
-            _conn.execute(
-                "UPDATE vault_memory SET last_accessed=?, access_count=COALESCE(access_count,0)+1"
-                " WHERE (" + _conditions + ") AND (project = ? OR project = '')",
-                [_now] + _params,
-            )
-            _conn.commit()
-            _conn.close()
+            with get_db(timeout=3) as _conn:
+                _conn.execute(
+                    "UPDATE vault_memory SET last_accessed=?, access_count=COALESCE(access_count,0)+1"
+                    " WHERE (" + _conditions + ") AND (project = ? OR project = '')",
+                    [_now] + _params,
+                )
         except Exception:
             pass
     return results
@@ -260,10 +257,8 @@ def migrate_vault_memory() -> dict:
     if not DB_PATH.exists():
         return {"ok": False, "error": "DB not found"}
 
-    conn = sqlite3.connect(str(DB_PATH), timeout=5)
     changes: list[str] = []
-
-    try:
+    with get_db(timeout=5) as conn:
         # Add new columns (ignore if they already exist)
         for col_sql in [
             "ALTER TABLE vault_memory ADD COLUMN scope TEXT DEFAULT 'session'",
@@ -273,7 +268,7 @@ def migrate_vault_memory() -> dict:
             try:
                 conn.execute(col_sql)
                 changes.append(col_sql.split("ADD COLUMN")[1].strip().split()[0])
-            except sqlite3.OperationalError:
+            except Exception:
                 pass  # columna ya existe
 
         # Tabla memory_links
@@ -309,10 +304,6 @@ def migrate_vault_memory() -> dict:
             WHERE entry_type IN ('lesson', 'adr') AND transferable = 0
         """)
 
-        conn.commit()
-    finally:
-        conn.close()
-
     return {"ok": True, "columns_added": changes}
 
 
@@ -331,32 +322,30 @@ def store_with_embedding(
     embedding_blob = _pack_vec(vec) if vec else None
 
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=3)
-        conn.execute(
-            """
-            INSERT INTO vault_memory
-                (subject, predicate, object, entry_type, project, last_seen,
-                 scope, embedding, transferable)
-            VALUES (?, 'recuerda', ?, 'checkpoint', ?, ?, ?, ?, ?)
-            ON CONFLICT(subject, predicate, object) DO UPDATE SET
-                last_seen   = excluded.last_seen,
-                times_seen  = times_seen + 1,
-                scope       = excluded.scope,
-                embedding   = COALESCE(excluded.embedding, embedding),
-                transferable= excluded.transferable
-            """,
-            (
-                session_id,
-                content,
-                project,
-                datetime.now().isoformat(),
-                scope,
-                embedding_blob,
-                1 if transferable else 0,
-            ),
-        )
-        conn.commit()
-        conn.close()
+        with get_db(timeout=3) as conn:
+            conn.execute(
+                """
+                INSERT INTO vault_memory
+                    (subject, predicate, object, entry_type, project, last_seen,
+                     scope, embedding, transferable)
+                VALUES (?, 'recuerda', ?, 'checkpoint', ?, ?, ?, ?, ?)
+                ON CONFLICT(subject, predicate, object) DO UPDATE SET
+                    last_seen   = excluded.last_seen,
+                    times_seen  = times_seen + 1,
+                    scope       = excluded.scope,
+                    embedding   = COALESCE(excluded.embedding, embedding),
+                    transferable= excluded.transferable
+                """,
+                (
+                    session_id,
+                    content,
+                    project,
+                    datetime.now().isoformat(),
+                    scope,
+                    embedding_blob,
+                    1 if transferable else 0,
+                ),
+            )
         return {"ok": True, "embedded": vec is not None, "scope": scope}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -373,19 +362,18 @@ def search_semantic(project: str, query: str, top_k: int = 10) -> list[dict]:
         return []
 
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=3)
-        rows = conn.execute(
-            """
-            SELECT id, subject, object, project, scope, confidence, embedding
-            FROM vault_memory
-            WHERE (project = ? OR project = '' OR ? = '')
-              AND entry_type IN ('lesson', 'checkpoint', 'project_state', 'adr')
-            ORDER BY last_seen DESC
-            LIMIT 200
-            """,
-            (project, project),
-        ).fetchall()
-        conn.close()
+        with get_db(timeout=3) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, subject, object, project, scope, confidence, embedding
+                FROM vault_memory
+                WHERE (project = ? OR project = '' OR ? = '')
+                  AND entry_type IN ('lesson', 'checkpoint', 'project_state', 'adr')
+                ORDER BY last_seen DESC
+                LIMIT 200
+                """,
+                (project, project),
+            ).fetchall()
     except Exception:
         return []
 
@@ -427,13 +415,11 @@ def link_memories(
     if link_type not in VALID_LINK_TYPES:
         return {"ok": False, "error": f"invalid link_type: {link_type}. Use: {VALID_LINK_TYPES}"}
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=3)
-        conn.execute(
-            "INSERT OR IGNORE INTO memory_links (source_id, target_id, link_type, strength) VALUES (?,?,?,?)",
-            (source_id, target_id, link_type, strength),
-        )
-        conn.commit()
-        conn.close()
+        with get_db(timeout=3) as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO memory_links (source_id, target_id, link_type, strength) VALUES (?,?,?,?)",
+                (source_id, target_id, link_type, strength),
+            )
         return {"ok": True, "source": source_id, "target": target_id, "type": link_type}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -444,45 +430,43 @@ def get_related(memory_id: int, max_depth: int = 2) -> list[dict]:
     if not DB_PATH.exists():
         return []
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=3)
-        visited: set[int] = set()
-        frontier = [memory_id]
-        results: list[dict] = []
+        with get_db(timeout=3) as conn:
+            visited: set[int] = set()
+            frontier = [memory_id]
+            results: list[dict] = []
 
-        for _ in range(max_depth):
-            if not frontier:
-                break
-            next_frontier: list[int] = []
-            placeholders = ",".join("?" * len(frontier))
-            rows = conn.execute(
-                f"SELECT source_id, target_id, link_type, strength FROM memory_links"
-                f" WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})",
-                frontier + frontier,
-            ).fetchall()
-            for src, tgt, ltype, strength in rows:
-                neighbor = tgt if src in frontier else src
-                if neighbor not in visited and neighbor != memory_id:
-                    visited.add(neighbor)
-                    next_frontier.append(neighbor)
-                    mem = conn.execute(
-                        "SELECT id, subject, object, scope, confidence FROM vault_memory WHERE id=?",
-                        (neighbor,),
-                    ).fetchone()
-                    if mem:
-                        results.append(
-                            {
-                                "id": mem[0],
-                                "subject": mem[1],
-                                "content": mem[2],
-                                "scope": mem[3],
-                                "confidence": mem[4],
-                                "link_type": ltype,
-                                "strength": strength,
-                            }
-                        )
-            frontier = next_frontier
-
-        conn.close()
+            for _ in range(max_depth):
+                if not frontier:
+                    break
+                next_frontier: list[int] = []
+                placeholders = ",".join("?" * len(frontier))
+                rows = conn.execute(
+                    f"SELECT source_id, target_id, link_type, strength FROM memory_links"
+                    f" WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})",
+                    frontier + frontier,
+                ).fetchall()
+                for src, tgt, ltype, strength in rows:
+                    neighbor = tgt if src in frontier else src
+                    if neighbor not in visited and neighbor != memory_id:
+                        visited.add(neighbor)
+                        next_frontier.append(neighbor)
+                        mem = conn.execute(
+                            "SELECT id, subject, object, scope, confidence FROM vault_memory WHERE id=?",
+                            (neighbor,),
+                        ).fetchone()
+                        if mem:
+                            results.append(
+                                {
+                                    "id": mem[0],
+                                    "subject": mem[1],
+                                    "content": mem[2],
+                                    "scope": mem[3],
+                                    "confidence": mem[4],
+                                    "link_type": ltype,
+                                    "strength": strength,
+                                }
+                            )
+                frontier = next_frontier
         return results
     except Exception:
         return []
@@ -497,24 +481,21 @@ def apply_decay(dry_run: bool = False) -> dict:
     if not DB_PATH.exists():
         return {"ok": False, "error": "DB not found"}
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5)
-        stats: dict[str, int] = {}
-        for scope, rate in DECAY_RATES.items():
-            if rate >= 1.0:
-                continue
-            count = conn.execute(
-                "SELECT COUNT(*) FROM vault_memory WHERE scope = ? AND decay_score > 0.01",
-                (scope,),
-            ).fetchone()[0]
-            stats[scope] = count
-            if not dry_run:
-                conn.execute(
-                    "UPDATE vault_memory SET decay_score = MAX(0.01, decay_score * ?) WHERE scope = ?",
-                    (rate, scope),
-                )
-        if not dry_run:
-            conn.commit()
-        conn.close()
+        with get_db(timeout=5) as conn:
+            stats: dict[str, int] = {}
+            for scope, rate in DECAY_RATES.items():
+                if rate >= 1.0:
+                    continue
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM vault_memory WHERE scope = ? AND decay_score > 0.01",
+                    (scope,),
+                ).fetchone()[0]
+                stats[scope] = count
+                if not dry_run:
+                    conn.execute(
+                        "UPDATE vault_memory SET decay_score = MAX(0.01, decay_score * ?) WHERE scope = ?",
+                        (rate, scope),
+                    )
         return {"ok": True, "dry_run": dry_run, "updated": stats}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -525,8 +506,7 @@ def export_knowledge(project: str = "") -> dict:
     if not DB_PATH.exists():
         return {"ok": False, "error": "DB not found"}
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=3)
-        query = """
+        sql = """
             SELECT id, subject, predicate, object, project, confidence,
                    entry_type, scope, created_at, last_seen
             FROM vault_memory
@@ -534,11 +514,11 @@ def export_knowledge(project: str = "") -> dict:
         """
         params: list = []
         if project:
-            query += " AND (project = ? OR project = '' OR scope = 'system')"
+            sql += " AND (project = ? OR project = '' OR scope = 'system')"
             params.append(project)
-        query += " ORDER BY confidence DESC, last_seen DESC"
-        rows = conn.execute(query, params).fetchall()
-        conn.close()
+        sql += " ORDER BY confidence DESC, last_seen DESC"
+        with get_db(timeout=3) as conn:
+            rows = conn.execute(sql, params).fetchall()
 
         memories = [
             {
@@ -576,34 +556,32 @@ def import_knowledge(passport: dict, target_project: str = "") -> dict:
     imported = 0
     skipped = 0
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=5)
-        for m in memories:
-            project = target_project or m.get("project", "")
-            try:
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO vault_memory
-                        (subject, predicate, object, project, confidence, entry_type,
-                         scope, transferable, created_at, last_seen)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-                    """,
-                    (
-                        m.get("subject", "import"),
-                        m.get("predicate", "recuerda"),
-                        m.get("object", ""),
-                        project,
-                        m.get("confidence", 1.0),
-                        m.get("entry_type", "lesson"),
-                        m.get("scope", "system"),
-                        m.get("created_at", datetime.now().isoformat()),
-                        m.get("last_seen", datetime.now().isoformat()),
-                    ),
-                )
-                imported += 1
-            except sqlite3.IntegrityError:
-                skipped += 1
-        conn.commit()
-        conn.close()
+        with get_db(timeout=5) as conn:
+            for m in memories:
+                project = target_project or m.get("project", "")
+                try:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO vault_memory
+                            (subject, predicate, object, project, confidence, entry_type,
+                             scope, transferable, created_at, last_seen)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                        """,
+                        (
+                            m.get("subject", "import"),
+                            m.get("predicate", "recuerda"),
+                            m.get("object", ""),
+                            project,
+                            m.get("confidence", 1.0),
+                            m.get("entry_type", "lesson"),
+                            m.get("scope", "system"),
+                            m.get("created_at", datetime.now().isoformat()),
+                            m.get("last_seen", datetime.now().isoformat()),
+                        ),
+                    )
+                    imported += 1
+                except Exception:
+                    skipped += 1
         return {"ok": True, "imported": imported, "skipped": skipped}
     except Exception as e:
         return {"ok": False, "error": str(e)}

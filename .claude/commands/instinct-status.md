@@ -1,14 +1,14 @@
 ---
 name: instinct-status
-description: Muestra instincts aprendidos desde jarvis_metrics.db, agrupados por proyecto y confianza.
+description: Shows learned instincts from jarvis_metrics.db, grouped by project and confidence.
 allowed_tools: ["Bash"]
 ---
 
-# /instinct-status — Estado de Instincts
+# /instinct-status — Instinct Status
 
-Muestra los instincts de aprendizaje continuo almacenados en `jarvis_metrics.db`.
+Shows continuous learning instincts stored in `jarvis_metrics.db`.
 
-## Uso
+## Usage
 
 ```
 /instinct-status
@@ -16,24 +16,24 @@ Muestra los instincts de aprendizaje continuo almacenados en `jarvis_metrics.db`
 /instinct-status --top 10
 ```
 
-## Qué hace
+## What it does
 
-1. Lee la tabla `instincts` de `database/jarvis_metrics.db`
-2. Agrupa por proyecto (project-scoped primero, luego globales)
-3. Muestra barra de confianza + veces aplicado
-4. Destaca instincts con alta confianza (>0.7) como "consolidados"
+1. Reads the `instincts` table from `database/jarvis_metrics.db`
+2. Groups by project (project-scoped first, then global)
+3. Shows confidence bar + times applied
+4. Highlights high-confidence instincts (>0.7) as "consolidated"
 
-## Implementación
+## Implementation
 
 ```bash
 python3 -c "
 import sqlite3, os, sys
 
-DB = '/root/dqiii8/database/jarvis_metrics.db'
+DB = 'database/jarvis_metrics.db'
 project_filter = None
 top_n = 20
 
-# Parse args (pasados como ARGS env o argv)
+# Parse args (passed as ARGS env or argv)
 args = sys.argv[1:]
 for i, a in enumerate(args):
     if a == '--project' and i+1 < len(args):
@@ -59,8 +59,8 @@ else:
 conn.close()
 
 if not rows:
-    print('No hay instincts registrados aún.')
-    print('Se generarán automáticamente al final de sesiones con correcciones en tasks/lessons.md')
+    print('No instincts registered yet.')
+    print('They will be generated automatically at the end of sessions with corrections in tasks/lessons.md')
     exit(0)
 
 def conf_bar(c):
@@ -79,16 +79,16 @@ for kw, pattern, conf, applied, successful, proj, created in rows:
         print(f'\n## {label.upper()}')
     bar = conf_bar(conf or 0)
     success_pct = int((successful or 0) / max(applied or 1, 1) * 100)
-    tag = ' ✅ consolidado' if (conf or 0) >= 0.7 else ''
+    tag = ' ✅ consolidated' if (conf or 0) >= 0.7 else ''
     print(f'  {bar}  [{kw}]{tag}')
-    print(f'    aplicado: {applied or 0}x  exitoso: {success_pct}%  desde: {(created or \"\")[:10]}')
+    print(f'    applied: {applied or 0}x  successful: {success_pct}%  since: {(created or \"\")[:10]}')
     if pattern:
         preview = pattern[:80] + ('...' if len(pattern) > 80 else '')
         print(f'    {preview}')
 "
 ```
 
-## Output esperado
+## Expected output
 
 ```
 ============================================================
@@ -96,18 +96,18 @@ for kw, pattern, conf, applied, successful, proj, created in rows:
 ============================================================
 
 ## DQIII8-CORE
-  ████████░░  80%  [nested-claude]{tag}
-    aplicado: 3x  exitoso: 100%  desde: 2026-03-12
-    [2026-03-12] [nested-claude] usar claude CLI dentro de session → usar OpenRouter
+  ████████░░  80%  [nested-claude] ✅ consolidated
+    applied: 3x  successful: 100%  since: 2026-03-12
+    [2026-03-12] [nested-claude] use claude CLI inside session → use OpenRouter
 
 ## GLOBAL
   █████░░░░░  50%  [encoding]
-    aplicado: 1x  exitoso: 0%  desde: 2026-03-12
+    applied: 1x  successful: 0%  since: 2026-03-12
 ```
 
-## Notas DQIII8
+## Notes
 
-- Fuente: `database/jarvis_metrics.db` tabla `instincts`
-- Se actualiza en cada stop.py cuando hay lecciones nuevas en `tasks/lessons.md`
-- Formato de lección para ser parseada: `[YYYY-MM-DD] [KEYWORD] causa → fix`
-- Para ver historial completo: `python3 -c "import sqlite3; ..."`
+- Source: `database/jarvis_metrics.db` table `instincts`
+- Updated in each stop.py when there are new lessons in `tasks/lessons.md`
+- Lesson format for parsing: `[YYYY-MM-DD] [KEYWORD] cause → fix`
+- To view full history: `python3 -c "import sqlite3; ..."`

@@ -1,62 +1,62 @@
 # /test-team — Agent Team Coordination Test
 
-Prueba de coordinación directa entre agentes usando Agent Teams.
-Demuestra que el output de un agente alimenta directamente al siguiente.
+Direct coordination test between agents using Agent Teams.
+Demonstrates that the output of one agent feeds directly into the next.
 
 ## Team
 
-**Tarea**: Implementar Kelly Criterion en Python con base en investigación previa.
+**Task**: Implement Kelly Criterion in Python based on prior research.
 
-### Agente 1 — research-analyst (primero)
+### Agent 1 — research-analyst (first)
 
-Investiga el Kelly Criterion y produce un resumen estructurado con:
-- Fórmula matemática exacta: `f* = (bp - q) / b`
-  donde `b` = odds netos, `p` = probabilidad de ganar, `q` = 1 - p
-- Parámetros de entrada y sus rangos válidos
-- Variante Half-Kelly (f* / 2) y cuándo preferirla
-- Casos de uso en trading sistemático (position sizing)
-- Limitaciones conocidas (sensibilidad a estimación de p)
+Researches the Kelly Criterion and produces a structured summary with:
+- Exact mathematical formula: `f* = (bp - q) / b`
+  where `b` = net odds, `p` = win probability, `q` = 1 - p
+- Input parameters and their valid ranges
+- Half-Kelly variant (f* / 2) and when to prefer it
+- Use cases in systematic trading (position sizing)
+- Known limitations (sensitivity to p estimation)
 
-Escribe el resultado a: `tasks/results/research-kelly-[timestamp].md`
+Writes result to: `tasks/results/research-kelly-[timestamp].md`
 
-### Agente 2 — python-specialist (después de Agente 1)
+### Agent 2 — python-specialist (after Agent 1)
 
-Lee el resultado de research-analyst en `tasks/results/research-kelly-*.md`
-y basándose en él implementa:
+Reads the research-analyst result from `tasks/results/research-kelly-*.md`
+and based on it implements:
 
 ```python
 def kelly_criterion(win_prob: float, win_loss_ratio: float, half_kelly: bool = True) -> float:
     """
-    Calcula el tamaño óptimo de posición según Kelly Criterion.
+    Calculates the optimal position size according to Kelly Criterion.
     ...
     """
 ```
 
-Requisitos de implementación:
-- Type hints completos
-- Validación de inputs (0 < win_prob < 1, win_loss_ratio > 0)
-- Soporte para Half-Kelly (por defecto True — más conservador)
-- Ejemplo de uso en docstring con valores reales de trading
+Implementation requirements:
+- Full type hints
+- Input validation (0 < win_prob < 1, win_loss_ratio > 0)
+- Half-Kelly support (default True — more conservative)
+- Usage example in docstring with real trading values
 
-Escribe el resultado a: `tasks/results/python-kelly-[timestamp].md`
+Writes result to: `tasks/results/python-kelly-[timestamp].md`
 
-## Protocolo de coordinación
+## Coordination protocol
 
 ```
 research-analyst → tasks/results/research-kelly-*.md
                               ↓
-python-specialist lee ese archivo → implementa función
+python-specialist reads that file → implements function
 ```
 
-El python-specialist NO empieza hasta que research-analyst haya escrito su resultado.
-Esto valida la coordinación secuencial de Agent Teams.
+The python-specialist does NOT start until research-analyst has written its result.
+This validates sequential coordination of Agent Teams.
 
-## Ejecución
+## Execution
 
-Lanza ambos agentes como team coordinado. El orchestrator espera el resultado
-del research-analyst antes de pasar el contexto al python-specialist.
+Launch both agents as a coordinated team. The orchestrator waits for the result
+from research-analyst before passing context to python-specialist.
 
-Al terminar, muestra:
-1. Resumen de investigación (fórmula + parámetros)
-2. Código Python implementado
-3. Confirmación: `[TEAM] ✅ Kelly Criterion — research + impl completos`
+When done, show:
+1. Research summary (formula + parameters)
+2. Implemented Python code
+3. Confirmation: `[TEAM] ✅ Kelly Criterion — research + impl complete`

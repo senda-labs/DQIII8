@@ -1,38 +1,38 @@
 # /weekly-review — Weekly Dashboard Update
 
 ## Trigger
-Usuario escribe `/weekly-review` (normalmente los lunes o viernes).
+User writes `/weekly-review` (typically on Mondays or Fridays).
 
-## Comportamiento
+## Behavior
 
-### 1. Leer sessions de los últimos 7 días
+### 1. Read sessions from the last 7 days
 ```bash
 find $JARVIS_ROOT/sessions/ -name "*.md" -newer <(date -d '7 days ago' +%Y-%m-%d) | sort
 ```
-Para cada sesión: extraer frontmatter (project, date) y sección "Qué hicimos" (primer bullet).
+For each session: extract frontmatter (project, date) and "What we did" section (first bullet).
 
-### 2. Leer estado de todos los proyectos
-Leer `projects/*.md` — extraer: título, status del frontmatter YAML, sección "Próximo paso".
+### 2. Read status of all projects
+Read `projects/*.md` — extract: title, status from YAML frontmatter, section "Next step".
 
-### 3. Consultar métricas de la semana
+### 3. Query week metrics
 ```sql
--- Sesiones esta semana
+-- Sessions this week
 SELECT COUNT(*), SUM(total_actions), SUM(total_errors), MAX(end_time)
 FROM sessions
 WHERE start_time >= datetime('now', '-7 days');
 
--- Agente más usado
+-- Most used agent
 SELECT agent_name, COUNT(*) as n
 FROM agent_actions
 WHERE timestamp >= datetime('now', '-7 days')
 GROUP BY agent_name ORDER BY n DESC LIMIT 3;
 
--- Tasa de éxito global
+-- Global success rate
 SELECT ROUND(AVG(success)*100,1) FROM agent_actions
 WHERE timestamp >= datetime('now', '-7 days');
 ```
 
-### 4. Regenerar `00_DASHBOARD.md`
+### 4. Regenerate `00_DASHBOARD.md`
 
 ```markdown
 ---
@@ -43,61 +43,57 @@ tags: [dashboard, weekly]
 ---
 
 # DQIII8 Dashboard
-**Actualizado:** YYYY-MM-DD · Semana W[N]
+**Updated:** YYYY-MM-DD · Week W[N]
 
-## Estado de Proyectos
+## Project Status
 
-| Proyecto | Status | Último avance | Próximo paso |
-|----------|--------|---------------|--------------|
-| [[content-automation]] | 🟢 Activo | [1-liner] | [próximo paso] |
-| [[hult-finance]] | 🟡 Activo | [1-liner] | [próximo paso] |
-| [[leyendas-del-este]] | 🔵 Pausado | [1-liner] | [próximo paso] |
-| [[dqiii8-core]] | 🟢 Activo | [1-liner] | [próximo paso] |
+| Project | Status | Latest progress | Next step |
+|---------|--------|-----------------|-----------|
+| [[project-name]] | 🟢 Active | [1-liner] | [next step] |
+| [[project-name]] | 🟡 Active | [1-liner] | [next step] |
+| [[project-name]] | 🔵 Paused | [1-liner] | [next step] |
+| [[dqiii8-core]] | 🟢 Active | [1-liner] | [next step] |
 
-## Sesiones esta semana
+## Sessions this week
 
-- **YYYY-MM-DD** · [proyecto] — [1-liner de lo que se hizo]
+- **YYYY-MM-DD** · [project] — [1-liner of what was done]
 - ...
 
-## Métricas
+## Metrics
 
-| Métrica | Valor |
-|---------|-------|
-| Sesiones totales | N |
-| Acciones totales | N |
-| Tasa de éxito | N% |
-| Agente más usado | [nombre] (N acciones) |
-| Último audit score | N/100 |
+| Metric | Value |
+|--------|-------|
+| Total sessions | N |
+| Total actions | N |
+| Success rate | N% |
+| Most used agent | [name] (N actions) |
+| Last audit score | N/100 |
 
-## Tareas pendientes
+## Pending tasks
 
-> [!todo] content-automation
-> - [ ] Fix subtítulos visibles en video final
+> [!todo] [project-name]
+> - [ ] [task 1]
 > - [ ] ...
 
-> [!todo] hult-finance
-> - [ ] Scenario analysis capital structure
-> - [ ] ...
+## Alerts
 
-## Alertas
-
-> [!warning] [Solo si score audit < 80 o errores sin resolver]
-> [Descripción del problema]
+> [!warning] [Only if audit score < 80 or unresolved errors]
+> [Problem description]
 ```
 
 ### 5. Git push
 ```bash
 git -C $JARVIS_ROOT add 00_DASHBOARD.md sessions/
-git -C $JARVIS_ROOT commit -m "📊 weekly review semana W[N]"
+git -C $JARVIS_ROOT commit -m "docs: weekly review week W[N]"
 git -C $JARVIS_ROOT push origin main
 ```
 
 ### 6. Feedback
 ```
-[WEEKLY] ✅ Dashboard actualizado en 00_DASHBOARD.md · Semana W[N] · [N] sesiones procesadas
+[WEEKLY] ✅ Dashboard updated in 00_DASHBOARD.md · Week W[N] · [N] sessions processed
 ```
 
-## Notas
-- Usar `date +%V` para el número de semana ISO
-- Si no hay sesiones esa semana, indicarlo explícitamente en el dashboard
-- El dashboard es el único archivo que el weekly-review regenera completamente
+## Notes
+- Use `date +%V` for the ISO week number
+- If there are no sessions that week, indicate it explicitly in the dashboard
+- The dashboard is the only file that weekly-review completely regenerates

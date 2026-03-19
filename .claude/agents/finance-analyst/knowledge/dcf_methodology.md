@@ -1,58 +1,58 @@
-# DCF — Metodología
+# DCF — Methodology
 
-## Concepto
+## Concept
 
-El DCF (Discounted Cash Flow) valora una empresa como el valor presente
-de sus flujos de caja libre futuros descontados al WACC.
+DCF (Discounted Cash Flow) values a company as the present value
+of its future free cash flows discounted at the WACC.
 
-EV = Σ [FCFt / (1 + WACC)^t] + VT / (1 + WACC)^n
+EV = Σ [FCFt / (1 + WACC)^t] + TV / (1 + WACC)^n
 
-## Flujo de Caja Libre (FCF)
+## Free Cash Flow (FCF)
 
-FCF = EBIT × (1 − t) + D&A − CAPEX − ΔFCK
+FCF = EBIT × (1 − t) + D&A − CAPEX − ΔNWC
 
-Donde:
-- EBIT × (1 − t) = NOPAT (beneficio operativo neto de impuestos)
-- D&A = depreciación y amortización (no caja, se suma)
-- CAPEX = inversión en activo fijo (salida de caja)
-- ΔFCK = variación del fondo de comercio / capital circulante neto
+Where:
+- EBIT × (1 − t) = NOPAT (net operating profit after tax)
+- D&A = depreciation and amortization (non-cash, added back)
+- CAPEX = capital expenditure (cash outflow)
+- ΔNWC = change in net working capital
 
-### Capital Circulante Neto (CCN)
+### Net Working Capital (NWC)
 
-CCN = (Clientes + Existencias) − Proveedores
-ΔFCK positivo = más capital inmovilizado → reduce FCF
+NWC = (Receivables + Inventory) − Payables
+ΔNWC positive = more capital tied up → reduces FCF
 
-## Valor Terminal (Gordon Growth)
+## Terminal Value (Gordon Growth)
 
-VT = FCFn × (1 + g) / (WACC − g)
+TV = FCFn × (1 + g) / (WACC − g)
 
-- g = tasa de crecimiento perpetuo (típico: 1.5–2.5% en Europa)
-- g debe ser ≤ crecimiento nominal del PIB del sector
-- Regla: VT suele representar 60–80% del EV total → muy sensible
+- g = perpetual growth rate (typical: 1.5–2.5% in developed markets)
+- g must be ≤ nominal GDP growth of the sector
+- Rule: TV typically represents 60–80% of total EV → highly sensitive
 
-### Alternativa: Múltiplo de Salida
+### Alternative: Exit Multiple
 
-VT = EBITDAn × múltiplo_sector
+TV = EBITDAn × sector_multiple
 
-Útil para validación cruzada con el método Gordon.
+Useful for cross-validation with the Gordon method.
 
-## Del EV al Equity Value
+## From EV to Equity Value
 
-Equity Value = EV − Deuda Neta + Activos No Operativos
+Equity Value = EV − Net Debt + Non-Operating Assets
 
-Deuda Neta = Deuda financiera bruta − Caja y equivalentes
+Net Debt = Gross financial debt − Cash and equivalents
 
-## Horizonte y Fases
+## Horizon and Phases
 
-Fase 1 (años 1–5): proyección explícita de P&L + FCF
-Fase 2 (años 6–10, opcional): crecimiento convergente hacia g
-Fase 3: valor terminal
+Phase 1 (years 1–5): explicit P&L + FCF projection
+Phase 2 (years 6–10, optional): growth converging toward g
+Phase 3: terminal value
 
-Para empresas en crecimiento: usar 2 fases con WACC más alto en fase 1.
+For growth companies: use 2 phases with higher WACC in phase 1.
 
-## Análisis de Sensibilidad
+## Sensitivity Analysis
 
-Tabla 2D obligatoria en cualquier DCF profesional:
+Mandatory 2D table in any professional DCF:
 
 |        | g=1.0% | g=1.5% | g=2.0% | g=2.5% |
 |--------|--------|--------|--------|--------|
@@ -61,22 +61,22 @@ Tabla 2D obligatoria en cualquier DCF profesional:
 | W=7.0% |        |        |        |        |
 | W=7.5% |        |        |        |        |
 
-Regla práctica:
-- +1% WACC → −15 a −25% en EV
-- +0.5% g → +10 a +15% en EV
+Practical rule:
+- +1% WACC → −15 to −25% in EV
+- +0.5% g → +10 to +15% in EV
 
-## Limitaciones del Modelo
+## Model Limitations
 
-1. Sensibilidad extrema a g y WACC (pequeños cambios → gran impacto)
-2. Proyecciones de FCF > 5Y tienen alta incertidumbre
-3. Ignora opciones reales (expansión, desinversión)
-4. Para empresas cíclicas: usar FCF normalizado, no el puntual
-5. CAPEX de mantenimiento vs. crecimiento deben separarse
-6. Valores negativos de FCF en años iniciales son válidos (crecimiento)
+1. Extreme sensitivity to g and WACC (small changes → large impact)
+2. FCF projections > 5Y have high uncertainty
+3. Ignores real options (expansion, divestiture)
+4. For cyclical companies: use normalized FCF, not spot FCF
+5. Maintenance vs. growth CAPEX should be separated
+6. Negative FCF in early years is valid (growth companies)
 
-## Validación Cruzada
+## Cross-Validation
 
-Siempre contrastar DCF con valoración por múltiplos:
-- Si DCF da EV/EBITDA implícito >> peers → revisar supuestos de g o margen
-- Diferencia tolerable DCF vs. múltiplos: ±20%
-- Diferencia > 30% → identificar y justificar el driver principal
+Always cross-check DCF with multiples valuation:
+- If DCF implies EV/EBITDA >> peers → revisit g or margin assumptions
+- Tolerable difference DCF vs. multiples: ±20%
+- Difference > 30% → identify and justify the main driver

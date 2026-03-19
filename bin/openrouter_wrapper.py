@@ -73,7 +73,7 @@ AGENT_ROUTING = {
     "content-automator": ("ollama", "qwen2.5-coder:7b"),
     # Tier 2 — Cloud free
     "backend-builder": ("openrouter", "qwen/qwen3-coder:free"),
-    "research-analyst": ("openrouter", "stepfun/step-3.5-flash:free"),
+    "research-analyst": ("groq", "llama-3.3-70b-versatile"),
     "auditor": ("openrouter", "stepfun/step-3.5-flash:free"),
     "data-analyst": ("openrouter", "openai/gpt-oss-120b:free"),
     "code-reviewer": ("openrouter", "openai/gpt-oss-120b:free"),

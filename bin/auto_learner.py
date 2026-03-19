@@ -93,7 +93,7 @@ def detect_auto_lessons(session_id: str, db_path: str | Path | None = None) -> t
         conn.row_factory = sqlite3.Row
 
         # ── P1: Repeat errors (same error_type, 2+ occurrences, last 7 days) ──
-        week_ago = (NOW_UTC - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        week_ago = (NOW_UTC - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
         repeats = conn.execute(
             """
             SELECT error_type, COUNT(*) as cnt, MAX(error_message) as last_msg
@@ -218,8 +218,8 @@ def consolidate_learning(db_path: str | Path | None = None) -> int:
         conn = sqlite3.connect(str(db_path), timeout=5)
         conn.row_factory = sqlite3.Row
 
-        month_ago = (NOW_UTC - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        week_ago = (NOW_UTC - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        month_ago = (NOW_UTC - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+        week_ago = (NOW_UTC - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
 
         # ── S1: Systemic errors (5+ in 30d) ──
         systemic = conn.execute(

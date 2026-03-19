@@ -263,53 +263,56 @@ def migrate_vault_memory() -> dict:
     conn = sqlite3.connect(str(DB_PATH), timeout=5)
     changes: list[str] = []
 
-    # Añadir columnas nuevas (ignorar si ya existen)
-    for col_sql in [
-        "ALTER TABLE vault_memory ADD COLUMN scope TEXT DEFAULT 'session'",
-        "ALTER TABLE vault_memory ADD COLUMN embedding BLOB",
-        "ALTER TABLE vault_memory ADD COLUMN transferable INTEGER DEFAULT 0",
-    ]:
-        try:
-            conn.execute(col_sql)
-            changes.append(col_sql.split("ADD COLUMN")[1].strip().split()[0])
-        except sqlite3.OperationalError:
-            pass  # columna ya existe
+    try:
+        # Añadir columnas nuevas (ignorar si ya existen)
+        for col_sql in [
+            "ALTER TABLE vault_memory ADD COLUMN scope TEXT DEFAULT 'session'",
+            "ALTER TABLE vault_memory ADD COLUMN embedding BLOB",
+            "ALTER TABLE vault_memory ADD COLUMN transferable INTEGER DEFAULT 0",
+        ]:
+            try:
+                conn.execute(col_sql)
+                changes.append(col_sql.split("ADD COLUMN")[1].strip().split()[0])
+            except sqlite3.OperationalError:
+                pass  # columna ya existe
 
-    # Tabla memory_links
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS memory_links (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_id   INTEGER NOT NULL REFERENCES vault_memory(id) ON DELETE CASCADE,
-            target_id   INTEGER NOT NULL REFERENCES vault_memory(id) ON DELETE CASCADE,
-            link_type   TEXT    NOT NULL DEFAULT 'related_to',
-            strength    REAL    DEFAULT 1.0,
-            created_at  TEXT    DEFAULT (datetime('now')),
-            UNIQUE(source_id, target_id, link_type)
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_links_source ON memory_links (source_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_links_target ON memory_links (target_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_vault_scope ON vault_memory (scope)")
-    changes.append("memory_links table")
+        # Tabla memory_links
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS memory_links (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id   INTEGER NOT NULL REFERENCES vault_memory(id) ON DELETE CASCADE,
+                target_id   INTEGER NOT NULL REFERENCES vault_memory(id) ON DELETE CASCADE,
+                link_type   TEXT    NOT NULL DEFAULT 'related_to',
+                strength    REAL    DEFAULT 1.0,
+                created_at  TEXT    DEFAULT (datetime('now')),
+                UNIQUE(source_id, target_id, link_type)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_links_source ON memory_links (source_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_links_target ON memory_links (target_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_vault_scope ON vault_memory (scope)")
+        changes.append("memory_links table")
 
-    # Migrar scope según entry_type
-    conn.execute("""
-        UPDATE vault_memory SET scope = CASE
-            WHEN entry_type IN ('lesson', 'adr')   THEN 'system'
-            WHEN entry_type = 'project_state'       THEN 'project'
-            ELSE 'session'
-        END
-        WHERE scope = 'session' OR scope IS NULL
-    """)
+        # Migrar scope según entry_type
+        conn.execute("""
+            UPDATE vault_memory SET scope = CASE
+                WHEN entry_type IN ('lesson', 'adr')   THEN 'system'
+                WHEN entry_type = 'project_state'       THEN 'project'
+                ELSE 'session'
+            END
+            WHERE scope = 'session' OR scope IS NULL
+        """)
 
-    # Marcar lessons y ADRs como transferables
-    conn.execute("""
-        UPDATE vault_memory SET transferable = 1
-        WHERE entry_type IN ('lesson', 'adr') AND transferable = 0
-    """)
+        # Marcar lessons y ADRs como transferables
+        conn.execute("""
+            UPDATE vault_memory SET transferable = 1
+            WHERE entry_type IN ('lesson', 'adr') AND transferable = 0
+        """)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
+
     return {"ok": True, "columns_added": changes}
 
 

@@ -14,16 +14,41 @@
 
 set -euo pipefail
 
+cat << 'BANNER'
+
+    ██████╗  ██████╗ ██╗██╗██╗ █████╗
+    ██╔══██╗██╔═══██╗██║██║██║██╔══██╗
+    ██║  ██║██║   ██║██║██║██║╚█████╔╝
+    ██║  ██║██║▄▄ ██║██║██║██║██╔══██╗
+    ██████╔╝╚██████╔╝██║██║██║╚█████╔╝
+    ╚═════╝  ╚══▀▀═╝ ╚═╝╚═╝╚═╝ ╚════╝
+
+    Works for you. Go outside and live.
+
+    Self-auditing AI orchestrator
+    70% free model routing | Auto-learning | Zero prompting skill needed
+
+    github.com/senda-labs/DQIII8
+
+BANNER
+
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 info()  { echo -e "${CYAN}[DQIII8]${NC} $*"; }
 ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 fail()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+step()  {
+    local num="$1" total="$2" msg="$3"
+    echo ""
+    echo -e "  ${BOLD}[$num/$total]${NC} $msg"
+    echo "  ─────────────────────────────────────"
+}
 
 # ── Parse flags ─────────────────────────────────────────────────────────────
 SKIP_MODEL=0
@@ -47,6 +72,8 @@ else
 fi
 
 # ── OS / platform detection ──────────────────────────────────────────────────
+step 1 7 "Detecting platform..."
+
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 DISTRO=""
@@ -91,7 +118,7 @@ if grep -qi microsoft /proc/version 2>/dev/null; then
     info "WSL2 detected — installing normally"
 fi
 
-info "Detected: $DISTRO $OS_VERSION ($ARCH)"
+ok "Platform: $DISTRO $OS_VERSION ($ARCH)"
 
 # ── Install directory ────────────────────────────────────────────────────────
 if [ "$(id -u)" = "0" ]; then
@@ -121,9 +148,9 @@ else
 fi
 
 # ── Phase 1: System packages (needs root/sudo) ───────────────────────────────
-if [ "$NO_SYSTEM_PKGS" = "0" ]; then
-    info "Installing system dependencies..."
+step 2 7 "Installing system dependencies..."
 
+if [ "$NO_SYSTEM_PKGS" = "0" ]; then
     case "$DISTRO" in
         ubuntu|debian|linuxmint|pop)
             $SUDO apt-get update -qq
@@ -149,9 +176,7 @@ else
 fi
 
 # ── Phase 2: Python virtual environment ─────────────────────────────────────
-info "Creating Python virtual environment..."
 PYTHON_BIN="python3"
-# On macOS with brew, prefer the brew python3.12
 if [ "$DISTRO" = "macos" ] && command -v python3.12 &>/dev/null; then
     PYTHON_BIN="python3.12"
 fi
@@ -163,10 +188,11 @@ fi
 source "$PROJECT_DIR/.venv/bin/activate"
 pip install --upgrade pip -q
 pip install -r "$PROJECT_DIR/requirements.txt" -q
-ok "Python venv ready (.venv)"
+ok "Python venv ready (.venv) — $($PYTHON_BIN --version)"
 
 # ── Phase 3: Ollama ──────────────────────────────────────────────────────────
-info "Installing Ollama..."
+step 3 7 "Installing Ollama (Tier C — free local AI)..."
+
 if command -v ollama &>/dev/null; then
     ok "Ollama already installed"
 else
@@ -182,7 +208,6 @@ else
             fi
             ;;
         *)
-            # Linux: official install script
             curl -fsSL https://ollama.com/install.sh | sh
             ok "Ollama installed"
             ;;
@@ -194,7 +219,6 @@ if [ "$SKIP_MODEL" = "1" ]; then
     ok "Pull later with: ollama pull qwen2.5-coder:7b"
 else
     info "Pulling qwen2.5-coder:7b (~4.4GB, Tier 1 local model)..."
-    # Start ollama serve in background if server not already running
     if ! ollama list &>/dev/null 2>&1; then
         ollama serve &>/tmp/ollama-dqiii8.log &
         sleep 3
@@ -204,6 +228,8 @@ else
 fi
 
 # ── Phase 4: SQLite database ─────────────────────────────────────────────────
+step 4 7 "Setting up DQIII8..."
+
 info "Initializing SQLite database..."
 DB_PATH="$PROJECT_DIR/database/jarvis_metrics.db"
 SCHEMA_PATH="$PROJECT_DIR/database/schema.sql"
@@ -221,13 +247,13 @@ else
 fi
 
 # ── Phase 5: Claude Code (optional) ──────────────────────────────────────────
-info "Checking Claude Code (optional)..."
+step 5 7 "Installing Node.js + Claude Code..."
+
 _install_claude_code() {
-    # For non-root users, prefer a user-local npm prefix to avoid permission errors
     if [ -n "$SUDO" ] && [ "$(id -u)" != "0" ]; then
         npm install -g @anthropic-ai/claude-code --quiet 2>/dev/null \
             || npm install --prefix "$HOME/.local" @anthropic-ai/claude-code --quiet 2>/dev/null \
-            || { warn "Claude Code install failed (permissions). Install manually: npm install -g @anthropic-ai/claude-code"; return 0; }
+            || { warn "Claude Code install failed. Install manually: npm install -g @anthropic-ai/claude-code"; return 0; }
     else
         npm install -g @anthropic-ai/claude-code --quiet 2>/dev/null \
             || { warn "Claude Code install failed. Install manually: npm install -g @anthropic-ai/claude-code"; return 0; }
@@ -261,7 +287,9 @@ else
     esac
 fi
 
-# ── Phase 6: Environment file ────────────────────────────────────────────────
+# ── Phase 6: Environment + alias ────────────────────────────────────────────
+step 6 7 "Configuring environment..."
+
 if [ ! -f "$PROJECT_DIR/.env" ]; then
     if [ -f "$PROJECT_DIR/config/.env.example" ]; then
         cp "$PROJECT_DIR/config/.env.example" "$PROJECT_DIR/.env"
@@ -273,7 +301,6 @@ else
     ok ".env already exists"
 fi
 
-# ── Phase 7: Shell alias ─────────────────────────────────────────────────────
 SHELL_RC="$HOME/.bashrc"
 [ -f "$HOME/.zshrc" ] && SHELL_RC="$HOME/.zshrc"
 
@@ -287,17 +314,47 @@ else
     ok "'dq' alias already in $SHELL_RC"
 fi
 
+# ── Phase 7: Security verification ──────────────────────────────────────────
+step 7 7 "Running security checks..."
+
+if [ -f "$PROJECT_DIR/bin/verify_install.py" ]; then
+    python3 "$PROJECT_DIR/bin/verify_install.py" || warn "Some security checks failed — see above"
+else
+    warn "bin/verify_install.py not found — skipping security check"
+fi
+
 # ── Done ─────────────────────────────────────────────────────────────────────
+# Read API key status from .env for the tier summary
+GROQ_KEY=""
+ANTHROPIC_KEY=""
+if [ -f "$PROJECT_DIR/.env" ]; then
+    GROQ_KEY="$(grep -E '^GROQ_API_KEY=' "$PROJECT_DIR/.env" | cut -d= -f2 | tr -d '[:space:]')"
+    ANTHROPIC_KEY="$(grep -E '^ANTHROPIC_API_KEY=' "$PROJECT_DIR/.env" | cut -d= -f2 | tr -d '[:space:]')"
+fi
+
+TIER_B_STATUS="✗ Add GROQ_API_KEY to .env"
+TIER_A_STATUS="✗ Add ANTHROPIC_API_KEY to .env"
+[ -n "$GROQ_KEY" ] && TIER_B_STATUS="✓ Ready"
+[ -n "$ANTHROPIC_KEY" ] && TIER_A_STATUS="✓ Ready"
+
 echo ""
-echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  DQIII8 installed successfully!${NC}"
-echo -e "${GREEN}  Location: $PROJECT_DIR${NC}"
-echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
+echo -e "${GREEN}  ══════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}   DQIII8 installed successfully!${NC}"
+echo -e "${GREEN}  ══════════════════════════════════════════════════${NC}"
 echo ""
-echo "  Quick start:"
-echo "    source $SHELL_RC"
-echo "    dq \"hello, who are you?\""
+echo "   Location:  $PROJECT_DIR"
+echo "   Config:    $PROJECT_DIR/.env"
 echo ""
-echo "  Tier C (local, free) is ready."
-echo "  For Tier B/A: edit $PROJECT_DIR/.env"
+echo "   Quick start:"
+echo "     source $SHELL_RC"
+echo "     dq \"hello, who are you?\""
+echo ""
+echo "   Tiers available:"
+echo "     Tier C (local, free)  ✓ Ready"
+echo "     Tier B (Groq, free)   $TIER_B_STATUS"
+echo "     Tier A (Claude, paid) $TIER_A_STATUS"
+echo ""
+echo "   Learn more:  github.com/senda-labs/DQIII8"
+echo "   Privacy:     $PROJECT_DIR/PRIVACY.md"
+echo -e "${GREEN}  ══════════════════════════════════════════════════${NC}"
 echo ""

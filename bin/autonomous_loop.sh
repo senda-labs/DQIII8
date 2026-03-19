@@ -15,6 +15,7 @@ export JARVIS_ROOT=/root/jarvis
 
 OBJECTIVE="${1:-}"
 MAX_HOURS="${2:-8}"
+MAX_ITER="${3:-100}"  # Maximum claude invocations per session (safety cap)
 
 if [ -z "$OBJECTIVE" ]; then
     echo "Usage: autonomous_loop.sh 'objective' [max_hours]"

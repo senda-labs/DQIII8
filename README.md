@@ -57,6 +57,17 @@ curl -fsSL https://raw.githubusercontent.com/senda-labs/DQIII8/main/install.sh |
 
 No native Windows support needed — WSL2 gives you full Linux performance.
 
+### Verify your installation
+
+After installing, run the security checker:
+
+```bash
+python3 bin/verify_install.py
+```
+
+This verifies: file permissions, no leaked secrets, network exposure,
+dependency safety, and hook integrity.
+
 ---
 
 ## Why DQIII8?

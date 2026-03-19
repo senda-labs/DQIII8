@@ -1,4 +1,4 @@
-"""Tests para verificar que los triggers de agentes detectan correctamente las palabras clave."""
+"""Tests to verify that agent triggers correctly detect keywords."""
 
 TRIGGER_RULES = {
     "python-specialist": [
@@ -6,8 +6,8 @@ TRIGGER_RULES = {
         "refactor",
         ".py",
         "debug",
-        "error en",
-        "optimiza",
+        "error in",
+        "optimize",
     ],
     "git-specialist": [
         "commit",
@@ -19,59 +19,59 @@ TRIGGER_RULES = {
     ],
     "code-reviewer": [
         "review",
-        "está bien este código",
-        "revisa esto",
+        "is this code ok",
+        "review this",
     ],
     "orchestrator": [
         "/mobilize",
-        "coordina",
-        "en paralelo",
+        "coordinate",
+        "in parallel",
     ],
     "content-automator": [
         "video",
         "TTS",
-        "subtítulos",
+        "subtitles",
         "pipeline",
         "reels",
     ],
     "data-analyst": [
         "WACC",
         "DCF",
-        "gráfico",
+        "chart",
         "Excel",
-        "finanzas",
+        "finance",
     ],
     "creative-writer": [
-        "capítulo",
-        "escena",
-        "xianxia",
-        "novela",
+        "chapter",
+        "scene",
+        "novel",
+        "story",
     ],
     "auditor": [
         "/audit",
-        "qué está fallando",
-        "métricas",
+        "what's failing",
+        "metrics",
     ],
 }
 
 
 def test_trigger_coverage():
-    """Cada agente debe tener al menos 2 triggers definidos."""
+    """Each agent must have at least 2 triggers defined."""
     for agent, triggers in TRIGGER_RULES.items():
-        assert len(triggers) >= 2, f"{agent} tiene menos de 2 triggers"
+        assert len(triggers) >= 2, f"{agent} has fewer than 2 triggers"
 
 
 def test_no_trigger_overlap():
-    """Ningún trigger debe activar más de un agente."""
+    """No trigger should activate more than one agent."""
     all_triggers = []
     for agent, triggers in TRIGGER_RULES.items():
         for t in triggers:
-            assert t not in all_triggers, f"Trigger '{t}' aparece en múltiples agentes"
+            assert t not in all_triggers, f"Trigger '{t}' appears in multiple agents"
             all_triggers.append(t)
 
 
 def test_delegation_table_in_claude_md():
-    """CLAUDE.md debe contener la tabla de delegación."""
+    """CLAUDE.md must contain the delegation table."""
     with open("CLAUDE.md", encoding="utf-8") as f:
         content = f.read()
     assert "python-specialist" in content
@@ -80,13 +80,13 @@ def test_delegation_table_in_claude_md():
 
 
 def test_all_agents_have_unique_name():
-    """Todos los nombres de agente deben ser únicos."""
+    """All agent names must be unique."""
     names = list(TRIGGER_RULES.keys())
     assert len(names) == len(set(names))
 
 
 def test_trigger_strings_are_non_empty():
-    """Todos los triggers deben ser strings no vacíos."""
+    """All triggers must be non-empty strings."""
     for agent, triggers in TRIGGER_RULES.items():
         for t in triggers:
-            assert isinstance(t, str) and len(t) > 0, f"Trigger vacío en {agent}"
+            assert isinstance(t, str) and len(t) > 0, f"Empty trigger in {agent}"

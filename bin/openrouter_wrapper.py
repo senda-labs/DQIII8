@@ -524,6 +524,33 @@ def main() -> None:
         print("[openrouter_wrapper] Error: prompt vacío.", file=sys.stderr)
         sys.exit(1)
 
+    # Domain enrichment (best-effort — no falla si enricher/classifier no disponible)
+    _enriched_domain = None
+    _knowledge_chunks = 0
+    try:
+        _dc_path = Path(__file__).parent / "domain_classifier.py"
+        _ke_path = Path(__file__).parent / "knowledge_enricher.py"
+        if _dc_path.exists() and _ke_path.exists():
+            import importlib.util as _ilu
+
+            _spec = _ilu.spec_from_file_location("domain_classifier", _dc_path)
+            _dc = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(_dc)
+            _domain, _score, _method = _dc.classify_domain(prompt)
+            if _method != "default":
+                _spec2 = _ilu.spec_from_file_location("knowledge_enricher", _ke_path)
+                _ke = _ilu.module_from_spec(_spec2)
+                _spec2.loader.exec_module(_ke)
+                prompt, _knowledge_chunks = _ke.enrich_with_knowledge(prompt, _domain)
+                if _knowledge_chunks > 0:
+                    _enriched_domain = _domain
+                    print(
+                        f"[JARVIS] knowledge enrichment: domain={_domain} chunks={_knowledge_chunks}",
+                        file=sys.stderr,
+                    )
+    except Exception:
+        pass
+
     # Resolver proveedor y modelo
     if args.model:
         primary_provider = "openrouter"

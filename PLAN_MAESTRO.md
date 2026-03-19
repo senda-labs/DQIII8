@@ -32,15 +32,16 @@ pasarlo al agente funcional. El usuario no necesita saber hacer prompts.
 ## Bloques pendientes
 - **Bloque 4.6** — Modo sueño: ejecución programada de tareas de mantenimiento (auto-researcher, consolidación, cleanup)
 - Bloque 7: UI/web (Codeman Respawn + CloudCLI plugins + push notifications)
-- Bloque 8: Benchmark real 3 tiers
+- Bloque 8: Benchmark real tiers C/B/A
 - Bloque 9: Graphiti temporal memory (reemplaza mem0 SQLite)
 - Bloque 10: Knowledge passport entre proyectos
 
 ## Arquitectura actual
 Motor: Claude Sonnet 4.6 / Opus 4.6 / Haiku 4.5
-Tier 1: Ollama qwen2.5-coder:7b (local, $0)
-Tier 2: Groq llama-3.3-70b + OpenRouter (cloud free, $0)
-Tier 3: Claude API (paid, solo cuando necesario)
+Tier C: Ollama qwen2.5-coder:7b (local, $0)
+Tier B: Groq llama-3.3-70b + OpenRouter (cloud free, $0)
+Tier A: Claude Sonnet 4.6 (paid, análisis/finanzas/arq)
+Tier S/S+: Claude Opus 4.6 (planner/orchestrator, solo explícito)
 Supervisor: 3-layer (whitelist → LLM → Telegram)
 Seguridad: Shannon semgrep score 10/10
 Memoria: vault_memory SQLite + decay

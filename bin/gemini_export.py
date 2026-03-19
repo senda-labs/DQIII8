@@ -5,14 +5,16 @@ Genera un .md estructurado listo para pegar en Gemini Pro.
 Módulos: full | script | audio | video | subtitles
 """
 
+import os
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
-DB = Path("/root/jarvis/database/jarvis_metrics.db")
-PROJ = Path("/root/content-automation-faceless")
-OUT_DIR = Path("/root/jarvis/tasks/gemini_reports")
+JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+DB = JARVIS / "database" / "jarvis_metrics.db"
+PROJ = Path(os.environ.get("CONTENT_PROJECT_ROOT", str(JARVIS)))
+OUT_DIR = JARVIS / "tasks" / "gemini_reports"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -137,7 +139,7 @@ def generate_gemini_report(
         "- **Pipeline:** Python + MoviePy + ElevenLabs + FFmpeg\n"
         "- **Modelos:** Groq (LLaMA 3.3 70b) + ElevenLabs TTS + Claude API\n"
         "- **BD:** SQLite jarvis_metrics.db\n"
-        "- **Repo:** /root/content-automation-faceless/\n\n---\n"
+        f"- **Repo:** {PROJ}/\n\n---\n"
     )
 
     sections.append(export_pipeline_metrics())

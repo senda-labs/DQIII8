@@ -14,8 +14,6 @@ import json
 import os
 import sqlite3
 import sys
-import urllib.request
-import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
@@ -23,19 +21,13 @@ JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB = JARVIS_ROOT / "database" / "jarvis_metrics.db"
 PROPOSALS_DIR = JARVIS_ROOT / "tasks" / "integration_proposals"
 
+sys.path.insert(0, str(JARVIS_ROOT / "bin"))
+from notify import notify as _send_telegram_notify
+
 
 def _send_telegram(message: str) -> bool:
-    token = os.environ.get("JARVIS_BOT_TOKEN", "")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-    if not token or not chat_id:
-        return False
-    try:
-        data = urllib.parse.urlencode({"chat_id": chat_id, "text": message}).encode()
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        urllib.request.urlopen(url, data, timeout=10)
-        return True
-    except Exception:
-        return False
+    _send_telegram_notify(message)
+    return True
 
 
 def main() -> None:

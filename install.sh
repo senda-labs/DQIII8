@@ -42,7 +42,7 @@ cd "$PROJECT_DIR"
 # ── 1. System packages ──────────────────────────────────────────────
 info "Installing system dependencies..."
 $SUDO apt-get update -qq
-$SUDO apt-get install -y -qq python3 python3-venv python3-pip git curl sqlite3 > /dev/null
+$SUDO apt-get install -y -qq python3 python3-venv python3-pip git curl sqlite3 zstd > /dev/null
 ok "System packages installed"
 
 # ── 2. Python venv ──────────────────────────────────────────────────

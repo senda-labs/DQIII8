@@ -501,7 +501,7 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     report_path = OUT_DIR / f'github_{topic[:30].replace(" ","_")}_{timestamp}.md'
 
-    # Ordenar por score
+    # Sort by score
     sorted_repos = sorted(repos_data, key=lambda x: x["eval"]["score"], reverse=True)
 
     lines = [
@@ -521,13 +521,13 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
         lines += [
             f"### {i}. [{repo['full_name']}]({repo['html_url']})",
             f"**Score:** {ev['score']}/10 | **Effort:** {ev['effort']}",
-            f"**Integración:** {ev.get('integration_type', '?')}",
+            f"**Integration:** {ev.get('integration_type', '?')}",
             f"**Stars:** ⭐{repo.get('stargazers_count',0):,} | "
             f"**Lang:** {repo.get('language','?')} | "
             f"**Updated:** {repo.get('updated_at','?')[:10]}",
-            f"**Descripción:** {repo.get('description','N/A')}",
+            f"**Description:** {repo.get('description','N/A')}",
             f"**Stack match:** {', '.join(ev['stack_matches'])}",
-            f"**Por qué:** {' | '.join(ev['reasons'][:4])}",
+            f"**Why:** {' | '.join(ev['reasons'][:4])}",
         ]
         if cs:
             struct_parts = []
@@ -541,7 +541,7 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
             if py_n:
                 struct_parts.append(f"{py_n} .py files")
             if struct_parts:
-                lines.append(f"**Estructura:** {' | '.join(struct_parts)}")
+                lines.append(f"**Structure:** {' | '.join(struct_parts)}")
         lines.append("")
         if r.get("readme_preview"):
             lines += [
@@ -573,11 +573,11 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
     # GPU-blocked section
     gpu_blocked_repos = [r for r in sorted_repos if r["eval"].get("gpu_blocked")]
     if gpu_blocked_repos:
-        lines += ["\n---\n", "## ⛔ Bloqueados por hardware (GPU/CUDA requerido)\n"]
+        lines += ["\n---\n", "## ⛔ Blocked by hardware (GPU/CUDA required)\n"]
         lines.append("*Save for when the VPS has a GPU:*\n")
         lines += [
-            "| Repo | Score adj. | Stars | Por qué bloqueado |",
-            "|------|-----------|-------|-------------------|",
+            "| Repo | Score adj. | Stars | Why blocked |",
+            "|------|-----------|-------|-------------|",
         ]
         for r in gpu_blocked_repos:
             repo = r["repo"]
@@ -603,11 +603,11 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
         and r["eval"].get("integration_type", "").startswith(("COPY", "ADAPT"))
     ]
     if quick_wins:
-        lines += ["\n---\n", "## ⚡ Quick Wins — Integrables esta semana\n"]
+        lines += ["\n---\n", "## ⚡ Quick Wins — Integrable this week\n"]
         for r in quick_wins[:3]:
             repo = r["repo"]
             ev = r["eval"]
-            # Inferir qué problema DQIII8 resuelve
+            # Infer what DQIII8 problem this solves
             matches = ev.get("stack_matches", [])
             jarvis_gap = (
                 "functionality related to " + ", ".join(matches[:3]) if matches else "pipeline"
@@ -615,9 +615,9 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
             lines += [
                 f"### {repo['name']} ({ev['score']}/10)",
                 f"**DQIII8 problem it solves:** {jarvis_gap}",
-                f"**Tipo integración:** {ev.get('integration_type','?')}",
-                f"**Install:** `pip install` desde {repo['html_url']}",
-                f"**Tiempo estimado:** {'1-2h' if ev['score'] >= 8.0 else '2-4h'}",
+                f"**Integration type:** {ev.get('integration_type','?')}",
+                f"**Install:** `pip install` from {repo['html_url']}",
+                f"**Estimated time:** {'1-2h' if ev['score'] >= 8.0 else '2-4h'}",
                 "",
             ]
 
@@ -670,7 +670,7 @@ def research(
     # Search repos (multi-query if topic matches expansions)
     print(f"\n[1/4] Searching repos...")
     repos = multi_search(topic, min_stars=min_stars, max_repos=max_repos)
-    # Si multi_search no expande (topic sin match), filtra por language si se especificó
+    # If multi_search doesn't expand (topic without match), filter by language if specified
     if language and language != "python":
         repos = [r for r in repos if (r.get("language") or "").lower() == language]
 
@@ -688,7 +688,7 @@ def research(
         code_structure = client.get_repo_code_structure(name)
         time.sleep(0.4)  # respect rate limit
 
-        # Evaluar
+        # Evaluate
         ev = evaluator.evaluate(repo, readme, topics_list, code_structure=code_structure)
         print(f"→ {ev['score']}/10 {ev['effort'].split(' — ')[0]}")
 
@@ -732,10 +732,10 @@ def research(
             )
             conn.commit()
         except Exception as e:
-            print(f"    BD error: {e}")
+            print(f"    DB error: {e}")
 
-    # Generar reporte
-    print(f"\n[3/4] Generando reporte...")
+    # Generate report
+    print(f"\n[3/4] Generating report...")
     report_path = generate_report(topic, repos_data, session_id)
     print(f"  ✅ {report_path}")
 
@@ -743,7 +743,7 @@ def research(
     sorted_data = sorted(repos_data, key=lambda x: x["eval"]["score"], reverse=True)
     top = sorted_data[0] if sorted_data else None
 
-    # Actualizar sesión
+    # Update session
     conn.execute(
         """
         UPDATE github_search_sessions

@@ -57,7 +57,7 @@ try:
 
     lessons_added = max(0, lines_after - lines_before)
 
-    # Fallback 1: git diff del working tree (cubre lessons.md no commitado aún)
+    # Fallback 1: git diff of working tree (covers uncommitted lessons.md)
     if lessons_added == 0:
         diff_count = sum(1 for line in result.stdout.splitlines() if _is_lesson_line(line))
         if diff_count > 0:

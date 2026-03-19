@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 DQIII8 — OpenRouter Wrapper
-Routing multi-provider con fallback automático.
+Multi-provider routing with automatic fallback.
 
 Uso:
     python3 openrouter_wrapper.py --agent python-specialist "escribe hello world"
@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
-# ── Configuración de providers ──────────────────────────────────────────────
+# ── Provider configuration ──────────────────────────────────────────────────
 
 PROVIDERS = {
     "ollama": {
@@ -61,7 +61,7 @@ _ALLOWED_HOSTS = frozenset(urlparse(cfg["base_url"]).hostname for cfg in PROVIDE
 def _validate_url(url: str) -> None:
     host = urlparse(url).hostname or ""
     if not any(host == h or host.endswith(f".{h}") for h in _ALLOWED_HOSTS):
-        raise ValueError(f"URL no permitida: {url}")
+        raise ValueError(f"URL not allowed: {url}")
 
 
 # ── Tabla de routing por agente ─────────────────────────────────────────────
@@ -107,7 +107,7 @@ TIER_COSTS: dict[str, tuple[float, float]] = {
     "openrouter": (0.003, 0.015),  # Claude Sonnet pricing aprox.
 }
 
-# Tier map — C/B/A/S/S+ para routing explícito y clasificación
+# Tier map — C/B/A/S/S+ for explicit routing and classification
 TIER_MAP = {
     "C": {
         "provider": "ollama",
@@ -149,9 +149,9 @@ TIER_MAP = {
 # Priority order for tier comparison (lower index = higher priority = cheaper)
 TIER_ORDER = {"C": 0, "B": 1, "A": 2, "S": 3, "S+": 4}
 
-# ── Routing automático por keywords (classify subcommand) ────────────────────
-# Cada entrada: (tier, provider, model, route_name, keywords)
-# Si múltiples tiers coinciden → gana el más barato (C > B > A > S > S+)
+# ── Automatic routing by keywords (classify subcommand) ──────────────────────
+# Each entry: (tier, provider, model, route_name, keywords)
+# If multiple tiers match → cheapest wins (C > B > A > S > S+)
 ROUTING_TABLE = [
     (
         "C",
@@ -288,9 +288,9 @@ def build_request(provider_name: str, model: str, prompt: str):
 
 def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, int, int, bool]:
     """
-    Realiza la petición y hace streaming a stdout.
-    Devuelve (texto_completo, tokens_input, tokens_output, exito).
-    Usa tokens reales de la API si están disponibles; estima por chars si no.
+    Makes the request and streams to stdout.
+    Returns (full_text, tokens_input, tokens_output, success).
+    Uses real API tokens if available; estimates by chars otherwise.
     """
     url, headers, payload = build_request(provider_name, model, prompt)
     req = urllib.request.Request(url, data=payload, headers=headers)
@@ -335,7 +335,7 @@ def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, i
 
     if full_text:
         print()  # newline final
-    # Fallback a estimación si la API no devolvió usage
+    # Fallback to estimation if the API did not return usage
     if not tokens_in and not tokens_out:
         tokens_in = len(prompt) // 4
         tokens_out = len(full_text) // 4
@@ -424,7 +424,7 @@ def print_routing_table() -> None:
     for agent, (provider, model) in AGENT_ROUTING.items():
         print(f"  {agent:<20} {provider:<12} {model}")
     print()
-    print("Tiers automáticos (classify):")
+    print("Automatic tiers (classify):")
     print(f"  {'Tier':<6} {'Provider':<12} {'Modelo':<30} {'Route'}")
     print("  " + "-" * 68)
     for tier, provider, model, route, _ in ROUTING_TABLE:
@@ -436,10 +436,10 @@ def print_routing_table() -> None:
 
 def classify_prompt(prompt: str) -> None:
     """
-    Determina el tier óptimo para un prompt según keywords.
-    Salida: tier=X provider=Y model=Z route=W [domain=D]
-    Si múltiples tiers coinciden → tier más barato gana (C < B < A < S < S+).
-    Default (sin match): tier C code_local.
+    Determines the optimal tier for a prompt based on keywords.
+    Output: tier=X provider=Y model=Z route=W [domain=D]
+    If multiple tiers match → cheapest tier wins (C < B < A < S < S+).
+    Default (no match): tier C code_local.
     """
     lowered = prompt.lower()
     matched_tier = None
@@ -451,14 +451,14 @@ def classify_prompt(prompt: str) -> None:
                     matched_tier[0], 99
                 ):
                     matched_tier = (tier, provider, model, route)
-                break  # ya encontró keyword en este tier, pasa al siguiente
+                break  # found keyword in this tier, move to next
 
     if matched_tier is None:
         matched_tier = ("C", "ollama", "qwen2.5-coder:7b", "code_local")
 
     tier, provider, model, route = matched_tier
 
-    # Domain enrichment (best-effort — no falla si domain_classifier no está disponible)
+    # Domain enrichment (best-effort — no failure if domain_classifier is unavailable)
     domain_suffix = ""
     try:
         _dc_path = Path(__file__).parent / "domain_classifier.py"
@@ -499,7 +499,7 @@ def main() -> None:
         "--agent", "-a", default="default", help="Agente DQIII8 (define modelo y provider)"
     )
     parser.add_argument(
-        "--model", "-m", default=None, help="Modelo explícito (sobreescribe --agent)"
+        "--model", "-m", default=None, help="Explicit model (overrides --agent)"
     )
     parser.add_argument(
         "--list", "-l", action="store_true", help="Muestra la tabla de routing y sale"
@@ -521,10 +521,10 @@ def main() -> None:
         sys.exit(1)
 
     if not prompt:
-        print("[openrouter_wrapper] Error: prompt vacío.", file=sys.stderr)
+        print("[openrouter_wrapper] Error: empty prompt.", file=sys.stderr)
         sys.exit(1)
 
-    # Domain enrichment (best-effort — no falla si enricher/classifier no disponible)
+    # Domain enrichment (best-effort — no failure if enricher/classifier unavailable)
     _enriched_domain = None
     _knowledge_chunks = 0
     try:
@@ -576,7 +576,7 @@ def main() -> None:
         text, tokens_in, tokens_out, ok = stream_response(provider, model, prompt)
         duration_ms = int(time.time() * 1000) - t0
 
-        err_msg = "" if ok else f"{provider}/{model} falló — sin respuesta o HTTP error"
+        err_msg = "" if ok else f"{provider}/{model} failed — no response or HTTP error"
         log_to_db(
             agent_name,
             model,
@@ -591,7 +591,7 @@ def main() -> None:
         if ok:
             sys.exit(0)
 
-        print(f"[DQIII8] {provider} falló — intentando siguiente...", file=sys.stderr)
+        print(f"[DQIII8] {provider} failed — trying next...", file=sys.stderr)
         _log_escalation("cli", agent_name, provider, model, err_msg)
 
     print("\n[openrouter_wrapper] Error: todos los providers fallaron.", file=sys.stderr)

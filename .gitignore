@@ -31,7 +31,7 @@ Thumbs.db
 desktop.ini
 *.lnk
 
-# Secrets (nunca deben llegar aquí)
+# Secrets (should never end up here)
 .env
 *.pem
 *.key
@@ -43,26 +43,26 @@ venv/
 .aider.input.history
 .aider*
 
-# Skills cache (repos externos — no versionar)
+# Skills cache (external repos — do not version)
 skills-registry/cache/
 
-# Logs internos
+# Internal logs
 database/system_metrics.log
 database/audit_reports/jarvis_bot.log
 database/audit_reports/*.md
 database/audit-*.md
 
-# Directorios de tareas internas (no publicar)
+# Internal task directories (do not publish)
 tasks/integration_proposals/
 tasks/research_queue/
 tasks/test_results/
 
-# Archivos internos del sistema
+# Internal system files
 .jarvis_proposito
 objectives/active/
 objectives/failed/
 
-# Reportes efímeros de tareas (se regeneran, no versionar)
+# Ephemeral task reports (regenerated — do not version)
 tasks/gemini_reports/
 tasks/github_reports/
 tasks/precompact_state.json
@@ -72,11 +72,11 @@ tasks/*.zip
 tasks/*.pdf
 tasks/*.html
 
-# Archivos grandes temporales
+# Large temporary files
 *.zip
 *.tar.gz
 
-# Archivos de decisiones generados automáticamente
+# Automatically generated decision files
 decisions/adr-compliance.json
 tasks/permission_rejection.json
 

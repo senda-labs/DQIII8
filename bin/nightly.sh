@@ -1,7 +1,7 @@
 #!/bin/bash
 # DQIII8 Nightly Maintenance Script
-# Ejecutar con: bash /root/jarvis/bin/nightly.sh > /root/jarvis/tasks/nightly-report.md 2>&1 &
-# Revisar mañana: cat /root/jarvis/tasks/nightly-report.md
+# Run with: bash /root/jarvis/bin/nightly.sh > /root/jarvis/tasks/nightly-report.md 2>&1 &
+# Review tomorrow: cat /root/jarvis/tasks/nightly-report.md
 
 set -e
 JARVIS_ROOT="${JARVIS_ROOT:-/root/jarvis}"

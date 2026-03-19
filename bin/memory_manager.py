@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 DQIII8 Memory Manager
-Memoria persistente entre sesiones con mem0 + fallback SQLite (vault_memory).
+Persistent memory across sessions with mem0 + SQLite fallback (vault_memory).
 
 Uso CLI:
   python3 bin/memory_manager.py add <session_id> <project> "<content>"
@@ -34,8 +34,8 @@ _EMBED_MODEL = "nomic-embed-text"
 
 # Decay rates por scope (factor diario multiplicativo)
 DECAY_RATES = {
-    "session": 0.90,  # pierde 10%/día
-    "project": 0.99,  # pierde 1%/día
+    "session": 0.90,  # loses 10%/day
+    "project": 0.99,  # loses 1%/day
     "system": 1.00,  # permanente
 }
 
@@ -44,7 +44,7 @@ VALID_LINK_TYPES = ("related_to", "contradicts", "supersedes", "prerequisite", "
 
 
 def _get_nomic_embedding(text: str) -> list[float] | None:
-    """Genera embedding nomic-embed-text vía Ollama. Devuelve None si no disponible."""
+    """Generates nomic-embed-text embedding via Ollama. Returns None if unavailable."""
     payload = json.dumps({"model": _EMBED_MODEL, "prompt": text}).encode("utf-8")
     req = urllib.request.Request(
         _OLLAMA_EMBED_URL,
@@ -101,7 +101,7 @@ _MEM0_CONFIG = {
 }
 
 _mem0_client = None
-_mem0_available = None  # None = no comprobado aún
+_mem0_available = None  # None = not yet checked
 
 # Suprimir el traceback de qdrant al shutdown
 import atexit
@@ -134,7 +134,7 @@ def _get_mem0():
 
 
 def _db_add(session_id: str, project: str, content: str) -> bool:
-    """Guarda en vault_memory. Usa entry_type='checkpoint' (válido en CHECK constraint)."""
+    """Saves to vault_memory. Uses entry_type='checkpoint' (valid in CHECK constraint)."""
     try:
         conn = sqlite3.connect(str(DB_PATH), timeout=3)
         conn.execute(
@@ -155,10 +155,10 @@ def _db_add(session_id: str, project: str, content: str) -> bool:
 
 
 def _db_search(project: str, query: str, top_k: int = 10) -> list[str]:
-    """Búsqueda por palabras clave en vault_memory."""
+    """Keyword search in vault_memory."""
     try:
         conn = sqlite3.connect(str(DB_PATH), timeout=3)
-        terms = query.split()[:5]  # máximo 5 términos
+        terms = query.split()[:5]  # maximum 5 terms
         conditions = " OR ".join(["object LIKE ?" for _ in terms])
         params = [f"%{t}%" for t in terms] + [project, top_k]
         # `conditions` is built as "object LIKE ? OR object LIKE ? ..." — only
@@ -178,13 +178,13 @@ def _db_search(project: str, query: str, top_k: int = 10) -> list[str]:
         return []
 
 
-# ── API pública ────────────────────────────────────────────────────
+# ── Public API ────────────────────────────────────────────────────
 
 
 def add_memory(session_id: str, project: str, content: str) -> dict:
     """
-    Guarda una memoria.
-    Intenta mem0 primero; si falla o no está disponible, usa vault_memory.
+    Saves a memory.
+    Tries mem0 first; if it fails or is unavailable, uses vault_memory.
     """
     m = _get_mem0()
     if m is not None:
@@ -252,10 +252,10 @@ def search_memories(project: str, query: str, top_k: int = 10) -> list[str]:
 
 def migrate_vault_memory() -> dict:
     """
-    Migra vault_memory al esquema v2:
-    - Añade columnas: scope, embedding, transferable
-    - Crea tabla memory_links
-    - Actualiza scope para filas existentes según entry_type
+    Migrates vault_memory to schema v2:
+    - Adds columns: scope, embedding, transferable
+    - Creates memory_links table
+    - Updates scope for existing rows according to entry_type
     """
     if not DB_PATH.exists():
         return {"ok": False, "error": "DB not found"}
@@ -264,7 +264,7 @@ def migrate_vault_memory() -> dict:
     changes: list[str] = []
 
     try:
-        # Añadir columnas nuevas (ignorar si ya existen)
+        # Add new columns (ignore if they already exist)
         for col_sql in [
             "ALTER TABLE vault_memory ADD COLUMN scope TEXT DEFAULT 'session'",
             "ALTER TABLE vault_memory ADD COLUMN embedding BLOB",
@@ -293,7 +293,7 @@ def migrate_vault_memory() -> dict:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_vault_scope ON vault_memory (scope)")
         changes.append("memory_links table")
 
-        # Migrar scope según entry_type
+        # Migrate scope according to entry_type
         conn.execute("""
             UPDATE vault_memory SET scope = CASE
                 WHEN entry_type IN ('lesson', 'adr')   THEN 'system'
@@ -364,8 +364,8 @@ def store_with_embedding(
 
 def search_semantic(project: str, query: str, top_k: int = 10) -> list[dict]:
     """
-    Búsqueda semántica en vault_memory usando embeddings nomic-embed-text.
-    Fallback a búsqueda por keywords si Ollama no disponible.
+    Semantic search in vault_memory using nomic-embed-text embeddings.
+    Falls back to keyword search if Ollama is unavailable.
     """
     query_vec = _get_nomic_embedding(query)
 
@@ -425,7 +425,7 @@ def link_memories(
 ) -> dict:
     """Crea un enlace bidireccional entre dos memorias."""
     if link_type not in VALID_LINK_TYPES:
-        return {"ok": False, "error": f"link_type inválido: {link_type}. Usa: {VALID_LINK_TYPES}"}
+        return {"ok": False, "error": f"invalid link_type: {link_type}. Use: {VALID_LINK_TYPES}"}
     try:
         conn = sqlite3.connect(str(DB_PATH), timeout=3)
         conn.execute(
@@ -490,9 +490,9 @@ def get_related(memory_id: int, max_depth: int = 2) -> list[dict]:
 
 def apply_decay(dry_run: bool = False) -> dict:
     """
-    Aplica decay a vault_memory según scope.
-    session: × 0.90/día · project: × 0.99/día · system: sin cambio.
-    Retorna estadísticas.
+    Applies decay to vault_memory by scope.
+    session: × 0.90/day · project: × 0.99/day · system: no change.
+    Returns statistics.
     """
     if not DB_PATH.exists():
         return {"ok": False, "error": "DB not found"}
@@ -571,7 +571,7 @@ def import_knowledge(passport: dict, target_project: str = "") -> dict:
     """Importa un Knowledge Passport. Skips duplicates (ON CONFLICT IGNORE)."""
     memories = passport.get("memories", [])
     if not memories:
-        return {"ok": False, "error": "passport vacío o sin memorias"}
+        return {"ok": False, "error": "empty passport or no memories"}
 
     imported = 0
     skipped = 0

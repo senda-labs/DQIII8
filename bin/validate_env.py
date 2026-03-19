@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Valida el entorno de DQIII8 al arrancar. Reporta qué tiers están disponibles."""
+"""Validates the DQIII8 environment at startup. Reports which tiers are available."""
 
 import os
 import shutil
@@ -14,15 +14,15 @@ def check_tier_c():
     try:
         result = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0 and "qwen2.5-coder" in result.stdout:
-            return True, "qwen2.5-coder:7b detectado"
+            return True, "qwen2.5-coder:7b detected"
         elif result.returncode == 0:
             return (
                 False,
-                "Ollama activo pero qwen2.5-coder no instalado. Ejecuta: ollama pull qwen2.5-coder:7b",
+                "Ollama active but qwen2.5-coder not installed. Run: ollama pull qwen2.5-coder:7b",
             )
-        return False, "Ollama no responde"
+        return False, "Ollama not responding"
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False, "Ollama no instalado o no accesible"
+        return False, "Ollama not installed or not accessible"
 
 
 def check_tier_b():
@@ -30,18 +30,18 @@ def check_tier_b():
     groq = os.environ.get("GROQ_API_KEY", "")
     openrouter = os.environ.get("OPENROUTER_API_KEY", "")
     if groq:
-        return True, "GROQ_API_KEY configurada"
+        return True, "GROQ_API_KEY configured"
     elif openrouter:
-        return True, "OPENROUTER_API_KEY configurada (fallback)"
-    return False, "GROQ_API_KEY y OPENROUTER_API_KEY no definidas. Tier B no disponible."
+        return True, "OPENROUTER_API_KEY configured (fallback)"
+    return False, "GROQ_API_KEY and OPENROUTER_API_KEY not defined. Tier B unavailable."
 
 
 def check_tier_a():
     """Tier A: Claude API."""
     key = os.environ.get("ANTHROPIC_API_KEY", "")
     if key:
-        return True, "ANTHROPIC_API_KEY configurada"
-    return False, "ANTHROPIC_API_KEY no definida. Tier A no disponible."
+        return True, "ANTHROPIC_API_KEY configured"
+    return False, "ANTHROPIC_API_KEY not defined. Tier A unavailable."
 
 
 def check_db():
@@ -49,12 +49,12 @@ def check_db():
     root = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
     db_path = root / "database" / "jarvis_metrics.db"
     if not db_path.exists():
-        return False, f"DB no encontrada en {db_path}"
+        return False, f"DB not found at {db_path}"
     try:
         conn = sqlite3.connect(str(db_path), timeout=5)
         conn.execute("SELECT 1")
         conn.close()
-        return True, "jarvis_metrics.db accesible"
+        return True, "jarvis_metrics.db accessible"
     except Exception as e:
         return False, f"DB error: {e}"
 
@@ -64,15 +64,15 @@ def check_telegram():
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if token and chat_id:
-        return True, "Telegram configurado"
+        return True, "Telegram configured"
     return (
         False,
-        "TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID no definidos. Notificaciones deshabilitadas.",
+        "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not defined. Notifications disabled.",
     )
 
 
 def check_vps_health():
-    """Chequeo básico de recursos del VPS."""
+    """Basic VPS resource check."""
     # Disco
     total, used, free = shutil.disk_usage("/")
     free_gb = free / (1024**3)
@@ -126,20 +126,20 @@ def main():
         if ok and name.startswith("Tier"):
             available_tiers.append(name)
 
-    print(f"  → Tiers disponibles: {', '.join(available_tiers) if available_tiers else 'NINGUNO'}")
+    print(f"  → Available tiers: {', '.join(available_tiers) if available_tiers else 'NONE'}")
 
     check_vps_health()
 
     if not available_tiers:
         print(
-            "\n  ⚠️  Sin tiers disponibles. Instala Ollama para Tier C ($0): "
+            "\n  ⚠️  No tiers available. Install Ollama for Tier C ($0): "
             "curl -fsSL https://ollama.com/install.sh | sh"
         )
         sys.exit(1)
 
     if not all_ok:
         print(
-            "\n  ⚠️  Hay componentes con problemas. El sistema funcionará con los tiers disponibles."
+            "\n  ⚠️  Some components have issues. The system will run with the available tiers."
         )
 
     print("────────────────────────────────")

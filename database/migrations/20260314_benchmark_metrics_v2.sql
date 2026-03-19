@@ -1,4 +1,4 @@
--- Benchmark metrics v2: métricas avanzadas de calidad, coste y tiempo
+-- Benchmark metrics v2: advanced quality, cost, and time metrics
 ALTER TABLE code_metrics ADD COLUMN prompt_length_tokens INTEGER;
 ALTER TABLE code_metrics ADD COLUMN attempts_to_success INTEGER DEFAULT 1;
 ALTER TABLE code_metrics ADD COLUMN first_attempt_success INTEGER DEFAULT 0;

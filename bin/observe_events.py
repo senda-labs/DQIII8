@@ -1,14 +1,14 @@
 """
 observe_events.py — Sync context-mode SessionDB → agent_actions (DQIII8).
 
-Lee session_events de la DB de context-mode para un project_dir dado,
-transforma los tipos al schema de agent_actions, e inserta en jarvis_metrics.db.
-Mantiene cursor de sincronización en tabla sync_state.
+Reads session_events from the context-mode DB for a given project_dir,
+transforms types to the agent_actions schema, and inserts into jarvis_metrics.db.
+Maintains a sync cursor in the sync_state table.
 
-Uso directo:
+Direct usage:
     python3 bin/observe_events.py [--project-dir /root/jarvis] [--dry-run]
 
-Llamado desde stop.py al final de cada sesión.
+Called from stop.py at the end of each session.
 """
 
 from __future__ import annotations

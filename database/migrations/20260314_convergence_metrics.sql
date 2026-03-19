@@ -1,4 +1,4 @@
--- Convergence metrics: iteración, tendencia SSIM, autonomía de permisos
+-- Convergence metrics: iteration, SSIM trend, permission autonomy
 ALTER TABLE code_metrics ADD COLUMN iteration_number INTEGER;
 ALTER TABLE code_metrics ADD COLUMN ssim_trend TEXT;
 ALTER TABLE code_metrics ADD COLUMN best_ssim_so_far REAL;
@@ -8,7 +8,7 @@ ALTER TABLE code_metrics ADD COLUMN escalations_needed INTEGER DEFAULT 0;
 ALTER TABLE code_metrics ADD COLUMN prompt_version INTEGER DEFAULT 1;
 ALTER TABLE code_metrics ADD COLUMN groq_model_used TEXT;
 
--- Vista de convergencia visual por proyecto
+-- Visual convergence view per project
 CREATE VIEW IF NOT EXISTS visual_convergence AS
 SELECT
     project,
@@ -26,7 +26,7 @@ WHERE ssim_score IS NOT NULL
 GROUP BY project, model_tier, renderer
 ORDER BY best_ssim DESC;
 
--- Vista de autonomía por tier
+-- Autonomy view per tier
 CREATE VIEW IF NOT EXISTS autonomy_score AS
 SELECT
     model_tier,

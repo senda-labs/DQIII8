@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-DQIII8 — Model Router dinámico
+DQIII8 — Dynamic Model Router
 
-Consulta model_satisfaction DB y recomienda el mejor modelo para un task_type.
+Queries model_satisfaction DB and recommends the best model for a task_type.
 
-Uso:
+Usage:
     python3 bin/model_router.py [task_type]
     task_type: código|análisis|escritura|research|pipeline|trading|mixto
 
 Output:
-    <model_used> score: <X.XX> — <N> tareas
+    <model_used> score: <X.XX> — <N> tasks
 """
 
 import os
@@ -19,7 +19,7 @@ from pathlib import Path
 
 DB = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")) / "database" / "jarvis_metrics.db"
 
-# Defaults por tipo cuando no hay datos suficientes
+# Defaults per type when insufficient data
 DEFAULT_BY_TYPE: dict[str, tuple[str, str]] = {
     "código": ("tier1", "qwen2.5-coder:7b"),
     "pipeline": ("tier1", "qwen2.5-coder:7b"),
@@ -78,7 +78,7 @@ def get_recommendation(task_type: str) -> tuple[str, float, int]:
 def main() -> None:
     task_type = sys.argv[1] if len(sys.argv) > 1 else "código"
     model, score, n = get_recommendation(task_type)
-    label = f"{n} tareas" if n > 0 else "sin datos"
+    label = f"{n} tasks" if n > 0 else "no data"
     print(f"{model} score: {score:.2f} — {label}")
 
 

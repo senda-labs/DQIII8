@@ -30,23 +30,23 @@ class OrchestratorLoop:
 
     def check_rejections(self) -> list[dict]:
         """
-        FIX D: Lee el buzón permission_rejection.json y lo vacía tras leer.
-        Permite al loop detectar y reaccionar ante DENYs/ESCALATEs recientes
-        sin esperar al siguiente ciclo completo.
+        FIX D: Reads permission_rejection.json inbox and empties it after reading.
+        Allows the loop to detect and react to recent DENYs/ESCALATEs
+        without waiting for the next full cycle.
         """
         reject_path = JARVIS_ROOT / "tasks" / "permission_rejection.json"
         if not reject_path.exists():
             return []
         try:
             data = json.loads(reject_path.read_text(encoding="utf-8"))
-            # Vaciar el buzón tras leer (consume el mensaje)
+            # Empty the inbox after reading (consume the message)
             reject_path.write_text("[]", encoding="utf-8")
             return data if isinstance(data, list) else []
         except Exception:
             return []
 
     def analyze(self, project: str) -> dict:
-        """Lee BD + MD + buzón de rechazos para construir contexto completo."""
+        """Reads DB + MD + rejection inbox to build complete context."""
         project_md = JARVIS_ROOT / f"projects/{project}.md"
         lessons_md = JARVIS_ROOT / "tasks/lessons.md"
 
@@ -58,7 +58,7 @@ class OrchestratorLoop:
         if project_md.exists():
             context["project_state"] = project_md.read_text(encoding="utf-8")
 
-        # Lecciones relevantes — solo las del proyecto actual
+        # Relevant lessons — only for the current project
         if lessons_md.exists():
             all_lessons = lessons_md.read_text(encoding="utf-8")
             relevant: list[str] = []
@@ -72,7 +72,7 @@ class OrchestratorLoop:
                     relevant.append(line)
             context["lessons"] = relevant[-10:]
 
-        # Objetivos pendientes/fallidos de la BD
+        # Pending/failed objectives from the DB
         try:
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
             rows = conn.execute(
@@ -95,18 +95,18 @@ class OrchestratorLoop:
         except Exception:
             context["pending_objectives"] = []
 
-        # Si hay pending en BD → señal para plan() de usar el primero directamente
+        # If pending in DB → signal for plan() to use the first one directly
         if context["pending_objectives"]:
             context["use_seeded_objective"] = True
             context["next_seeded_objective"] = context["pending_objectives"][0]
 
-        # Buzón de rechazos del PermissionAnalyzer
+        # PermissionAnalyzer rejection inbox
         context["recent_rejections"] = self.check_rejections()
 
         return context
 
     def _get_recent_cycles(self, project: str, limit: int = 3) -> list[dict]:
-        """Obtiene los últimos N ciclos completados para evitar repetir objetivos."""
+        """Gets the last N completed cycles to avoid repeating objectives."""
         try:
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
             rows = conn.execute(
@@ -134,16 +134,16 @@ class OrchestratorLoop:
 
     def plan(self, context: dict) -> dict:
         """
-        Determina el siguiente objetivo.
-        Prioridad: (1) objetivos pre-sembrados en BD → (2) Groq → (3) fallback.
+        Determines the next objective.
+        Priority: (1) pre-seeded objectives in DB → (2) Groq → (3) fallback.
         """
-        # Cargar ciclos recientes para build_prompt (siempre, independiente del path)
+        # Load recent cycles for build_prompt (always, independent of path)
         context["recent_cycles"] = self._get_recent_cycles(context["project"])
 
-        # Fast-path: usar objetivo pending de la BD directamente
+        # Fast-path: use pending objective from DB directly
         if context.get("use_seeded_objective"):
             obj = context["next_seeded_objective"]
-            print(f"  [plan] Usando objetivo pre-sembrado [{obj['id']}]")
+            print(f"  [plan] Using pre-seeded objective [{obj['id']}]")
             return {
                 "objective": obj["text"],
                 "success_criteria": obj.get("criteria", ""),
@@ -155,8 +155,8 @@ class OrchestratorLoop:
 
     def _plan_with_groq(self, context: dict) -> dict:
         """
-        Llama a Groq para generar un nuevo objetivo cuando no hay pending en BD.
-        Enriquece el prompt con archivos existentes y métricas reales del proyecto.
+        Calls Groq to generate a new objective when there are no pending items in DB.
+        Enriches the prompt with existing files and real project metrics.
         """
         import requests
 
@@ -167,16 +167,16 @@ class OrchestratorLoop:
                 if "próximo paso" in line.lower() or "next step" in line.lower():
                     return {
                         "objective": line.strip("# -"),
-                        "success_criteria": "Verificado con tests y sin errores",
+                        "success_criteria": "Verified with tests and no errors",
                         "priority": "high",
                     }
             return {
-                "objective": "Revisar estado del proyecto y continuar",
-                "success_criteria": "Sin errores en CI",
+                "objective": "Review project status and continue",
+                "success_criteria": "No CI errors",
                 "priority": "medium",
             }
 
-        # Leer estado real del proyecto (archivos existentes)
+        # Read real project state (existing files)
         project_path = Path(f"/root/{context['project']}")
         existing_files: list[str] = []
         if project_path.exists():
@@ -188,7 +188,7 @@ class OrchestratorLoop:
             cpp_files = list(project_path.rglob("*.cpp")) + list(project_path.rglob("*.so"))
             existing_files += [str(p.relative_to(project_path)) for p in cpp_files]
 
-        # Leer métricas del último ciclo completado
+        # Read metrics from the last completed cycle
         try:
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
             last_metrics = conn.execute(
@@ -209,58 +209,58 @@ class OrchestratorLoop:
         metrics_text = (
             "\n".join(
                 [
-                    f"  - {r[0]}: {r[1]} líneas, {r[2]:.1f}s, "
+                    f"  - {r[0]}: {r[1]} lines, {r[2]:.1f}s, "
                     f"{r[3]:.0f}MB RAM, SSIM={r[4]}, tests={'✅' if r[5] else '❌'}"
                     for r in last_metrics
                 ]
             )
             if last_metrics
-            else "Sin métricas previas"
+            else "No previous metrics"
         )
 
         ref_analysis = self._analyze_reference_image()
         recent = context.get("recent_cycles", [])
 
-        prompt = f"""Eres el director técnico del proyecto {context['project']}.
+        prompt = f"""You are the technical lead for project {context['project']}.
 
-ARCHIVOS EXISTENTES EN EL PROYECTO:
-{chr(10).join(existing_files) if existing_files else 'Directorio vacío'}
+EXISTING FILES IN THE PROJECT:
+{chr(10).join(existing_files) if existing_files else 'Empty directory'}
 
-MÉTRICAS DE LOS ÚLTIMOS RENDERERS COMPLETADOS:
+METRICS FROM THE LAST COMPLETED RENDERERS:
 {metrics_text}
 
-OBJETIVOS COMPLETADOS RECIENTEMENTE:
+RECENTLY COMPLETED OBJECTIVES:
 {json.dumps(self._get_recent_cycles(context['project']), ensure_ascii=False, indent=2)}
 
-ESTADO DEL PROYECTO:
+PROJECT STATE:
 {context.get('project_state', '')[:1500]}
 
-ANÁLISIS DE IMAGEN DE REFERENCIA:
+REFERENCE IMAGE ANALYSIS:
 {ref_analysis}
-REGLAS DEL PROYECTO math-image-generator:
-- Stack: Python + C++ (ctypes). Sin IA, sin APIs de imagen.
-- RAM máxima: 500MB en cualquier momento
-- Targets: render <30s, C++ speedup >=5x, SSIM >0.5 (objetivo ambicioso)
-- Código: <80 líneas por renderer Python, <120 líneas C++
+RULES FOR PROJECT math-image-generator:
+- Stack: Python + C++ (ctypes). No AI, no image APIs.
+- Max RAM: 500MB at any point
+- Targets: render <30s, C++ speedup >=5x, SSIM >0.5 (ambitious goal)
+- Code: <80 lines per Python renderer, <120 lines C++
 
-Basándote en los archivos existentes y las métricas, determina
-el SIGUIENTE objetivo más impactante para mejorar el sistema.
+Based on the existing files and metrics, determine
+the NEXT most impactful objective to improve the system.
 
-Prioridades (en orden):
-1. Si falta algún renderer (julia, perlin, compositor) → crearlo
-2. Si algún SSIM < 0.3 → mejorar el colormap de ese renderer
-3. Si algún render > 30s → optimizar con C++
-4. Si todos los tests pasan y SSIM > 0.3 → intentar mejorar SSIM
-5. Si SSIM > 0.5 en todos → crear nuevo renderer más complejo
+Priorities (in order):
+1. If any renderer is missing (julia, perlin, compositor) → create it
+2. If any SSIM < 0.3 → improve the colormap for that renderer
+3. If any render > 30s → optimize with C++
+4. If all tests pass and SSIM > 0.3 → try to improve SSIM
+5. If SSIM > 0.5 on all → create a more complex new renderer
 
-Responde SOLO en JSON:
-{{"objective": "descripción específica en 2-3 frases con métricas target",
-  "success_criteria": "cómo verificar que está hecho",
+Respond ONLY in JSON:
+{{"objective": "specific description in 2-3 sentences with target metrics",
+  "success_criteria": "how to verify it is done",
   "priority": "high|medium|low",
-  "renderer": "mandelbrot|julia|perlin|cpp|compositor|nuevo"}}"""
+  "renderer": "mandelbrot|julia|perlin|cpp|compositor|new"}}"""
 
         if recent:
-            prompt += "\n\nCICLOS RECIENTES (NO repetir estos objetivos):\n"
+            prompt += "\n\nRECENT CYCLES (DO NOT repeat these objectives):\n"
             for c in recent:
                 prompt += f"- [{c['status']}] {c['objective'][:80]}\n"
 
@@ -291,9 +291,9 @@ Responde SOLO en JSON:
         model_tier: str = "tier3",
     ) -> None:
         """
-        Evalúa el resultado del ciclo: calcula SSIM del PNG generado y crea
-        un objetivo de mejora automáticamente si el score es insuficiente.
-        También envía las imágenes generadas por Telegram.
+        Evaluates the cycle result: calculates SSIM of the generated PNG and creates
+        an improvement objective automatically if the score is insufficient.
+        Also sends generated images via Telegram.
         """
         if not result.get("success"):
             return
@@ -325,7 +325,7 @@ Responde SOLO en JSON:
             except Exception:
                 continue
 
-        # Enviar imágenes generadas por Telegram (con o sin SSIM)
+        # Send generated images via Telegram (with or without SSIM)
         project_output = Path(f"/root/{project}/output")
         if project_output.exists():
             png_files = sorted(
@@ -343,9 +343,9 @@ Responde SOLO en JSON:
                 safe_stem = png.stem.replace("_", "\\_")
                 caption = (
                     f"*{safe_stem}* — `{project}`\n"
-                    f"Ciclo {cycle_num} | Tier: {model_tier}"
+                    f"Cycle {cycle_num} | Tier: {model_tier}"
                     f"{ssim_info}\n"
-                    f"1080x1920 | Matematica pura"
+                    f"1080x1920 | Pure mathematics"
                 )
                 self._send_image_telegram(str(png), caption)
 
@@ -364,10 +364,10 @@ Responde SOLO en JSON:
             if score < 0.4:
                 renderer = (result.get("code_metrics") or {}).get("renderer", "unknown")
                 improvement_text = (
-                    f"Mejorar SSIM del renderer '{renderer}' de {score:.3f} a >0.4. "
-                    f"El PNG actual no se parece suficientemente a la imagen de referencia. "
-                    f"Ajustar el colormap para usar más azules fríos "
-                    f"(#4060a0, #6080c0) y aumentar el contraste a ~255/255."
+                    f"Improve SSIM of renderer '{renderer}' from {score:.3f} to >0.4. "
+                    f"The current PNG does not resemble the reference image closely enough. "
+                    f"Adjust the colormap to use more cool blues "
+                    f"(#4060a0, #6080c0) and increase contrast to ~255/255."
                 )
                 new_id = str(uuid.uuid4())[:8]
                 conn.execute(
@@ -379,11 +379,11 @@ Responde SOLO en JSON:
                         project,
                         "pending",
                         improvement_text,
-                        "SSIM > 0.4 vs imagen de referencia",
+                        "SSIM > 0.4 vs reference image",
                         "tier3",
                     ),
                 )
-                print(f"  🎯 Auto-objetivo creado: mejorar SSIM {renderer} ({score:.3f} → >0.4)")
+                print(f"  🎯 Auto-objective created: improve SSIM {renderer} ({score:.3f} → >0.4)")
             conn.commit()
             conn.close()
         except Exception as e:
@@ -391,8 +391,8 @@ Responde SOLO en JSON:
 
     def _analyze_reference_image(self) -> str:
         """
-        Analiza la imagen de referencia y devuelve descripción técnica
-        para incluir en el prompt del generador matemático.
+        Analyzes the reference image and returns a technical description
+        to include in the mathematical generator prompt.
         """
         ref_path = JARVIS_ROOT / "tasks/reference_image.jpg"
         if not ref_path.exists():
@@ -410,71 +410,71 @@ Responde SOLO en JSON:
                     f"{c['hex']} ({c['weight']*100:.0f}%)" for c in data["palette"]
                 )
                 return f"""
-IMAGEN DE REFERENCIA — Análisis técnico:
-  Paleta dominante: {palette_str}
-  Temperatura de color: {data['color_temperature']}
-  Distribución vertical (brillo):
-    - Tercio superior: {data['distribution']['top_third_brightness']:.0f}/255
-    - Tercio medio:    {data['distribution']['middle_third_brightness']:.0f}/255
-    - Tercio inferior: {data['distribution']['bottom_third_brightness']:.0f}/255
-  Complejidad textural:
-    - Superior: {data['texture']['top_complexity']:.1f} (mayor = más detalle)
-    - Medio:    {data['texture']['middle_complexity']:.1f}
-    - Inferior: {data['texture']['bottom_complexity']:.1f}
-  Contraste tonal: {data['tonal']['contrast']:.0f}/255
+REFERENCE IMAGE — Technical analysis:
+  Dominant palette: {palette_str}
+  Color temperature: {data['color_temperature']}
+  Vertical distribution (brightness):
+    - Top third:    {data['distribution']['top_third_brightness']:.0f}/255
+    - Middle third: {data['distribution']['middle_third_brightness']:.0f}/255
+    - Bottom third: {data['distribution']['bottom_third_brightness']:.0f}/255
+  Textural complexity:
+    - Top:    {data['texture']['top_complexity']:.1f} (higher = more detail)
+    - Middle: {data['texture']['middle_complexity']:.1f}
+    - Bottom: {data['texture']['bottom_complexity']:.1f}
+  Tonal contrast: {data['tonal']['contrast']:.0f}/255
 
-USA ESTOS DATOS para parametrizar el generador matemático:
-- Ajusta los colormaps para usar la paleta dominante
-- Distribuye la complejidad vertical según los valores de textura
-- El contraste del output debe aproximarse a {data['tonal']['contrast']:.0f}
+USE THIS DATA to parameterize the mathematical generator:
+- Adjust colormaps to use the dominant palette
+- Distribute vertical complexity according to texture values
+- Output contrast should approximate {data['tonal']['contrast']:.0f}
 """
         except Exception:
             return ""
 
     def build_prompt(self, objective: dict, context: dict) -> str:
-        """Construye el prompt para Claude Code con formato estructurado."""
+        """Builds the prompt for Claude Code with structured format."""
         lessons_text = "\n".join(context.get("lessons", []))
         ref_analysis = self._analyze_reference_image()
-        return f"""=== DQIII8 ORCHESTRATOR — OBJETIVO ACTUAL ===
+        return f"""=== DQIII8 ORCHESTRATOR — CURRENT OBJECTIVE ===
 
-PROYECTO: {context['project']}
-OBJETIVO: {objective['objective']}
-CRITERIO DE ÉXITO: {objective['success_criteria']}
-PRIORIDAD: {objective.get('priority', 'high')}
+PROJECT: {context['project']}
+OBJECTIVE: {objective['objective']}
+SUCCESS CRITERIA: {objective['success_criteria']}
+PRIORITY: {objective.get('priority', 'high')}
 
-ESTADO DEL PROYECTO:
+PROJECT STATE:
 {context.get('project_state', '')[:1500]}
 
-LECCIONES A TENER EN CUENTA (errores pasados):
+LESSONS TO KEEP IN MIND (past errors):
 {lessons_text}
 {ref_analysis}
-INSTRUCCIONES:
-1. Ejecuta el objetivo descrito arriba
-2. Verifica que se cumple el criterio de éxito
-3. Si encuentras un bloqueante que requiere decisión humana, detente y explícalo
-4. Al terminar, escribe exactamente este bloque (con los datos reales):
+INSTRUCTIONS:
+1. Execute the objective described above
+2. Verify that the success criteria is met
+3. If you encounter a blocker requiring a human decision, stop and explain it
+4. When done, write exactly this block (with real data):
 
 ---FINAL_REPORT---
 {{
   "success": true|false,
-  "files_modified": ["lista de archivos"],
-  "errors_found": ["errores encontrados"],
-  "fixes_applied": ["correcciones aplicadas"],
-  "lessons": ["nuevas lecciones en formato [KEYWORD] causa → solución"],
-  "blocker": null | "descripción del bloqueante si lo hay",
-  "next_step": "siguiente paso recomendado",
+  "files_modified": ["list of files"],
+  "errors_found": ["errors found"],
+  "fixes_applied": ["fixes applied"],
+  "lessons": ["new lessons in format [KEYWORD] cause → solution"],
+  "blocker": null | "description of blocker if any",
+  "next_step": "recommended next step",
   "code_metrics": {{
     "renderer": "mandelbrot|julia|perlin|cpp|compositor",
-    "lines_of_code": <número entero>,
-    "lines_functional": <líneas sin blancos ni comentarios>,
-    "cpu_seconds": <tiempo medido con time.perf_counter>,
-    "memory_peak_mb": <peak medido con tracemalloc>,
+    "lines_of_code": <integer>,
+    "lines_functional": <lines without blanks or comments>,
+    "cpu_seconds": <time measured with time.perf_counter>,
+    "memory_peak_mb": <peak measured with tracemalloc>,
     "uses_vectorization": true|false,
     "uses_numpy_only": true|false,
     "passes_tests": true|false,
-    "ssim_score": <score de ssim_scorer o null>,
-    "output_variance": <np.var() del array de píxeles>,
-    "speedup_vs_python": <ratio C++/Python o null>,
+    "ssim_score": <score from ssim_scorer or null>,
+    "output_variance": <np.var() of the pixel array>,
+    "speedup_vs_python": <C++/Python ratio or null>,
     "compiled_ok": true|false|null
   }}
 }}
@@ -482,8 +482,8 @@ INSTRUCCIONES:
 
     def execute(self, prompt: str, project: str, model_tier: str = "tier3") -> str:
         """
-        Lanza el modelo correspondiente al tier.
-        tier1  → Ollama qwen2.5-coder:7b (local, gratis)
+        Launches the model corresponding to the tier.
+        tier1  → Ollama qwen2.5-coder:7b (local, free)
         tier2  → OpenRouter free (via openrouter_wrapper.py)
         tier3  → Claude Code headless (default, Sonnet 4.6)
         haiku  → Claude Haiku 4.5 via CLI OAuth (--model claude-haiku-4-5-20251001)
@@ -499,9 +499,9 @@ INSTRUCCIONES:
 
     def _execute_claude(self, prompt: str, project: str) -> str:
         """
-        Ejecuta Claude Code como usuario jarvis (non-root).
-        Los permisos los gestiona el PermissionAnalyzer via hooks.
-        Sin --dangerously-skip-permissions — el analyzer decide.
+        Runs Claude Code as the jarvis user (non-root).
+        Permissions are managed by PermissionAnalyzer via hooks.
+        No --dangerously-skip-permissions — the analyzer decides.
         """
         import tempfile
 
@@ -509,7 +509,7 @@ INSTRUCCIONES:
         if not project_path.exists():
             project_path = JARVIS_ROOT
 
-        # Escribir prompt a archivo temporal legible por jarvis
+        # Write prompt to temporary file readable by jarvis
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".txt", delete=False, dir="/tmp", encoding="utf-8"
         ) as f:
@@ -518,9 +518,9 @@ INSTRUCCIONES:
         os.chmod(prompt_file, 0o644)
 
         try:
-            # su - crea un login shell nuevo que resetea el entorno.
-            # JARVIS_MODE y JARVIS_ROOT deben exportarse explícitamente
-            # dentro del comando -c para que pre_tool_use.py los vea.
+            # su - creates a new login shell that resets the environment.
+            # JARVIS_MODE and JARVIS_ROOT must be exported explicitly
+            # inside the -c command so that pre_tool_use.py can see them.
             result = subprocess.run(
                 [
                     "su",
@@ -546,12 +546,12 @@ INSTRUCCIONES:
                 pass
 
     def _execute_ollama(self, prompt: str, project: str) -> str:
-        """Tier 1: 2-step — Qwen genera el plan, Claude Code lo ejecuta."""
+        """Tier 1: 2-step — Qwen generates the plan, Claude Code executes it."""
         import requests
 
         model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
 
-        # Paso 1: Qwen genera plan/código (sin herramientas)
+        # Step 1: Qwen generates plan/code (no tools)
         plan = ""
         plan_quality = "unavailable"
         try:
@@ -560,11 +560,11 @@ INSTRUCCIONES:
                 json={
                     "model": model,
                     "prompt": (
-                        "Eres un experto en Python y C++. Genera un plan detallado "
-                        "y el código completo para la siguiente tarea. "
-                        "No uses herramientas. Solo genera texto.\n\n"
+                        "You are an expert in Python and C++. Generate a detailed plan "
+                        "and complete code for the following task. "
+                        "Do not use tools. Only generate text.\n\n"
                         f"{prompt}\n\n"
-                        "Responde con:\n1. Plan paso a paso\n2. Código completo listo para ejecutar"
+                        "Respond with:\n1. Step-by-step plan\n2. Complete code ready to execute"
                     ),
                     "stream": False,
                     "options": {"temperature": 0.2, "num_predict": 3000},
@@ -579,17 +579,17 @@ INSTRUCCIONES:
             else:
                 plan_quality = "poor"
         except Exception as e:
-            print(f"  [tier1] Ollama no disponible: {e} → fallback tier2")
+            print(f"  [tier1] Ollama unavailable: {e} → fallback tier2")
             return self._execute_openrouter(prompt, project)
 
-        # Paso 2: Claude Code ejecuta el plan con herramientas reales
+        # Step 2: Claude Code executes the plan with real tools
         combined_prompt = (
             f"{prompt}\n\n"
-            f"--- PLAN GENERADO POR QWEN2.5-CODER ---\n"
+            f"--- PLAN GENERATED BY QWEN2.5-CODER ---\n"
             f"{plan}\n"
-            f"--- FIN DEL PLAN ---\n\n"
-            "Ejecuta el plan anterior usando las herramientas disponibles. "
-            "Cuando termines, incluye en tu respuesta:\n"
+            f"--- END OF PLAN ---\n\n"
+            "Execute the above plan using the available tools. "
+            "When done, include in your response:\n"
             "---FINAL_REPORT---\n"
             '{"success": true, "files_modified": [], '
             '"errors_found": [], "fixes_applied": [], '
@@ -603,7 +603,7 @@ INSTRUCCIONES:
         """Tier 2: OpenRouter free tier via openrouter_wrapper.py."""
         wrapper = JARVIS_ROOT / "bin" / "openrouter_wrapper.py"
         if not wrapper.exists():
-            return "[OpenRouter] wrapper no encontrado en bin/openrouter_wrapper.py"
+            return "[OpenRouter] wrapper not found at bin/openrouter_wrapper.py"
         result = subprocess.run(
             ["python3", str(wrapper), "--agent", "default", prompt],
             capture_output=True,
@@ -614,17 +614,17 @@ INSTRUCCIONES:
         return result.stdout + result.stderr
 
     def _execute_haiku(self, prompt: str, project: str) -> str:
-        """Haiku 4.5: 2-step — Haiku genera el plan via CLI OAuth, Claude Code lo ejecuta."""
+        """Haiku 4.5: 2-step — Haiku generates the plan via CLI OAuth, Claude Code executes it."""
         import tempfile
 
-        # Paso 1: Haiku genera plan via `claude --model` (OAuth, sin herramientas)
+        # Step 1: Haiku generates plan via `claude --model` (OAuth, no tools)
         plan = ""
         plan_quality = "error"
         planning_prompt = (
-            "Genera un plan detallado y el código completo para la siguiente tarea. "
-            "Sé específico y concreto. No uses herramientas, solo genera texto.\n\n"
+            "Generate a detailed plan and complete code for the following task. "
+            "Be specific and concrete. Do not use tools, only generate text.\n\n"
             f"{prompt}\n\n"
-            "Responde con:\n1. Plan paso a paso\n2. Código completo listo para ejecutar"
+            "Respond with:\n1. Step-by-step plan\n2. Complete code ready to execute"
         )
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".txt", delete=False, dir="/tmp", encoding="utf-8"
@@ -667,17 +667,17 @@ INSTRUCCIONES:
                 pass
 
         if not plan or plan_quality == "error":
-            print("  [haiku] Sin plan generado → fallback tier3")
+            print("  [haiku] No plan generated → fallback tier3")
             return self._execute_claude(prompt, project)
 
-        # Paso 2: Claude Code ejecuta el plan con herramientas reales
+        # Step 2: Claude Code executes the plan with real tools
         combined_prompt = (
             f"{prompt}\n\n"
-            f"--- PLAN GENERADO POR CLAUDE HAIKU ---\n"
+            f"--- PLAN GENERATED BY CLAUDE HAIKU ---\n"
             f"{plan}\n"
-            f"--- FIN DEL PLAN ---\n\n"
-            "Ejecuta el plan anterior usando las herramientas disponibles. "
-            "Cuando termines, incluye en tu respuesta:\n"
+            f"--- END OF PLAN ---\n\n"
+            "Execute the above plan using the available tools. "
+            "When done, include in your response:\n"
             "---FINAL_REPORT---\n"
             '{"success": true, "files_modified": [], '
             '"errors_found": [], "fixes_applied": [], '
@@ -688,10 +688,10 @@ INSTRUCCIONES:
         return self._execute_claude(combined_prompt, project)
 
     def capture(self, output: str) -> dict:
-        """Extrae el FINAL_REPORT del output de Claude Code."""
+        """Extracts the FINAL_REPORT from Claude Code output."""
 
         def _normalize(report: dict) -> dict:
-            """Normaliza campos de tier-planner y SSIM."""
+            """Normalizes tier-planner and SSIM fields."""
             if "planner_quality" not in report:
                 report["planner_quality"] = report.get("qwen_plan_quality") or report.get(
                     "haiku_plan_quality"
@@ -700,7 +700,7 @@ INSTRUCCIONES:
             report.setdefault("ssim_quality", None)
             return report
 
-        # Intento 1: formato estricto con marcadores
+        # Attempt 1: strict format with markers
         match = re.search(
             r"---FINAL_REPORT---\s*(\{.*?\})\s*---END_REPORT---",
             output,
@@ -712,7 +712,7 @@ INSTRUCCIONES:
             except json.JSONDecodeError:
                 pass
 
-        # Intento 2: buscar cualquier JSON con "success" en el output
+        # Attempt 2: find any JSON with "success" in the output
         for m in re.findall(r"\{[^{}]*\"success\"[^{}]*\}", output, re.DOTALL):
             try:
                 data = json.loads(m)
@@ -721,7 +721,7 @@ INSTRUCCIONES:
             except json.JSONDecodeError:
                 continue
 
-        # Intento 3: inferir éxito por señales en el contenido del output
+        # Attempt 3: infer success from signals in the output content
         output_lower = output.lower()
         success_signals = ["successfully", "created", "completed", "pytest", "passed", "✅", "done"]
         error_signals = ["error", "traceback", "failed", "exception", "timeout"]
@@ -743,7 +743,7 @@ INSTRUCCIONES:
         }
 
     def store(self, obj_id: str, project: str, objective: dict, result: dict) -> None:
-        """Guarda resultado en BD y actualiza lessons.md."""
+        """Saves result to DB and updates lessons.md."""
         conn = sqlite3.connect(str(DB_PATH), timeout=10)
 
         status = "completed" if result.get("success") else "failed"
@@ -772,13 +772,13 @@ INSTRUCCIONES:
             ),
         )
 
-        # Guardar métricas de benchmark si el agente las reportó
+        # Save benchmark metrics if the agent reported them
         metrics = result.get("code_metrics")
         if metrics and isinstance(metrics, dict) and metrics.get("renderer"):
-            megapixels = 1080 * 1920 / 1_000_000  # 2.0736 mpx (resolución estándar)
+            megapixels = 1080 * 1920 / 1_000_000  # 2.0736 mpx (standard resolution)
             cpu_s = metrics.get("cpu_seconds")
 
-            # Contar decisiones de permisos de la última hora (proxy del ciclo actual)
+            # Count permission decisions in the last hour (proxy for current cycle)
             perm_rows = conn.execute("""
                 SELECT
                     SUM(CASE WHEN decision='APPROVE' THEN 1 ELSE 0 END),
@@ -833,7 +833,7 @@ INSTRUCCIONES:
         conn.commit()
         conn.close()
 
-        # Añadir lecciones nuevas a lessons.md
+        # Add new lessons to lessons.md
         new_lessons = result.get("lessons", [])
         if new_lessons:
             lessons_path = JARVIS_ROOT / "tasks/lessons.md"
@@ -845,7 +845,7 @@ INSTRUCCIONES:
     def create_objective(
         self, project: str, text: str, criteria: str, model_tier: str = "tier3"
     ) -> str:
-        """Inserta un nuevo objetivo en la BD, incluyendo model_tier."""
+        """Inserts a new objective in the DB, including model_tier."""
         obj_id = str(uuid.uuid4())[:8]
         conn = sqlite3.connect(str(DB_PATH), timeout=10)
         conn.execute(
@@ -862,7 +862,7 @@ INSTRUCCIONES:
         return obj_id
 
     def _send_image_telegram(self, image_path: str, caption: str) -> None:
-        """Envía una imagen al chat de Telegram via Bot API (sendPhoto multipart)."""
+        """Sends an image to the Telegram chat via Bot API (sendPhoto multipart)."""
         import requests
 
         token = (os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")).strip()
@@ -873,7 +873,7 @@ INSTRUCCIONES:
 
         img = Path(image_path)
         if not img.exists():
-            print(f"  [img] No existe: {image_path}")
+            print(f"  [img] Not found: {image_path}")
             return
 
         try:
@@ -889,7 +889,7 @@ INSTRUCCIONES:
                     timeout=30,
                 )
             if resp.status_code == 200:
-                print(f"  [img] Enviada: {img.name}")
+                print(f"  [img] Sent: {img.name}")
             else:
                 print(f"  [img] Error {resp.status_code}: {resp.text[:100]}")
         except Exception as e:
@@ -897,9 +897,9 @@ INSTRUCCIONES:
 
     def _notify_telegram(self, message: str) -> None:
         """
-        Envía notificación al bot de Telegram cuando el loop se pausa
-        por ESCALATE o bloqueante humano, o cuando completa con éxito.
-        Requiere TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en .env
+        Sends a Telegram bot notification when the loop pauses
+        due to ESCALATE or human blocker, or when it completes successfully.
+        Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env
         """
         import requests
 
@@ -922,9 +922,9 @@ INSTRUCCIONES:
 
     def _sync_todo_md(self, project: str) -> None:
         """
-        Regenera tasks/todo.md desde la tabla objectives de la BD.
-        El OrchestratorLoop es el ÚNICO escritor de tasks/todo.md.
-        Otros agentes escriben resultados SOLO en tasks/results/[agent]-[ts].md.
+        Regenerates tasks/todo.md from the objectives table in the DB.
+        The OrchestratorLoop is the ONLY writer of tasks/todo.md.
+        Other agents write results ONLY to tasks/results/[agent]-[ts].md.
         """
         STATUS_ICON = {
             "running": "🔄",
@@ -957,9 +957,9 @@ INSTRUCCIONES:
 
             lines = [
                 f"# tasks/todo.md — {project}",
-                f"_Generado por OrchestratorLoop — "
+                f"_Generated by OrchestratorLoop — "
                 f"{datetime.now().strftime('%Y-%m-%d %H:%M')}_",
-                "_Solo el OrchestratorLoop escribe aquí. " "Otros agentes → tasks/results/_",
+                "_Only OrchestratorLoop writes here. " "Other agents → tasks/results/_",
                 "",
             ]
             for status_group in ("running", "pending", "failed", "blocked", "completed"):
@@ -969,10 +969,10 @@ INSTRUCCIONES:
                 lines.append(f"## {STATUS_ICON.get(status_group, '')} {status_group.upper()}")
                 for r in group_rows:
                     obj_id, text, status, retries, criteria, _ = r
-                    retry_str = f" (intento {retries}/{MAX_RETRIES})" if retries > 0 else ""
+                    retry_str = f" (attempt {retries}/{MAX_RETRIES})" if retries > 0 else ""
                     lines.append(f"- [{obj_id}]{retry_str} {text}")
                     if criteria:
-                        lines.append(f"  → Criterio: {criteria}")
+                        lines.append(f"  → Criterion: {criteria}")
                 lines.append("")
 
             todo_path = JARVIS_ROOT / "tasks" / "todo.md"
@@ -981,7 +981,7 @@ INSTRUCCIONES:
             print(f"  [todo.md] sync error: {e}")
 
     def _print_effectiveness(self, project: str) -> None:
-        """Imprime métricas históricas del proyecto desde loop_effectiveness."""
+        """Prints historical project metrics from loop_effectiveness."""
         try:
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
             row = conn.execute(
@@ -994,15 +994,15 @@ INSTRUCCIONES:
                 print(
                     f"  📊 Historial: {row[0]} ciclos | "
                     f"✅ {row[1]} | ❌ {row[2]} | 🚨 {row[3]} | "
-                    f"Tasa éxito: {row[4]}%"
+                    f"Success rate: {row[4]}%"
                 )
         except Exception:
             pass
 
     def _warmup_ollama(self) -> bool:
         """
-        Envía un prompt mínimo a Ollama para cargar el modelo
-        antes de que el loop empiece. Evita timeout en primer ciclo.
+        Sends a minimal prompt to Ollama to load the model
+        before the loop starts. Avoids timeout on the first cycle.
         """
         import requests
 
@@ -1022,21 +1022,21 @@ INSTRUCCIONES:
             return False
 
     def run(self, project: str, max_cycles: int = MAX_CYCLES, model_tier: str = "tier3") -> None:
-        """Loop principal del orquestador."""
-        print(f"\n[ORCHESTRATOR] Iniciando loop — proyecto: {project} | tier: {model_tier}")
+        """Main orchestrator loop."""
+        print(f"\n[ORCHESTRATOR] Starting loop — project: {project} | tier: {model_tier}")
         self._print_effectiveness(project)
 
         if model_tier == "tier1":
-            print("  [Tier1] Calentando Ollama (carga modelo ~60-120s)...")
+            print("  [Tier1] Warming up Ollama (loading model ~60-120s)...")
             if self._warmup_ollama():
-                print("  [Tier1] Ollama listo")
+                print("  [Tier1] Ollama ready")
             else:
-                print("  [Tier1] Ollama no responde — continuando con fallback")
+                print("  [Tier1] Ollama not responding — continuing with fallback")
 
         for cycle in range(1, max_cycles + 1):
-            print(f"\n── Ciclo {cycle}/{max_cycles} ──────────────────")
+            print(f"\n── Cycle {cycle}/{max_cycles} ──────────────────")
 
-            # Sincronizar todo.md desde BD (único escritor)
+            # Sync todo.md from DB (sole writer)
             self._sync_todo_md(project)
 
             # ANALYZE
@@ -1044,18 +1044,18 @@ INSTRUCCIONES:
 
             # PLAN
             objective = self.plan(context)
-            print(f"  Objetivo: {objective['objective'][:80]}...")
+            print(f"  Objective: {objective['objective'][:80]}...")
 
             # Crear o reusar registro en BD
             seeded_id = objective.get("objective_id")
             if seeded_id:
-                # Objetivo pre-sembrado: actualizar a 'running', no crear nuevo
+                # Pre-seeded objective: update to 'running', do not create new
                 obj_id = seeded_id
                 conn = sqlite3.connect(str(DB_PATH), timeout=10)
                 conn.execute("UPDATE objectives SET status='running' WHERE id=?", (obj_id,))
                 conn.commit()
                 conn.close()
-                print(f"  [run] Retomando objetivo [{obj_id}] (pre-sembrado)")
+                print(f"  [run] Resuming objective [{obj_id}] (pre-seeded)")
             else:
                 obj_id = self.create_objective(
                     project,
@@ -1064,14 +1064,14 @@ INSTRUCCIONES:
                     model_tier,
                 )
 
-            # Verificar max_retries
+            # Verify max_retries
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
             retries = conn.execute(
                 "SELECT retry_count FROM objectives WHERE id=?", (obj_id,)
             ).fetchone()
             conn.close()
             if retries and retries[0] >= MAX_RETRIES:
-                print(f"  ⛔ Objetivo bloqueado tras {MAX_RETRIES} intentos")
+                print(f"  ⛔ Objective blocked after {MAX_RETRIES} attempts")
                 conn = sqlite3.connect(str(DB_PATH), timeout=10)
                 conn.execute("UPDATE objectives SET status='blocked' WHERE id=?", (obj_id,))
                 conn.commit()
@@ -1093,13 +1093,13 @@ INSTRUCCIONES:
             print(f"  Pre-tests: {'✅' if pre_ok else '⚠️'}")
 
             # EXECUTE Claude Code
-            print("  Ejecutando Claude Code (headless)...")
+            print("  Running Claude Code (headless)...")
             output = self.execute(prompt, project, model_tier)
 
             # CAPTURE
             result = self.capture(output)
 
-            # Post-tests para verificar que no se rompió nada
+            # Post-tests to verify nothing was broken
             post_test = subprocess.run(
                 ["python3", "-m", "pytest", "tests/", "--tb=no", "-q"],
                 capture_output=True,
@@ -1110,7 +1110,7 @@ INSTRUCCIONES:
             post_ok = post_test.returncode == 0
             if not post_ok and pre_ok:
                 result["success"] = False
-                result["errors_found"].append("Tests rompieron tras la ejecución")
+                result["errors_found"].append("Tests broke after execution")
 
             # STORE
             self.store(obj_id, project, objective, result)
@@ -1121,15 +1121,15 @@ INSTRUCCIONES:
             status_icon = "✅" if result["success"] else ("⛔" if result.get("blocker") else "🔄")
             print(f"  {status_icon} {result.get('next_step', '')[:60]}")
 
-            # Notificación de progreso por ciclo
+            # Progress notification per cycle
             if result.get("success"):
                 metrics = result.get("code_metrics") or {}
                 ssim = metrics.get("ssim_score") or 0
                 ssim_bar = "🟢" if ssim > 0.5 else ("🟡" if ssim > 0.3 else "🔴")
                 self._notify_telegram(
-                    f"✅ Ciclo {cycle}/{max_cycles} completado\n"
+                    f"✅ Cycle {cycle}/{max_cycles} completed\n"
                     f"*{objective['objective'][:60]}*\n\n"
-                    f"📊 Métricas:\n"
+                    f"📊 Metrics:\n"
                     f"  {ssim_bar} SSIM: {ssim:.4f}\n"
                     f"  ⏱ Render: {metrics.get('cpu_seconds', 0):.1f}s\n"
                     f"  💾 RAM: {metrics.get('memory_peak_mb', 0):.0f}MB\n"
@@ -1141,72 +1141,72 @@ INSTRUCCIONES:
                     ssim_bar2 = "🟢" if ssim > 0.6 else ("🟡" if ssim > 0.3 else "🔴")
                     self._send_image_telegram(
                         str(composite),
-                        f"*Compositor\\_final* — Ciclo {cycle}/{max_cycles}\n"
+                        f"*Compositor\\_final* — Cycle {cycle}/{max_cycles}\n"
                         f"{ssim_bar2} SSIM: {ssim:.4f}\n"
                         f"⏱ {metrics.get('cpu_seconds', 0):.1f}s | "
                         f"💾 {metrics.get('memory_peak_mb', 0):.0f}MB | "
                         f"📝 {metrics.get('lines_of_code', 0)} LOC\n"
-                        f"_Generado con matematica pura_",
+                        f"_Generated with pure mathematics_",
                     )
             else:
                 self._notify_telegram(
-                    f"⚠️ Ciclo {cycle}/{max_cycles} falló\n"
+                    f"⚠️ Cycle {cycle}/{max_cycles} failed\n"
                     f"*{objective['objective'][:60]}*\n"
                     f"Error: {str(result.get('errors_found', ''))[:100]}"
                 )
 
-            # Parar si hay bloqueante humano (MEJORA 5: notificar)
+            # Stop if there is a human blocker (notify)
             if result.get("blocker"):
-                print(f"\n⚠️  BLOQUEANTE HUMANO: {result['blocker']}")
-                print("  El loop se detiene. Resuelve el bloqueante y relanza.")
+                print(f"\n⚠️  HUMAN BLOCKER: {result['blocker']}")
+                print("  Loop stopping. Resolve the blocker and relaunch.")
                 self._notify_telegram(
-                    f"🛑 *Bloqueante humano* en `{project}`\n"
-                    f"*Ciclo {cycle}:* {result.get('blocker', '')[:200]}\n"
-                    f"*Próximo paso:* {result.get('next_step', '')[:100]}"
+                    f"🛑 *Human blocker* in `{project}`\n"
+                    f"*Cycle {cycle}:* {result.get('blocker', '')[:200]}\n"
+                    f"*Next step:* {result.get('next_step', '')[:100]}"
                 )
                 break
 
-            # Parar si hay ESCALATEs en el buzón de rechazos (MEJORA 5)
+            # Stop if there are ESCALATEs in the rejection inbox
             escalates = [
                 r for r in context.get("recent_rejections", []) if r.get("decision") == "ESCALATE"
             ]
             if escalates:
                 e = escalates[0]
-                print(f"\n🚨 ESCALATE detectado — loop pausado.")
+                print(f"\n🚨 ESCALATE detected — loop paused.")
                 self._notify_telegram(
                     f"⚠️ *ESCALATE* en proyecto `{project}`\n"
                     f"Ciclo {cycle}/{max_cycles}\n\n"
-                    f"*Razón:* {e.get('reason', '')[:150]}\n"
+                    f"*Reason:* {e.get('reason', '')[:150]}\n"
                     f"*Fix sugerido:* {e.get('suggested_fix', 'N/A')[:100]}\n\n"
                     f"Resuelve y relanza:\n`j --loop {project}`"
                 )
                 break
 
-            # Parar si éxito y sin más pendientes (MEJORA 5: notificar)
+            # Stop if success and no more pending (notify)
             pending = context.get("pending_objectives", [])
             if result["success"] and not pending:
-                print(f"\n✅ Proyecto {project} al día. Loop completado.")
+                print(f"\n✅ Project {project} up to date. Loop completed.")
                 self._notify_telegram(
-                    f"✅ *Loop completado* — `{project}`\n" f"{cycle} ciclo(s) | objetivo cumplido"
+                    f"✅ *Loop completed* — `{project}`\n" f"{cycle} cycle(s) | objective met"
                 )
                 break
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DQIII8 OrchestratorLoop")
-    parser.add_argument("--project", required=True, help="Nombre del proyecto")
+    parser.add_argument("--project", required=True, help="Project name")
     parser.add_argument(
         "--cycles",
         type=int,
         default=MAX_CYCLES,
-        help=f"Máximo de ciclos (default: {MAX_CYCLES})",
+        help=f"Maximum cycles (default: {MAX_CYCLES})",
     )
     parser.add_argument(
         "--tier",
         choices=["tier1", "tier2", "tier3", "haiku"],
         default="tier3",
         help=(
-            "Modelo a usar: tier1=Ollama local, tier2=OpenRouter free, "
+            "Model to use: tier1=Ollama local, tier2=OpenRouter free, "
             "tier3=Claude Sonnet (default), haiku=Claude Haiku 4.5"
         ),
     )

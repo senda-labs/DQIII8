@@ -161,6 +161,10 @@ Generate an executive report comparing:
 Be specific and use the actual data."
             exit 0
             ;;
+        --upload|-u)
+            shift
+            exec python3 "$JARVIS_ROOT/bin/knowledge_upload.py" "$@"
+            ;;
         --help|-h)
             cat <<EOF
 DQIII8 — 3-tier routing
@@ -172,6 +176,7 @@ DQIII8 — 3-tier routing
   j --autonomous "objective" [h]  autonomous mode with 3-layer supervisor (def. 8h)
   j --loop PROJECT [N] [TIER]   OrchestratorLoop: tier1/tier2/tier3/haiku (def. tier3)
   j --benchmark-report         Sonnet report comparing tiers
+  j --upload FILE [--agent A] [--domain D]  upload knowledge file (PDF/MD/TXT/DOCX/ZIP)
 
 Tiers:
   local   Tier 1 — Ollama $OLLAMA_MODEL (free, local)

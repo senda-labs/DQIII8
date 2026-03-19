@@ -26,12 +26,15 @@ The score is NOT an opinion. It is a reproducible equation.
 
 import math
 import json
-import sqlite3
+import os
+import sys
 from dataclasses import dataclass, field
 from typing import Optional
 from pathlib import Path
 
-DB = Path("/root/jarvis/database/jarvis_metrics.db")
+JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+sys.path.insert(0, str(JARVIS / "bin"))
+from db import get_db
 
 # ── Base propagation per category (empirical, updatable) ──
 CATEGORY_PROPAGATION = {
@@ -266,47 +269,44 @@ class ScoringResult:
     def save(self):
         """Persists immutable snapshot to DB."""
         d = self.to_dict()
-        conn = sqlite3.connect(DB)
-        conn.execute("""
-            INSERT OR REPLACE INTO jal_scoring_snapshots
-            (objective_id, attempt, score_raw, entropy_H,
-             entropy_penalty, blocker_penalty, momentum_bonus,
-             score_final, delta_score, convergence_est, converges,
-             steps_total, steps_completed, steps_failed, has_blocker,
-             breakdown_json)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            d["objective_id"], d["attempt"],
-            d["score_raw"], d["entropy_H"],
-            d["entropy_penalty"], d["blocker_penalty"],
-            d["momentum_bonus"], d["score_final"],
-            d["delta_score"], d["convergence_est"],
-            1 if d["converges"] else 0,
-            d["steps_total"], d["steps_completed"],
-            d["steps_failed"], 1 if d["has_blocker"] else 0,
-            json.dumps(d)
-        ))
-        conn.commit()
-        conn.close()
+        with get_db() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO jal_scoring_snapshots
+                (objective_id, attempt, score_raw, entropy_H,
+                 entropy_penalty, blocker_penalty, momentum_bonus,
+                 score_final, delta_score, convergence_est, converges,
+                 steps_total, steps_completed, steps_failed, has_blocker,
+                 breakdown_json)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                d["objective_id"], d["attempt"],
+                d["score_raw"], d["entropy_H"],
+                d["entropy_penalty"], d["blocker_penalty"],
+                d["momentum_bonus"], d["score_final"],
+                d["delta_score"], d["convergence_est"],
+                1 if d["converges"] else 0,
+                d["steps_total"], d["steps_completed"],
+                d["steps_failed"], 1 if d["has_blocker"] else 0,
+                json.dumps(d)
+            ))
 
 
 def load_from_db(objective_id: str, attempt: int) -> ScoringResult:
     """Loads step state from DB and builds ScoringResult."""
-    conn = sqlite3.connect(DB)
-    rows = conn.execute("""
-        SELECT step_number, description, weight, criticality,
-               completion_pct, error_category, result_summary
-        FROM jal_steps
-        WHERE objective_id=? AND attempt=?
-        ORDER BY step_number
-    """, (objective_id, attempt)).fetchall()
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT step_number, description, weight, criticality,
+                   completion_pct, error_category, result_summary
+            FROM jal_steps
+            WHERE objective_id=? AND attempt=?
+            ORDER BY step_number
+        """, (objective_id, attempt)).fetchall()
 
-    prev = conn.execute("""
-        SELECT score_final FROM jal_scoring_snapshots
-        WHERE objective_id=? AND attempt<?
-        ORDER BY attempt DESC LIMIT 1
-    """, (objective_id, attempt)).fetchone()
-    conn.close()
+        prev = conn.execute("""
+            SELECT score_final FROM jal_scoring_snapshots
+            WHERE objective_id=? AND attempt<?
+            ORDER BY attempt DESC LIMIT 1
+        """, (objective_id, attempt)).fetchone()
 
     steps = [
         StepMeasurement(

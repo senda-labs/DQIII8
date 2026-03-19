@@ -13,7 +13,7 @@ This example shows how to configure DQIII8 for automated content pipelines — a
 
 ```bash
 # Set the active project
-export JARVIS_PROJECT=content-automation
+export JARVIS_PROJECT=content
 
 # Use the content model (free OpenRouter tier)
 export JARVIS_MODEL=openrouter/nvidia/nemotron-nano-12b-v2-vl:free
@@ -54,12 +54,12 @@ Define your channels in `context/youtube_channels.md`:
 - Style: whiteboard animation
 ```
 
-DQIII8 injects channel context automatically when `JARVIS_PROJECT=content-automation`.
+DQIII8 injects channel context automatically when `JARVIS_PROJECT=content`.
 
 ## Pipeline structure
 
 ```
-content-automation/
+projects/content/
 ├── scripts/          # generated video scripts
 ├── audio/            # TTS output (ElevenLabs / local)
 ├── subtitles/        # SRT files
@@ -71,7 +71,7 @@ content-automation/
 ```bash
 python3 bin/run_pipeline.py \
   --topic "History of the Linux kernel" \
-  --mode faceless \
+  --mode narrated \
   --duration 10 \
   --language en
 ```

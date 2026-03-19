@@ -1,6 +1,6 @@
 ---
 name: tdd-workflow
-description: Use this skill when writing new features or fixing bugs in DQIII8 or content-automation-faceless. Enforces test-driven development with pytest — write test first, implement to pass, refactor.
+description: Use this skill when writing new features or fixing bugs in DQIII8 projects. Enforces test-driven development with pytest — write test first, implement to pass, refactor.
 origin: ECC/affaan-m (adaptado para DQIII8 — pytest, pathlib, SQLite)
 status: APROBADA
 ---

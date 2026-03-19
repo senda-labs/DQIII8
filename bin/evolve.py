@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-/evolve — Convierte instincts consolidados en skills accionables.
+/evolve — Converts consolidated instincts into actionable skills.
 
-Flujo:
-  1. Lee instincts con confidence >= MIN_CONF OR times_applied >= MIN_APPLIED
-  2. Agrupa por raiz del keyword (primer segmento antes de '-')
-  3. Para clusters con 3+ instincts: genera skill draft en
-     skills-registry/custom/evolved/[raiz].md
-  4. Registra en skills-registry/INDEX.md con status PENDIENTE_REVISION
+Flow:
+  1. Reads instincts with confidence >= MIN_CONF OR times_applied >= MIN_APPLIED
+  2. Groups by keyword root (first segment before '-')
+  3. For clusters with 3+ instincts: generates skill draft in
+     skills-registry/custom/evolved/[root].md
+  4. Registers in skills-registry/INDEX.md with status PENDIENTE_REVISION
 """
 
 import argparse
@@ -74,41 +74,41 @@ def render_skill(root: str, members: list[dict]) -> str:
     lines = [
         f"# Skill: {root} (auto-evolved)",
         f"",
-        f"**Generada:** {now}  ",
-        f"**Fuente:** /evolve — {len(members)} instincts agrupados  ",
-        f"**Proyectos:** {', '.join(projects)}  ",
-        f"**Confianza media:** {avg_conf:.2f}  ",
-        f"**Total aplicado:** {total_applied}x  ",
-        f"**Status:** PENDIENTE_REVISION  ",
+        f"**Generated:** {now}  ",
+        f"**Source:** /evolve — {len(members)} instincts grouped  ",
+        f"**Projects:** {', '.join(projects)}  ",
+        f"**Average confidence:** {avg_conf:.2f}  ",
+        f"**Total applied:** {total_applied}x  ",
+        f"**Status:** PENDING_REVIEW  ",
         f"",
-        f"## Descripcion",
+        f"## Description",
         f"",
-        f"Skill auto-generada desde instincts consolidados sobre `{root}`. "
-        f"Revisar patrones, consolidar en reglas accionables y cambiar status a APROBADA.",
+        f"Auto-generated skill from consolidated instincts about `{root}`. "
+        f"Review patterns, consolidate into actionable rules and change status to APPROVED.",
         f"",
-        f"## Patrones aprendidos",
+        f"## Learned patterns",
         f"",
     ]
     for m in sorted(members, key=lambda x: -x["times_applied"]):
         conf_pct = int(m["confidence"] * 100)
-        lines.append(f"### `{m['keyword']}` — conf: {conf_pct}%, aplicado: {m['times_applied']}x")
+        lines.append(f"### `{m['keyword']}` — conf: {conf_pct}%, applied: {m['times_applied']}x")
         lines.append(f"")
         lines.append(f"{m['pattern']}")
         lines.append(f"")
 
     lines += [
-        f"## Reglas consolidadas (pendiente revision)",
+        f"## Consolidated rules (pending review)",
         f"",
-        f"> TODO: Sintetizar los patrones anteriores en 3-5 reglas concretas.",
-        f"> Eliminar redundancias. Anadir ejemplos de codigo si aplica.",
+        f"> TODO: Synthesize the above patterns into 3-5 concrete rules.",
+        f"> Remove redundancies. Add code examples if applicable.",
         f"",
-        f"## Anti-patrones",
+        f"## Anti-patterns",
         f"",
-        f"> TODO: Listar que NO hacer segun los instincts.",
+        f"> TODO: List what NOT to do according to the instincts.",
         f"",
-        f"## Cuando NO usar esta skill",
+        f"## When NOT to use this skill",
         f"",
-        f"> TODO: Casos limite donde esta skill no aplica.",
+        f"> TODO: Edge cases where this skill does not apply.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -122,7 +122,7 @@ def register_in_index(root: str, member_count: int) -> bool:
 
     entry = (
         f"| {skill_id} | /evolve auto ({member_count} instincts) "
-        f"| ⏳ PENDIENTE_REVISION | — | Revisar + mover a custom/ + status APROBADA |"
+        f"| ⏳ PENDING_REVIEW | — | Review + move to custom/ + status APPROVED |"
     )
     # Append to end of file
     INDEX_MD.write_text(content.rstrip() + "\n" + entry + "\n", encoding="utf-8")
@@ -134,7 +134,7 @@ def main() -> None:
     parser.add_argument("--min-confidence", type=float, default=MIN_CONF_DEFAULT)
     parser.add_argument("--min-applied", type=int, default=MIN_APPLIED_DEFAULT)
     parser.add_argument("--min-cluster", type=int, default=MIN_CLUSTER_DEFAULT)
-    parser.add_argument("--dry-run", action="store_true", help="No escribe archivos")
+    parser.add_argument("--dry-run", action="store_true", help="Do not write files")
     args = parser.parse_args()
 
     if not DB.exists():
@@ -147,7 +147,7 @@ def main() -> None:
 
     if not instincts:
         print(
-            f"[evolve] Sin instincts (confidence>={args.min_confidence} OR applied>={args.min_applied})"
+            f"[evolve] No instincts (confidence>={args.min_confidence} OR applied>={args.min_applied})"
         )
         sys.exit(0)
 
@@ -155,14 +155,14 @@ def main() -> None:
     eligible = {r: m for r, m in clusters.items() if len(m) >= args.min_cluster}
 
     print(
-        f"[evolve] {len(instincts)} instincts elegibles | "
-        f"{len(clusters)} clusters | {len(eligible)} con {args.min_cluster}+ miembros"
+        f"[evolve] {len(instincts)} eligible instincts | "
+        f"{len(clusters)} clusters | {len(eligible)} with {args.min_cluster}+ members"
     )
 
     if not eligible:
-        print(f"[evolve] Ningún cluster alcanza {args.min_cluster}+ instincts.")
+        print(f"[evolve] No cluster reaches {args.min_cluster}+ instincts.")
         summary = ", ".join(f"{r}({len(m)})" for r, m in sorted(clusters.items()))
-        print(f"  Clusters actuales: {summary}")
+        print(f"  Current clusters: {summary}")
         sys.exit(0)
 
     if not args.dry_run:
@@ -177,18 +177,18 @@ def main() -> None:
         else:
             skill_path.write_text(content, encoding="utf-8")
             registered = register_in_index(root, len(members))
-            tag = " [nuevo en INDEX]" if registered else " [ya en INDEX]"
+            tag = " [new in INDEX]" if registered else " [already in INDEX]"
             print(f"  SKILL: {skill_path.name} — {len(members)} instincts{tag}")
             generated.append(root)
 
     if generated:
         print(
-            f"\n[evolve] {len(generated)} skill(s) generada(s) en skills-registry/custom/evolved/"
+            f"\n[evolve] {len(generated)} skill(s) generated in skills-registry/custom/evolved/"
         )
-        print(f"\nPara aprobar:")
-        print(f"  1. Editar el .md: consolidar reglas, anadir ejemplos")
-        print(f"  2. Cambiar status en INDEX.md a '✅ APROBADA'")
-        print(f"  3. Mover de custom/evolved/ a custom/[nombre]/SKILL.md")
+        print(f"\nTo approve:")
+        print(f"  1. Edit the .md: consolidate rules, add examples")
+        print(f"  2. Change status in INDEX.md to '✅ APROBADA'")
+        print(f"  3. Move from custom/evolved/ to custom/[name]/SKILL.md")
 
 
 if __name__ == "__main__":

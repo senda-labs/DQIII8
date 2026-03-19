@@ -1,6 +1,6 @@
-# DQIII8 — Ejecución Autónoma
+# DQIII8 — Autonomous Execution
 
-> Reglas de autonomía para modo VPS sin supervisión continua.
+> Autonomy rules for VPS mode without continuous supervision.
 
 - Bug reports: fix immediately. Point at logs/errors, resolve, verify. Zero hand-holding.
 - If fix requires >3 files or touches architecture → enter plan mode first.

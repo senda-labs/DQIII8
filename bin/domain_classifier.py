@@ -2,18 +2,18 @@
 """
 DQIII8 — Domain Classifier
 
-Clasifica prompts en 5 dominios del conocimiento:
+Classifies prompts into 5 knowledge domains:
   formal_sciences · natural_sciences · social_sciences
   humanities_arts · applied_sciences
 
 Pipeline:
-  1. Keyword match ($0, <1ms) — rápido, sin red
-  2. Embedding similarity via nomic-embed-text ($0, ~50-100ms) — si Ollama disponible
+  1. Keyword match ($0, <1ms) — fast, no network
+  2. Embedding similarity via nomic-embed-text ($0, ~50-100ms) — if Ollama available
 
-Uso:
-    python3 bin/domain_classifier.py "tu prompt"
-    python3 bin/domain_classifier.py --setup       # crea tabla + centroides
-    python3 bin/domain_classifier.py --setup --force  # recalcula centroides
+Usage:
+    python3 bin/domain_classifier.py "your prompt"
+    python3 bin/domain_classifier.py --setup       # create table + centroids
+    python3 bin/domain_classifier.py --setup --force  # recalculate centroids
 """
 
 from __future__ import annotations
@@ -164,7 +164,7 @@ DOMAINS: dict[str, dict] = {
 
 
 def _get_embedding(text: str) -> list[float] | None:
-    """Llama a nomic-embed-text via Ollama. Devuelve None si no está disponible."""
+    """Calls nomic-embed-text via Ollama. Returns None if not available."""
     payload = json.dumps({"model": EMBED_MODEL, "prompt": text}).encode("utf-8")
     req = urllib.request.Request(
         OLLAMA_URL,
@@ -199,9 +199,9 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def setup_db(force: bool = False) -> None:
-    """Crea la tabla domain_enrichment y calcula centroides vía Ollama."""
+    """Creates the domain_enrichment table and calculates centroids via Ollama."""
     if not DB_PATH.exists():
-        print(f"[domain_classifier] DB no encontrada: {DB_PATH}", file=sys.stderr)
+        print(f"[domain_classifier] DB not found: {DB_PATH}", file=sys.stderr)
         return
 
     conn = sqlite3.connect(str(DB_PATH), timeout=5)
@@ -226,16 +226,16 @@ def setup_db(force: bool = False) -> None:
         ).fetchone()
 
         if existing and not force and existing[1] is not None:
-            print(f"  ✓ {domain_name} — ya tiene centroide (usa --force para recalcular)")
+            print(f"  ✓ {domain_name} — already has centroid (use --force to recalculate)")
             continue
 
-        # Calcular centroide: embedding del texto descriptivo + keywords
+        # Calculate centroid: embedding of descriptive text + keywords
         centroid_text = info["description"] + ". Keywords: " + ", ".join(info["keywords"])
-        print(f"  → Calculando centroide para {domain_name}...", end="", flush=True)
+        print(f"  → Calculating centroid for {domain_name}...", end="", flush=True)
         vec = _get_embedding(centroid_text)
 
         centroid_blob = _pack_embedding(vec) if vec else None
-        status = "✓" if vec else "✗ (Ollama no disponible — centroide null)"
+        status = "✓" if vec else "✗ (Ollama not available — centroid null)"
 
         if existing:
             conn.execute(
@@ -251,14 +251,14 @@ def setup_db(force: bool = False) -> None:
         print(f" {status}")
 
     conn.close()
-    print("[domain_classifier] Setup completo.")
+    print("[domain_classifier] Setup complete.")
 
 
 # ── Classification ────────────────────────────────────────────────────────────
 
 
 def _classify_by_keywords(prompt_lower: str) -> str | None:
-    """Matching por keywords. Devuelve el dominio con más hits, o None."""
+    """Keyword matching. Returns the domain with the most hits, or None."""
     scores: dict[str, int] = {}
     for domain_name, info in DOMAINS.items():
         hits = sum(1 for kw in info["keywords"] if kw in prompt_lower)
@@ -271,8 +271,8 @@ def _classify_by_keywords(prompt_lower: str) -> str | None:
 
 def _classify_by_embedding(prompt: str) -> tuple[str, float] | None:
     """
-    Embedding similarity contra centroides almacenados en DB.
-    Devuelve (domain_name, score) o None si Ollama / DB no disponibles.
+    Embedding similarity against centroids stored in DB.
+    Returns (domain_name, score) or None if Ollama / DB not available.
     """
     if not DB_PATH.exists():
         return None
@@ -306,7 +306,7 @@ def _classify_by_embedding(prompt: str) -> tuple[str, float] | None:
 
 def classify_domain(prompt: str) -> tuple[str, float, str]:
     """
-    Clasifica el dominio del prompt.
+    Classifies the domain of the prompt.
 
     Returns:
         (domain_name, confidence, method)
@@ -342,7 +342,7 @@ def main() -> None:
         return
 
     if not args:
-        print('Uso: python3 bin/domain_classifier.py "prompt"', file=sys.stderr)
+        print('Usage: python3 bin/domain_classifier.py "prompt"', file=sys.stderr)
         print("     python3 bin/domain_classifier.py --setup [--force]", file=sys.stderr)
         sys.exit(1)
 

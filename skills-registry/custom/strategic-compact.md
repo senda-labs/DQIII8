@@ -21,7 +21,7 @@ Compact at these boundaries, NOT mid-phase:
 | After planning | Plan written to `tasks/todo.md`, before coding starts |
 | After debugging | Root cause found and fixed, before new feature work |
 | After a complete commit | Session milestone reached |
-| Before major context shift | Switching from dqiii8-core to content-automation |
+| Before major context shift | Switching from dqiii8-core to another project |
 | After research phase | Facts indexed in ctx sandbox, before implementation |
 
 ## When NOT to Compact

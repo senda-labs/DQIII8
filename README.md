@@ -191,7 +191,7 @@ If DQIII8 saves you time or money:
 - ⭐ **Star this repo** — it helps others find it
 - 🐛 **Report issues** — every bug report makes the system better
 - 💬 **Share feedback** — what would make this useful for you?
-- ☕ **[Buy me a coffee](link)** — supports development
+- ☕ **[Buy me a coffee](https://ko-fi.com/ikermartiins)** — supports development
 
 ---
 

@@ -38,6 +38,9 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-19] [mem0Removal] mem0ai instalado pero 0 usos activos → desinstalado; vault_memory SQLite es el sistema de memoria activo.
 - [2026-03-19] [AutonomousStop] No había kill-switch para sesiones autónomas → stop flag en tasks/.stop_flag + /stop en Telegram bot.
 - [2026-03-19] [AuditorFormula] Pesos v1.0 premiaban pipeline roto silenciosamente → v1.1: unresolved_errors=30%, PROVISIONAL si datos<30d, meta-check de pipeline integrity.
+- [2026-03-19] [sqlite-try-finally] migrate_vault_memory() cerraba conn.close() sin try/finally → si excepción intermedia, la conexión quedaba abierta; añadir try/finally a toda función que abra sqlite3.connect() manualmente.
+- [2026-03-19] [auto-learner-date-format] auto_learner.py usaba %Y-%m-%dT%H:%M:%SZ para week_ago/month_ago pero DB almacena "%Y-%m-%d %H:%M:%S" → comparación lexicográfica siempre fallaba (T > espacio en ASCII); P1/S1/S2 nunca detectaban patrones. Fix: usar mismo formato que DB.
+- [2026-03-19] [research-analyst-routing] research-analyst primario era openrouter/stepfun/step-3.5-flash:free (inestable) → cambiar a groq/llama-3.3-70b-versatile como primario; free tier solo como fallback.
 - [2026-03-10] [hooks] BLOCKED_BASH hace match contra el string completo incluyendo commit message → usar mensajes de commit sin patrones peligrosos
 - [2026-03-10] [ollama-routing] Claude Code no soporta ollama como modelo nativo → routing real via openrouter_wrapper.py
 - [2026-03-14] [github-auth] Git push requiere PAT no contraseña → usar token en remote URL

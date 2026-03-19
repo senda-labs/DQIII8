@@ -614,5 +614,61 @@ def main() -> None:
     sys.exit(1)
 
 
+# ── Model satisfaction recommender (merged from model_router.py) ───────────
+
+_ROUTER_DEFAULTS: dict[str, tuple[str, str]] = {
+    "código": ("tier1", "qwen2.5-coder:7b"),
+    "pipeline": ("tier1", "qwen2.5-coder:7b"),
+    "análisis": ("tier2", "llama-3.3-70b-versatile"),
+    "research": ("tier2", "llama-3.3-70b-versatile"),
+    "escritura": ("tier3", "claude-sonnet-4-6"),
+    "trading": ("tier3", "claude-sonnet-4-6"),
+    "mixto": ("tier3", "claude-sonnet-4-6"),
+}
+_ROUTER_MIN_SAMPLES = 5
+_ROUTER_NEUTRAL = 0.5
+
+
+def get_recommendation(task_type: str) -> tuple[str, float, int]:
+    """Return (model_used, score, n_samples) based on historical satisfaction data."""
+    if not DB_PATH.exists():
+        _, model = _ROUTER_DEFAULTS.get(task_type, ("tier3", "claude-sonnet-4-6"))
+        return model, _ROUTER_NEUTRAL, 0
+
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=2)
+        rows = conn.execute(
+            """
+            SELECT model_used, AVG(user_satisfaction), COUNT(*)
+            FROM (
+                SELECT model_used, user_satisfaction
+                FROM model_satisfaction
+                WHERE task_type = ?
+                  AND user_satisfaction IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT 20
+            )
+            GROUP BY model_used
+            ORDER BY AVG(user_satisfaction) DESC
+            """,
+            (task_type,),
+        ).fetchall()
+        conn.close()
+    except Exception:
+        rows = []
+
+    if rows:
+        best_model, best_score, n = rows[0]
+        if n >= _ROUTER_MIN_SAMPLES:
+            return best_model, round(best_score, 2), n
+        blended = round(
+            (best_score * n + _ROUTER_NEUTRAL * (_ROUTER_MIN_SAMPLES - n)) / _ROUTER_MIN_SAMPLES, 2
+        )
+        return best_model, blended, n
+
+    _, model = _ROUTER_DEFAULTS.get(task_type, ("tier3", "claude-sonnet-4-6"))
+    return model, _ROUTER_NEUTRAL, 0
+
+
 if __name__ == "__main__":
     main()

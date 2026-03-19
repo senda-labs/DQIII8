@@ -1,4 +1,6 @@
 """Tests to verify that agent triggers correctly detect keywords."""
+import os
+import pytest
 
 TRIGGER_RULES = {
     "python-specialist": [
@@ -72,7 +74,10 @@ def test_no_trigger_overlap():
 
 def test_delegation_table_in_claude_md():
     """CLAUDE.md must contain the delegation table."""
-    with open("CLAUDE.md", encoding="utf-8") as f:
+    claude_md = os.path.join(os.path.dirname(__file__), "..", "CLAUDE.md")
+    if not os.path.isfile(claude_md):
+        pytest.skip("CLAUDE.md not present in this repo (cleaned for public release)")
+    with open(claude_md, encoding="utf-8") as f:
         content = f.read()
     assert "python-specialist" in content
     assert "git-specialist" in content

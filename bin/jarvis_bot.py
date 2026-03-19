@@ -33,7 +33,7 @@ REFERENCE_IMAGE_PATH = JARVIS / "tasks" / "reference_image.jpg"
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 load_dotenv(JARVIS / ".env")
-BOT_TOKEN = os.getenv("JARVIS_BOT_TOKEN", "")
+BOT_TOKEN = os.getenv("DQIII8_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")
 ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")  # empty = no restriction
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -870,7 +870,7 @@ async def cmd_stop_autonomous(update: Update, context: ContextTypes.DEFAULT_TYPE
 def main() -> None:
     global APP
     if not BOT_TOKEN:
-        log.error("JARVIS_BOT_TOKEN not configured in .env -- aborting.")
+        log.error("DQIII8_BOT_TOKEN not configured in .env -- aborting.")
         sys.exit(1)
 
     log.info("Starting DQIII8 Bot (mobile terminal)...")
@@ -916,10 +916,10 @@ def send_morning_report() -> None:
     import urllib.parse
     from datetime import datetime, timedelta
 
-    token = os.getenv("JARVIS_BOT_TOKEN", "")
+    token = os.getenv("DQIII8_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
-        print("[morning_report] JARVIS_BOT_TOKEN or TELEGRAM_CHAT_ID not set — skipping")
+        print("[morning_report] DQIII8_BOT_TOKEN or TELEGRAM_CHAT_ID not set — skipping")
         return
 
     today = datetime.now()

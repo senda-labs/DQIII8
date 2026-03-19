@@ -1,17 +1,17 @@
 """
-train_instincts.py — Entrena learned_approvals desde eventos de alta semántica.
+train_instincts.py — Trains learned_approvals from high-semantic events.
 
-Fuentes de datos (en orden de confianza):
+Data sources (in order of confidence):
   1. permission_decisions WHERE decision='APPROVE' → learned_approvals candidates
-  2. session_events tipo plan_approved → refuerzo de patrones aprobados
-  3. permission_decisions WHERE decision='DENY' → patrones a nunca aprobar (active=0)
+  2. session_events type plan_approved → reinforcement of approved patterns
+  3. permission_decisions WHERE decision='DENY' → patterns to never approve (active=0)
 
-Confidence decay de CASS:
+CASS confidence decay:
   confidence = min(1.0, base + 0.05 * approvals) * (0.99 ** days_since_use)
 
-Uso:
+Usage:
     python3 bin/train_instincts.py [--dry-run] [--lookback-days 30]
-    (También ejecutado vía cron cada 24h)
+    (Also run via cron every 24h)
 """
 
 from __future__ import annotations

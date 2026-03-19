@@ -4,7 +4,7 @@ description: Binance Spot API skill for systematic trading. Provides K-line/cand
 source: binance/binance-skills-hub/skills/binance/spot
 reviewed: 2026-03-18
 approved_by: reviewed
-status: APROBADA
+status: APPROVED
 ---
 
 # Binance Spot API — DQIII8 Trading Skill

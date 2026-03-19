@@ -1,4 +1,4 @@
-"""Tests del OrchestratorLoop — sin llamadas reales a Claude ni BD."""
+"""Tests for OrchestratorLoop — no real Claude or DB calls."""
 
 import json
 import sys
@@ -12,7 +12,7 @@ loop = OrchestratorLoop()
 
 
 def test_capture_with_final_report():
-    """capture() extrae correctamente el FINAL_REPORT embebido."""
+    """capture() correctly extracts the embedded FINAL_REPORT."""
     output = """
     Hice algunas cosas.
     ---FINAL_REPORT---
@@ -30,21 +30,21 @@ def test_capture_with_final_report():
 
 
 def test_capture_fallback_on_error():
-    """capture() infiere success=False si hay palabras de error en el output."""
-    output = "Traceback (most recent call last): Error en línea 42"
+    """capture() infers success=False when error keywords appear in output."""
+    output = "Traceback (most recent call last): Error on line 42"
     result = loop.capture(output)
     assert result["success"] is False
 
 
 def test_capture_fallback_no_error():
-    """capture() infiere success=True cuando hay más señales de éxito que de error."""
+    """capture() infers success=True when success signals outweigh error signals."""
     output = "File created successfully. All steps completed and done."
     result = loop.capture(output)
     assert result["success"] is True
 
 
 def test_capture_fallback_no_signals():
-    """capture() devuelve success=False cuando no hay señales reconocibles (ni éxito ni error)."""
+    """capture() returns success=False when there are no recognizable signals (neither success nor error)."""
     output = "Todo fue bien. Archivos modificados. Completado."
     result = loop.capture(output)
     assert result["success"] is False
@@ -52,7 +52,7 @@ def test_capture_fallback_no_signals():
 
 
 def test_build_prompt_contains_final_report_marker():
-    """build_prompt() incluye los marcadores FINAL_REPORT necesarios."""
+    """build_prompt() includes the required FINAL_REPORT markers."""
     context = {"project": "test", "project_state": "estado", "lessons": []}
     objective = {
         "objective": "Test objetivo",
@@ -66,21 +66,21 @@ def test_build_prompt_contains_final_report_marker():
 
 
 def test_build_prompt_includes_objective():
-    """build_prompt() incluye el texto del objetivo y los criterios."""
+    """build_prompt() includes the objective text and success criteria."""
     context = {"project": "myproject", "project_state": "", "lessons": []}
     objective = {
-        "objective": "Implementar autenticación JWT",
-        "success_criteria": "Tests pasan al 100%",
+        "objective": "Implement JWT authentication",
+        "success_criteria": "Tests pass at 100%",
         "priority": "high",
     }
     prompt = loop.build_prompt(objective, context)
-    assert "Implementar autenticación JWT" in prompt
-    assert "Tests pasan al 100%" in prompt
+    assert "Implement JWT authentication" in prompt
+    assert "Tests pass at 100%" in prompt
     assert "myproject" in prompt
 
 
 def test_capture_returns_required_keys():
-    """capture() siempre devuelve las 7 claves requeridas."""
+    """capture() always returns the 7 required keys."""
     required = {
         "success",
         "files_modified",
@@ -104,7 +104,7 @@ def test_capture_returns_required_keys():
 
 
 def test_analyze_returns_required_keys():
-    """analyze() devuelve siempre project, timestamp y pending_objectives."""
+    """analyze() always returns project, timestamp and pending_objectives."""
     ctx = loop.analyze("nonexistent-project-xyz")
     assert "project" in ctx
     assert "timestamp" in ctx

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 DQIII8 — Ollama Wrapper
-Envía un prompt a Ollama y hace streaming limpio de la respuesta.
+Sends a prompt to Ollama and streams the response cleanly.
 
-Uso:
-    echo "escribe factorial en Python" | python3 bin/ollama_wrapper.py
-    python3 bin/ollama_wrapper.py --model llama3 "explica qué es un closure"
-    python3 bin/ollama_wrapper.py "lista de sorting algorithms"
+Usage:
+    echo "write factorial in Python" | python3 bin/ollama_wrapper.py
+    python3 bin/ollama_wrapper.py --model llama3 "explain what a closure is"
+    python3 bin/ollama_wrapper.py "list of sorting algorithms"
 """
 
 import argparse
@@ -26,7 +26,7 @@ _ALLOWED_HOSTS = frozenset({"localhost", "127.0.0.1"})
 def _validate_url(url: str) -> None:
     host = urlparse(url).hostname or ""
     if not any(host == h or host.endswith(f".{h}") for h in _ALLOWED_HOSTS):
-        raise ValueError(f"URL no permitida: {url}")
+        raise ValueError(f"URL not allowed: {url}")
 
 
 def stream_response(model: str, prompt: str) -> int:
@@ -54,25 +54,25 @@ def stream_response(model: str, prompt: str) -> int:
                     print()  # newline final
                     break
     except urllib.error.URLError as e:
-        print(f"[ollama_wrapper] Error al conectar con Ollama: {e}", file=sys.stderr)
+        print(f"[ollama_wrapper] Error connecting to Ollama: {e}", file=sys.stderr)
         return 1
     return 0
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Envía un prompt a Ollama y hace streaming de la respuesta."
+        description="Sends a prompt to Ollama and streams the response."
     )
     parser.add_argument(
         "--model",
         "-m",
         default=DEFAULT_MODEL,
-        help=f"Modelo Ollama a usar (default: {DEFAULT_MODEL})",
+        help=f"Ollama model to use (default: {DEFAULT_MODEL})",
     )
     parser.add_argument(
         "prompt",
         nargs="*",
-        help="Prompt como argumento. Si se omite, se lee de stdin.",
+        help="Prompt as argument. If omitted, reads from stdin.",
     )
     args = parser.parse_args()
 
@@ -85,7 +85,7 @@ def main() -> None:
         sys.exit(1)
 
     if not prompt:
-        print("[ollama_wrapper] Prompt vacío.", file=sys.stderr)
+        print("[ollama_wrapper] Empty prompt.", file=sys.stderr)
         sys.exit(1)
 
     sys.exit(stream_response(args.model, prompt))

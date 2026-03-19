@@ -17,22 +17,22 @@ Uso CLI:
 
 import sys
 import json
-import sqlite3  # kept for sqlite3.OperationalError / sqlite3.IntegrityError exception types
-import struct
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db import get_db, DB_PATH
+from embeddings import get_embedding, embedding_to_bytes, bytes_to_embedding
 
 JARVIS_ROOT = DB_PATH.parent.parent
 
-# ── Embedding ──────────────────────────────────────────────────────
-_OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
-_EMBED_MODEL = "nomic-embed-text"
+# Embedding helpers from shared module
+_get_nomic_embedding = get_embedding
+_pack_vec = embedding_to_bytes
+_unpack_vec = bytes_to_embedding
+
+from embeddings import cosine_similarity as _cosine  # noqa: E402
 
 # Decay rates por scope (factor diario multiplicativo)
 DECAY_RATES = {
@@ -43,38 +43,6 @@ DECAY_RATES = {
 
 VALID_SCOPES = ("session", "project", "system")
 VALID_LINK_TYPES = ("related_to", "contradicts", "supersedes", "prerequisite", "derived_from")
-
-
-def _get_nomic_embedding(text: str) -> list[float] | None:
-    """Generates nomic-embed-text embedding via Ollama. Returns None if unavailable."""
-    payload = json.dumps({"model": _EMBED_MODEL, "prompt": text}).encode("utf-8")
-    req = urllib.request.Request(
-        _OLLAMA_EMBED_URL,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:  # nosemgrep
-            data = json.loads(resp.read())
-            return data.get("embedding")
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-        return None
-
-
-def _pack_vec(vec: list[float]) -> bytes:
-    return struct.pack(f"{len(vec)}f", *vec)
-
-
-def _unpack_vec(blob: bytes) -> list[float]:
-    n = len(blob) // 4
-    return list(struct.unpack(f"{n}f", blob))
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    na = sum(x**2 for x in a) ** 0.5
-    nb = sum(x**2 for x in b) ** 0.5
-    return dot / (na * nb + 1e-9)
 
 
 # ── mem0 config: Ollama embeddings + qdrant local ──────────────────

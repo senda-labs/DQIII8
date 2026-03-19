@@ -12,42 +12,27 @@ Usage:
 """
 
 import json
-import math
 import os
 import sys
 import time
 from pathlib import Path
 
-import requests
-
 JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 AGENTS_DIR = JARVIS_ROOT / ".claude" / "agents"
-OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
-EMBED_MODEL = "nomic-embed-text"
+
+sys.path.insert(0, str(Path(__file__).parent))
+from embeddings import get_embedding, cosine_similarity
 
 # Approximate tokens = chars / 4
 CHARS_PER_TOKEN = 4
 
 
-def cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Compute cosine similarity between two vectors."""
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(x * x for x in b))
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
 def embed_query(text: str) -> list[float]:
     """Embed a query string via Ollama nomic-embed-text."""
-    response = requests.post(
-        OLLAMA_EMBED_URL,
-        json={"model": EMBED_MODEL, "prompt": text},
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()["embedding"]
+    result = get_embedding(text, timeout=30)
+    if result is None:
+        raise RuntimeError("Ollama nomic-embed-text not available")
+    return result
 
 
 def search(agent_name: str, query: str, top_k: int = 5) -> list[dict]:

@@ -13,43 +13,19 @@ Uso:
 from __future__ import annotations
 
 import json
-import math
 import os
-import struct
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 KNOWLEDGE_ROOT = JARVIS_ROOT / "knowledge"
-OLLAMA_URL = "http://localhost:11434/api/embeddings"
-EMBED_MODEL = "nomic-embed-text"
 
+sys.path.insert(0, str(Path(__file__).parent))
+from embeddings import get_embedding, cosine_similarity
 
-# ── Embedding helpers ────────────────────────────────────────────────────────
-
-
-def _embed(text: str) -> list[float] | None:
-    """Embed text via Ollama nomic-embed-text. Returns None on failure."""
-    payload = json.dumps({"model": EMBED_MODEL, "prompt": text}).encode("utf-8")
-    req = urllib.request.Request(
-        OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"}
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())["embedding"]
-    except Exception:
-        return None
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    mag_a = math.sqrt(sum(x * x for x in a))
-    mag_b = math.sqrt(sum(x * x for x in b))
-    if mag_a == 0 or mag_b == 0:
-        return 0.0
-    return dot / (mag_a * mag_b)
+# Aliases used by existing code
+_embed = get_embedding
+_cosine = cosine_similarity
 
 
 # ── Core enrichment function ─────────────────────────────────────────────────

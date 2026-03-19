@@ -20,16 +20,13 @@ from __future__ import annotations
 
 import json
 import os
-import struct
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from db import get_db, DB_PATH
-OLLAMA_URL = "http://localhost:11434/api/embeddings"
-EMBED_MODEL = "nomic-embed-text"
+from embeddings import get_embedding, embedding_to_bytes, bytes_to_embedding, cosine_similarity
+
 EMBED_DIM = 768
 
 DOMAINS: dict[str, dict] = {
@@ -160,39 +157,11 @@ DOMAINS: dict[str, dict] = {
 }
 
 
-# ── Embedding helpers ────────────────────────────────────────────────────────
-
-
-def _get_embedding(text: str) -> list[float] | None:
-    """Calls nomic-embed-text via Ollama. Returns None if not available."""
-    payload = json.dumps({"model": EMBED_MODEL, "prompt": text}).encode("utf-8")
-    req = urllib.request.Request(
-        OLLAMA_URL,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:  # nosemgrep
-            data = json.loads(resp.read())
-            return data.get("embedding")
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-        return None
-
-
-def _pack_embedding(vec: list[float]) -> bytes:
-    return struct.pack(f"{len(vec)}f", *vec)
-
-
-def _unpack_embedding(blob: bytes) -> list[float]:
-    n = len(blob) // 4
-    return list(struct.unpack(f"{n}f", blob))
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = sum(x**2 for x in a) ** 0.5
-    norm_b = sum(x**2 for x in b) ** 0.5
-    return dot / (norm_a * norm_b + 1e-9)
+# Embedding helpers are provided by embeddings.py
+_get_embedding = get_embedding
+_pack_embedding = embedding_to_bytes
+_unpack_embedding = bytes_to_embedding
+_cosine = cosine_similarity
 
 
 # ── DB setup ─────────────────────────────────────────────────────────────────

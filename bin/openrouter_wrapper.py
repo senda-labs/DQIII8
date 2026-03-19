@@ -567,6 +567,25 @@ def main() -> None:
     except Exception:
         pass
 
+    # Intent amplification (best-effort — enriches prompt with context layers)
+    try:
+        _ia_path = Path(__file__).parent / "intent_amplifier.py"
+        if _ia_path.exists():
+            import importlib.util as _ilu2
+            _ia_spec = _ilu2.spec_from_file_location("intent_amplifier", _ia_path)
+            _ia_mod = _ilu2.module_from_spec(_ia_spec)
+            _ia_spec.loader.exec_module(_ia_mod)
+            _ia_result = _ia_mod.amplify(prompt, verbose=False)
+            if _ia_result.get("chunks_used", 0) > 0 or _ia_result.get("action"):
+                prompt = _ia_result["amplified"]
+                print(
+                    f"[DQIII8] amplifier: intent={_ia_result['intent']} "
+                    f"tier={_ia_result['tier']} chunks={_ia_result['chunks_used']}",
+                    file=sys.stderr,
+                )
+    except Exception:
+        pass
+
     # Resolver proveedor y modelo
     if args.model:
         primary_provider = "openrouter"

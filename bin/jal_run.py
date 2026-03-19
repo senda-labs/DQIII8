@@ -3,34 +3,34 @@ JAL Run v3 -- full cycle orchestrator
 """
 
 import os
-import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
 JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS / "database" / "jarvis_metrics.db"
+
+sys.path.insert(0, str(JARVIS / "bin"))
+from db import get_db
+from jal_common import load_env
 
 
 def get_active_plan() -> tuple:
-    conn = sqlite3.connect(DB)
-    row = conn.execute("""
-        SELECT objective_id, current_attempt FROM jal_objectives
-        WHERE status='active' ORDER BY started_at DESC LIMIT 1
-    """).fetchone()
-    if not row:
-        conn.close()
-        return None, None
-    steps = conn.execute(
-        """
-        SELECT step_number, description, description
-        FROM jal_steps
-        WHERE objective_id=? AND attempt=? AND status='pending'
-        ORDER BY step_number
-    """,
-        (row[0], row[1]),
-    ).fetchall()
-    conn.close()
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT objective_id, current_attempt FROM jal_objectives
+            WHERE status='active' ORDER BY started_at DESC LIMIT 1
+        """).fetchone()
+        if not row:
+            return None, None
+        steps = conn.execute(
+            """
+            SELECT step_number, description, description
+            FROM jal_steps
+            WHERE objective_id=? AND attempt=? AND status='pending'
+            ORDER BY step_number
+        """,
+            (row[0], row[1]),
+        ).fetchall()
     return row[0], steps or []
 
 
@@ -42,17 +42,15 @@ def mark_step(
     result: str = "",
     error: str = "",
 ):
-    conn = sqlite3.connect(DB)
-    conn.execute(
-        """
-        UPDATE jal_steps SET status=?, result_summary=?,
-            error_raw=?, completed_at=datetime('now')
-        WHERE objective_id=? AND attempt=? AND step_number=?
-    """,
-        (status, result[:500], error[:500], obj_id, attempt, step_n),
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE jal_steps SET status=?, result_summary=?,
+                error_raw=?, completed_at=datetime('now')
+            WHERE objective_id=? AND attempt=? AND step_number=?
+        """,
+            (status, result[:500], error[:500], obj_id, attempt, step_n),
+        )
 
 
 def build_executor_prompt(obj_id: str, attempt: int, steps: list) -> str:
@@ -124,14 +122,8 @@ def main():
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(executor_prompt, encoding="utf-8")
 
-    # Load .env so OPENROUTER_API_KEY is available in the subprocess
-    env_file = JARVIS / ".env"
+    load_env()
     env = dict(os.environ)
-    if env_file.exists():
-        for line in env_file.read_text(encoding="utf-8").splitlines():
-            if "=" in line and not line.startswith("#"):
-                k, v = line.split("=", 1)
-                env.setdefault(k.strip(), v.strip())
 
     subprocess.run(
         [

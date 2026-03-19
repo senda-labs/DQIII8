@@ -8,7 +8,6 @@ to assign weights and criticality based on real data.
 
 import json
 import os
-import sqlite3
 import sys
 import urllib.error
 import urllib.request
@@ -17,7 +16,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS / "database" / "jarvis_metrics.db"
+
+sys.path.insert(0, str(JARVIS / "bin"))
+from db import get_db
+from jal_common import load_env
 
 _ALLOWED_HOSTS = frozenset(
     {
@@ -37,15 +39,6 @@ def _validate_url(url: str) -> None:
         raise ValueError(f"URL not allowed: {url}")
 
 
-def load_env():
-    env = JARVIS / ".env"
-    if env.exists():
-        for line in env.read_text(encoding="utf-8").splitlines():
-            if "=" in line and not line.startswith("#"):
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip())
-
-
 def get_claude_reliability_context() -> str:
     """
     Extracts Claude Code failure history from the DB.
@@ -53,16 +46,15 @@ def get_claude_reliability_context() -> str:
     it assigns higher criticality to tasks where Claude fails more.
     """
     try:
-        conn = sqlite3.connect(DB)
-        patterns = conn.execute("""
-            SELECT category, error_signature, failure_rate,
-                   avg_severity, prevention_rule
-            FROM jal_error_patterns
-            WHERE status='active' AND frequency >= 2
-            ORDER BY failure_rate DESC
-            LIMIT 10
-        """).fetchall()
-        conn.close()
+        with get_db() as conn:
+            patterns = conn.execute("""
+                SELECT category, error_signature, failure_rate,
+                       avg_severity, prevention_rule
+                FROM jal_error_patterns
+                WHERE status='active' AND frequency >= 2
+                ORDER BY failure_rate DESC
+                LIMIT 10
+            """).fetchall()
 
         if not patterns:
             return "No previous failure history."
@@ -163,34 +155,32 @@ CRITICO: criticality=3 solo si el fallo bloquea el objetivo completo."""
 
 
 def save_plan(obj_id: str, title: str, steps: list, attempt: int):
-    conn = sqlite3.connect(DB)
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO jal_objectives
-        (objective_id, title, status, started_at)
-        VALUES (?, ?, 'active', datetime('now'))
-    """,
-        (obj_id, title),
-    )
-    conn.execute(
-        """
-        UPDATE jal_objectives SET status='active', current_attempt=?
-        WHERE objective_id=?
-    """,
-        (attempt, obj_id),
-    )
-    for s in steps:
+    with get_db() as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO jal_steps
-            (objective_id, attempt, step_number, description,
-             weight, criticality, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            INSERT OR IGNORE INTO jal_objectives
+            (objective_id, title, status, started_at)
+            VALUES (?, ?, 'active', datetime('now'))
         """,
-            (obj_id, attempt, s["step_number"], s["description"], s["weight"], s["criticality"]),
+            (obj_id, title),
         )
-    conn.commit()
-    conn.close()
+        conn.execute(
+            """
+            UPDATE jal_objectives SET status='active', current_attempt=?
+            WHERE objective_id=?
+        """,
+            (attempt, obj_id),
+        )
+        for s in steps:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO jal_steps
+                (objective_id, attempt, step_number, description,
+                 weight, criticality, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            """,
+                (obj_id, attempt, s["step_number"], s["description"], s["weight"], s["criticality"]),
+            )
 
 
 def main():
@@ -207,15 +197,14 @@ def main():
     obj_id = obj_path.stem
 
     # Determinar intento actual
-    conn = sqlite3.connect(DB)
-    row = conn.execute(
-        """
-        SELECT current_attempt FROM jal_objectives
-        WHERE objective_id=?
-    """,
-        (obj_id,),
-    ).fetchone()
-    conn.close()
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT current_attempt FROM jal_objectives
+            WHERE objective_id=?
+        """,
+            (obj_id,),
+        ).fetchone()
     attempt = (row[0] + 1) if row else 1
 
     print(f"[PLANNER] Objetivo: {obj_id} | Intento: {attempt}")

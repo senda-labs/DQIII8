@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass, field
@@ -216,7 +217,7 @@ def run_checks(
 
     project_roots maps ADR project names to filesystem roots, e.g.:
         {"content-automation": Path("/root/content-automation-faceless"),
-         "jarvis-core": Path("/root/jarvis")}
+         "jarvis-core": Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))}
     When provided, each ADR uses the root matching its 'project' field.
     Falls back to project_root if the project name is not in the mapping.
     """
@@ -322,7 +323,7 @@ def run_adr_check(
                        Defaults to project_root/decisions.
         project_roots: Optional per-project root overrides, keyed by ADR 'project' field.
                        Example: {"content-automation": Path("/root/content-automation-faceless"),
-                                 "jarvis-core": Path("/root/jarvis")}
+                                 "jarvis-core": Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))}
                        When an ADR's project matches a key, that root is used instead of
                        project_root. Callers (e.g. auditor agent) should pass this.
         strict:        If True, raises SystemExit(1) on any failure.
@@ -354,9 +355,9 @@ def run_adr_check(
 
 
 _DEFAULT_PROJECT_ROOTS: dict[str, Path] = {
-    "jarvis-core": Path("/root/jarvis"),
+    "jarvis-core": Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")),
     "content-automation": Path("/root/content-automation-faceless"),
-    "all": Path("/root/jarvis"),
+    "all": Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")),
 }
 
 
@@ -391,7 +392,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    root = args.root or Path("/root/jarvis")
+    root = args.root or Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
     adr_dir = args.adr_root or (root / "decisions")
 
     project_roots: dict[str, Path] = dict(_DEFAULT_PROJECT_ROOTS)

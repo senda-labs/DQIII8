@@ -12,6 +12,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import sys
 import time
@@ -19,7 +20,7 @@ from pathlib import Path
 
 import requests
 
-JARVIS_ROOT = Path("/root/jarvis")
+JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 AGENTS_DIR = JARVIS_ROOT / ".claude" / "agents"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text"
@@ -118,9 +119,7 @@ def index_agent_knowledge(agent_name: str) -> None:
             print(f"    chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
 
     index_path = knowledge_dir / "index.json"
-    index_path.write_text(
-        json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
     total_kb = index_path.stat().st_size / 1024
     print(f"\n[OK] {agent_name}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)")
 
@@ -131,9 +130,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Index agent knowledge documents with nomic-embed-text"
     )
-    parser.add_argument(
-        "--agent", required=True, help="Agent name (e.g. finance-analyst)"
-    )
+    parser.add_argument("--agent", required=True, help="Agent name (e.g. finance-analyst)")
     args = parser.parse_args()
 
     index_agent_knowledge(args.agent)

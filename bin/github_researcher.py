@@ -782,7 +782,7 @@ def _send_telegram_report(topic, top_repos, report_path):
         from dotenv import load_dotenv
 
         load_dotenv(str(JARVIS / ".env"))
-        bot_token = os.getenv("JARVIS_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
+        bot_token = os.getenv("DQIII8_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN")
         chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
         if not bot_token or not chat_id:

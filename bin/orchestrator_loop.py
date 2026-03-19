@@ -865,7 +865,7 @@ INSTRUCTIONS:
         """Sends an image to the Telegram chat via Bot API (sendPhoto multipart)."""
         import requests
 
-        token = (os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")).strip()
+        token = (os.getenv("DQIII8_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")).strip()
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
         if not token or not chat_id:
@@ -903,7 +903,7 @@ INSTRUCTIONS:
         """
         import requests
 
-        token = (os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")).strip()
+        token = (os.getenv("DQIII8_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")).strip()
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
         if not token or not chat_id:
             return

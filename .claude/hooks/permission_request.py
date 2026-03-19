@@ -188,7 +188,7 @@ def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> di
 
 def _send_telegram(message: str) -> bool:
     """Layer 3: Send Telegram message. Returns True on success."""
-    token = os.environ.get("JARVIS_BOT_TOKEN", "")
+    token = os.environ.get("DQIII8_BOT_TOKEN", "") or os.environ.get("JARVIS_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
         return False

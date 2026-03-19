@@ -27,13 +27,14 @@ import json
 import os
 import platform
 import shutil
-import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from db import get_db, DB_PATH
+
 JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB_PATH = JARVIS / "database" / "jarvis_metrics.db"
 TELEMETRY_ENABLED = os.environ.get("DQIII8_TELEMETRY", "false").lower() == "true"
 TELEMETRY_ENDPOINT = os.environ.get("DQIII8_TELEMETRY_URL", "")
 VERSION = "0.1.0"
@@ -53,77 +54,75 @@ def collect_model_performance() -> dict:
     if not DB_PATH.exists():
         return {}
 
-    conn = sqlite3.connect(str(DB_PATH), timeout=5)
-    week_ago = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    with get_db(timeout=5) as conn:
+        week_ago = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
-    # Performance by tier (no content — latency, cost, success only)
-    rows = conn.execute(
-        """SELECT
-               tier,
-               COUNT(*) as total_calls,
-               ROUND(AVG(success) * 100, 1) as success_rate,
-               ROUND(AVG(duration_ms), 0) as avg_latency_ms,
-               ROUND(AVG(tokens_input), 0) as avg_tokens_in,
-               ROUND(AVG(tokens_output), 0) as avg_tokens_out,
-               ROUND(SUM(estimated_cost_usd), 4) as total_cost,
-               ROUND(AVG(estimated_cost_usd), 6) as avg_cost_per_call
-           FROM agent_actions
-           WHERE timestamp > ?
-           GROUP BY tier""",
-        (week_ago,),
-    ).fetchall()
+        # Performance by tier (no content — latency, cost, success only)
+        rows = conn.execute(
+            """SELECT
+                   tier,
+                   COUNT(*) as total_calls,
+                   ROUND(AVG(success) * 100, 1) as success_rate,
+                   ROUND(AVG(duration_ms), 0) as avg_latency_ms,
+                   ROUND(AVG(tokens_input), 0) as avg_tokens_in,
+                   ROUND(AVG(tokens_output), 0) as avg_tokens_out,
+                   ROUND(SUM(estimated_cost_usd), 4) as total_cost,
+                   ROUND(AVG(estimated_cost_usd), 6) as avg_cost_per_call
+               FROM agent_actions
+               WHERE timestamp > ?
+               GROUP BY tier""",
+            (week_ago,),
+        ).fetchall()
 
-    model_perf = {
-        (r[0] or "unknown"): {
-            "calls": r[1],
-            "success_rate": r[2],
-            "avg_latency_ms": r[3],
-            "avg_tokens_in": r[4],
-            "avg_tokens_out": r[5],
-            "total_cost_usd": r[6],
-            "avg_cost_per_call": r[7],
-        }
-        for r in rows
-    }
-
-    # Escalation patterns (error_log has no tier column — group by agent_name)
-    esc_rows = conn.execute(
-        """SELECT agent_name, COUNT(*) FROM error_log
-           WHERE keywords LIKE '%ESCALATION%' AND timestamp > ?
-           GROUP BY agent_name""",
-        (week_ago,),
-    ).fetchall()
-    escalation_data = {(r[0] or "unknown"): r[1] for r in esc_rows}
-
-    # Domain-tier routing performance
-    domain_rows = conn.execute(
-        """SELECT domain, tier, COUNT(*), ROUND(AVG(success) * 100, 1)
-           FROM agent_actions
-           WHERE timestamp > ? AND domain IS NOT NULL
-           GROUP BY domain, tier""",
-        (week_ago,),
-    ).fetchall()
-    domain_routing: dict = {}
-    for domain, tier, calls, success in domain_rows:
-        domain_routing.setdefault(domain, {})[tier or "unknown"] = {
-            "calls": calls,
-            "success_rate": success,
+        model_perf = {
+            (r[0] or "unknown"): {
+                "calls": r[1],
+                "success_rate": r[2],
+                "avg_latency_ms": r[3],
+                "avg_tokens_in": r[4],
+                "avg_tokens_out": r[5],
+                "total_cost_usd": r[6],
+                "avg_cost_per_call": r[7],
+            }
+            for r in rows
         }
 
-    # Knowledge enrichment impact
-    enrichment = conn.execute(
-        """SELECT
-               ROUND(AVG(CASE WHEN domain_enriched = 1 THEN success ELSE NULL END) * 100, 1),
-               ROUND(AVG(CASE WHEN domain_enriched = 0 THEN success ELSE NULL END) * 100, 1),
-               SUM(CASE WHEN domain_enriched = 1 THEN 1 ELSE 0 END),
-               SUM(CASE WHEN domain_enriched = 0 THEN 1 ELSE 0 END)
-           FROM agent_actions WHERE timestamp > ?""",
-        (week_ago,),
-    ).fetchone()
+        # Escalation patterns (error_log has no tier column — group by agent_name)
+        esc_rows = conn.execute(
+            """SELECT agent_name, COUNT(*) FROM error_log
+               WHERE keywords LIKE '%ESCALATION%' AND timestamp > ?
+               GROUP BY agent_name""",
+            (week_ago,),
+        ).fetchall()
+        escalation_data = {(r[0] or "unknown"): r[1] for r in esc_rows}
 
-    conn.close()
+        # Domain-tier routing performance
+        domain_rows = conn.execute(
+            """SELECT domain, tier, COUNT(*), ROUND(AVG(success) * 100, 1)
+               FROM agent_actions
+               WHERE timestamp > ? AND domain IS NOT NULL
+               GROUP BY domain, tier""",
+            (week_ago,),
+        ).fetchall()
+        domain_routing: dict = {}
+        for domain, tier, calls, success in domain_rows:
+            domain_routing.setdefault(domain, {})[tier or "unknown"] = {
+                "calls": calls,
+                "success_rate": success,
+            }
+
+        # Knowledge enrichment impact
+        enrichment = conn.execute(
+            """SELECT
+                   ROUND(AVG(CASE WHEN domain_enriched = 1 THEN success ELSE NULL END) * 100, 1),
+                   ROUND(AVG(CASE WHEN domain_enriched = 0 THEN success ELSE NULL END) * 100, 1),
+                   SUM(CASE WHEN domain_enriched = 1 THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN domain_enriched = 0 THEN 1 ELSE 0 END)
+               FROM agent_actions WHERE timestamp > ?""",
+            (week_ago,),
+        ).fetchone()
 
     return {
         "model_performance": model_perf,
@@ -145,55 +144,53 @@ def collect_anonymous_metrics() -> dict:
     if not DB_PATH.exists():
         return {}
 
-    conn = sqlite3.connect(str(DB_PATH), timeout=5)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
 
-    # Tier distribution
-    rows = conn.execute(
-        "SELECT tier, COUNT(*) FROM agent_actions WHERE timestamp > ? GROUP BY tier",
-        (week_ago,),
-    ).fetchall()
-    total = sum(r[1] for r in rows) or 1
-    tier_dist = {(r[0] or "unknown"): round(r[1] / total, 3) for r in rows}
+    with get_db(timeout=5) as conn:
+        # Tier distribution
+        rows = conn.execute(
+            "SELECT tier, COUNT(*) FROM agent_actions WHERE timestamp > ? GROUP BY tier",
+            (week_ago,),
+        ).fetchall()
+        total = sum(r[1] for r in rows) or 1
+        tier_dist = {(r[0] or "unknown"): round(r[1] / total, 3) for r in rows}
 
-    # Success rate per tier
-    rows = conn.execute(
-        "SELECT tier, ROUND(AVG(success) * 100, 1) FROM agent_actions WHERE timestamp > ? GROUP BY tier",
-        (week_ago,),
-    ).fetchall()
-    success_rates = {(r[0] or "unknown"): r[1] for r in rows}
+        # Success rate per tier
+        rows = conn.execute(
+            "SELECT tier, ROUND(AVG(success) * 100, 1) FROM agent_actions WHERE timestamp > ? GROUP BY tier",
+            (week_ago,),
+        ).fetchall()
+        success_rates = {(r[0] or "unknown"): r[1] for r in rows}
 
-    # Domain distribution
-    rows = conn.execute(
-        "SELECT domain, COUNT(*) FROM agent_actions WHERE timestamp > ? AND domain IS NOT NULL GROUP BY domain",
-        (week_ago,),
-    ).fetchall()
-    domain_dist = {r[0]: r[1] for r in rows}
+        # Domain distribution
+        rows = conn.execute(
+            "SELECT domain, COUNT(*) FROM agent_actions WHERE timestamp > ? AND domain IS NOT NULL GROUP BY domain",
+            (week_ago,),
+        ).fetchall()
+        domain_dist = {r[0]: r[1] for r in rows}
 
-    # Error types (counts only, no messages)
-    rows = conn.execute(
-        "SELECT error_type, COUNT(*) FROM error_log WHERE timestamp > ? GROUP BY error_type",
-        (week_ago,),
-    ).fetchall()
-    error_types = {(r[0] or "unknown"): r[1] for r in rows}
+        # Error types (counts only, no messages)
+        rows = conn.execute(
+            "SELECT error_type, COUNT(*) FROM error_log WHERE timestamp > ? GROUP BY error_type",
+            (week_ago,),
+        ).fetchall()
+        error_types = {(r[0] or "unknown"): r[1] for r in rows}
 
-    # Session stats
-    session_stats = conn.execute(
-        """SELECT COUNT(*), AVG(
-            CASE WHEN end_time IS NOT NULL
-            THEN (julianday(end_time) - julianday(start_time)) * 86400
-            END
-           ) FROM sessions WHERE start_time > ?""",
-        (week_ago,),
-    ).fetchone()
+        # Session stats
+        session_stats = conn.execute(
+            """SELECT COUNT(*), AVG(
+                CASE WHEN end_time IS NOT NULL
+                THEN (julianday(end_time) - julianday(start_time)) * 86400
+                END
+               ) FROM sessions WHERE start_time > ?""",
+            (week_ago,),
+        ).fetchone()
 
-    # Health score
-    health = conn.execute(
-        "SELECT overall_score FROM audit_reports ORDER BY period_end DESC LIMIT 1"
-    ).fetchone()
-
-    conn.close()
+        # Health score
+        health = conn.execute(
+            "SELECT overall_score FROM audit_reports ORDER BY period_end DESC LIMIT 1"
+        ).fetchone()
 
     total_disk, _, free_disk = shutil.disk_usage("/")
 

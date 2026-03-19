@@ -22,6 +22,7 @@ import requests
 
 JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 AGENTS_DIR = JARVIS_ROOT / ".claude" / "agents"
+KNOWLEDGE_ROOT = JARVIS_ROOT / "knowledge"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text"
 
@@ -124,16 +125,73 @@ def index_agent_knowledge(agent_name: str) -> None:
     print(f"\n[OK] {agent_name}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)")
 
 
+def index_domain_knowledge(domain: str) -> None:
+    """
+    Index all .md files in knowledge/{domain}/**/ (recursive).
+    Skips PREMIUM_* files and INDEX.md files.
+    Writes embeddings + source text to knowledge/{domain}/index.json.
+    """
+    domain_dir = KNOWLEDGE_ROOT / domain
+
+    if not domain_dir.exists():
+        print(f"[ERROR] Domain directory not found: {domain_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    md_files = sorted(
+        f
+        for f in domain_dir.rglob("*.md")
+        if not f.name.startswith("PREMIUM_") and f.name != "INDEX.md"
+    )
+    if not md_files:
+        print(f"[WARN] No indexable .md files found in {domain_dir}")
+        return
+
+    print(f"[INDEXER] domain={domain}: {len(md_files)} file(s) to index")
+
+    index: list[dict] = []
+
+    for filepath in md_files:
+        rel = filepath.relative_to(domain_dir)
+        print(f"  {rel}")
+        chunks = chunk_document(filepath)
+        print(f"    {len(chunks)} chunk(s)")
+
+        for i, chunk in enumerate(chunks):
+            t0 = time.perf_counter()
+            embedding = embed_chunk(chunk)
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+
+            index.append(
+                {
+                    "source": str(rel),
+                    "chunk_id": i,
+                    "text": chunk,
+                    "embedding": embedding,
+                }
+            )
+            print(f"    chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
+
+    index_path = domain_dir / "index.json"
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    total_kb = index_path.stat().st_size / 1024
+    print(f"\n[OK] domain={domain}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)")
+
+
 def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
         description="Index agent knowledge documents with nomic-embed-text"
     )
-    parser.add_argument("--agent", required=True, help="Agent name (e.g. finance-analyst)")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--agent", help="Agent name (e.g. finance-analyst)")
+    group.add_argument("--domain", help="Knowledge domain (e.g. social_sciences)")
     args = parser.parse_args()
 
-    index_agent_knowledge(args.agent)
+    if args.agent:
+        index_agent_knowledge(args.agent)
+    else:
+        index_domain_knowledge(args.domain)
 
 
 if __name__ == "__main__":

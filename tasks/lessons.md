@@ -23,6 +23,7 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-10] [matplotlib-export] Guardar .png antes de insertar en PPT → no insertar figura directamente
 
 ## jarvis-core
+- [2026-03-19] [ErrorPipeline] error_log no capturaba fallos de agent_actions → fix: write-through en post_tool_use.py + reconcile_errors.py en stop.py. 35 huérfanos reconciliados.
 - [2026-03-10] [hooks] BLOCKED_BASH hace match contra el string completo incluyendo commit message → usar mensajes de commit sin patrones peligrosos
 - [2026-03-10] [ollama-routing] Claude Code no soporta ollama como modelo nativo → routing real via openrouter_wrapper.py
 - [2026-03-14] [github-auth] Git push requiere PAT no contraseña → usar token en remote URL

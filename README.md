@@ -17,7 +17,7 @@ You give an order in natural language. DQIII8 understands it, amplifies it with 
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/YOUR_USER/dqiii8.git && cd dqiii8
+git clone https://github.com/ikermartiinsv-eng/dqiii8.git && cd dqiii8
 chmod +x install.sh && ./install.sh
 
 # 2. (Optional) Add API keys for cloud models

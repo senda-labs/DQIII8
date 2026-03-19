@@ -393,6 +393,21 @@ try:
 except Exception:
     pass
 
+# ── 1b. Reconcile error_log con agent_actions ─────────────────────
+try:
+    import subprocess as _rec_sub
+
+    _rec = _rec_sub.run(
+        ["python3", str(JARVIS / "bin" / "reconcile_errors.py")],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if _rec.stdout.strip():
+        print(_rec.stdout.strip())
+except Exception as _rec_e:
+    print(f"[stop] reconcile_errors skipped: {_rec_e}")
+
 # ── 2. Auto-commit lessons.md + projects/*.md ──────────────────────
 try:
     files = [str(LESSONS)] if LESSONS.exists() else []

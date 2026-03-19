@@ -23,6 +23,11 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-10] [matplotlib-export] Guardar .png antes de insertar en PPT → no insertar figura directamente
 
 ## jarvis-core
+- [2026-03-19] [AUTO:mcp__sqlite__queryError] Error repetido 2x en 7d → revisar causa raíz. Último: MCP error -32000: no such column: score
+- [2026-03-19] [AUTO:Bash] Error repetido 3x en 7d → revisar causa raíz. Último: {"stdout":"{\n  \"sessions\": {\n    \"total\": 145,\n    \"
+- [2026-03-19] [AUTO:openrouter_wrapperError] Error repetido 4x en 7d → revisar causa raíz. Último: pollinations/openai falló — sin respuesta o HTTP error
+- [2026-03-19] [AUTO:ReadError] Error repetido 14x en 7d → revisar causa raíz. Último: FileNotFoundError: No such file or directory: /tmp/nonexiste
+- [2026-03-19] [AUTO:BashError] Error repetido 27x en 7d → revisar causa raíz. Último: {"stdout":"❌ XLabs v1 + weight_name: Could not load pipeline
 - [2026-03-19] [ErrorPipeline] error_log no capturaba fallos de agent_actions → fix: write-through en post_tool_use.py + reconcile_errors.py en stop.py. 35 huérfanos reconciliados.
 - [2026-03-19] [TokenEstimation] len(text)//4 tiene error 20-40% → capturar usage.prompt_tokens/completion_tokens del stream; fallback a estimación si API no devuelve usage.
 - [2026-03-19] [FallbackEscalation] Escalados de fallback chain silenciosos → ahora se registran en error_log con keyword ESCALATION para trazabilidad.
@@ -66,73 +71,5 @@ Formato: `[FECHA] [KEYWORD] causa → solución`
 - [2026-03-15] [ssim-hacking] _ssim_resolution_correction inyecta delta de referencia directamente en píxeles → SSIM inflado artificialmente (0.86→0.9995). NUNCA reimplementar bajo ningún nombre. SSIM honesto compositor = 0.86 vs self-reference. Cualquier SSIM >0.95 de compositor.py puro es señal de hacking — detener y revertir.
 - [2026-03-15] [ssim-hacking-detection] Señales de SSIM-hacking: bucle for _ in range(N) que calcula delta = ref - gen e inyecta en píxeles; SSIM sube >0.1 en un solo cambio sin modificación visual obvia; función que resize imagen a escala SSIM y upsamplea delta al canvas completo.
 - [2026-03-15] [honest-benchmark] REF_PATH correcto = composite_ref_clean.png (self-output sin hacking, 1200x675). Mejoras válidas: paleta, tile_map, blend weights, gaussian sigma, compositing math. SSIM objetivo honesto: >0.75.
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 1 Traceback (most recent call last):   File "<string>", line 12, in <m (pendiente de fix)
-- [2026-03-18] [BashError] causa → Exit code 127 === 1. claude-progress.txt === # JARVIS — Estado Persistente Inter (pendiente de fix)
-- [2026-03-18] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [mcp__sqlite__queryError] causa → MCP error -32000: no such column: score (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [mcp__sqlite__queryError] causa → MCP error -32000: no such column: score (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [mcp__sqlite__queryError] causa → MCP error -32000: no such column: score (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [mcp__sqlite__queryError] causa → MCP error -32000: no such column: score (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [mcp__sqlite__queryError] causa → MCP error -32000: no such column: score (pendiente de fix)
-- [2026-03-19] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
-- [2026-03-19] [BashError] causa → {"stdout":"Tables: ['agent_actions', 'sqlite_sequence', 'error_log', 'sessions', (pendiente de fix)
-- [2026-03-19] [BashError] causa → Exit code 2 ls: cannot access '/root/jarvis/LICENSE': No such file or directory (pendiente de fix)
-- [2026-03-19] [mcp__sqlite__queryError] causa → MCP error -32000: no such column: score (pendiente de fix)
-- [2026-03-19] [ReadError] causa → File does not exist. Note: your current working directory is /root/jarvis. (pendiente de fix)
+- [2026-03-19] [audit-reports-column] audit_reports.score no existe → usar columna overall_score en todas las queries de auditor
+- [2026-03-19] [AutoLearning] Pipeline implementado → 3 componentes: detector (stop.py), consolidador (auditor.md), métricas (learning_metrics)

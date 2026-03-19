@@ -105,7 +105,11 @@ else
         ok "Claude Code installed"
     else
         info "Node.js not found. Installing via NodeSource..."
-        curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO -E bash -
+        if [ -z "$SUDO" ]; then
+            curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+        else
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+        fi
         $SUDO apt-get install -y -qq nodejs > /dev/null
         npm install -g @anthropic-ai/claude-code
         ok "Node.js + Claude Code installed"

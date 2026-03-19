@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Statusline — muestra métricas de sesión en una línea.
+DQIII8 Statusline — muestra métricas de sesión en una línea.
 Uso: python3 bin/statusline.py [--json]
 
 Optimizado para <200ms: solo 3 queries indexed, sin joins pesados.
@@ -99,7 +99,7 @@ def _print(m: dict, as_json: bool) -> None:
     score_str = f"Score: {m['audit_score']}/100" if m["audit_score"] is not None else "Score: —"
     vault_str = f"Vault: {m['vault_facts']}" if m["vault_facts"] else ""
     parts = [
-        f"JARVIS [{m['project']}]",
+        f"DQIII8 [{m['project']}]",
         f"Sesión: {m['session_min']}m",
         f"Acciones: {m['actions']}",
         f"Bloqueados: {m['blocked']}",

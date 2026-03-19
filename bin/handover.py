@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Handover script
+DQIII8 — Handover script
 Genera sessions/YYYY-MM-DD_session.md, actualiza projects/[project].md,
 y hace git commit+push. Sin interacción — diseñado para 'claude -p /handover'.
 """

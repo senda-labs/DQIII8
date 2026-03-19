@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# JARVIS — Routing unificado 3 tiers
+# DQIII8 — Routing unificado 3 tiers
 #
 # Uso:
 #   j [--model local|groq|sonnet] [PROMPT]
@@ -44,13 +44,13 @@ check_deps() {
     ollama list > /dev/null 2>&1 || echo "⚠️  Ollama no responde — usando solo Tier 2/3"
     [ -f "$JARVIS_ROOT/.env" ] || { echo "❌ .env no encontrado en $JARVIS_ROOT"; exit 1; }
     [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "❌ ANTHROPIC_API_KEY no definida"; exit 1; }
-    echo "✅ Sistema OK — arrancando JARVIS"
+    echo "✅ Sistema OK — arrancando DQIII8"
 }
 
 MODEL="sonnet"
 
 show_status() {
-    echo "=== JARVIS Status ==="
+    echo "=== DQIII8 Status ==="
     echo "Proyecto : $(basename "$JARVIS_ROOT")"
     echo "Modelo   : $MODEL_SONNET"
     echo "Tier     : 3 (sonnet) | 2 (groq) | 1 (ollama)"
@@ -75,7 +75,7 @@ if [[ -z "$_base_url" || "$_base_url" =~ ^https?://(api\.)?anthropic\.com ]]; th
 else
     export ENABLE_TOOL_SEARCH="false"
     _proxy_host="$(echo "$_base_url" | awk -F/ '{print $3}')"
-    echo "[JARVIS] Proxy detectado ($_proxy_host) — ENABLE_TOOL_SEARCH=false" >&2
+    echo "[DQIII8] Proxy detectado ($_proxy_host) — ENABLE_TOOL_SEARCH=false" >&2
 fi
 
 # ── Parseo de flags ──────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ while [[ $# -gt 0 ]]; do
             # j loop → arranca Claude Code como usuario jarvis (non-root)
             # PermissionAnalyzer activo via hooks — sin dangerously-skip-permissions
             if [[ "${2:-}" == "" || "${2:-}" == "auth" ]]; then
-                echo "[JARVIS] Claude Code como usuario jarvis (non-root)"
+                echo "[DQIII8] Claude Code como usuario jarvis (non-root)"
                 echo "  PermissionAnalyzer activo via hooks"
                 echo "  Para autenticar: /login"
                 exec su - jarvis -c "
@@ -129,13 +129,13 @@ while [[ $# -gt 0 ]]; do
                     TIER="$i"
                 fi
             done
-            echo "[JARVIS] Loop → $PROJECT | $CYCLES ciclos | modelo: $TIER" >&2
+            echo "[DQIII8] Loop → $PROJECT | $CYCLES ciclos | modelo: $TIER" >&2
             JARVIS_MODE=autonomous python3 "$JARVIS_ROOT/bin/orchestrator_loop.py" \
                 --project "$PROJECT" --cycles "$CYCLES" --tier "$TIER"
             exit 0
             ;;
         --benchmark-report)
-            echo "[JARVIS] Generando informe de benchmark con Sonnet..." >&2
+            echo "[DQIII8] Generando informe de benchmark con Sonnet..." >&2
             REPORT=$(python3 -c "
 import sqlite3, json
 from pathlib import Path
@@ -146,7 +146,7 @@ conn.close()
 print(json.dumps([list(r) for r in results], indent=2))
 ")
             echo "$REPORT" | claude --headless -p "
-Eres el auditor de JARVIS. Analiza estos resultados de benchmark
+Eres el auditor de DQIII8. Analiza estos resultados de benchmark
 de modelos IA ejecutando tareas de programación de forma autónoma.
 
 DATOS:
@@ -163,7 +163,7 @@ Sé específico y usa los datos reales."
             ;;
         --help|-h)
             cat <<EOF
-JARVIS — 3-tier routing
+DQIII8 — 3-tier routing
 
   j [--model local|groq|sonnet] [PROMPT]
   j --status              proyecto + modelo + ollama ps + tmux
@@ -190,29 +190,29 @@ done
 case "$MODEL" in
 
     local|ollama)
-        echo "[JARVIS] Tier 1 — Ollama $OLLAMA_MODEL | Coste: \$0" >&2
+        echo "[DQIII8] Tier 1 — Ollama $OLLAMA_MODEL | Coste: \$0" >&2
         if ollama_available; then
             exec claude --model "ollama:$OLLAMA_MODEL" "$@"
         else
-            echo "[JARVIS] Ollama no disponible → fallback openrouter/$OLLAMA_FALLBACK" >&2
+            echo "[DQIII8] Ollama no disponible → fallback openrouter/$OLLAMA_FALLBACK" >&2
             exec python3 "$OR_WRAPPER" --model "$OLLAMA_FALLBACK" "$@"
         fi
         ;;
 
     groq)
-        echo "[JARVIS] Tier 2 — Groq llama-3.3-70b-versatile | Coste: free" >&2
+        echo "[DQIII8] Tier 2 — Groq llama-3.3-70b-versatile | Coste: free" >&2
         exec python3 "$OR_WRAPPER" --agent git-specialist "$@"
         ;;
 
     sonnet|"")
         _router_out="$(python3 "$JARVIS_ROOT/bin/model_router.py" "código" 2>/dev/null || true)"
-        echo "[JARVIS] Tier 3 — Claude $MODEL_SONNET | Coste: normal" >&2
-        [[ -n "$_router_out" ]] && echo "[JARVIS] Modelo activo: $_router_out" >&2
+        echo "[DQIII8] Tier 3 — Claude $MODEL_SONNET | Coste: normal" >&2
+        [[ -n "$_router_out" ]] && echo "[DQIII8] Modelo activo: $_router_out" >&2
         cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT"
         ;;
 
     *)
-        echo "[JARVIS] Error: modelo desconocido '$MODEL'. Usa: local, groq, sonnet" >&2
+        echo "[DQIII8] Error: modelo desconocido '$MODEL'. Usa: local, groq, sonnet" >&2
         exit 1
         ;;
 esac

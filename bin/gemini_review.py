@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Gemini Pro Code Reviewer via Aider
+DQIII8 — Gemini Pro Code Reviewer via Aider
 Detecta archivos .py no revisados y ejecuta auditoría de eficiencia.
 Guarda reporte en database/audit_reports/ y lo registra en BD.
 """

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — PostToolUse
+DQIII8 Hook — PostToolUse
 Patch 5: bloque SQLite en try/except — nunca bloquea trabajo real
 Auto-format Python con Black tras cada edición.
 """

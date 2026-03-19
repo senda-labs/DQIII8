@@ -1,25 +1,25 @@
 ---
 name: vibesec
-description: Security review skill for JARVIS code-reviewer agent. Covers OWASP top vulnerabilities with detection checklists and bypass technique tables. Use when reviewing Python/FastAPI/SQLite code for SQL injection, XSS, CSRF, path traversal, secret exposure, SSRF, file upload, XXE, JWT, and API security issues.
+description: Security review skill for DQIII8 code-reviewer agent. Covers OWASP top vulnerabilities with detection checklists and bypass technique tables. Use when reviewing Python/FastAPI/SQLite code for SQL injection, XSS, CSRF, path traversal, secret exposure, SSRF, file upload, XXE, JWT, and API security issues.
 source: BehiSecc/VibeSec-Skill
 reviewed: 2026-03-18
 approved_by: Iker + Claude
 status: APROBADA
 ---
 
-# VibeSec — JARVIS Adaptation Notes
+# VibeSec — DQIII8 Adaptation Notes
 
-## Scope Adjustment for JARVIS Stack
+## Scope Adjustment for DQIII8 Stack
 - **Primary stack**: Python + FastAPI + SQLite + Telegram Bot
-- **Out of scope**: Java, .NET, PHP, GraphQL (not used in JARVIS)
+- **Out of scope**: Java, .NET, PHP, GraphQL (not used in DQIII8)
 - **High priority**: SQL injection (SQLite), path traversal (pathlib), secret exposure (.env), file upload (ElevenLabs/content pipeline)
 - **Medium priority**: SSRF (webhook URLs from Telegram), JWT (jarvis_bot auth), XSS (FastAPI responses)
 - **Low priority**: CSRF (API-only, no browser sessions), XXE (no XML parsing)
 
-## JARVIS-specific SQL Injection Patterns to Flag as CRITICAL
+## DQIII8-specific SQL Injection Patterns to Flag as CRITICAL
 
 ```python
-# VULNERABLE — always CRITICAL in JARVIS reviews
+# VULNERABLE — always CRITICAL in DQIII8 reviews
 conn.execute("SELECT * FROM sessions WHERE id = " + session_id)
 cursor.execute(f"UPDATE tasks SET status = '{status}' WHERE id = {task_id}")
 conn.execute("SELECT * FROM audit_reports WHERE model = '%s'" % model_name)
@@ -29,12 +29,12 @@ conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
 conn.execute("UPDATE tasks SET status = ? WHERE id = ?", (status, task_id))
 ```
 
-## JARVIS Path Safety Pattern
+## DQIII8 Path Safety Pattern
 
 ```python
 # SECURE — use pathlib.Path.resolve() and validate base
 from pathlib import Path
-BASE = Path("/root/jarvis")
+BASE = Path("/root/dqiii8")
 
 def safe_path(user_input: str) -> Path:
     target = (BASE / user_input).resolve()
@@ -125,7 +125,7 @@ Every input controllable by the user must be sanitized against XSS.
 
 ### Cross-Site Request Forgery (CSRF)
 
-> **JARVIS note**: Low priority for pure API backends (no browser sessions). Apply if adding web UI.
+> **DQIII8 note**: Low priority for pure API backends (no browser sessions). Apply if adding web UI.
 
 #### Verification Checklist
 
@@ -153,7 +153,7 @@ No secrets or sensitive information should be accessible to client-side code or 
 - Log output that prints env vars or request headers
 - `.env` files accidentally committed
 
-#### JARVIS Rule
+#### DQIII8 Rule
 Always use `os.environ["KEY"]` (raises `KeyError` if missing) instead of `.get("KEY", "default")` for secrets.
 
 ---
@@ -175,7 +175,7 @@ Always use `os.environ["KEY"]` (raises `KeyError` if missing) instead of `.get("
 
 ### Server-Side Request Forgery (SSRF)
 
-> **JARVIS note**: High priority for Telegram webhook handlers and any URL-fetching features.
+> **DQIII8 note**: High priority for Telegram webhook handlers and any URL-fetching features.
 
 Any endpoint where server makes requests to user-provided URLs must be validated.
 
@@ -203,7 +203,7 @@ Any endpoint where server makes requests to user-provided URLs must be validated
 
 ### Insecure File Upload
 
-> **JARVIS note**: High priority for content-automation pipeline (video/audio/image uploads).
+> **DQIII8 note**: High priority for content-automation pipeline (video/audio/image uploads).
 
 #### Validation Requirements
 
@@ -233,7 +233,7 @@ Any endpoint where server makes requests to user-provided URLs must be validated
 
 ### SQL Injection
 
-> **JARVIS note**: CRITICAL priority — SQLite used throughout jarvis_metrics.db. Flag all f-string or %-format SQL as CRITICAL.
+> **DQIII8 note**: CRITICAL priority — SQLite used throughout jarvis_metrics.db. Flag all f-string or %-format SQL as CRITICAL.
 
 #### Prevention — PRIMARY DEFENSE: Parameterized Queries
 
@@ -264,7 +264,7 @@ conn.execute("SELECT * FROM audit_reports WHERE model = ?", (model,))
 
 ### XML External Entity (XXE)
 
-> **JARVIS note**: Low priority — JARVIS uses JSON/SQLite. Apply only if parsing DOCX, XLSX, SVG uploads.
+> **DQIII8 note**: Low priority — DQIII8 uses JSON/SQLite. Apply only if parsing DOCX, XLSX, SVG uploads.
 
 #### Prevention (Python)
 
@@ -278,7 +278,7 @@ parser = etree.XMLParser(resolve_entities=False, no_network=True)
 
 ### Path Traversal
 
-> **JARVIS note**: Medium priority — JARVIS accesses many files via pathlib. Flag `BASE_DIR + user_input` patterns.
+> **DQIII8 note**: Medium priority — DQIII8 accesses many files via pathlib. Flag `BASE_DIR + user_input` patterns.
 
 #### Prevention
 

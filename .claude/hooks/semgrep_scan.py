@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — Local Semgrep scan + Shannon score sync.
+DQIII8 Hook — Local Semgrep scan + Shannon score sync.
 Runs on Edit/Write of .py files only. No SEMGREP_APP_TOKEN required.
 
 Actions:

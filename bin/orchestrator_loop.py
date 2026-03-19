@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OrchestratorLoop — JARVIS autonomous project management.
+OrchestratorLoop — DQIII8 autonomous project management.
 
 Ciclo: analyze → plan → build_prompt → execute → capture → store → repeat
 Ejecutar: python3 bin/orchestrator_loop.py --project content-automation
@@ -435,7 +435,7 @@ USA ESTOS DATOS para parametrizar el generador matemático:
         """Construye el prompt para Claude Code con formato estructurado."""
         lessons_text = "\n".join(context.get("lessons", []))
         ref_analysis = self._analyze_reference_image()
-        return f"""=== JARVIS ORCHESTRATOR — OBJETIVO ACTUAL ===
+        return f"""=== DQIII8 ORCHESTRATOR — OBJETIVO ACTUAL ===
 
 PROYECTO: {context['project']}
 OBJETIVO: {objective['objective']}
@@ -912,7 +912,7 @@ INSTRUCCIONES:
                 f"https://api.telegram.org/bot{token}/sendMessage",
                 json={
                     "chat_id": chat_id,
-                    "text": f"🤖 *JARVIS OrchestratorLoop*\n\n{message}",
+                    "text": f"🤖 *DQIII8 OrchestratorLoop*\n\n{message}",
                     "parse_mode": "Markdown",
                 },
                 timeout=10,
@@ -1193,7 +1193,7 @@ INSTRUCCIONES:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="JARVIS OrchestratorLoop")
+    parser = argparse.ArgumentParser(description="DQIII8 OrchestratorLoop")
     parser.add_argument("--project", required=True, help="Nombre del proyecto")
     parser.add_argument(
         "--cycles",

@@ -1,4 +1,4 @@
-# JARVIS — Auditoría Externa (Gemini Pro)
+# DQIII8 — Auditoría Externa (Gemini Pro)
 
 ## Flujo
 1. Iker detecta área de mejora (viralidad, rendimiento, arquitectura)

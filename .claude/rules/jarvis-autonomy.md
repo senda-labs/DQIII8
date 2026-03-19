@@ -1,4 +1,4 @@
-# JARVIS — Ejecución Autónoma
+# DQIII8 — Ejecución Autónoma
 
 > Reglas de autonomía para modo VPS sin supervisión continua.
 
@@ -9,4 +9,4 @@
 
 ## Relación con common/development-workflow.md
 El workflow de ECC (Research → Plan → TDD → Review → Commit) es compatible.
-JARVIS añade: notificación Telegram en decisiones críticas vía jarvis_bot.
+DQIII8 añade: notificación Telegram en decisiones críticas vía jarvis_bot.

@@ -103,7 +103,7 @@ LIMIT 10;
 
 Report the count as `vector_false_negatives`. If count > 3 in a 7-day period:
 - Add a CRITICAL recommendation: "ADR-003 activation criterion approaching — review sqlite-vec plan"
-- Update `decisions/jarvis-core/ADR-003-vector-memory-strategy.md` with the observed false negatives
+- Update `decisions/dqiii8-core/ADR-003-vector-memory-strategy.md` with the observed false negatives
 
 Also report current instinct health:
 ```sql
@@ -182,7 +182,7 @@ score = (component_1*0.30 + component_2*0.30 + component_3*0.20
 File: `database/audit_reports/audit-YYYY-MM-DD-HH.md`
 
 ```markdown
-# JARVIS Audit Report
+# DQIII8 Audit Report
 **Date:** [timestamp]
 **Period:** last 7 days
 **Score:** [X]/100  [emoji status]

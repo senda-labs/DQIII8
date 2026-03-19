@@ -125,7 +125,7 @@ def generate_gemini_report(
 
     # Header — FIX 1: usa metric y question
     sections.append(
-        f"# JARVIS — Reporte para Auditoría Gemini Pro\n"
+        f"# DQIII8 — Reporte para Auditoría Gemini Pro\n"
         f"**Timestamp:** {timestamp}\n"
         f"**Módulo:** {module}\n"
         f"**Métrica de éxito:** {metric}\n"

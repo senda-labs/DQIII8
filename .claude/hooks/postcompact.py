@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Hook — PostCompact
+DQIII8 Hook — PostCompact
 Reinyecta contexto esencial tras compactación de contexto.
 
 Dispara DESPUÉS de que context-mode termina la compactación.
@@ -82,7 +82,7 @@ actions_before = pre_state.get("actions_count", "?")
 session_id = pre_state.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))
 
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JARVIS — PostCompact {datetime.now().strftime('%H:%M')}
+DQIII8 — PostCompact {datetime.now().strftime('%H:%M')}
 Contexto compactado — estado restaurado
 Modelo  : {model}
 Proyecto: {project}

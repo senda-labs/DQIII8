@@ -69,20 +69,20 @@ except (ElevenLabsError, requests.Timeout):
 ## Sincronización de API Keys
 
 Keys en DOS lugares — deben estar sincronizadas:
-1. `/root/jarvis/.env` — configuración global JARVIS
+1. `/root/dqiii8/.env` — configuración global DQIII8
 2. `/root/content-automation-faceless/config/.env` — pipeline (override=True)
 
 Si una key se rota y solo se actualiza en un lugar:
-- config/.env tiene prioridad (override=True) → jarvis/.env ignorado
+- config/.env tiene prioridad (override=True) → dqiii8/.env ignorado
 - Pipeline usará key caducada silenciosamente hasta error 401
 
 Procedimiento al rotar key:
 ```bash
 # Actualizar ambos archivos
-sed -i 's/ELEVENLABS_API_KEY=.*/ELEVENLABS_API_KEY=nueva_key/' /root/jarvis/.env
+sed -i 's/ELEVENLABS_API_KEY=.*/ELEVENLABS_API_KEY=nueva_key/' /root/dqiii8/.env
 sed -i 's/ELEVENLABS_API_KEY=.*/ELEVENLABS_API_KEY=nueva_key/' /root/content-automation-faceless/config/.env
 # Verificar
-grep ELEVENLABS /root/jarvis/.env
+grep ELEVENLABS /root/dqiii8/.env
 grep ELEVENLABS /root/content-automation-faceless/config/.env
 ```
 

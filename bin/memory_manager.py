@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS Memory Manager
+DQIII8 Memory Manager
 Memoria persistente entre sesiones con mem0 + fallback SQLite (vault_memory).
 
 Uso CLI:

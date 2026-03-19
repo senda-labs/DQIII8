@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS — Auto Researcher
+DQIII8 — Auto Researcher
 Scrapes arxiv, GitHub trending, Anthropic news, and HuggingFace papers.
 Scores each item and queues high-value items for sandbox testing.
 
@@ -73,7 +73,7 @@ def _fetch_url(url: str, timeout: int = 15) -> str:
     try:
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "Mozilla/5.0 (JARVIS/1.0 Research Bot)"},
+            headers={"User-Agent": "Mozilla/5.0 (DQIII8/1.0 Research Bot)"},
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8", errors="ignore")
@@ -306,7 +306,7 @@ def insert_items(items: list[dict], dry_run: bool, session_id: str = "auto_resea
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="JARVIS auto researcher")
+    parser = argparse.ArgumentParser(description="DQIII8 auto researcher")
     parser.add_argument(
         "--full", action="store_true", help="Fetch all sources (default: arxiv only)"
     )

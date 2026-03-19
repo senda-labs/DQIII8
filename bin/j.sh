@@ -5,7 +5,7 @@
 #   j [--model local|groq|sonnet] [PROMPT]
 #   j --status        → proyecto, modelo activo, ollama ps, tmux sessions
 #   j --audit         → Gemini code review (check-only)
-#   j --classify TEXT → muestra qué tier manejaría el prompt
+#   j --classify TEXT → shows which tier would handle the prompt
 #   j --autonomous    → activa JARVIS_MODE=autonomous y lanza claude
 #   j --loop PROJECT [CYCLES] [TIER] → OrchestratorLoop (tier1/tier2/tier3/haiku)
 #   j --benchmark-report → informe Sonnet comparativo de tiers
@@ -24,15 +24,15 @@ MODEL_SONNET="claude-sonnet-4-6"
 OLLAMA_MODEL="qwen2.5-coder:7b"
 OLLAMA_FALLBACK="qwen/qwen3-235b-a22b:free"
 
-# Cargar variables de entorno
+# Load environment variables
 [[ -f "$JARVIS_ROOT/.env" ]] && set -a && source "$JARVIS_ROOT/.env" && set +a
 
 # Environment validation
 python3 "$(dirname "$0")/validate_env.py" || echo "[warn] Environment check failed"
 
-# Flag A/B: propósito activo si existe .jarvis_proposito
-# Activar: touch /root/jarvis/.jarvis_proposito
-# Desactivar: rm /root/jarvis/.jarvis_proposito
+# Flag A/B: purpose active if .jarvis_proposito exists
+# Enable: touch /root/jarvis/.jarvis_proposito
+# Disable: rm /root/jarvis/.jarvis_proposito
 if [[ -f "$JARVIS_ROOT/.jarvis_proposito" ]]; then
     export JARVIS_PROPOSITO=1
 else
@@ -40,10 +40,10 @@ else
 fi
 
 check_deps() {
-    python3 --version > /dev/null 2>&1 || { echo "❌ Python3 no encontrado"; exit 1; }
-    ollama list > /dev/null 2>&1 || echo "⚠️  Ollama no responde — usando solo Tier 2/3"
-    [ -f "$JARVIS_ROOT/.env" ] || { echo "❌ .env no encontrado en $JARVIS_ROOT"; exit 1; }
-    [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "❌ ANTHROPIC_API_KEY no definida"; exit 1; }
+    python3 --version > /dev/null 2>&1 || { echo "❌ Python3 not found"; exit 1; }
+    ollama list > /dev/null 2>&1 || echo "⚠️  Ollama not responding — using Tier 2/3 only"
+    [ -f "$JARVIS_ROOT/.env" ] || { echo "❌ .env not found in $JARVIS_ROOT"; exit 1; }
+    [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "❌ ANTHROPIC_API_KEY not defined"; exit 1; }
     echo "✅ Sistema OK — arrancando DQIII8"
 }
 
@@ -56,10 +56,10 @@ show_status() {
     echo "Tier     : 3 (sonnet) | 2 (groq) | 1 (ollama)"
     echo ""
     echo "── Ollama ──"
-    ollama ps 2>/dev/null || echo "(no disponible)"
+    ollama ps 2>/dev/null || echo "(not available)"
     echo ""
     echo "── tmux sessions ──"
-    tmux ls 2>/dev/null || echo "(ninguna)"
+    tmux ls 2>/dev/null || echo "(none)"
 }
 
 ollama_available() {
@@ -68,17 +68,17 @@ ollama_available() {
 
 check_deps
 
-# ── ENABLE_TOOL_SEARCH: false cuando ANTHROPIC_BASE_URL apunta a un proxy ───
+# ── ENABLE_TOOL_SEARCH: false when ANTHROPIC_BASE_URL points to a proxy ────
 _base_url="${ANTHROPIC_BASE_URL:-}"
 if [[ -z "$_base_url" || "$_base_url" =~ ^https?://(api\.)?anthropic\.com ]]; then
     export ENABLE_TOOL_SEARCH="auto"
 else
     export ENABLE_TOOL_SEARCH="false"
     _proxy_host="$(echo "$_base_url" | awk -F/ '{print $3}')"
-    echo "[DQIII8] Proxy detectado ($_proxy_host) — ENABLE_TOOL_SEARCH=false" >&2
+    echo "[DQIII8] Proxy detected ($_proxy_host) — ENABLE_TOOL_SEARCH=false" >&2
 fi
 
-# ── Parseo de flags ──────────────────────────────────────────────────────────
+# ── Flag parsing ─────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --model|-m)
@@ -121,7 +121,7 @@ while [[ $# -gt 0 ]]; do
             fi
             ;;
         --loop)
-            PROJECT="${2:-content-automation}"
+            PROJECT="${2:-my-project}"
             CYCLES="${3:-10}"
             TIER="tier3"
             for i in "$@"; do
@@ -129,13 +129,13 @@ while [[ $# -gt 0 ]]; do
                     TIER="$i"
                 fi
             done
-            echo "[DQIII8] Loop → $PROJECT | $CYCLES ciclos | modelo: $TIER" >&2
+            echo "[DQIII8] Loop → $PROJECT | $CYCLES cycles | model: $TIER" >&2
             JARVIS_MODE=autonomous python3 "$JARVIS_ROOT/bin/orchestrator_loop.py" \
                 --project "$PROJECT" --cycles "$CYCLES" --tier "$TIER"
             exit 0
             ;;
         --benchmark-report)
-            echo "[DQIII8] Generando informe de benchmark con Sonnet..." >&2
+            echo "[DQIII8] Generating benchmark report with Sonnet..." >&2
             REPORT=$(python3 -c "
 import sqlite3, json
 from pathlib import Path
@@ -146,19 +146,19 @@ conn.close()
 print(json.dumps([list(r) for r in results], indent=2))
 ")
             echo "$REPORT" | claude --headless -p "
-Eres el auditor de DQIII8. Analiza estos resultados de benchmark
-de modelos IA ejecutando tareas de programación de forma autónoma.
+You are the DQIII8 auditor. Analyze these benchmark results
+of AI models executing programming tasks autonomously.
 
-DATOS:
+DATA:
 $REPORT
 
-Genera un informe ejecutivo comparando:
-1. Tasa de éxito por tier
-2. Velocidad (duración media por objetivo)
-3. Qué tipos de tareas resuelve mejor cada tier
-4. Recomendación: ¿qué tier usar por defecto para el OrchestratorLoop?
+Generate an executive report comparing:
+1. Success rate by tier
+2. Speed (average duration per objective)
+3. What types of tasks each tier handles best
+4. Recommendation: which tier to use by default for OrchestratorLoop?
 
-Sé específico y usa los datos reales."
+Be specific and use the actual data."
             exit 0
             ;;
         --help|-h)
@@ -168,15 +168,15 @@ DQIII8 — 3-tier routing
   j [--model local|groq|sonnet] [PROMPT]
   j --status              proyecto + modelo + ollama ps + tmux
   j --audit               Gemini code review (check-only)
-  j --classify TEXTO      muestra tier para el prompt dado
-  j --autonomous "objetivo" [h]  modo sueño con supervisor 3-layer (def. 8h)
+  j --classify TEXT       show tier for the given prompt
+  j --autonomous "objective" [h]  autonomous mode with 3-layer supervisor (def. 8h)
   j --loop PROJECT [N] [TIER]   OrchestratorLoop: tier1/tier2/tier3/haiku (def. tier3)
-  j --benchmark-report         informe Sonnet comparando tiers
+  j --benchmark-report         Sonnet report comparing tiers
 
 Tiers:
-  local   Tier 1 — Ollama $OLLAMA_MODEL (gratis, local)
-  groq    Tier 2 — Groq llama-3.3-70b-versatile (gratis, cloud)
-  sonnet  Tier 3 — Claude Sonnet 4.6 (pago, potente) [default]
+  local   Tier 1 — Ollama $OLLAMA_MODEL (free, local)
+  groq    Tier 2 — Groq llama-3.3-70b-versatile (free, cloud)
+  sonnet  Tier 3 — Claude Sonnet 4.6 (paid, powerful) [default]
 EOF
             exit 0
             ;;
@@ -190,29 +190,29 @@ done
 case "$MODEL" in
 
     local|ollama)
-        echo "[DQIII8] Tier 1 — Ollama $OLLAMA_MODEL | Coste: \$0" >&2
+        echo "[DQIII8] Tier 1 — Ollama $OLLAMA_MODEL | Cost: \$0" >&2
         if ollama_available; then
             exec claude --model "ollama:$OLLAMA_MODEL" "$@"
         else
-            echo "[DQIII8] Ollama no disponible → fallback openrouter/$OLLAMA_FALLBACK" >&2
+            echo "[DQIII8] Ollama unavailable → fallback openrouter/$OLLAMA_FALLBACK" >&2
             exec python3 "$OR_WRAPPER" --model "$OLLAMA_FALLBACK" "$@"
         fi
         ;;
 
     groq)
-        echo "[DQIII8] Tier 2 — Groq llama-3.3-70b-versatile | Coste: free" >&2
+        echo "[DQIII8] Tier 2 — Groq llama-3.3-70b-versatile | Cost: free" >&2
         exec python3 "$OR_WRAPPER" --agent git-specialist "$@"
         ;;
 
     sonnet|"")
         _router_out="$(python3 "$JARVIS_ROOT/bin/model_router.py" "código" 2>/dev/null || true)"
-        echo "[DQIII8] Tier 3 — Claude $MODEL_SONNET | Coste: normal" >&2
+        echo "[DQIII8] Tier 3 — Claude $MODEL_SONNET | Cost: standard" >&2
         [[ -n "$_router_out" ]] && echo "[DQIII8] Modelo activo: $_router_out" >&2
         cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT"
         ;;
 
     *)
-        echo "[DQIII8] Error: modelo desconocido '$MODEL'. Usa: local, groq, sonnet" >&2
+        echo "[DQIII8] Error: unknown model '$MODEL'. Use: local, groq, sonnet" >&2
         exit 1
         ;;
 esac

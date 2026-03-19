@@ -581,7 +581,7 @@ def _handle_pass(obj_id, title, result, attempt, max_attempts):
             conn.execute(
                 """UPDATE jal_objectives SET
                 status='completed', completed_at=datetime('now'),
-                iker_approved=1 WHERE objective_id=?""",
+                user_approved=1 WHERE objective_id=?""",
                 (obj_id,),
             )
             conn.commit()
@@ -633,7 +633,7 @@ def _handle_max_attempts(obj_id, title, result, attempt):
             conn.execute(
                 """UPDATE jal_objectives SET
                 status='completed', completed_at=datetime('now'),
-                iker_approved=1 WHERE objective_id=?""",
+                user_approved=1 WHERE objective_id=?""",
                 (obj_id,),
             )
             conn.commit()
@@ -689,7 +689,7 @@ def _activate_next(obj_id: str):
     conn.execute(
         """UPDATE jal_objectives SET
         status='completed', completed_at=datetime('now'),
-        iker_approved=1 WHERE objective_id=?""",
+        user_approved=1 WHERE objective_id=?""",
         (obj_id,),
     )
     conn.commit()

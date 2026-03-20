@@ -77,6 +77,18 @@ else
 fi
 echo ""
 
+REPORT="${JARVIS_ROOT}/tasks/nightly-report.md"
+
+# ── 8. Paper harvester ──
+echo "## 8. Paper Harvest"
+python3 "$JARVIS_ROOT/bin/paper_harvester.py" --all 2>&1 || echo "  Paper harvest failed"
+echo ""
+
+# ── 9. Prune outdated papers ──
+echo "## 9. Prune Outdated Papers"
+python3 "$JARVIS_ROOT/bin/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
+echo ""
+
 echo "## Summary"
 echo "  Completed at: $(date -u '+%Y-%m-%d %H:%M UTC')"
 echo "  Next action: review this report, then git push origin main"

@@ -96,6 +96,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="DQ Dashboard", version="0.1.0", lifespan=lifespan)
 
+from beauty_router import beauty_router
+app.include_router(beauty_router, prefix="")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],

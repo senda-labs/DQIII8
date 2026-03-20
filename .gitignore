@@ -1,7 +1,7 @@
 # JARVIS .gitignore
 
-# Premium modules (not in public repo)
-bin/hierarchical_router.py
+# BETA: Premium features temporarily public. Will be re-excluded after beta.
+# bin/hierarchical_router.py
 
 # Database (not versioned — too large and sensitive)
 database/*.db
@@ -71,8 +71,8 @@ tasks/github_reports/
 tasks/precompact_state.json
 
 # Premium features (not included in free tier)
-bin/intent_amplifier.py
-bin/knowledge_upload.py
+# BETA: bin/intent_amplifier.py
+# BETA: bin/knowledge_upload.py
 knowledge/*/user_uploads/
 knowledge/**/PREMIUM_*
 tasks/diagnostic_*.md

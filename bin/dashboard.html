@@ -795,14 +795,40 @@
     ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
     /* ── Responsive ──────────────────────────────────────────────────────── */
+    /* ── Claude Code status dot ──────────────────────────────────────────── */
+    .cc-status {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 0.72rem; color: var(--text-dim);
+    }
+    .cc-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-dim); flex-shrink: 0;
+      transition: background 0.4s;
+    }
+    .cc-dot.online  { background: var(--success); box-shadow: 0 0 6px rgba(0,230,118,0.5); }
+    .cc-dot.offline { background: var(--text-dim); }
+
+    /* ── Mobile responsive ───────────────────────────────────────────────── */
     @media (max-width: 768px) {
       .chat-sidebar { display: none; }
       .metrics-row  { grid-template-columns: 1fr; }
-      .nav-tab span.nav-icon { display: none; }
-      .nav-tab { padding: 6px 12px; font-size: 0.8rem; }
-      .messages, .metrics-body, .settings-body { padding: 16px; }
-      .input-row { padding: 10px 16px 14px; }
-      .tier-pills { padding: 8px 16px 0; }
+      .nav-tab svg.nav-icon { display: none; }
+      .nav-tab { padding: 6px 10px; font-size: 0.78rem; }
+      .messages, .metrics-body, .settings-body { padding: 12px; }
+      .input-row { padding: 8px 12px 14px; gap: 8px; }
+      .tier-pills { padding: 8px 12px 0; gap: 4px; }
+      .tier-pill { padding: 4px 10px; font-size: 0.72rem; }
+      .send-btn { width: 44px; height: 44px; }
+      .icon-btn { width: 40px; height: 40px; }
+      .lang-sel { width: 52px; }
+      .msg-wrap { margin-bottom: 16px; }
+      .cc-status span { display: none; }
+      .health-indicator span { display: none; }
+      .navbar { padding: 0 12px; gap: 8px; }
+    }
+    @media (max-width: 480px) {
+      .nav-tab { padding: 5px 8px; font-size: 0.72rem; }
+      .logo-roman { display: none; }
     }
   </style>
 </head>
@@ -834,6 +860,10 @@
     </div>
 
     <div style="display:flex;align-items:center;gap:12px">
+      <div class="cc-status" id="cc-status" title="Claude Code status">
+        <div class="cc-dot offline" id="cc-dot"></div>
+        <span id="cc-label">CC</span>
+      </div>
       <button id="theme-btn" title="Switch theme" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);font-size:0.72rem;font-family:'Space Grotesk',sans-serif;padding:4px 10px;border-radius:6px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Dark</button>
       <div class="health-indicator">
         <div class="health-dot"></div>
@@ -1461,6 +1491,10 @@ async function sendChat() {
             // Quick replies
             const opts = parseQuickReplies(accumulated);
             if (opts.length) addQuickReplies(aWrap, opts);
+            // Browser notification for slow responses
+            if (evt.elapsed_ms && evt.elapsed_ms > 10000) {
+              notifyDone('DQIII∞ — Response ready', accumulated.slice(0, 80) + '…');
+            }
           }
           if (evt.error) {
             aBubble.innerHTML = '';
@@ -1726,6 +1760,50 @@ function showSaveStatus(msg) {
   setTimeout(() => { el.textContent = ''; }, 2500);
 }
 
+// ── Claude Code status indicator ──────────────────────────────────────────
+async function loadClaudeStatus() {
+  try {
+    const r = await fetch('/api/claude/status');
+    if (!r.ok) return;
+    const d = await r.json();
+    const dot = document.getElementById('cc-dot');
+    const lbl = document.getElementById('cc-label');
+    if (!dot || !lbl) return;
+    if (d.available) {
+      dot.className = 'cc-dot online';
+      lbl.textContent = 'Claude';
+      document.getElementById('cc-status').title = `Claude Code — ${d.plan || 'authenticated'} (${d.method || ''})`;
+    } else {
+      dot.className = 'cc-dot offline';
+      lbl.textContent = 'CC';
+      document.getElementById('cc-status').title = 'Claude Code — not authenticated';
+    }
+  } catch (_) {}
+}
+
+// ── Browser notifications ─────────────────────────────────────────────────
+let _notifyPerm = Notification?.permission || 'default';
+
+async function requestNotifyPerm() {
+  if (!('Notification' in window)) return;
+  if (_notifyPerm === 'default') {
+    _notifyPerm = await Notification.requestPermission();
+  }
+}
+
+function notifyDone(title, body) {
+  if (!('Notification' in window) || _notifyPerm !== 'granted') return;
+  if (document.visibilityState === 'visible') return; // only when tab hidden
+  try {
+    new Notification(title, {
+      body,
+      icon: '/favicon.ico',
+      tag: 'dq-done',
+      silent: false,
+    });
+  } catch (_) {}
+}
+
 // ── Speech-to-Text (STT) ───────────────────────────────────────────────────
 (function initSTT() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1917,7 +1995,10 @@ function makeTtsBtn(text) {
 loadHealth();
 loadTasks();
 loadChatHistory();
+loadClaudeStatus();
+requestNotifyPerm();
 setInterval(() => { loadHealth(); loadTasks(); }, 30000);
+setInterval(loadClaudeStatus, 60000);
 </script>
 </body>
 </html>

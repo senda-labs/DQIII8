@@ -2,6 +2,11 @@
 
 Premium features temporarily public. Will be re-excluded after beta.
 # bin/hierarchical_router.py
+bin/template_loader.py
+bin/paper_harvester.py
+bin/quality_scorer.py
+bin/benchmark_amplification.py
+bin/ml_selector.py
 
 # Database (not versioned — too large and sensitive)
 database/*.db

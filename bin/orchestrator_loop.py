@@ -601,7 +601,7 @@ INSTRUCTIONS:
 
     def _execute_openrouter(self, prompt: str, project: str) -> str:
         """Tier 2: OpenRouter free tier via openrouter_wrapper.py."""
-        wrapper = JARVIS_ROOT / "bin" / "openrouter_wrapper.py"
+        wrapper = JARVIS_ROOT / "bin" / "core" / "openrouter_wrapper.py"
         if not wrapper.exists():
             return "[OpenRouter] wrapper not found at bin/openrouter_wrapper.py"
         result = subprocess.run(

@@ -12,7 +12,7 @@ echo ""
 
 # ── 1. Auto-learner consolidation ──
 echo "## 1. Auto-learner consolidation"
-if python3 bin/auto_learner.py --consolidate 2>&1; then
+if python3 bin/tools/auto_learner.py --consolidate 2>&1; then
     echo "✓ Auto-learner completed"
 else
     echo "✗ Auto-learner failed"
@@ -24,7 +24,7 @@ echo "## 2. Knowledge indexing"
 for domain in formal_sciences natural_sciences social_sciences humanities_arts applied_sciences; do
     if [ -d "knowledge/$domain" ]; then
         echo -n "  Indexing $domain... "
-        if python3 bin/knowledge_indexer.py --domain "$domain" 2>&1; then
+        if python3 bin/agents/knowledge_indexer.py --domain "$domain" 2>&1; then
             echo "✓"
         else
             echo "✗ (failed or no files)"
@@ -38,13 +38,13 @@ echo ""
 # ── 3. Domain classifier tests ──
 echo "## 3. Domain classifier tests"
 echo '  Test 1: "calculate portfolio VaR at 95%"'
-python3 bin/domain_classifier.py "calculate portfolio VaR at 95%" 2>&1 || echo "  ✗ failed"
+python3 bin/agents/domain_classifier.py "calculate portfolio VaR at 95%" 2>&1 || echo "  ✗ failed"
 echo ""
 echo '  Test 2: "write chapter 5 where Lin Feng finds the artifact"'
-python3 bin/domain_classifier.py "write chapter 5 where Lin Feng finds the artifact" 2>&1 || echo "  ✗ failed"
+python3 bin/agents/domain_classifier.py "write chapter 5 where Lin Feng finds the artifact" 2>&1 || echo "  ✗ failed"
 echo ""
 echo '  Test 3: "refactor the DatabaseManager class"'
-python3 bin/domain_classifier.py "refactor the DatabaseManager class" 2>&1 || echo "  ✗ failed"
+python3 bin/agents/domain_classifier.py "refactor the DatabaseManager class" 2>&1 || echo "  ✗ failed"
 echo ""
 
 # ── 4. Unresolved errors review ──
@@ -63,7 +63,7 @@ echo ""
 
 # ── 6. Local health audit ──
 echo "## 6. Health Audit"
-if python3 "$JARVIS_ROOT/bin/auditor_local.py" 2>&1; then
+if python3 "$JARVIS_ROOT/bin/monitoring/auditor_local.py" 2>&1; then
     echo "✓ Audit completed"
 else
     EXIT_CODE=$?
@@ -77,7 +77,7 @@ echo ""
 
 # ── 7. Telemetry (opt-in) ──
 echo "## 6. Telemetry"
-python3 "$JARVIS_ROOT/bin/telemetry.py" --send 2>&1 || echo "  Telemetry: disabled or failed"
+python3 "$JARVIS_ROOT/bin/monitoring/telemetry.py" --send 2>&1 || echo "  Telemetry: disabled or failed"
 echo ""
 
 # ── 8. Git commit (no push) ──
@@ -95,12 +95,12 @@ REPORT="${JARVIS_ROOT}/tasks/nightly-report.md"
 
 # ── 9. Paper harvester ──
 echo "## 9. Paper Harvest"
-python3 "$JARVIS_ROOT/bin/paper_harvester.py" --all 2>&1 || echo "  Paper harvest failed"
+python3 "$JARVIS_ROOT/bin/tools/paper_harvester.py" --all 2>&1 || echo "  Paper harvest failed"
 echo ""
 
 # ── 10. Prune outdated papers ──
 echo "## 10. Prune Outdated Papers"
-python3 "$JARVIS_ROOT/bin/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
+python3 "$JARVIS_ROOT/bin/tools/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
 echo ""
 
 echo "## Summary"

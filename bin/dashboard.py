@@ -317,6 +317,16 @@ async def amplification_log(limit: int = 20, auth: bool = Depends(check_auth)):
     ]
 
 
+@app.get("/api/subscription")
+async def subscription_status(auth: bool = Depends(check_auth)):
+    """Monthly budget and API cost tracking."""
+    try:
+        from subscription import get_status
+        return get_status()
+    except Exception as exc:
+        return {"error": str(exc), "unlimited": True, "used_usd": 0.0, "budget_usd": 0}
+
+
 # ── HTML routes ───────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)

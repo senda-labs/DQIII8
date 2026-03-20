@@ -61,6 +61,14 @@
       </div>
     </div>
 
+    <!-- Subscription / Budget Card -->
+    <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60">
+      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Budget &amp; Usage</h2>
+      <div id="subscription-container">
+        <p class="text-gray-700 text-sm">Loading...</p>
+      </div>
+    </div>
+
     <!-- Intent Amplification Panel -->
     <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60">
       <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">
@@ -525,9 +533,75 @@
       container.appendChild(table);
     }
 
+    // ── Subscription ─────────────────────────────────────────────────────
+    async function loadSubscription() {
+      try {
+        const r = await fetch('/api/subscription');
+        if (!r.ok) return;
+        const d = await r.json();
+        const c = document.getElementById('subscription-container');
+        if (!c) return;
+        // Clear container using safe DOM method
+        while (c.firstChild) c.removeChild(c.firstChild);
+
+        if (d.unlimited) {
+          const row = document.createElement('div');
+          row.className = 'flex items-center justify-between text-sm';
+          const label = document.createElement('span');
+          label.className = 'text-gray-500';
+          label.textContent = 'Budget';
+          const val = document.createElement('span');
+          val.className = 'text-white font-bold';
+          val.textContent = 'Unlimited';
+          row.appendChild(label); row.appendChild(val);
+          c.appendChild(row);
+        } else {
+          const pct = Math.min(d.percent_used || 0, 100);
+          const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
+
+          const header = document.createElement('div');
+          header.className = 'flex items-center justify-between text-sm mb-2';
+          const left = document.createElement('span');
+          left.className = 'text-gray-400';
+          left.textContent = '$' + (d.used_usd || 0).toFixed(4) + ' / $' + (d.budget_usd || 0).toFixed(2);
+          const right = document.createElement('span');
+          right.className = 'font-bold';
+          right.style.color = barColor;
+          right.textContent = pct.toFixed(1) + '%';
+          header.appendChild(left); header.appendChild(right);
+          c.appendChild(header);
+
+          const track = document.createElement('div');
+          track.className = 'w-full bg-gray-800 rounded-full h-2 mb-3';
+          const fill = document.createElement('div');
+          fill.className = 'h-2 rounded-full transition-all duration-500';
+          fill.style.width = pct + '%';
+          fill.style.backgroundColor = barColor;
+          track.appendChild(fill);
+          c.appendChild(track);
+
+          if (d.warning) {
+            const warn = document.createElement('p');
+            warn.className = 'text-xs text-red-400 mb-2';
+            warn.textContent = 'Budget >= 90% - Tier A/S requests may exceed cap';
+            c.appendChild(warn);
+          }
+        }
+
+        const meta = document.createElement('p');
+        meta.className = 'text-xs text-gray-700 mt-1';
+        meta.textContent = (d.action_count || 0) + ' actions this month (' + (d.month || '') + ')';
+        c.appendChild(meta);
+
+      } catch(e) {
+        console.error('Subscription load failed:', e);
+      }
+    }
+
     // ── Init + auto-refresh ───────────────────────────────────────────────
-    Promise.all([loadHealth(), loadTasks()]);
+    Promise.all([loadHealth(), loadTasks(), loadSubscription()]);
     setInterval(() => Promise.all([loadHealth(), loadTasks()]), 30000);
+    setInterval(loadSubscription, 60000);
   </script>
 </body>
 </html>

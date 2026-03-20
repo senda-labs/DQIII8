@@ -155,6 +155,19 @@ def main():
     except Exception as _e:
         print(f"  ⚠️  Security hardening skipped: {_e}")
 
+    # Hardware profile
+    try:
+        import importlib.util as _ilu
+        _spec2 = _ilu.spec_from_file_location("system_profile", Path(__file__).parent / "system_profile.py")
+        _sp = _ilu.module_from_spec(_spec2)
+        _spec2.loader.exec_module(_sp)
+        _profile = _sp.detect_hardware()
+        _ram = _profile["ram"].get("total_mb", "?")
+        _cores = _profile["cpu"]["cores"]
+        print(f"  Hardware: {_cores} cores, {_ram}MB RAM → recommended Tier C: {_profile['recommended_model']}")
+    except Exception as _e:
+        print(f"  ⚠️  Hardware detection skipped: {_e}")
+
     # Verify .env is not tracked by git
     ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
     _tracked = subprocess.run(

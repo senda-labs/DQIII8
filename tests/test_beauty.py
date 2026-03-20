@@ -22,3 +22,24 @@ def test_competitive_index_range():
     for brand in brands:
         score = calculate_competitive_index(brand, brands)
         assert 0.0 <= score <= 100.0, f"{brand.name} score {score} out of [0, 100]"
+
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+
+def _make_client():
+    from beauty_router import beauty_router
+    _app = FastAPI()
+    _app.include_router(beauty_router)
+    return TestClient(_app)
+
+
+def test_analysis_ranking_order():
+    client = _make_client()
+    resp = client.get("/beauty/api/analysis")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 6
+    scores = [item["score"] for item in data]
+    assert scores == sorted(scores, reverse=True), "Brands not sorted by score descending"

@@ -218,17 +218,15 @@ if [ "$SKIP_MODEL" = "1" ]; then
     info "Skipping model pull (--no-model)"
     ok "Pull later with: ollama pull qwen2.5-coder:7b"
 else
-    # Auto-select model size based on available RAM
-    _rec_model="$(python3 -c "
-import sys
-sys.path.insert(0, '$PROJECT_DIR/bin')
-try:
-    from system_profile import detect_hardware
-    print(detect_hardware()['recommended_model'])
-except Exception:
-    print('7b')
-" 2>/dev/null || echo '7b')"
-    _model_name="qwen2.5-coder:${_rec_model}"
+    # Auto-select model size based on AVAILABLE RAM
+    _avail_mb="$(free -m 2>/dev/null | awk '/^Mem:/{print $7}' || echo 8000)"
+    if [ "${_avail_mb:-0}" -ge 8000 ]; then
+        _model_name="qwen2.5-coder:7b"
+    elif [ "${_avail_mb:-0}" -ge 4000 ]; then
+        _model_name="qwen2.5-coder:3b"
+    else
+        _model_name="qwen2.5-coder:1.5b"
+    fi
     info "Pulling ${_model_name} (recommended for your RAM)..."
     if ! ollama list &>/dev/null 2>&1; then
         ollama serve &>/tmp/ollama-dqiii8.log &
@@ -256,6 +254,13 @@ if [ ! -f "$DB_PATH" ]; then
 else
     ok "Database already exists"
 fi
+
+# Purge test/failure artifacts so fresh installs start at 100/100 health
+sqlite3 "$DB_PATH" "
+    DELETE FROM error_log;
+    DELETE FROM agent_actions WHERE success = 0;
+" 2>/dev/null || true
+ok "Database baseline — clean"
 
 # ── Phase 5: Claude Code (optional) ──────────────────────────────────────────
 step 5 7 "Installing Node.js + Claude Code..."

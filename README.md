@@ -36,9 +36,9 @@ dq "Create a business plan for a coffee shop in my city"
 ```
 User prompt
     ↓
-Classifier (keyword + semantic embedding) → Domain detection (5 centroids, bilingual EN/ES)
+Bilingual classifier (EN/ES) → Domain detection across 5 knowledge areas
     ↓
-Knowledge enrichment → Inject expert context (495 chunks across 27 agents)
+Knowledge enrichment → Inject expert context from domain-specific knowledge bases
     ↓
 Tier router → Select cheapest capable model
     ↓
@@ -134,15 +134,15 @@ Each prompt is automatically enriched with domain-specific context (VaR methods,
 
 DQIII8 is built around five composable layers:
 
-**1. Classification** — Bilingual keyword matcher (EN/ES) with word-boundary precision + semantic embedding fallback. 13/13 accuracy on mixed-language test suite.
+**1. Classification** — Bilingual classifier (EN/ES) with high precision. 13/13 accuracy on mixed-language test suite.
 
-**2. Knowledge** — 495 indexed chunks across 5 centroids and 27 specialized agents. Expert-level content with real equations, industry parameters, and regulatory standards — sourced from Basel IV/FRTB, ISSN position statements, LCSP Ley 9/2017, and NIH RDAs. Not generic.
+**2. Knowledge** — Expert-level knowledge bases across all domains. Content sourced from regulatory standards, academic research, and industry frameworks. Real equations, industry parameters, not generic summaries.
 
-**3. Routing** — Hierarchical Multi-Centroid Weighted Router (HMCWR) activates up to 2 centroids simultaneously. A nutrition + business prompt activates both `natural_sciences` and `social_sciences` agents.
+**3. Routing** — Intelligent router that activates the right agents for each task. Multi-domain tasks are handled by coordinating specialized agents.
 
 **4. Execution** — 5-tier model cascade. Automatic escalation on failure. Cost tracking per task.
 
-**5. Learning** — Self-auditing via Statistical Process Control. Error pattern detection. Automatic lesson extraction. ML-based tier recommendation trained on 9,376+ historical actions.
+**5. Learning** — Self-auditing via Statistical Process Control. Error pattern detection. Automatic lesson extraction. ML-based tier recommendation trained on historical usage data.
 
 **Tech stack:** Python, SQLite, Ollama, Groq, Claude API, Telegram. No Docker. No Kubernetes. No complexity tax.
 
@@ -160,7 +160,7 @@ Five centroids cover the full spectrum of human expertise:
 | **Humanities & Arts** | Literature, Philosophy, History, Creative Writing | Narrative structure, ethics, historiography |
 | **Applied Sciences** | Software Eng, Web Dev, Data Eng, AI/ML, DevOps | React, TypeScript, C++20, Docker, system design |
 
-Each agent has specialized sub-agents. Finance alone has 5: portfolio management, risk management, derivatives, quantitative finance, and accounting — each with real equations and industry-standard parameters.
+Each domain has specialized agents with real equations and industry parameters.
 
 The free tier includes the routing framework. Expert knowledge bases are part of premium.
 
@@ -175,7 +175,7 @@ dq --dashboard --host 0.0.0.0     # Remote: http://your-ip:8080?token=TOKEN
 
 Token is stored in `database/.dashboard_token`.
 
-Real-time visualization of the Intent Amplification pipeline: domain classification, agent activation, knowledge retrieval, and prompt enrichment — all observable before execution.
+Real-time visualization of task classification, agent routing, and execution — all observable before any model is called.
 
 ---
 
@@ -226,7 +226,7 @@ cat tasks/nightly-report.md
 | Self-auditing | No | No | Yes (SPC, offline) |
 | Auto-learning | No | No | Yes (error patterns) |
 | Prompt skill needed | Yes | Yes | No (domain enrichment) |
-| Multi-domain routing | No | No | Yes (5 centroids, 27 agents) |
+| Multi-domain routing | No | No | Yes (5 domains, specialized agents per domain) |
 | Bilingual | Depends on model | No | EN/ES native |
 | Your data | Their cloud | Your machine | Your machine |
 
@@ -238,8 +238,8 @@ cat tasks/nightly-report.md
 |---|---|---|
 | Framework | Full routing, auditor, auto-learning | ✓ |
 | Tiers | C + B | C + B + A + S + S+ |
-| Knowledge | Structure + IDENTITY files | Deep domain expertise (495 chunks) |
-| Agents | Basic routing | 27 specialized agents + sub-agents |
+| Knowledge | Structure + IDENTITY files | Deep domain expertise across all domains |
+| Agents | Basic routing | Specialized agents per domain |
 | Dashboard | ✓ | ✓ |
 | Support | GitHub Issues | Priority |
 
@@ -278,20 +278,19 @@ See [PRIVACY.md](PRIVACY.md) for details.
 |--------|-------|
 | Health score | 99.8/100 HEALTHY |
 | Classifier accuracy | 13/13 (EN + ES) |
-| Knowledge chunks | 495 across 5 domains |
-| Specialized agents | 27 |
+| Knowledge chunks | Growing |
+| Specialized agents | Growing |
 | Tests passing | 45+ |
-| Historical actions | 9,376+ |
 
 ---
 
 ## The Story
 
-Built by a finance student in London with zero CS background using Claude Code. Tried OpenClaw — loved the idea, too complex for non-developers. Built something different: an AI that works for you so you can go outside and live.
+Built by two finance students in London with zero CS background using Claude Code. Tried OpenClaw — loved the idea, too complex for non-developers. Built something different: an AI that works for you so you can go outside and live.
 
 The system classifies your intent, enriches your prompt with domain expertise, picks the cheapest model that can do the job, and audits itself every week. You don't have to think about any of it.
 
-If a finance student can build a system that scores 99.8/100 on its own health audit, imagine what it can do for you.
+If two finance students can build a system that scores 99.8/100 on its own health audit, imagine what it can do for you.
 
 ---
 
@@ -310,6 +309,6 @@ MIT — use it, modify it, ship it.
 ---
 
 <p align="center">
-  Built by <a href="https://github.com/ikermartiinsv-eng">Iker</a> at <a href="https://github.com/senda-labs">Senda Labs</a> with Claude Code.<br>
+  Built by <a href="https://github.com/ikermartiinsv-eng">Iker</a> and Guillermo at <a href="https://github.com/senda-labs">Senda Labs</a> with Claude Code.<br>
   <em>The irony of building an AI orchestrator with AI is not lost on us.</em>
 </p>

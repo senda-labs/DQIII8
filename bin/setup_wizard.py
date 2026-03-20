@@ -10,6 +10,7 @@ Usage:
 
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -187,6 +188,20 @@ def setup() -> int:
     print()
     print("  Try it now:")
     print('    dq "Explain what Value at Risk means in 3 sentences"')
+    print()
+
+    # ── Dashboard offer ───────────────────────────────────────────────────────
+    print("─── Dashboard ───")
+    if input("  Open web dashboard now? (Y/n): ").strip().lower() not in ("n", "no"):
+        subprocess.Popen(
+            [sys.executable, str(JARVIS_ROOT / "bin" / "dashboard.py")],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        print("  Dashboard started at http://localhost:8080")
+        print("  Stop it with: pkill -f dashboard.py")
+    else:
+        print("  Start later with: dq --dashboard")
     print()
 
     return 0

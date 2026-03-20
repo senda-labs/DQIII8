@@ -110,7 +110,10 @@ def check_learning_rate(conn: sqlite3.Connection, period_days: int) -> tuple[flo
         ).fetchone()
         count = row[0] or 0
     except sqlite3.OperationalError:
-        return 0.0, {"count": 0, "target": target, "note": "table missing"}
+        return 50.0, {"count": 0, "target": target, "note": "table missing — fresh install"}
+
+    if count == 0:
+        return 50.0, {"count": 0, "target": target, "note": "fresh install"}
 
     score = min(count / target * 100, 100.0)
     return score, {"count": count, "target": target}

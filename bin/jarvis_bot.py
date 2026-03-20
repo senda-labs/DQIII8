@@ -100,7 +100,7 @@ def run_cmd(cmd: list[str], timeout: int = 120) -> str:
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=DQIII8,
+            cwd=str(JARVIS),
             encoding="utf-8",
         )
         return (result.stdout + result.stderr).strip() or "(no output)"
@@ -426,16 +426,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         f"*DQIII8 Bot — mobile terminal*\n\n"
         f"Chat ID: `{chat_id}`\n\n"
+        "*DQ tasks (tier-routed):*\n"
+        "/dq [prompt] — runs through DQ tier router\n\n"
         "*Claude Code tasks:*\n"
         "/task [desc] — launches claude -p in background\n"
         "/tasks — list active tasks\n"
         "/output [id] — task status\n"
         "/kill [id] — cancel task\n\n"
-        "*JAL system:*\n"
+        "*System:*\n"
         "/status — active objectives in DB\n"
         "/score — latest scoring snapshot\n"
         "/logs — last 20 log lines\n"
-        "/audit — runs gemini\\_review.py\n"
+        "/audit — local health audit (offline)\n"
         "/run [name.md] — runs jal\\_run.py\n\n"
         "Free message: action verb or \\>15 words → automatic /task.\n"
         "Otherwise → quick response."
@@ -544,11 +546,35 @@ async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
         await update.message.reply_text("Unauthorized.")
         return
-    await update.message.reply_text("Running gemini_review.py... (may take a while)")
+    await update.message.reply_text("Running local health audit...")
     log.info("/audit started")
-    output = run_cmd(["python3", "bin/gemini_review.py"], timeout=180)
-    await send_chunks(update, f"*Resultado audit:*\n```\n{output[:3800]}\n```")
+    output = run_cmd(["python3", "bin/auditor_local.py"], timeout=60)
+    await send_chunks(update, f"*DQ Health Audit:*\n```\n{output[:3800]}\n```")
     log.info("/audit completed")
+
+
+async def cmd_dq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /dq [prompt]
+    Runs a prompt through bin/j.sh (full tier routing) in background.
+    Example: /dq refactor bin/dashboard.py to add dark mode
+    """
+    if not authorized(update):
+        await update.message.reply_text("Unauthorized.")
+        return
+    description = " ".join(context.args).strip() if context.args else ""
+    if not description:
+        await update.message.reply_text(
+            "Usage: `/dq [prompt]`\nExample: `/dq explain what Risk Parity means`",
+            parse_mode="Markdown",
+        )
+        return
+    task_id = await _spawn_task(update, description)
+    await update.message.reply_text(
+        f"🚀 `{task_id}` via DQ router\n_{description[:80]}_",
+        parse_mode="Markdown",
+    )
+    log.info("/dq: %s | %s", task_id, description[:60])
 
 
 async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -881,6 +907,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("score", cmd_score))
     APP.add_handler(CommandHandler("logs", cmd_logs))
     APP.add_handler(CommandHandler("audit", cmd_audit))
+    APP.add_handler(CommandHandler("dq", cmd_dq))
     APP.add_handler(CommandHandler("run", cmd_run))
     APP.add_handler(CommandHandler("task", cmd_task))
     APP.add_handler(CommandHandler("tasks", cmd_tasks))

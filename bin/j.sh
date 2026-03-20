@@ -21,14 +21,35 @@ set -euo pipefail
 JARVIS_ROOT="${JARVIS_ROOT:-/root/jarvis}"
 OR_WRAPPER="$JARVIS_ROOT/bin/openrouter_wrapper.py"
 MODEL_SONNET="claude-sonnet-4-6"
-OLLAMA_MODEL="qwen2.5-coder:7b"
 OLLAMA_FALLBACK="qwen/qwen3-235b-a22b:free"
+
+# ── Verbosity flag (early detection, before any output) ───────────────────────
+VERBOSE=0
+for _varg in "$@"; do
+    [[ "$_varg" == "--verbose" || "$_varg" == "--debug" ]] && VERBOSE=1 && break
+done
 
 # Load environment variables
 [[ -f "$JARVIS_ROOT/.env" ]] && set -a && source "$JARVIS_ROOT/.env" && set +a
 
+# ── Dynamic Ollama model — auto-select by available RAM ───────────────────────
+_recommended_model="$(python3 -c "
+import sys
+sys.path.insert(0, '$JARVIS_ROOT/bin')
+try:
+    from system_profile import detect_hardware
+    print(detect_hardware()['recommended_model'])
+except Exception:
+    print('7b')
+" 2>/dev/null || echo '7b')"
+OLLAMA_MODEL="qwen2.5-coder:${_recommended_model}"
+
 # Environment validation
-python3 "$(dirname "$0")/validate_env.py" || echo "[warn] Environment check failed"
+if [[ "$VERBOSE" == "1" ]]; then
+    python3 "$(dirname "$0")/validate_env.py" || echo "[warn] Environment check failed"
+else
+    python3 "$(dirname "$0")/validate_env.py" --quiet >/dev/null 2>&1 || true
+fi
 
 # Flag A/B: purpose active if .jarvis_proposito exists
 # Enable: touch /root/jarvis/.jarvis_proposito
@@ -48,7 +69,14 @@ check_deps() {
     if [[ "$_dq_tier" == "auto" || "$_dq_tier" == "" ]] && [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
         echo "⚠️  ANTHROPIC_API_KEY not defined — Tier A/S/S+ unavailable. Run: dq --setup"
     fi
-    echo "✅ System OK — starting DQIII8"
+    if [[ "${VERBOSE:-0}" == "1" ]]; then
+        echo "✅ System OK — starting DQIII8"
+    else
+        _active_tier="Ollama"
+        [[ -n "${GROQ_API_KEY:-}" ]] && _active_tier="Groq"
+        [[ -n "${ANTHROPIC_API_KEY:-}" ]] && _active_tier="Sonnet"
+        echo "✓ DQ ready | $_active_tier"
+    fi
 }
 
 MODEL="sonnet"
@@ -213,6 +241,10 @@ Generate an executive report comparing:
 Be specific and use the actual data."
             exit 0
             ;;
+        --verbose|--debug)
+            VERBOSE=1
+            shift
+            ;;
         --harvest)
             shift
             exec python3 "$JARVIS_ROOT/bin/paper_harvester.py" "$@"
@@ -242,6 +274,7 @@ DQIII8 — 3-tier routing
   j --upload FILE [--agent A] [--domain D]  upload knowledge file (PDF/MD/TXT/DOCX/ZIP)
   j --dashboard [--host H] [--port P]       web dashboard (localhost:8080 by default)
   j --harvest [--domain D] [--agent A] [--all] [--prune]  harvest papers from arXiv + Semantic Scholar
+  j --verbose                       show full environment check output
 
 Tiers:
   local   Tier 1 — Ollama $OLLAMA_MODEL (free, local)

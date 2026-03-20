@@ -283,7 +283,7 @@ def build_request(provider_name: str, model: str, prompt: str):
     url = f"{base}/chat/completions"
     _validate_url(url)
 
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "DQIII8/1.0"}
     api_key_env = cfg["api_key_env"]
     if api_key_env:
         key = os.environ.get(api_key_env, "")

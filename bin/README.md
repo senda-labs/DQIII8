@@ -9,7 +9,7 @@ When we reorganize, scripts will move to:
 - **core/** — orchestrator, routing, database, config
   - db.py, embeddings.py, notify.py, openrouter_wrapper.py, validate_env.py
 - **agents/** — agent definitions and routing
-  - intent_amplifier.py, hierarchical_router.py, domain_classifier.py, knowledge_indexer.py
+  - domain_classifier.py, knowledge_indexer.py
 - **monitoring/** — audit, metrics, subscription
   - auditor.py, subscription.py, system_profile.py, energy_tracker.py, telemetry.py
 - **tools/** — utilities and standalone tools

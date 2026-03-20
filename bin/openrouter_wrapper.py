@@ -567,7 +567,7 @@ def main() -> None:
     except Exception:
         pass
 
-    # Intent amplification (best-effort — enriches prompt with context layers)
+    # Prompt enrichment (best-effort — adds domain context when available)
     try:
         _ia_path = Path(__file__).parent / "intent_amplifier.py"
         if _ia_path.exists():

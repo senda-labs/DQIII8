@@ -7,9 +7,7 @@ Welcome to the DQ beta! You have access to:
 - Auto-learning from error patterns
 
 Coming soon (premium):
-- Intent Amplification (automatic prompt enhancement)
-- Hierarchical Multi-Centroid Router (multi-domain classification)
-- Knowledge Upload (add your own documents)
+- Knowledge Upload
 
 ## How to give feedback
 1. Open an issue on GitHub: github.com/senda-labs/DQIII8/issues

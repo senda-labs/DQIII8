@@ -61,13 +61,27 @@ echo "  DB size: $(du -h $JARVIS_ROOT/database/jarvis_metrics.db | cut -f1)"
 echo "  Uptime: $(uptime -p)"
 echo ""
 
-# ── 6. Telemetry (opt-in) ──
+# ── 6. Local health audit ──
+echo "## 6. Health Audit"
+if python3 "$JARVIS_ROOT/bin/auditor_local.py" 2>&1; then
+    echo "✓ Audit completed"
+else
+    EXIT_CODE=$?
+    if [ "$EXIT_CODE" -eq 1 ]; then
+        echo "⚠ Audit: WARNING — review score above"
+    else
+        echo "✗ Audit: CRITICAL — immediate attention required"
+    fi
+fi
+echo ""
+
+# ── 7. Telemetry (opt-in) ──
 echo "## 6. Telemetry"
 python3 "$JARVIS_ROOT/bin/telemetry.py" --send 2>&1 || echo "  Telemetry: disabled or failed"
 echo ""
 
-# ── 7. Git commit (no push) ──
-echo "## 7. Git status"
+# ── 8. Git commit (no push) ──
+echo "## 8. Git status"
 git add -A
 if git diff --cached --quiet; then
     echo "  No changes to commit"
@@ -79,13 +93,13 @@ echo ""
 
 REPORT="${JARVIS_ROOT}/tasks/nightly-report.md"
 
-# ── 8. Paper harvester ──
-echo "## 8. Paper Harvest"
+# ── 9. Paper harvester ──
+echo "## 9. Paper Harvest"
 python3 "$JARVIS_ROOT/bin/paper_harvester.py" --all 2>&1 || echo "  Paper harvest failed"
 echo ""
 
-# ── 9. Prune outdated papers ──
-echo "## 9. Prune Outdated Papers"
+# ── 10. Prune outdated papers ──
+echo "## 10. Prune Outdated Papers"
 python3 "$JARVIS_ROOT/bin/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
 echo ""
 

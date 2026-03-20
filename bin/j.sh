@@ -92,7 +92,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --audit)
-            exec python3 "$JARVIS_ROOT/bin/gemini_review.py" --check-only
+            exec python3 "$JARVIS_ROOT/bin/auditor_local.py"
             ;;
         --classify|-c)
             shift
@@ -181,7 +181,7 @@ DQIII8 — 3-tier routing
 
   j [--model local|groq|sonnet] [PROMPT]
   j --status              proyecto + modelo + ollama ps + tmux
-  j --audit               Gemini code review (check-only)
+  j --audit               Local health audit (no LLM, Tier C compatible)
   j --classify TEXT       show tier for the given prompt
   j --autonomous "objective" [h]  autonomous mode with 3-layer supervisor (def. 8h)
   j --loop PROJECT [N] [TIER]   OrchestratorLoop: tier1/tier2/tier3/haiku (def. tier3)

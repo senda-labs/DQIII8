@@ -43,7 +43,11 @@ check_deps() {
     python3 --version > /dev/null 2>&1 || { echo "❌ Python3 not found"; exit 1; }
     ollama list > /dev/null 2>&1 || echo "⚠️  Ollama not responding — using Tier 2/3 only"
     [ -f "$JARVIS_ROOT/.env" ] || { echo "❌ .env not found in $JARVIS_ROOT"; exit 1; }
-    [ -n "${ANTHROPIC_API_KEY:-}" ] || { echo "❌ ANTHROPIC_API_KEY not defined"; exit 1; }
+    # Anthropic key is optional — only required when DQ_DEFAULT_TIER=auto and user calls Tier A
+    _dq_tier="${DQ_DEFAULT_TIER:-auto}"
+    if [[ "$_dq_tier" == "auto" || "$_dq_tier" == "" ]] && [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+        echo "⚠️  ANTHROPIC_API_KEY not defined — Tier A/S/S+ unavailable. Run: dq --setup"
+    fi
     echo "✅ System OK — starting DQIII8"
 }
 
@@ -67,6 +71,44 @@ show_status() {
 ollama_available() {
     ollama ps &>/dev/null && ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
 }
+
+# ── Early flags — run before full env check ──────────────────────────────────
+case "${1:-}" in
+    --setup)
+        shift
+        exec python3 "$JARVIS_ROOT/bin/setup_wizard.py" "$@"
+        ;;
+    --set-groq)
+        if [ -z "${2:-}" ]; then
+            echo "Usage: dq --set-groq gsk_YOUR_KEY"
+            exit 1
+        fi
+        chmod 600 "$JARVIS_ROOT/.env" 2>/dev/null || true
+        if grep -q "^GROQ_API_KEY=" "$JARVIS_ROOT/.env" 2>/dev/null; then
+            sed -i "s|^GROQ_API_KEY=.*|GROQ_API_KEY=$2|" "$JARVIS_ROOT/.env"
+        else
+            echo "GROQ_API_KEY=$2" >> "$JARVIS_ROOT/.env"
+        fi
+        chmod 600 "$JARVIS_ROOT/.env"
+        echo "✓ Groq API key configured. Tier B now available."
+        exit 0
+        ;;
+    --set-anthropic)
+        if [ -z "${2:-}" ]; then
+            echo "Usage: dq --set-anthropic sk-ant-YOUR_KEY"
+            exit 1
+        fi
+        chmod 600 "$JARVIS_ROOT/.env" 2>/dev/null || true
+        if grep -q "^ANTHROPIC_API_KEY=" "$JARVIS_ROOT/.env" 2>/dev/null; then
+            sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$2|" "$JARVIS_ROOT/.env"
+        else
+            echo "ANTHROPIC_API_KEY=$2" >> "$JARVIS_ROOT/.env"
+        fi
+        chmod 600 "$JARVIS_ROOT/.env"
+        echo "✓ Anthropic API key configured. Tiers A/S/S+ now available."
+        exit 0
+        ;;
+esac
 
 check_deps
 
@@ -93,6 +135,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --audit)
             exec python3 "$JARVIS_ROOT/bin/auditor_local.py"
+            ;;
+        --setup)
+            exec python3 "$JARVIS_ROOT/bin/setup_wizard.py"
+            ;;
+        --set-groq|--set-anthropic)
+            # Already handled above; reaching here means they were passed after other flags
+            echo "Error: --set-groq / --set-anthropic must be the first argument." >&2
+            exit 1
             ;;
         --classify|-c)
             shift
@@ -182,6 +232,9 @@ DQIII8 — 3-tier routing
   j [--model local|groq|sonnet] [PROMPT]
   j --status              proyecto + modelo + ollama ps + tmux
   j --audit               Local health audit (no LLM, Tier C compatible)
+  j --setup               Interactive setup wizard (keys + default tier)
+  j --set-groq KEY        Set Groq API key in .env (one command)
+  j --set-anthropic KEY   Set Anthropic API key in .env (one command)
   j --classify TEXT       show tier for the given prompt
   j --autonomous "objective" [h]  autonomous mode with 3-layer supervisor (def. 8h)
   j --loop PROJECT [N] [TIER]   OrchestratorLoop: tier1/tier2/tier3/haiku (def. tier3)
@@ -222,6 +275,21 @@ case "$MODEL" in
         ;;
 
     sonnet|"")
+        # Respect DQ_DEFAULT_TIER when no explicit --model flag was given
+        _dq_default="${DQ_DEFAULT_TIER:-auto}"
+        if [[ "$_dq_default" == "groq-only" || "$_dq_default" == "groq+ollama" ]]; then
+            echo "[DQIII8] DQ_DEFAULT_TIER=$_dq_default → Tier 2 (Groq, free)" >&2
+            exec python3 "$OR_WRAPPER" --agent git-specialist "$@"
+        elif [[ "$_dq_default" == "ollama-only" ]]; then
+            echo "[DQIII8] DQ_DEFAULT_TIER=$_dq_default → Tier 1 (Ollama, local)" >&2
+            if ollama_available; then
+                exec claude --model "ollama:$OLLAMA_MODEL" "$@"
+            else
+                echo "[DQIII8] Ollama unavailable → fallback openrouter/$OLLAMA_FALLBACK" >&2
+                exec python3 "$OR_WRAPPER" --model "$OLLAMA_FALLBACK" "$@"
+            fi
+        fi
+        # auto (or unset) → default Sonnet behaviour
         _router_out="$(python3 "$JARVIS_ROOT/bin/model_router.py" "código" 2>/dev/null || true)"
         echo "[DQIII8] Tier 3 — Claude $MODEL_SONNET | Cost: standard" >&2
         [[ -n "$_router_out" ]] && echo "[DQIII8] Active model: $_router_out" >&2

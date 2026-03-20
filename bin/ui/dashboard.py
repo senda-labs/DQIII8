@@ -21,7 +21,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-sys.path.insert(0, str(JARVIS / "bin"))
+for _d in [JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]]:
+    if str(_d) not in sys.path:
+        sys.path.insert(0, str(_d))
 
 try:
     from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File
@@ -173,8 +175,8 @@ _INTENT_SUBTASKS: dict[str, list[str]] = {
 DASHBOARD_HTML: str = ""
 LOGIN_HTML: str = ""
 
-DASHBOARD_HTML_PATH = JARVIS / "bin" / "dashboard.html"
-LOGIN_HTML_PATH = JARVIS / "bin" / "login.html"
+DASHBOARD_HTML_PATH = JARVIS / "bin" / "ui" / "dashboard.html"
+LOGIN_HTML_PATH = JARVIS / "bin" / "ui" / "login.html"
 
 _LOGIN_FALLBACK = """<!DOCTYPE html><html><body style="background:#0a0a0f;color:#fff;font-family:monospace;display:flex;align-items:center;justify-content:center;min-height:100vh">
 <form action="/" method="GET" style="text-align:center;gap:1rem;display:flex;flex-direction:column">

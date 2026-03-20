@@ -163,6 +163,10 @@ Generate an executive report comparing:
 Be specific and use the actual data."
             exit 0
             ;;
+        --harvest)
+            shift
+            exec python3 "$JARVIS_ROOT/bin/paper_harvester.py" "$@"
+            ;;
         --upload|-u)
             shift
             exec python3 "$JARVIS_ROOT/bin/knowledge_upload.py" "$@"
@@ -184,6 +188,7 @@ DQIII8 — 3-tier routing
   j --benchmark-report         Sonnet report comparing tiers
   j --upload FILE [--agent A] [--domain D]  upload knowledge file (PDF/MD/TXT/DOCX/ZIP)
   j --dashboard [--host H] [--port P]       web dashboard (localhost:8080 by default)
+  j --harvest [--domain D] [--agent A] [--all] [--prune]  harvest papers from arXiv + Semantic Scholar
 
 Tiers:
   local   Tier 1 — Ollama $OLLAMA_MODEL (free, local)

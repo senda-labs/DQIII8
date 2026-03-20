@@ -1,8 +1,5 @@
 # JARVIS .gitignore
 
-Premium features temporarily public. Will be re-excluded after beta.
-# bin/hierarchical_router.py
-
 # Database (not versioned — too large and sensitive)
 database/*.db
 database/*.db-wal
@@ -73,6 +70,27 @@ tasks/precompact_state.json
 # Premium features (not included in free tier)
 knowledge/*/user_uploads/
 knowledge/**/PREMIUM_*
+
+# Premium test suites
+tests/test_e2e_pipeline.py
+
+# Premium knowledge — deep domain expertise (not in public tier)
+knowledge/social_sciences/finance/portfolio_management/
+knowledge/social_sciences/finance/risk_management/
+knowledge/social_sciences/finance/derivatives/
+knowledge/social_sciences/finance/quantitative_finance/
+knowledge/social_sciences/finance/accounting/
+knowledge/natural_sciences/biology/nutrition/
+knowledge/social_sciences/marketing/seo/
+knowledge/social_sciences/marketing/paid_advertising/
+knowledge/social_sciences/marketing/analytics/
+knowledge/social_sciences/law/public_tenders/
+knowledge/applied_sciences/web_development/javascript/
+knowledge/applied_sciences/web_development/typescript/
+knowledge/applied_sciences/web_development/react/
+knowledge/applied_sciences/software_engineering/cpp/
+knowledge/social_sciences/finance/templates/
+knowledge/natural_sciences/biology/templates/
 tasks/diagnostic_*.md
 tasks/jarvis_architecture_v1.*
 tasks/*.zip

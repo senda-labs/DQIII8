@@ -1,4 +1,4 @@
-# JARVIS .gitignore
+# DQIII8 .gitignore
 
 # Database (not versioned — too large and sensitive)
 database/*.db

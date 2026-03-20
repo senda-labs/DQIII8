@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DQ Settings</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0a0a0f; }
+    input:focus { outline: none; }
+  </style>
+</head>
+<body class="text-gray-100 min-h-screen font-mono antialiased">
+
+  <header class="border-b border-gray-800/60 px-6 py-4">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <a href="/" class="text-gray-600 hover:text-gray-400 text-sm transition-colors">← Dashboard</a>
+        <span class="text-gray-700">|</span>
+        <h1 class="text-sm font-bold text-white uppercase tracking-widest">Settings</h1>
+      </div>
+      <span id="save-status" class="text-xs text-gray-700"></span>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-8 space-y-6">
+
+    <!-- OAuth Status -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800/60 p-5">
+      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Claude OAuth</h2>
+      <div id="oauth-card" class="flex items-center gap-3">
+        <div id="oauth-dot" class="w-2.5 h-2.5 rounded-full bg-gray-700"></div>
+        <div>
+          <p id="oauth-status" class="text-sm text-gray-400">Checking...</p>
+          <p id="oauth-detail" class="text-xs text-gray-700 mt-0.5"></p>
+        </div>
+      </div>
+      <p class="text-xs text-gray-700 mt-4">
+        Authenticate with <code class="text-gray-500">claude /login</code> to use Claude at $0 (Pro plan).
+      </p>
+    </div>
+
+    <!-- API Keys -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800/60 p-5 space-y-5">
+      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">API Keys</h2>
+
+      <div>
+        <label class="block text-xs text-gray-500 mb-1.5">Groq API Key <span class="text-gray-700">(free cloud models)</span></label>
+        <div class="flex gap-2">
+          <input
+            id="groq-key"
+            type="password"
+            placeholder="gsk_..."
+            class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-purple-500 transition-colors"
+          />
+          <button onclick="saveKey('GROQ_API_KEY', 'groq-key')"
+            class="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-xs font-bold transition-colors">
+            Save
+          </button>
+        </div>
+        <p class="text-xs text-gray-700 mt-1">Get your key at console.groq.com/keys</p>
+      </div>
+
+      <div>
+        <label class="block text-xs text-gray-500 mb-1.5">Anthropic API Key <span class="text-gray-700">(Claude, paid)</span></label>
+        <div class="flex gap-2">
+          <input
+            id="anthropic-key"
+            type="password"
+            placeholder="sk-ant-..."
+            class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-amber-500 transition-colors"
+          />
+          <button onclick="saveKey('ANTHROPIC_API_KEY', 'anthropic-key')"
+            class="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-colors">
+            Save
+          </button>
+        </div>
+        <p class="text-xs text-gray-700 mt-1">Get your key at console.anthropic.com/settings/keys</p>
+      </div>
+    </div>
+
+    <!-- Default Tier -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800/60 p-5">
+      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Default Routing Tier</h2>
+      <div class="flex gap-3 items-center">
+        <select
+          id="default-tier"
+          class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 transition-colors"
+        >
+          <option value="auto">auto — DQ picks best tier per task</option>
+          <option value="groq-only">groq-only — Groq handles everything</option>
+          <option value="groq+ollama">groq+ollama — Groq plans, Ollama runs</option>
+          <option value="ollama-only">ollama-only — Fully local, no internet</option>
+        </select>
+        <button onclick="saveTier()"
+          class="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-xs font-bold transition-colors">
+          Save
+        </button>
+      </div>
+    </div>
+
+    <!-- Available Tiers Status -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800/60 p-5">
+      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Available Tiers</h2>
+      <div id="tiers-list" class="space-y-3">
+        <p class="text-xs text-gray-700">Loading...</p>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="border-t border-gray-800/60 px-6 py-4 mt-8">
+    <div class="max-w-3xl mx-auto text-xs text-gray-700">
+      Keys are stored in <code class="text-gray-600">.env</code> (chmod 600). Never committed to git.
+    </div>
+  </footer>
+
+  <script>
+    async function loadSettings() {
+      try {
+        const r = await fetch('/api/settings');
+        if (!r.ok) return;
+        const s = await r.json();
+
+        // OAuth
+        const dot = document.getElementById('oauth-dot');
+        const statusEl = document.getElementById('oauth-status');
+        const detailEl = document.getElementById('oauth-detail');
+        if (s.oauth && s.oauth.available) {
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-green-500';
+          statusEl.textContent = 'Authenticated';
+          statusEl.className = 'text-sm text-green-400';
+          detailEl.textContent = 'Method: ' + (s.oauth.method || '') + ' — ' + (s.oauth.plan || '');
+        } else {
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-gray-600';
+          statusEl.textContent = 'Not authenticated';
+          statusEl.className = 'text-sm text-gray-500';
+          detailEl.textContent = 'Run: claude /login';
+        }
+
+        // Masked keys as placeholders
+        if (s.groq_key) {
+          document.getElementById('groq-key').placeholder = s.groq_key;
+        }
+        if (s.anthropic_key) {
+          document.getElementById('anthropic-key').placeholder = s.anthropic_key;
+        }
+
+        // Default tier
+        if (s.default_tier) {
+          document.getElementById('default-tier').value = s.default_tier;
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    async function loadTiers() {
+      try {
+        const r = await fetch('/api/tiers');
+        if (!r.ok) return;
+        const data = await r.json();
+        const list = document.getElementById('tiers-list');
+        list.textContent = '';
+        const COLORS = {
+          auto: 'text-blue-400', local: 'text-green-400',
+          groq: 'text-purple-400', claude: 'text-amber-400',
+        };
+        for (const t of data.tiers) {
+          const row = document.createElement('div');
+          row.className = 'flex items-start justify-between gap-4';
+
+          const left = document.createElement('div');
+          const nameRow = document.createElement('div');
+          nameRow.className = 'flex items-center gap-2';
+
+          const dot = document.createElement('span');
+          dot.className = 'w-2 h-2 rounded-full inline-block ' + (t.available ? 'bg-green-500' : 'bg-gray-600');
+          nameRow.appendChild(dot);
+
+          const name = document.createElement('span');
+          name.className = 'text-sm font-bold ' + (COLORS[t.id] || 'text-gray-300');
+          name.textContent = t.label;
+          nameRow.appendChild(name);
+
+          const model = document.createElement('span');
+          model.className = 'text-xs text-gray-700';
+          model.textContent = t.model || '';
+          nameRow.appendChild(model);
+
+          left.appendChild(nameRow);
+
+          if (!t.available && t.setup) {
+            const hint = document.createElement('p');
+            hint.className = 'text-xs text-yellow-700 mt-0.5 ml-4';
+            hint.textContent = t.setup;
+            left.appendChild(hint);
+          } else if (t.description) {
+            const desc = document.createElement('p');
+            desc.className = 'text-xs text-gray-700 mt-0.5 ml-4';
+            desc.textContent = t.description;
+            left.appendChild(desc);
+          }
+
+          row.appendChild(left);
+
+          const cost = document.createElement('span');
+          cost.className = 'text-xs text-gray-600 shrink-0';
+          cost.textContent = t.cost || '';
+          row.appendChild(cost);
+
+          list.appendChild(row);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    async function saveKey(envKey, inputId) {
+      const val = document.getElementById(inputId).value.trim();
+      if (!val) return;
+      try {
+        const r = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [envKey]: val }),
+        });
+        const data = await r.json();
+        if (data.ok) {
+          document.getElementById(inputId).value = '';
+          document.getElementById(inputId).placeholder = val.slice(0, 4) + '••••' + val.slice(-4);
+          showStatus('Saved.');
+          loadTiers();
+        }
+      } catch (e) { showStatus('Error: ' + e.message); }
+    }
+
+    async function saveTier() {
+      const val = document.getElementById('default-tier').value;
+      try {
+        const r = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ DQ_DEFAULT_TIER: val }),
+        });
+        const data = await r.json();
+        if (data.ok) showStatus('Saved.');
+      } catch (e) { showStatus('Error: ' + e.message); }
+    }
+
+    function showStatus(msg) {
+      const el = document.getElementById('save-status');
+      el.textContent = msg;
+      el.className = 'text-xs text-green-500';
+      setTimeout(() => { el.textContent = ''; }, 2500);
+    }
+
+    loadSettings();
+    loadTiers();
+  </script>
+</body>
+</html>

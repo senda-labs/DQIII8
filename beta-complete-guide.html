@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DQ Beta — Guía Completa para Nuevos Usuarios</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Variables ─────────────────────────────────────────────────────────── */
+    :root {
+      --bg:          #08080f;
+      --surface:     #10101a;
+      --surface2:    #18182a;
+      --border:      #25253a;
+      --text:        #e4e4f0;
+      --text-dim:    #6868a0;
+      --accent:      #a78bfa;
+      --accent-dim:  #3d2f6e;
+      --accent-glow: 0 0 20px rgba(167,139,250,0.25);
+      --green:       #34d399;
+      --yellow:      #fbbf24;
+      --red:         #f87171;
+      --code-bg:     #0d0d1a;
+    }
+
+    /* ── Reset ──────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 16px;
+    }
+    code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    img { max-width: 100%; }
+
+    /* ── Layout ─────────────────────────────────────────────────────────────── */
+    .wrapper {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────────── */
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 28px 0;
+    }
+    .sidebar-logo {
+      padding: 0 24px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .sidebar-logo .brand {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .sidebar-logo .brand span { color: var(--accent); }
+    .sidebar-logo .tag {
+      display: inline-block;
+      margin-top: 6px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 100px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .nav-section {
+      padding: 4px 12px;
+      margin-bottom: 2px;
+    }
+    .nav-section-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      padding: 8px 12px 4px;
+    }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+    .nav-link:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
+    .nav-link.active { background: var(--accent-dim); color: var(--accent); }
+    .nav-num {
+      width: 20px; height: 20px;
+      background: var(--surface2);
+      border-radius: 5px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      color: var(--text-dim);
+    }
+    .nav-link.active .nav-num { background: var(--accent); color: #fff; }
+
+    /* ── Main ─────────────────────────────────────────────────────────────────── */
+    .main {
+      padding: 0;
+      min-width: 0;
+    }
+
+    /* ── Hero ──────────────────────────────────────────────────────────────────── */
+    .hero {
+      padding: 64px 56px 48px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, var(--surface) 0%, var(--bg) 100%);
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      padding: 4px 14px;
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      border: 1px solid rgba(167,139,250,0.2);
+    }
+    .hero h1 {
+      font-size: 2.8rem;
+      font-weight: 700;
+      line-height: 1.15;
+      margin-bottom: 16px;
+      letter-spacing: -0.5px;
+    }
+    .hero h1 span { color: var(--accent); }
+    .hero-sub {
+      font-size: 1.15rem;
+      color: var(--text-dim);
+      max-width: 620px;
+      margin-bottom: 28px;
+    }
+    .hero-meta {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .hero-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot.green { background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,0.5); }
+    .dot.yellow { background: var(--yellow); }
+
+    /* ── Content sections ─────────────────────────────────────────────────────── */
+    .content { padding: 0 56px 80px; }
+    .section {
+      padding-top: 56px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 48px;
+    }
+    .section:last-child { border-bottom: none; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .section-num {
+      width: 36px; height: 36px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(167,139,250,0.3);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    .section-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      margin-top: 28px;
+      color: var(--text);
+    }
+    h3:first-child { margin-top: 0; }
+    p { margin-bottom: 14px; color: var(--text); }
+    p:last-child { margin-bottom: 0; }
+    ul, ol { padding-left: 20px; margin-bottom: 14px; }
+    li { margin-bottom: 6px; }
+    strong { font-weight: 600; color: var(--text); }
+
+    /* ── Code blocks ─────────────────────────────────────────────────────────── */
+    .code-block {
+      position: relative;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 16px 0;
+      overflow: hidden;
+    }
+    .code-block-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+    .code-block pre {
+      padding: 16px 20px;
+      overflow-x: auto;
+      font-size: 0.875rem;
+      line-height: 1.6;
+      color: #c8d0f0;
+    }
+    .copy-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .copy-btn.copied { border-color: var(--green); color: var(--green); }
+    code.inline {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 0.85em;
+      color: var(--accent);
+    }
+
+    /* ── Callouts ─────────────────────────────────────────────────────────────── */
+    .callout {
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin: 16px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.info { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); }
+    .callout.warning { background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.25); }
+    .callout.warning .callout-icon { color: var(--yellow); }
+    .callout.danger { background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.25); }
+    .callout.danger .callout-icon { color: var(--red); }
+    .callout.success { background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.25); }
+    .callout.success .callout-icon { color: var(--green); }
+
+    /* ── Steps ────────────────────────────────────────────────────────────────── */
+    .steps { list-style: none; padding: 0; }
+    .step {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      align-items: flex-start;
+    }
+    .step-num {
+      width: 28px; height: 28px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(167,139,250,0.3);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .step-body { flex: 1; }
+    .step-body strong { display: block; margin-bottom: 4px; }
+
+    /* ── Tabs ─────────────────────────────────────────────────────────────────── */
+    .tabs {
+      margin: 20px 0;
+    }
+    .tab-buttons {
+      display: flex;
+      gap: 2px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+      width: fit-content;
+      margin-bottom: 0;
+    }
+    .tab-btn {
+      padding: 7px 20px;
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.88rem;
+      font-weight: 500;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { background: var(--accent-dim); color: var(--accent); }
+    .tab-panel {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 0 10px 10px 10px;
+      padding: 24px;
+      background: var(--surface);
+      margin-top: -1px;
+    }
+    .tab-panel.active { display: block; }
+
+    /* ── Table ────────────────────────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th {
+      background: var(--surface2);
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface); }
+    td code.inline { font-size: 0.82em; }
+
+    /* ── Tier pills ─────────────────────────────────────────────────────────── */
+    .tier { display: inline-block; padding: 2px 10px; border-radius: 100px; font-size: 0.78rem; font-weight: 600; }
+    .tier-c { background: rgba(100,116,139,0.2); color: #94a3b8; }
+    .tier-b { background: rgba(6,182,212,0.15); color: #22d3ee; }
+    .tier-a { background: rgba(167,139,250,0.15); color: var(--accent); }
+
+    /* ── FAQ ──────────────────────────────────────────────────────────────────── */
+    .faq { margin: 8px 0; }
+    .faq-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .faq-q {
+      width: 100%;
+      text-align: left;
+      background: var(--surface);
+      border: none;
+      padding: 16px 20px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      transition: background 0.15s;
+    }
+    .faq-q:hover { background: var(--surface2); }
+    .faq-arrow { color: var(--text-dim); font-size: 0.8rem; transition: transform 0.2s; flex-shrink: 0; }
+    .faq-item.open .faq-arrow { transform: rotate(180deg); }
+    .faq-a {
+      display: none;
+      padding: 0 20px 16px;
+      background: var(--surface);
+      font-size: 0.9rem;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+    .faq-item.open .faq-a { display: block; }
+
+    /* ── Progress indicator ─────────────────────────────────────────────────── */
+    .progress-bar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 2px;
+      background: var(--accent);
+      z-index: 999;
+      transition: width 0.1s;
+    }
+
+    /* ── Responsive ─────────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .wrapper { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .hero { padding: 40px 24px 32px; }
+      .content { padding: 0 24px 60px; }
+      .hero h1 { font-size: 2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress-bar"></div>
+
+<div class="wrapper">
+
+  <!-- ═══ SIDEBAR ═══════════════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="brand">DQ<span>III</span><span style="color:var(--accent)">&#8734;</span></div>
+      <span class="tag">Beta Premium</span>
+    </div>
+
+    <div class="nav-section-label">Introduccion</div>
+    <a href="#s1" class="nav-link"><span class="nav-num">1</span> Que es DQ</a>
+    <a href="#s2" class="nav-link"><span class="nav-num">2</span> Que necesitas</a>
+
+    <div class="nav-section-label">Acceso beta</div>
+    <a href="#s3" class="nav-link"><span class="nav-num">3</span> Crear cuenta GitHub</a>
+    <a href="#s4" class="nav-link"><span class="nav-num">4</span> Aceptar invitacion</a>
+    <a href="#s5" class="nav-link"><span class="nav-num">5</span> Crear tu Token</a>
+
+    <div class="nav-section-label">Instalacion</div>
+    <a href="#s6" class="nav-link"><span class="nav-num">6</span> Instalar DQ</a>
+    <a href="#s7" class="nav-link"><span class="nav-num">7</span> Configurar DQ</a>
+
+    <div class="nav-section-label">Uso</div>
+    <a href="#s8" class="nav-link"><span class="nav-num">8</span> Tu primer uso</a>
+    <a href="#s9" class="nav-link"><span class="nav-num">9</span> El Dashboard</a>
+    <a href="#s10" class="nav-link"><span class="nav-num">10</span> Comandos utiles</a>
+
+    <div class="nav-section-label">Ayuda</div>
+    <a href="#s11" class="nav-link"><span class="nav-num">11</span> Problemas comunes</a>
+    <a href="#s12" class="nav-link"><span class="nav-num">12</span> Dar feedback</a>
+    <a href="#s13" class="nav-link"><span class="nav-num">13</span> Seguridad</a>
+  </aside>
+
+  <!-- ═══ MAIN ═══════════════════════════════════════════════════════════════ -->
+  <main class="main">
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-badge">
+        <div class="dot green"></div>
+        Beta Premium — Acceso privado
+      </div>
+      <h1>Guia completa para<br><span>empezar desde cero</span></h1>
+      <p class="hero-sub">
+        Esta guia asume que nunca has abierto una terminal. Te explica cada paso,
+        cada concepto, y cada comando. En 30 minutos tendras DQ funcionando.
+      </p>
+      <div class="hero-meta">
+        <div class="hero-meta-item"><div class="dot green"></div> Tiempo estimado: 20-30 minutos</div>
+        <div class="hero-meta-item"><div class="dot yellow"></div> No se necesita experiencia tecnica</div>
+        <div class="hero-meta-item"><div class="dot green"></div> 70% gratuito de media</div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 1 — Qué es DQ
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s1">
+        <div class="section-header">
+          <div class="section-num">1</div>
+          <h2 class="section-title">Que es DQ</h2>
+        </div>
+
+        <p><strong>DQ es un asistente de inteligencia artificial que vive en tu ordenador.</strong>
+        Le dices lo que necesitas — redactar un email, analizar datos, explicar un concepto,
+        escribir codigo — y el lo hace por ti.</p>
+
+        <p><strong>DQ no es un modelo de IA.</strong> Es un sistema que coordina varios modelos
+        de IA (como ChatGPT, pero diferentes empresas) y elige automaticamente cual usar segun
+        tu tarea. El objetivo: resolver cada tarea con el modelo mas barato posible.</p>
+
+        <p><strong>El 70% de las tareas se resuelven gratis.</strong> Solo cuando la tarea es
+        muy compleja (analisis financiero avanzado, arquitectura de sistemas, razonamiento
+        profundo) DQ usa un modelo de pago — y te cuesta pocos centimos.</p>
+
+        <div class="callout info">
+          <span class="callout-icon">&#128161;</span>
+          <div>
+            <strong>Analogia:</strong> Imagina que tienes un asistente personal muy listo.
+            Para tareas sencillas usa su propio cerebro (gratis). Para tareas muy especializadas
+            llama a un experto (cuesta algo). DQ hace lo mismo, pero automaticamente.
+          </div>
+        </div>
+
+        <h3>Los tres niveles (tiers) de DQ</h3>
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Nivel</th>
+              <th>Quien responde</th>
+              <th>Coste</th>
+              <th>Para que sirve</th>
+            </tr>
+            <tr>
+              <td><span class="tier tier-c">Tier C — Local</span></td>
+              <td>Tu propio ordenador (Ollama)</td>
+              <td><strong>$0</strong></td>
+              <td>Codigo, debug, git, tareas simples</td>
+            </tr>
+            <tr>
+              <td><span class="tier tier-b">Tier B — Groq</span></td>
+              <td>Servidores de Groq (nube)</td>
+              <td><strong>$0</strong></td>
+              <td>Investigacion, redaccion, analisis</td>
+            </tr>
+            <tr>
+              <td><span class="tier tier-a">Tier A — Claude</span></td>
+              <td>Anthropic (nube)</td>
+              <td>~0,01-0,05€</td>
+              <td>Finanzas, creatividad, arquitectura compleja</td>
+            </tr>
+          </table>
+        </div>
+
+        <p>En modo automatico (el recomendado), DQ decide que nivel usar. Tu no tienes
+        que pensar en ello.</p>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 2 — Qué necesitas
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s2">
+        <div class="section-header">
+          <div class="section-num">2</div>
+          <h2 class="section-title">Que necesitas</h2>
+        </div>
+
+        <ul class="steps">
+          <li class="step">
+            <div class="step-num">&#10003;</div>
+            <div class="step-body">
+              <strong>Un ordenador</strong>
+              Windows 10/11, macOS 12 o superior, o cualquier Linux. Minimo 4 GB de RAM.
+              No necesitas GPU ni hardware especial.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">&#10003;</div>
+            <div class="step-body">
+              <strong>Conexion a internet</strong>
+              Solo para instalar y para los modelos de nube (Groq). Tier C funciona offline.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">&#10003;</div>
+            <div class="step-body">
+              <strong>Una cuenta de GitHub</strong>
+              GitHub es como Dropbox para codigo — un lugar donde los desarrolladores guardan
+              y comparten sus programas. La beta de DQ esta ahi. Crear cuenta es gratis.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">&#10003;</div>
+            <div class="step-body">
+              <strong>La invitacion de beta que te enviamos</strong>
+              Sin ella no puedes acceder al repositorio privado de DQ.
+            </div>
+          </li>
+        </ul>
+
+        <div class="callout success">
+          <span class="callout-icon">&#10003;</span>
+          <div>
+            <strong>No necesitas saber programar.</strong> Esta guia te lleva paso a paso.
+            Solo necesitas seguir instrucciones.
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 3 — Crear cuenta GitHub
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s3">
+        <div class="section-header">
+          <div class="section-num">3</div>
+          <h2 class="section-title">Crear tu cuenta de GitHub</h2>
+        </div>
+
+        <p>Si ya tienes cuenta de GitHub, salta a la <a href="#s4">Seccion 4</a>.</p>
+
+        <ul class="steps">
+          <li class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <strong>Abre tu navegador</strong>
+              Chrome, Firefox, Safari, Edge — cualquiera sirve.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <strong>Ve a <a href="https://github.com" target="_blank">github.com</a></strong>
+              Veras la pagina de inicio de GitHub.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <strong>Haz click en "Sign Up"</strong>
+              Esta en la esquina superior derecha (boton verde o negro).
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <strong>Pon tu email, crea una contrasena y elige un username</strong>
+              El username es tu nombre publico en GitHub (p.ej. <code class="inline">juangarcia</code>).
+              Lo necesitaremos mas adelante para enviarte la invitacion.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">5</div>
+            <div class="step-body">
+              <strong>Resuelve el captcha y verifica tu email</strong>
+              GitHub te mandara un email con un codigo de 6 digitos. Ponlo donde te lo pide.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">6</div>
+            <div class="step-body">
+              <strong>Envianos tu username de GitHub</strong>
+              Escribe a Iker o Guillermo con tu username para que te mandemos la invitacion.
+              Sin este paso no puedes descargar DQ.
+            </div>
+          </li>
+        </ul>
+
+        <div class="callout info">
+          <span class="callout-icon">&#128276;</span>
+          <div>
+            <strong>Apunta tu username.</strong> Lo necesitaras varias veces en esta guia.
+            Es lo que aparece en <code class="inline">github.com/tu-username</code>.
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 4 — Aceptar la invitación
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s4">
+        <div class="section-header">
+          <div class="section-num">4</div>
+          <h2 class="section-title">Aceptar la invitacion de beta</h2>
+        </div>
+
+        <p>Cuando te enviemos la invitacion, GitHub te mandara un email automatico.</p>
+
+        <ul class="steps">
+          <li class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <strong>Revisa tu bandeja de entrada</strong>
+              Busca un email de <code class="inline">noreply@github.com</code> con el asunto
+              "You've been invited to collaborate on a private repository" o similar.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <strong>Haz click en el boton verde "Accept invitation"</strong>
+              O en el enlace que aparece en el email. Esto abre GitHub en tu navegador.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <strong>Confirma la aceptacion en la web de GitHub</strong>
+              Deberia aparecer un mensaje de confirmacion con el nombre del repositorio.
+            </div>
+          </li>
+        </ul>
+
+        <div class="callout warning">
+          <span class="callout-icon">&#9888;</span>
+          <div>
+            <strong>Si no ves el email:</strong> Busca en la carpeta de spam o correo no
+            deseado. Si tampoco esta ahi, visita directamente
+            <a href="https://github.com/notifications" target="_blank">github.com/notifications</a>
+            — la invitacion aparece ahi aunque no hayas recibido el email.
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 5 — Personal Access Token
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s5">
+        <div class="section-header">
+          <div class="section-num">5</div>
+          <h2 class="section-title">Crear tu Token de GitHub</h2>
+        </div>
+
+        <div class="callout info">
+          <span class="callout-icon">&#128273;</span>
+          <div>
+            <strong>Que es un token:</strong> Es como una contrasena especial que le permite
+            a tu ordenador descargar el software privado de DQ de GitHub.
+            No es tu contrasena normal de GitHub — es una clave distinta que puedes
+            revocar en cualquier momento. Solo la usaras durante la instalacion.
+          </div>
+        </div>
+
+        <ul class="steps">
+          <li class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <strong>Ve a <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></strong>
+              Si te pide hacer login, hazlo con tu cuenta de GitHub.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <strong>Haz click en "Generate new token" → "Generate new token (classic)"</strong>
+              (No el "Fine-grained" — usa el classic.)
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <strong>En el campo "Note", escribe un nombre</strong>
+              Por ejemplo: <code class="inline">dq-beta</code>. Es solo para que lo identifiques.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <strong>En "Expiration", elige "90 days"</strong>
+              Esto hace que el token caduque automaticamente en 90 dias por seguridad.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">5</div>
+            <div class="step-body">
+              <strong>Marca SOLO la casilla "repo"</strong>
+              Es la primera del listado grande. Esto es todo lo que DQ necesita: poder descargar el repositorio.
+              No marques nada mas.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">6</div>
+            <div class="step-body">
+              <strong>Haz scroll hasta abajo y click en "Generate token"</strong>
+              (Boton verde al final de la pagina.)
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">7</div>
+            <div class="step-body">
+              <strong>COPIA EL TOKEN AHORA</strong>
+              Aparecera un token que empieza por <code class="inline">ghp_</code>.
+              Pulsalo para copiarlo al portapapeles, y guardalo en algon sitio seguro
+              (bloc de notas, gestor de contrasenas).
+            </div>
+          </li>
+        </ul>
+
+        <div class="callout danger">
+          <span class="callout-icon">&#9888;</span>
+          <div>
+            <strong>GitHub SOLO muestra el token una vez.</strong> Si cierras la pagina
+            sin copiarlo, tendras que crear uno nuevo. El proceso es el mismo — no es
+            un problema grave, pero mejor copiarlo ahora.
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 6 — Instalar DQ
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s6">
+        <div class="section-header">
+          <div class="section-num">6</div>
+          <h2 class="section-title">Instalar DQ — elige tu sistema</h2>
+        </div>
+
+        <p>Las instrucciones varian segun tu ordenador. Elige la pestana correcta:</p>
+
+        <div class="tabs" id="install-tabs">
+          <div class="tab-buttons">
+            <button class="tab-btn active" data-tab="mac">Mac</button>
+            <button class="tab-btn" data-tab="windows">Windows</button>
+            <button class="tab-btn" data-tab="linux">Linux</button>
+            <button class="tab-btn" data-tab="virtualbox">VirtualBox</button>
+          </div>
+
+          <!-- MAC -->
+          <div class="tab-panel active" id="tab-mac">
+            <h3>Abrir la Terminal en Mac</h3>
+            <p>La Terminal es una ventana donde escribes instrucciones directamente a tu ordenador,
+            como si le hablaras por texto. Es mas rapida que hacer click en menus para ciertas tareas.</p>
+
+            <ul class="steps">
+              <li class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <strong>Abre el Spotlight</strong>
+                  Pulsa <kbd>Cmd &#8984;</kbd> + <kbd>Espacio</kbd>. Aparecera una barra de busqueda.
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <strong>Escribe "Terminal" y pulsa Enter</strong>
+                  Se abrira una ventana negra o blanca con texto. Eso es la Terminal.
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <strong>Copia y pega este comando (uno a uno, Enter despues de cada uno)</strong>
+                  <div class="code-block">
+                    <div class="code-block-header"><span>Terminal</span><button class="copy-btn" data-copy="git clone https://github.com/senda-labs/DQIII8-premium.git">Copiar</button></div>
+                    <pre>git clone https://github.com/senda-labs/DQIII8-premium.git</pre>
+                  </div>
+                  <p>Cuando te pida <strong>Username</strong>: escribe tu username de GitHub.<br>
+                  Cuando te pida <strong>Password</strong>: pega tu token <code class="inline">ghp_...</code>
+                  (NO tu contrasena de GitHub — el token que creaste en la Seccion 5).
+                  <em>Nota: al pegar la contrasena en la Terminal, no veras ningun texto — es normal.</em></p>
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <strong>Entra en la carpeta e instala</strong>
+                  <div class="code-block">
+                    <div class="code-block-header"><span>Terminal</span><button class="copy-btn" data-copy="cd DQIII8-premium
+bash install.sh">Copiar</button></div>
+                    <pre>cd DQIII8-premium
+bash install.sh</pre>
+                  </div>
+                  <p>La instalacion descarga lo necesario. Tarda entre 5 y 15 minutos segun
+                  tu conexion. Veras texto pasando — es normal.</p>
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">5</div>
+                <div class="step-body">
+                  <strong>Cierra la Terminal y vuelve a abrirla</strong>
+                  Esto es importante — recarga la configuracion para que el comando
+                  <code class="inline">dq</code> funcione.
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">6</div>
+                <div class="step-body">
+                  <strong>Ejecuta el configurador</strong>
+                  <div class="code-block">
+                    <div class="code-block-header"><span>Terminal</span><button class="copy-btn" data-copy="dq --setup">Copiar</button></div>
+                    <pre>dq --setup</pre>
+                  </div>
+                  <p>Esto lanza el wizard de configuracion. Lo explicamos en detalle en la <a href="#s7">Seccion 7</a>.</p>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- WINDOWS -->
+          <div class="tab-panel" id="tab-windows">
+            <h3>Windows requiere WSL2 — un mini-Linux dentro de Windows</h3>
+            <p>DQ necesita un entorno Linux. WSL2 (Windows Subsystem for Linux) es la solucion oficial
+            de Microsoft: instala un Ubuntu completo dentro de tu Windows, sin necesidad de reiniciar ni
+            particionar el disco. Es gratuito y oficial.</p>
+
+            <h3>Paso 1: Instalar WSL2 y Ubuntu</h3>
+            <ul class="steps">
+              <li class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <strong>Abre PowerShell como Administrador</strong>
+                  Haz click derecho en el menu de inicio (esquina inferior izquierda) →
+                  "Windows PowerShell (Administrador)" o "Terminal (Administrador)".
+                  Haz click en "Si" cuando pregunte si quieres permitir cambios.
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <strong>Ejecuta este comando</strong>
+                  <div class="code-block">
+                    <div class="code-block-header"><span>PowerShell (Admin)</span><button class="copy-btn" data-copy="wsl --install -d Ubuntu-24.04">Copiar</button></div>
+                    <pre>wsl --install -d Ubuntu-24.04</pre>
+                  </div>
+                  <p>Este comando instala WSL2 y Ubuntu 24.04 automaticamente. Tarda varios minutos.</p>
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <strong>Reinicia el ordenador cuando te lo pida</strong>
+                  Despues de reiniciar, se abrira automaticamente una ventana de Ubuntu pidiendo
+                  que crees un usuario y contrasena para Linux. Ponle un nombre simple (ej: <code class="inline">dq</code>)
+                  y una contrasena que no olvides.
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <strong>Ya tienes Ubuntu dentro de Windows</strong>
+                  Desde ahora, busca "Ubuntu" en el menu de inicio para abrir la terminal de Linux.
+                </div>
+              </li>
+            </ul>
+
+            <h3>Paso 2: Instalar DQ dentro de Ubuntu</h3>
+            <p>Con Ubuntu abierto, ejecuta exactamente los mismos comandos que en Mac:</p>
+
+            <div class="code-block">
+              <div class="code-block-header"><span>Ubuntu (WSL2)</span><button class="copy-btn" data-copy="git clone https://github.com/senda-labs/DQIII8-premium.git
+cd DQIII8-premium
+bash install.sh">Copiar</button></div>
+              <pre>git clone https://github.com/senda-labs/DQIII8-premium.git
+cd DQIII8-premium
+bash install.sh</pre>
+            </div>
+
+            <p>Cuando pida <strong>Username</strong>: tu username de GitHub.<br>
+            Cuando pida <strong>Password</strong>: tu token <code class="inline">ghp_...</code>
+            (no veras nada al escribir — es normal).</p>
+
+            <p>Al terminar, <strong>cierra y vuelve a abrir Ubuntu</strong>, y ejecuta:</p>
+            <div class="code-block">
+              <div class="code-block-header"><span>Ubuntu</span><button class="copy-btn" data-copy="dq --setup">Copiar</button></div>
+              <pre>dq --setup</pre>
+            </div>
+
+            <div class="callout info">
+              <span class="callout-icon">&#128161;</span>
+              <div>
+                <strong>Para abrir Ubuntu en el futuro:</strong> Busca "Ubuntu" en el menu de inicio.
+                O desde el nuevo Windows Terminal (recomendado), haz click en la flecha del boton "+" y
+                selecciona "Ubuntu".
+              </div>
+            </div>
+          </div>
+
+          <!-- LINUX -->
+          <div class="tab-panel" id="tab-linux">
+            <h3>Abrir la Terminal en Linux</h3>
+            <p>En la mayoria de distribuciones Linux, puedes abrir la Terminal con el atajo de teclado
+            <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd>. Tambien puedes buscarla en el menu de aplicaciones.</p>
+
+            <p>Con la Terminal abierta, ejecuta:</p>
+
+            <div class="code-block">
+              <div class="code-block-header"><span>Terminal</span><button class="copy-btn" data-copy="git clone https://github.com/senda-labs/DQIII8-premium.git
+cd DQIII8-premium
+bash install.sh">Copiar</button></div>
+              <pre>git clone https://github.com/senda-labs/DQIII8-premium.git
+cd DQIII8-premium
+bash install.sh</pre>
+            </div>
+
+            <p>Cuando pida <strong>Username</strong>: tu username de GitHub.<br>
+            Cuando pida <strong>Password</strong>: tu token <code class="inline">ghp_...</code>.</p>
+
+            <p>Al terminar:</p>
+            <div class="code-block">
+              <div class="code-block-header"><span>Terminal</span><button class="copy-btn" data-copy="source ~/.bashrc && dq --setup">Copiar</button></div>
+              <pre>source ~/.bashrc && dq --setup</pre>
+            </div>
+          </div>
+
+          <!-- VIRTUALBOX -->
+          <div class="tab-panel" id="tab-virtualbox">
+            <h3>Opcion para ordenadores sin WSL2 o usuarios avanzados</h3>
+            <p>VirtualBox es un programa que crea un "ordenador virtual" dentro de tu ordenador.
+            Como tener otro PC dentro de tu PC, pero sin necesitar hardware extra. Es gratis.</p>
+
+            <div class="callout warning">
+              <span class="callout-icon">&#9888;</span>
+              <div>
+                Esta opcion requiere mas pasos y tu ordenador necesita al menos 8 GB de RAM
+                para que tanto tu sistema como la maquina virtual funcionen bien.
+                Si tienes Windows 10/11 de 64 bits, <strong>recomendamos WSL2</strong> en lugar de esto.
+              </div>
+            </div>
+
+            <h3>Paso 1: Instalar VirtualBox</h3>
+            <ul class="steps">
+              <li class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                  <strong>Descarga VirtualBox</strong>
+                  Ve a <a href="https://www.virtualbox.org/wiki/Downloads" target="_blank">virtualbox.org/wiki/Downloads</a>
+                  y descarga la version para tu sistema operativo.
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                  <strong>Instala VirtualBox</strong>
+                  Abre el instalador descargado y sigue los pasos (siguiente, siguiente, instalar).
+                  Si pregunta sobre drivers de red, di que si.
+                </div>
+              </li>
+            </ul>
+
+            <h3>Paso 2: Descargar Ubuntu</h3>
+            <ul class="steps">
+              <li class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                  <strong>Descarga la imagen de Ubuntu 24.04</strong>
+                  Ve a <a href="https://ubuntu.com/download/desktop" target="_blank">ubuntu.com/download/desktop</a>
+                  y descarga Ubuntu 24.04 LTS (archivo .iso, unos 5 GB).
+                </div>
+              </li>
+            </ul>
+
+            <h3>Paso 3: Crear la maquina virtual</h3>
+            <ul class="steps">
+              <li class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                  <strong>Abre VirtualBox → "Nueva"</strong>
+                  Dale un nombre (ej: "Ubuntu DQ"), tipo Linux, version Ubuntu 64-bit.
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">5</div>
+                <div class="step-body">
+                  <strong>Asigna 4 GB de RAM</strong> (4096 MB) y 2 CPUs si puedes.
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">6</div>
+                <div class="step-body">
+                  <strong>Crea un disco virtual de 25 GB</strong>
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">7</div>
+                <div class="step-body">
+                  <strong>En la configuracion de la VM → Almacenamiento</strong>, selecciona
+                  el archivo .iso de Ubuntu que descargaste como disco optico.
+                </div>
+              </li>
+              <li class="step">
+                <div class="step-num">8</div>
+                <div class="step-body">
+                  <strong>Inicia la VM e instala Ubuntu</strong>. Sigue el wizard de instalacion
+                  de Ubuntu (idioma, zona horaria, usuario). Al terminar, reinicia la VM.
+                </div>
+              </li>
+            </ul>
+
+            <h3>Paso 4: Instalar DQ dentro de Ubuntu</h3>
+            <p>Con Ubuntu funcionando en la VM, abre la Terminal (<kbd>Ctrl+Alt+T</kbd>) y ejecuta
+            los mismos comandos que en la pestana Linux.</p>
+          </div>
+        </div>
+
+        <div class="callout info" style="margin-top: 24px;">
+          <span class="callout-icon">&#8987;</span>
+          <div>
+            <strong>Que instala el script:</strong> Python, Ollama (el motor de IA local),
+            el modelo qwen2.5-coder (segun tu RAM), SQLite para guardar historial,
+            y configura el comando <code class="inline">dq</code> en tu terminal.
+            Todo queda en tu ordenador — nada se sube a ninguna nube.
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 7 — Configurar DQ
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s7">
+        <div class="section-header">
+          <div class="section-num">7</div>
+          <h2 class="section-title">Configurar DQ — el Setup Wizard</h2>
+        </div>
+
+        <p>Despues de instalar, ejecuta:</p>
+
+        <div class="code-block">
+          <div class="code-block-header"><span>Terminal</span><button class="copy-btn" data-copy="dq --setup">Copiar</button></div>
+          <pre>dq --setup</pre>
+        </div>
+
+        <p>El wizard te guia por 4 pasos. Puedes saltarte los opcionales con Enter.</p>
+
+        <!-- PASO 1: Groq -->
+        <h3>Paso 1 de 4 — Groq API Key (muy recomendado, gratis)</h3>
+
+        <div class="callout info">
+          <span class="callout-icon">&#128161;</span>
+          <div>
+            <strong>Que es Groq:</strong> Una empresa americana que ofrece modelos de IA
+            de forma gratuita. Sus servidores son muy rapidos (responde en 1-2 segundos).
+            DQ los usa para tareas de redaccion, investigacion y analisis que no necesitan
+            el modelo mas caro.<br><br>
+            <strong>Que es una API Key:</strong> Una contrasena especial que le permite a DQ
+            usar los servidores de Groq en tu nombre. Tu cuenta de Groq es gratis — no necesitas
+            tarjeta de credito.
+          </div>
+        </div>
+
+        <p><strong>Como conseguir tu Groq API Key:</strong></p>
+        <ul class="steps">
+          <li class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <strong>Ve a <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a></strong>
+              Si no tienes cuenta, creala — es gratis y no pide tarjeta.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <strong>Haz click en "Create API Key"</strong>
+              Dale un nombre (ej: <code class="inline">dq-beta</code>).
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <strong>Copia la key</strong> — empieza por <code class="inline">gsk_</code>.
+              Guardala como el token de GitHub: solo se muestra una vez.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <strong>En el wizard, pega la key cuando te la pida</strong>
+            </div>
+          </li>
+        </ul>
+
+        <!-- PASO 2: Anthropic -->
+        <h3>Paso 2 de 4 — Anthropic API Key (opcional, cuesta dinero)</h3>
+
+        <div class="callout info">
+          <span class="callout-icon">&#128161;</span>
+          <div>
+            <strong>Que es Anthropic:</strong> La empresa fundada en 2021 que creo Claude,
+            uno de los modelos de IA mas avanzados del mundo. Sus fundadores son ex-empleados
+            de OpenAI (los que crearon ChatGPT).<br><br>
+            <strong>Que es Claude:</strong> Un modelo de IA similar a ChatGPT pero de Anthropic.
+            DQ lo usa para tareas que requieren razonamiento profundo: analisis financiero,
+            arquitectura de sistemas, razonamiento legal, escritura creativa avanzada.<br><br>
+            <strong>Cuanto cuesta:</strong> Cada tarea cuesta entre 0,01 y 0,05 euros.
+            Con 5 euros tienes para 100-500 tareas complejas. El 70% de las tareas normales
+            van por Groq (gratis).
+          </div>
+        </div>
+
+        <div class="callout warning">
+          <span class="callout-icon">&#9888;</span>
+          <div>
+            <strong>Este paso es completamente opcional.</strong> Si no lo configuras, DQ funciona
+            perfectamente con Groq (gratis) para la gran mayoria de tareas. Puedes anadirlo
+            mas adelante con <code class="inline">dq --set-anthropic tu_key</code>.
+          </div>
+        </div>
+
+        <p><strong>Si quieres configurarlo:</strong></p>
+        <ul class="steps">
+          <li class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <strong>Ve a <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a></strong>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <strong>Crea cuenta y anade un metodo de pago</strong>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <strong>Pon un limite mensual de 5€</strong> en la configuracion de facturacion.
+              Asi no te llevas ninguna sorpresa.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <strong>Ve a API Keys → Create API Key</strong>. Empieza por <code class="inline">sk-ant-</code>.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">5</div>
+            <div class="step-body">
+              <strong>Pegala en el wizard</strong>
+            </div>
+          </li>
+        </ul>
+
+        <!-- PASO 3: Telegram -->
+        <h3>Paso 3 de 4 — Telegram (opcional, notificaciones en movil)</h3>
+
+        <p>Esto te permite recibir notificaciones en tu telefono cuando DQ termina una tarea larga,
+        o controlar DQ desde Telegram. Es completamente opcional. Pulsa Enter para saltarlo.</p>
+
+        <!-- PASO 4: Tier -->
+        <h3>Paso 4 de 4 — Tier por defecto</h3>
+
+        <p>Elige como quieres que DQ enrute las tareas:</p>
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Opcion</th>
+              <th>Que hace</th>
+              <th>Recomendado si...</th>
+            </tr>
+            <tr>
+              <td><code class="inline">auto</code></td>
+              <td>DQ decide el nivel segun la tarea</td>
+              <td>La mayoria de usuarios — deja que DQ elija</td>
+            </tr>
+            <tr>
+              <td><code class="inline">groq-only</code></td>
+              <td>Todo por Groq (gratis, rapido)</td>
+              <td>No has configurado Anthropic o quieres coste $0</td>
+            </tr>
+            <tr>
+              <td><code class="inline">groq+ollama</code></td>
+              <td>Groq para pensar, Ollama local para codigo</td>
+              <td>Quieres privacidad total en el codigo</td>
+            </tr>
+            <tr>
+              <td><code class="inline">ollama-only</code></td>
+              <td>Todo en tu ordenador</td>
+              <td>Sin internet, maxima privacidad (mas lento)</td>
+            </tr>
+          </table>
+        </div>
+
+        <p><strong>Recomendacion:</strong> elige <code class="inline">auto</code> si tienes Groq configurado.
+        Es el modo mas inteligente.</p>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 8 — Tu primer uso
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s8">
+        <div class="section-header">
+          <div class="section-num">8</div>
+          <h2 class="section-title">Tu primer uso</h2>
+        </div>
+
+        <p>Con la instalacion y configuracion listas, prueba DQ directamente desde la terminal:</p>
+
+        <div class="code-block">
+          <div class="code-block-header"><span>Terminal</span><button class="copy-btn" data-copy='dq "Explain what is Value at Risk in 3 sentences"'>Copiar</button></div>
+          <pre>dq "Explain what is Value at Risk in 3 sentences"</pre>
+        </div>
+
+        <p>DQ clasificara automaticamente tu pregunta (finanzas → Tier B o A),
+        la enriquecera con contexto de experto, y te dara la respuesta.</p>
+
+        <p>Otros ejemplos para probar:</p>
+
+        <div class="code-block">
+          <div class="code-block-header"><span>Terminal — ejemplos</span><button class="copy-btn" data-copy='dq "Crea un plan de negocio para una cafeteria especializada en mi ciudad"
+dq "Explica la diferencia entre ROE y ROA en terminos simples"
+dq "Escribe el capitulo 1 de una novela de ciencia ficcion sobre IA"
+dq "Cuales son los 5 errores mas comunes en SQL y como evitarlos"'>Copiar</button></div>
+          <pre>dq "Crea un plan de negocio para una cafeteria especializada"
+dq "Explica la diferencia entre ROE y ROA en terminos simples"
+dq "Escribe el capitulo 1 de una novela de ciencia ficcion sobre IA"
+dq "Cuales son los 5 errores mas comunes en SQL y como evitarlos"</pre>
+        </div>
+
+        <div class="callout success">
+          <span class="callout-icon">&#10024;</span>
+          <div>
+            <strong>Recomendacion:</strong> Empieza por el Dashboard — es mucho mas comodo
+            que la terminal para conversar. Ejecuta <code class="inline">dq --dashboard</code>
+            y abre <a href="http://localhost:8080" target="_blank">localhost:8080</a> en tu navegador.
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 9 — El Dashboard
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s9">
+        <div class="section-header">
+          <div class="section-num">9</div>
+          <h2 class="section-title">El Dashboard — tu interfaz principal</h2>
+        </div>
+
+        <p>El Dashboard es una pagina web que se abre en tu navegador y te permite
+        usar DQ sin tocar la terminal. Es como una aplicacion de chat, pero mucho mas potente.</p>
+
+        <p><strong>Para abrirlo:</strong></p>
+        <div class="code-block">
+          <div class="code-block-header"><span>Terminal</span><button class="copy-btn" data-copy="dq --dashboard">Copiar</button></div>
+          <pre>dq --dashboard</pre>
+        </div>
+
+        <p>Luego abre <a href="http://localhost:8080" target="_blank">http://localhost:8080</a> en tu navegador.</p>
+
+        <div class="callout info">
+          <span class="callout-icon">&#8505;</span>
+          <div>
+            <strong>La terminal tiene que quedarse abierta</strong> mientras usas el dashboard.
+            Es la que mantiene el servidor en marcha. Si la cierras, el dashboard dejara de funcionar.
+          </div>
+        </div>
+
+        <h3>Las tres pestanas del Dashboard</h3>
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Pestana</th>
+              <th>Para que sirve</th>
+            </tr>
+            <tr>
+              <td><strong>Chat</strong></td>
+              <td>Escribe lo que necesitas y DQ responde. Igual que usar ChatGPT, pero con DQ.
+              Puedes adjuntar archivos PDF, Excel, CSV, imagenes.</td>
+            </tr>
+            <tr>
+              <td><strong>Metrics</strong></td>
+              <td>Estadisticas de tu uso: cuantas tareas has hecho, cuales han funcionado,
+              cuanto has gastado, salud del sistema (puntuacion 0-100).</td>
+            </tr>
+            <tr>
+              <td><strong>Settings</strong></td>
+              <td>Cambiar tus API keys, el tier por defecto, y ver el estado de cada nivel.</td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>Los botones de tier en el Chat</h3>
+
+        <p>Encima del cuadro de texto veras unos botones: <strong>Auto / Local / Groq / Claude</strong>.</p>
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Boton</th>
+              <th>Que hace</th>
+            </tr>
+            <tr>
+              <td><strong>Auto</strong></td>
+              <td>DQ elige el mejor modelo para tu tarea (recomendado)</td>
+            </tr>
+            <tr>
+              <td><strong>Local</strong></td>
+              <td>Usa solo tu ordenador (sin internet, mas lento)</td>
+            </tr>
+            <tr>
+              <td><strong>Groq</strong></td>
+              <td>Fuerza el uso de Groq (gratis, muy rapido)</td>
+            </tr>
+            <tr>
+              <td><strong>Claude</strong></td>
+              <td>Fuerza Claude de Anthropic (el mas capaz, puede costar unos centimos)</td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>Funciones avanzadas del chat</h3>
+        <ul>
+          <li><strong>Adjuntar archivos:</strong> Haz click en el clip (&#128206;) para subir PDFs,
+          Excel, CSVs o imagenes. DQ los leeara y podra responder sobre su contenido.</li>
+          <li><strong>Voz:</strong> Haz click en el microfono (&#127908;) para dictar tu mensaje.</li>
+          <li><strong>Leer en voz alta:</strong> Haz click en el altavoz que aparece debajo de cada respuesta
+          para que DQ la lea en voz alta.</li>
+          <li><strong>Temas:</strong> El boton "Dark / Night / Light" en la barra superior cambia el
+          tema visual del dashboard.</li>
+        </ul>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 10 — Comandos útiles
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s10">
+        <div class="section-header">
+          <div class="section-num">10</div>
+          <h2 class="section-title">Comandos utiles</h2>
+        </div>
+
+        <p>Todos los comandos se ejecutan en la Terminal (o en Ubuntu si estas en Windows).</p>
+
+        <div class="table-wrap">
+          <table>
+            <tr>
+              <th>Comando</th>
+              <th>Que hace</th>
+            </tr>
+            <tr>
+              <td><code class="inline">dq "tu tarea aqui"</code></td>
+              <td>Ejecutar una tarea directamente. DQ la clasifica y responde.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">dq --dashboard</code></td>
+              <td>Abrir el dashboard web en localhost:8080. Mantener la terminal abierta.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">dq --chat</code></td>
+              <td>Modo conversacion en la terminal. Como el dashboard pero en texto.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">dq --setup</code></td>
+              <td>Lanzar el configurador de API keys y tier. Puedes ejecutarlo varias veces.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">dq --status</code></td>
+              <td>Ver que tiers estan disponibles y cuales no.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">dq --audit</code></td>
+              <td>Ver la salud del sistema (puntuacion 0-100). No necesita internet.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">dq --classify "prompt"</code></td>
+              <td>Ver a que tier y dominio iria tu mensaje sin ejecutarlo realmente.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">dq --set-groq gsk_TU_KEY</code></td>
+              <td>Guardar la Groq API Key directamente sin pasar por el wizard.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">dq --set-anthropic sk-ant-TU_KEY</code></td>
+              <td>Guardar la Anthropic API Key directamente.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">dq --help</code></td>
+              <td>Ver todos los comandos disponibles.</td>
+            </tr>
+          </table>
+        </div>
+
+        <h3>Ejemplo: clasificar antes de ejecutar</h3>
+        <div class="code-block">
+          <div class="code-block-header"><span>Terminal</span><button class="copy-btn" data-copy='dq --classify "Calculate 99% VaR for a 10-asset portfolio with Monte Carlo"'>Copiar</button></div>
+          <pre>dq --classify "Calculate 99% VaR for a 10-asset portfolio with Monte Carlo"</pre>
+        </div>
+        <p>Te dira algo como: <code class="inline">tier=A domain=social_sciences/finance</code>.
+        Asi puedes ver exactamente que modelo usaria DQ y por que, antes de gastar nada.</p>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 11 — Problemas comunes
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s11">
+        <div class="section-header">
+          <div class="section-num">11</div>
+          <h2 class="section-title">Problemas comunes y soluciones</h2>
+        </div>
+
+        <div class="faq">
+          <div class="faq-item">
+            <button class="faq-q">
+              "dq: command not found" — El comando dq no existe
+              <span class="faq-arrow">&#9660;</span>
+            </button>
+            <div class="faq-a">
+              <p>Esto pasa porque la terminal abierta no ha cargado la nueva configuracion.
+              Solucion rapida: cierra la terminal y vuelve a abrirla. Si sigue sin funcionar,
+              ejecuta:</p>
+              <div class="code-block"><div class="code-block-header"><span></span><button class="copy-btn" data-copy="source ~/.bashrc">Copiar</button></div><pre>source ~/.bashrc</pre></div>
+              <p>Si estas en Mac, puede que uses zsh en lugar de bash:</p>
+              <div class="code-block"><div class="code-block-header"><span></span><button class="copy-btn" data-copy="source ~/.zshrc">Copiar</button></div><pre>source ~/.zshrc</pre></div>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-q">
+              "ANTHROPIC_API_KEY not defined" — Aviso de que Claude no esta configurado
+              <span class="faq-arrow">&#9660;</span>
+            </button>
+            <div class="faq-a">
+              <p>Este aviso es completamente normal si no has configurado la key de Anthropic.
+              DQ funciona perfectamente con Groq (gratis). El aviso solo te informa de que
+              el Tier A (Claude) no esta disponible. Puedes ignorarlo.</p>
+              <p>Si quieres activar Claude, ejecuta:</p>
+              <div class="code-block"><div class="code-block-header"><span></span><button class="copy-btn" data-copy="dq --setup">Copiar</button></div><pre>dq --setup</pre></div>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-q">
+              "ollama failed" o Tier C no responde
+              <span class="faq-arrow">&#9660;</span>
+            </button>
+            <div class="faq-a">
+              <p>Ollama es el motor de IA local. A veces no arranca automaticamente.
+              En modo automatico (<code class="inline">auto</code>), DQ lo detectara y usara
+              Groq en su lugar — no te quedas sin respuesta.</p>
+              <p>Para arrancar Ollama manualmente (en una terminal nueva, dejala abierta):</p>
+              <div class="code-block"><div class="code-block-header"><span></span><button class="copy-btn" data-copy="ollama serve">Copiar</button></div><pre>ollama serve</pre></div>
+              <p>Si tienes poca RAM (menos de 4 GB libres), es normal que Ollama falle.
+              Usa <code class="inline">dq --set-tier groq-only</code> para evitarlo.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-q">
+              El Dashboard no carga en el navegador
+              <span class="faq-arrow">&#9660;</span>
+            </button>
+            <div class="faq-a">
+              <p>Comprueba que <code class="inline">dq --dashboard</code> sigue corriendo en la terminal.
+              Si la terminal se cerro, ejecutalo de nuevo y vuelve a intentarlo.</p>
+              <p>Asegurate de que la URL es exactamente <a href="http://localhost:8080" target="_blank">http://localhost:8080</a>
+              (con http, no https).</p>
+              <p>Si usas WSL2 en Windows, el dashboard debe estar accesible en
+              <code class="inline">localhost:8080</code> desde tu navegador de Windows igualmente.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-q">
+              Error 403 al clonar el repositorio ("Permission denied" o "Repository not found")
+              <span class="faq-arrow">&#9660;</span>
+            </button>
+            <div class="faq-a">
+              <p>Esto significa que GitHub no te deja acceder al repositorio privado. Causas posibles:</p>
+              <ul>
+                <li>No has aceptado la invitacion — revisa la Seccion 4.</li>
+                <li>Usaste tu contrasena de GitHub en lugar del token ghp_ — el campo "Password"
+                en la terminal requiere el token, no tu contrasena normal.</li>
+                <li>El token no tiene el scope "repo" — crea uno nuevo siguiendo la Seccion 5.</li>
+                <li>El token caduco — crea uno nuevo en github.com/settings/tokens.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-q">
+              La instalacion se queda parada o muy lenta
+              <span class="faq-arrow">&#9660;</span>
+            </button>
+            <div class="faq-a">
+              <p>La parte mas lenta es descargar el modelo de IA (qwen2.5-coder: ~4-8 GB).
+              Con una conexion normal puede tardar 15-30 minutos. Si ves texto moviendose,
+              esta funcionando — espera.</p>
+              <p>Si llevas mas de 1 hora sin ver cambios, pulsa Ctrl+C para cancelar y ejecuta
+              <code class="inline">bash install.sh --no-model</code> para saltar la descarga
+              del modelo. Podras descargarlo despues con <code class="inline">ollama pull qwen2.5-coder:7b</code>.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-q">
+              DQ responde en ingles pero yo quiero respuestas en espanol
+              <span class="faq-arrow">&#9660;</span>
+            </button>
+            <div class="faq-a">
+              <p>Escribe tu mensaje en espanol y DQ respondera en espanol. El sistema es bilingue
+              nativo — detecta el idioma de tu mensaje automaticamente.</p>
+              <div class="code-block"><div class="code-block-header"><span></span><button class="copy-btn" data-copy='dq "Explica que es el riesgo de credito en 3 puntos"'>Copiar</button></div><pre>dq "Explica que es el riesgo de credito en 3 puntos"</pre></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 12 — Feedback
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s12">
+        <div class="section-header">
+          <div class="section-num">12</div>
+          <h2 class="section-title">Como dar feedback</h2>
+        </div>
+
+        <p>Tu feedback es lo mas valioso que puedes darnos durante la beta. Cada reporte
+        mejora el sistema para todos.</p>
+
+        <h3>Opcion 1: GitHub Issues (recomendado)</h3>
+        <p>Ve a <a href="https://github.com/senda-labs/DQIII8-premium/issues" target="_blank">github.com/senda-labs/DQIII8-premium/issues</a>
+        y haz click en "New Issue".</p>
+        <p>Ponle una etiqueta: <code class="inline">beta-feedback</code>, <code class="inline">bug</code>,
+        o <code class="inline">feature-request</code>.</p>
+
+        <h3>Opcion 2: Contacto directo</h3>
+        <p>Escribe directamente a Iker o a Guillermo. Somos los dos que hemos construido DQ y
+        leemos todos los mensajes.</p>
+
+        <h3>Que incluir en tu reporte</h3>
+        <div class="callout info">
+          <span class="callout-icon">&#128221;</span>
+          <div>
+            <ul style="margin:0;padding-left:18px">
+              <li><strong>Que probaste:</strong> El comando o tarea exacta que ejecutaste.</li>
+              <li><strong>Que paso:</strong> El error o resultado que obtuviste (copia el texto).</li>
+              <li><strong>Que esperabas:</strong> Que deberia haber pasado.</li>
+              <li><strong>Tu sistema:</strong> Mac/Windows/Linux, cuanta RAM tienes.</li>
+            </ul>
+          </div>
+        </div>
+
+        <p>No te preocupes si no eres tecnico — cualquier nivel de detalle ayuda.
+        Hasta un "esto no funciona, no entiendo que paso" es util.</p>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SECCIÓN 13 — Seguridad
+      ═══════════════════════════════════════════════════════════════════════ -->
+      <section class="section" id="s13">
+        <div class="section-header">
+          <div class="section-num">13</div>
+          <h2 class="section-title">Seguridad y privacidad</h2>
+        </div>
+
+        <ul class="steps">
+          <li class="step">
+            <div class="step-num">&#128274;</div>
+            <div class="step-body">
+              <strong>Tus API keys son tuyas y solo tuyas</strong><br>
+              Se guardan en un archivo <code class="inline">.env</code> en tu ordenador.
+              DQ no las envia a ningun servidor nuestro. Solo salen de tu ordenador
+              cuando DQ hace una peticion directa a Groq o Anthropic para responder tu tarea.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">&#128274;</div>
+            <div class="step-body">
+              <strong>Tu token de GitHub es de solo lectura</strong><br>
+              El scope "repo" solo permite descargar codigo. No puede modificar nada
+              en tu cuenta de GitHub, ni enviarte emails, ni acceder a otros repositorios.
+              Puedes revocarlo en cualquier momento desde github.com/settings/tokens.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">&#128274;</div>
+            <div class="step-body">
+              <strong>Tus conversaciones no se envian a Senda Labs</strong><br>
+              Cuando usas Tier C (local), todo queda en tu ordenador. Cuando usas
+              Tier B (Groq) o Tier A (Claude), tu mensaje va directamente a esos servicios
+              — igual que si usaras su web directamente. DQ no hace de intermediario.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">&#128274;</div>
+            <div class="step-body">
+              <strong>La telemetria esta desactivada por defecto</strong><br>
+              DQ no envia estadisticas de uso a ningun lado. Si en el futuro quisieras
+              activarla para ayudarnos a mejorar el producto, podras hacerlo con
+              <code class="inline">DQIII8_TELEMETRY=true</code> en tu <code class="inline">.env</code>.
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-num">&#128274;</div>
+            <div class="step-body">
+              <strong>El dashboard en remoto tiene autenticacion</strong><br>
+              Si abres el dashboard en una IP publica (<code class="inline">dq --dashboard --host 0.0.0.0</code>),
+              DQ genera automaticamente un token de sesion. Sin ese token, nadie puede acceder.
+              En local (localhost:8080), no necesitas autenticacion.
+            </div>
+          </li>
+        </ul>
+
+        <div class="callout success">
+          <span class="callout-icon">&#10003;</span>
+          <div>
+            <strong>Resumen:</strong> Tu contrasena de GitHub, tus API keys, y tus conversaciones
+            son privadas. DQ esta disenado para que los datos viajen directamente entre tu
+            ordenador y el servicio de IA que estes usando — sin pasar por nosotros.
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /content -->
+  </main>
+</div>
+
+<script>
+  /* ── Copy buttons ─────────────────────────────────────────────────────── */
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const text = btn.getAttribute('data-copy');
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copiado!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1800);
+      }).catch(() => {
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        btn.textContent = 'Copiado!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copiar'; btn.classList.remove('copied'); }, 1800);
+      });
+    });
+  });
+
+  /* ── Tabs ─────────────────────────────────────────────────────────────── */
+  document.querySelectorAll('.tab-buttons').forEach(group => {
+    group.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabId = btn.getAttribute('data-tab');
+        const container = group.closest('.tabs');
+        group.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        container.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        const panel = container.querySelector('#tab-' + tabId);
+        if (panel) panel.classList.add('active');
+      });
+    });
+  });
+
+  /* ── FAQ accordion ────────────────────────────────────────────────────── */
+  document.querySelectorAll('.faq-q').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest('.faq-item');
+      const wasOpen = item.classList.contains('open');
+      document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+      if (!wasOpen) item.classList.add('open');
+    });
+  });
+
+  /* ── Sidebar active link on scroll ───────────────────────────────────── */
+  const sections = document.querySelectorAll('.section');
+  const navLinks = document.querySelectorAll('.nav-link');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.getAttribute('id');
+        navLinks.forEach(l => {
+          l.classList.toggle('active', l.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.25, rootMargin: '-80px 0px -60% 0px' });
+  sections.forEach(s => observer.observe(s));
+
+  /* ── Reading progress bar ─────────────────────────────────────────────── */
+  const bar = document.getElementById('progress-bar');
+  window.addEventListener('scroll', () => {
+    const scrolled = window.scrollY;
+    const total = document.documentElement.scrollHeight - window.innerHeight;
+    const pct = total > 0 ? (scrolled / total) * 100 : 0;
+    bar.style.width = pct.toFixed(1) + '%';
+  });
+</script>
+</body>
+</html>

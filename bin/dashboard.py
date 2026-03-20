@@ -774,6 +774,23 @@ async def search_chat(q: str = "", limit: int = 20, auth: bool = Depends(check_a
     return [{"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows]
 
 
+@app.post("/api/chat/{session_id}/delete")
+async def delete_chat_session(session_id: str, auth: bool = Depends(check_auth)):
+    """Delete a chat session and its messages."""
+    db = JARVIS / "database" / "jarvis_metrics.db"
+    if not db.exists():
+        return {"ok": False, "error": "DB not found"}
+    try:
+        conn = sqlite3.connect(str(db), timeout=3)
+        conn.execute("DELETE FROM chat_messages WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM chat_sessions WHERE session_id = ?", (session_id,))
+        conn.commit()
+        conn.close()
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 @app.get("/api/chat/{session_id}/messages")
 async def chat_session_messages(session_id: str, auth: bool = Depends(check_auth)):
     """Return all messages for a given session."""

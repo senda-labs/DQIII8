@@ -14,7 +14,7 @@
       --bg-surface2: #0f1f3a;
       --border:      #1a2d4d;
       --text:        #eaf0ff;
-      --text-dim:    #607898;
+      --text-dim:    #7a90b0;
       --accent:      #00e5ff;
       --accent-dim:  #006674;
       --accent-glow: 0 0 20px rgba(0,229,255,0.3);
@@ -519,6 +519,23 @@
     }
     .suggestion-btn:hover { border-color: var(--accent-dim); color: var(--text); }
 
+    /* Sidebar history delete + tier badge */
+    .hist-item { position: relative; }
+    .hist-del {
+      display: none;
+      position: absolute; top: 6px; right: 6px;
+      background: none; border: none; color: var(--text-dim);
+      font-size: 0.9rem; line-height: 1; padding: 2px 4px; cursor: pointer;
+      border-radius: 3px; transition: color 0.15s, background 0.15s;
+    }
+    .hist-item:hover .hist-del { display: block; }
+    .hist-del:hover { color: var(--danger); background: rgba(255,23,68,0.08); }
+    .hist-tier-badge {
+      font-size: 0.62rem; font-family: 'JetBrains Mono', monospace;
+      padding: 1px 5px; border-radius: 8px; border: 1px solid currentColor;
+      opacity: 0.65; flex-shrink: 0;
+    }
+
     /* Sidebar search */
     .sidebar-search {
       display: flex; gap: 4px;
@@ -576,6 +593,15 @@
       color: var(--text-dim);
       margin-top: 5px;
     }
+    .kpi-trend {
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      margin-left: 6px;
+      opacity: 0.75;
+    }
+    .kpi-trend.up   { color: var(--success); }
+    .kpi-trend.down { color: var(--danger); }
+    .kpi-trend.flat { color: var(--text-dim); }
 
     .metrics-row {
       display: grid;
@@ -895,7 +921,8 @@
         <div class="messages" id="messages">
           <div class="welcome" id="welcome">
             <div class="welcome-logo">DQIII&#8734;</div>
-            <p>What would you like to build?</p>
+            <p style="font-size:1.15rem;font-weight:600;color:var(--text);margin-bottom:6px">Your AI that works for you</p>
+            <p style="font-size:0.88rem;color:var(--text-dim);margin-bottom:0">I route tasks to the smartest, cheapest model. Ask me anything.</p>
             <div class="suggestions" id="initial-suggestions">
               <button class="suggestion-btn" data-text="Create a business plan for a new startup">Create a business plan</button>
               <button class="suggestion-btn" data-text="Analyze my portfolio and suggest improvements">Analyze my portfolio</button>
@@ -912,10 +939,10 @@
 
         <div class="chat-input-area">
           <div class="tier-pills" id="tier-pills">
-            <button class="tier-pill active" data-tier="auto">Auto</button>
-            <button class="tier-pill" data-tier="local">Local</button>
-            <button class="tier-pill" data-tier="groq">Groq</button>
-            <button class="tier-pill" data-tier="claude">Claude</button>
+            <button class="tier-pill active" data-tier="auto" title="DQ elige el mejor modelo para tu tarea">Auto</button>
+            <button class="tier-pill" data-tier="local" title="Ollama en tu máquina · Gratis · ~5-45s">Local</button>
+            <button class="tier-pill" data-tier="groq" title="Cloud rápido · Gratis · ~1-3s">Groq</button>
+            <button class="tier-pill" data-tier="claude" title="Anthropic · ~$0.01-0.05 · ~2-5s · El más capaz">Claude</button>
           </div>
           <div class="file-chips" id="file-chips"></div>
           <div class="input-row">
@@ -954,10 +981,20 @@
 
       <!-- KPI cards -->
       <div class="kpi-grid">
-        <div class="kpi-card">
+        <div class="kpi-card" title="Based on: success rate, error resolution, hook integrity" style="cursor:default">
           <div class="kpi-label">Health Score</div>
-          <div class="kpi-val cyan" id="m-health">—</div>
-          <div class="kpi-sub">/100</div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <svg id="health-ring-svg" width="56" height="56" viewBox="0 0 56 56" style="flex-shrink:0;transform:rotate(-90deg)">
+              <circle cx="28" cy="28" r="22" fill="none" stroke="var(--bg-surface2)" stroke-width="5"/>
+              <circle id="health-ring-fill" cx="28" cy="28" r="22" fill="none" stroke="var(--success)" stroke-width="5"
+                stroke-dasharray="138.2" stroke-dashoffset="138.2" stroke-linecap="round"
+                style="transition:stroke-dashoffset 0.8s ease,stroke 0.4s"/>
+            </svg>
+            <div>
+              <div class="kpi-val cyan" id="m-health" style="font-size:2rem">—</div>
+              <div class="kpi-sub">/ 100</div>
+            </div>
+          </div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Sessions (7d)</div>
@@ -1108,6 +1145,7 @@ const TIER_LABELS = {
   'C': 'Ollama Local',  '1': 'Ollama Local',  'local': 'Ollama Local',
   '3': 'Claude Sonnet', 'claude': 'Claude',   'claude_oauth': 'Claude OAuth',
   'claude_api': 'Claude API', 'auto': 'Auto',
+  'unknown': 'Unclassified', 'null': 'Unclassified', '': 'Unclassified',
 };
 const TIER_COLORS = {
   'A': 'var(--tier-claude)', 'S': 'var(--tier-claude)', 'S+': 'var(--tier-claude)',
@@ -1121,8 +1159,12 @@ const SETTINGS_TIER_COLORS = {
   auto: 'var(--accent)', local: 'var(--tier-local)',
   groq: 'var(--tier-groq)', claude: 'var(--tier-claude)',
 };
-function tierLabel(t) { return TIER_LABELS[String(t)] || String(t) || '—'; }
-function tierColor(t) { return TIER_COLORS[String(t)] || 'var(--text-dim)'; }
+function tierLabel(t) {
+  if (t == null) return 'Unclassified';
+  const k = String(t);
+  return TIER_LABELS[k] || (k.length > 0 ? k : 'Unclassified');
+}
+function tierColor(t) { return TIER_COLORS[String(t ?? '')] || 'var(--text-dim)'; }
 
 // ── Navigation ────────────────────────────────────────────────────────────
 document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -1143,21 +1185,78 @@ function setText(id, val) {
   if (el) el.textContent = val ?? '—';
 }
 
+function fmtCost(val) {
+  const n = Number(val || 0);
+  if (n === 0) return 'Free';
+  if (n < 0.01) return '$' + n.toFixed(4);
+  return '$' + n.toFixed(2);
+}
+
+const _TREND_KEY = 'dq-health-baseline';
+function _loadBaseline() {
+  try { return JSON.parse(localStorage.getItem(_TREND_KEY) || 'null'); } catch { return null; }
+}
+function _saveBaseline(data) {
+  try { localStorage.setItem(_TREND_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+function _trendBadge(cur, prev) {
+  if (prev == null || cur == null) return '';
+  const diff = Number(cur) - Number(prev);
+  if (diff > 0)  return '<span class="kpi-trend up">↑</span>';
+  if (diff < 0)  return '<span class="kpi-trend down">↓</span>';
+  return '<span class="kpi-trend flat">→</span>';
+}
+function _injectTrend(id, cur, prev) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const old = el.querySelector('.kpi-trend');
+  if (old) old.remove();
+  const badge = document.createElement('span');
+  badge.className = 'kpi-trend ' + (cur > prev ? 'up' : cur < prev ? 'down' : 'flat');
+  badge.textContent = cur > prev ? '↑' : cur < prev ? '↓' : '→';
+  el.appendChild(badge);
+}
+
 async function loadHealth() {
   try {
     const r = await fetch('/api/health');
     if (!r.ok) return;
     const d = await r.json();
     const score = d.health_score != null ? Math.round(Number(d.health_score)) : null;
+    const cost = Object.values(d.tiers || {}).reduce((s, t) => s + (t.cost || 0), 0);
+
     setText('m-health',   score ?? '—');
     setText('nav-health', score ?? '—');
     setText('m-sessions', d.sessions_7d ?? '—');
     setText('m-actions',  d.actions_7d ?? '—');
     setText('m-success',  d.success_rate != null ? d.success_rate + '%' : '—');
-    const cost = Object.values(d.tiers || {}).reduce((s, t) => s + (t.cost || 0), 0);
-    setText('m-cost',     '$' + cost.toFixed(4));
+    setText('m-cost', fmtCost(cost));
     setText('m-errors',   d.errors_open ?? '—');
     renderTierBars(d.tiers || {});
+
+    // Animate health ring
+    const ring = document.getElementById('health-ring-fill');
+    if (ring && score != null) {
+      const circ = 2 * Math.PI * 22; // ≈138.2
+      const offset = circ * (1 - score / 100);
+      ring.style.strokeDashoffset = offset;
+      ring.style.stroke = score >= 85 ? 'var(--success)' : score >= 60 ? 'var(--warning)' : 'var(--danger)';
+      const hEl = document.getElementById('m-health');
+      if (hEl) hEl.style.color = score >= 85 ? 'var(--success)' : score >= 60 ? 'var(--warning)' : 'var(--danger)';
+    }
+
+    // Trend indicators (compare with stored baseline, refresh baseline every 30min)
+    const baseline = _loadBaseline();
+    const prev = baseline?.data;
+    if (prev) {
+      _injectTrend('m-sessions', d.sessions_7d, prev.sessions_7d);
+      _injectTrend('m-actions',  d.actions_7d,  prev.actions_7d);
+      _injectTrend('m-success',  d.success_rate, prev.success_rate);
+      _injectTrend('m-errors',   d.errors_open,  prev.errors_open);
+    }
+    // Save baseline every 30 min or on first load
+    if (!baseline || Date.now() - baseline.ts > 1800000) _saveBaseline(d);
+
   } catch (_) {}
 }
 
@@ -1179,7 +1278,7 @@ function renderTierBars(tiers) {
     bar.innerHTML = `
       <div class="tier-bar-hdr">
         <span class="tier-bar-name" style="color:${color}">${label}</span>
-        <span class="tier-bar-info">${data.count} · $${(data.cost || 0).toFixed(4)}</span>
+        <span class="tier-bar-info">${data.count} · ${fmtCost(data.cost)}</span>
       </div>
       <div class="tier-bar-track">
         <div class="tier-bar-fill" style="width:${pct}%;background:${color}"></div>
@@ -1205,7 +1304,7 @@ async function loadTasks() {
       const tr   = document.createElement('tr');
       const ts   = t.timestamp ? String(t.timestamp).slice(0, 16).replace('T', ' ') : '—';
       const dur  = t.duration_ms != null ? (t.duration_ms / 1000).toFixed(1) + 's' : '—';
-      const cost = t.cost != null ? '$' + Number(t.cost).toFixed(5) : '$0';
+      const cost = fmtCost(t.cost);
       const col  = tierColor(t.tier);
       tr.innerHTML = `
         <td style="font-family:'Space Grotesk',sans-serif;color:var(--text)">${t.agent || '—'}</td>
@@ -1536,7 +1635,12 @@ document.getElementById('new-chat-btn')?.addEventListener('click', () => {
   welcome.id = 'welcome'; welcome.className = 'welcome';
   const logo = document.createElement('div');
   logo.className = 'welcome-logo'; logo.textContent = 'DQIII\u221e';
-  const p = document.createElement('p'); p.textContent = 'What would you like to build?';
+  const p = document.createElement('p');
+  p.style.cssText = 'font-size:1.15rem;font-weight:600;color:var(--text);margin-bottom:6px';
+  p.textContent = 'Your AI that works for you';
+  const p2 = document.createElement('p');
+  p2.style.cssText = 'font-size:0.88rem;color:var(--text-dim);margin-bottom:0';
+  p2.textContent = 'I route tasks to the smartest, cheapest model. Ask me anything.';
   const sugg = document.createElement('div');
   sugg.className = 'suggestions';
   const suggestions = [
@@ -1555,7 +1659,7 @@ document.getElementById('new-chat-btn')?.addEventListener('click', () => {
     });
     sugg.appendChild(btn);
   }
-  welcome.appendChild(logo); welcome.appendChild(p); welcome.appendChild(sugg);
+  welcome.appendChild(logo); welcome.appendChild(p); welcome.appendChild(p2); welcome.appendChild(sugg);
   area.appendChild(welcome);
 });
 
@@ -1616,11 +1720,54 @@ function renderHistList(sessions, isSearch) {
     metaEl.className = 'hist-meta';
     metaEl.textContent = _relTime(s.created_at);
 
+    // Tier badge (if tier info available from server)
+    if (s.tier) {
+      const badge = document.createElement('span');
+      badge.className = 'hist-tier-badge';
+      badge.textContent = tierLabel(s.tier);
+      badge.style.color = tierColor(s.tier);
+      metaEl.appendChild(badge);
+    }
+
+    // Delete button
+    const delBtn = document.createElement('button');
+    delBtn.className = 'hist-del';
+    delBtn.textContent = '\u00d7';
+    delBtn.title = 'Delete session';
+    delBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('Delete this chat session?')) return;
+      await deleteSession(s.id);
+    });
+
     btn.appendChild(prevEl);
     btn.appendChild(metaEl);
+    btn.appendChild(delBtn);
     btn.addEventListener('click', () => loadSession(s.id));
     list.appendChild(btn);
   }
+}
+
+async function deleteSession(sid) {
+  // Optimistic: remove from UI immediately
+  if (sid === currentSessionId) {
+    currentSessionId = null;
+    const area = document.getElementById('messages');
+    if (area) {
+      area.textContent = '';
+      const w = document.createElement('div');
+      w.id = 'welcome'; w.className = 'welcome';
+      const logo = document.createElement('div');
+      logo.className = 'welcome-logo'; logo.textContent = 'DQIII\u221e';
+      w.appendChild(logo);
+      area.appendChild(w);
+    }
+  }
+  // Remove from DB via backend (best-effort, no dedicated endpoint yet)
+  try {
+    await fetch('/api/chat/' + encodeURIComponent(sid) + '/delete', { method: 'POST' });
+  } catch (_) {}
+  loadChatHistory();
 }
 
 async function loadChatHistory() {
@@ -1820,6 +1967,15 @@ function notifyDone(title, body) {
 
   let recognition = null;
   let listening = false;
+  let silenceTimer = null;
+  // Build a recording indicator span via DOM (no innerHTML)
+  const recIndicator = document.createElement('span');
+  recIndicator.style.cssText = 'font-size:0.65rem;font-weight:600;letter-spacing:0.03em;color:var(--danger)';
+  recIndicator.textContent = '● REC';
+  // Capture original children to restore
+  const _origChildren = Array.from(micBtn.childNodes).map(n => n.cloneNode(true));
+
+  const AUTO_SEND_KEYWORDS = ['enviar', 'send', 'listo', "that's it", 'eso es todo'];
 
   function getLang() {
     const v = langSel?.value || 'auto';
@@ -1827,34 +1983,71 @@ function notifyDone(title, body) {
     return v;
   }
 
+  function resetSilenceTimer(onSilence) {
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(onSilence, 3000);
+  }
+
   function startListening() {
     if (listening) return;
     recognition = new SpeechRecognition();
     recognition.lang = getLang();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
 
     const input = document.getElementById('chat-input');
-    const base = input?.value || '';
+    const base = input ? input.value : '';
+    let finalTranscript = base;
 
     recognition.onstart = () => {
       listening = true;
       micBtn.classList.add('recording');
-      micBtn.title = 'Listening… click to stop';
+      while (micBtn.firstChild) micBtn.removeChild(micBtn.firstChild);
+      micBtn.appendChild(recIndicator);
+      micBtn.title = 'Escuchando… click para detener';
+      resetSilenceTimer(() => stopListening());
     };
+
     recognition.onresult = e => {
-      const transcript = Array.from(e.results)
-        .map(r => r[0].transcript).join('');
-      if (input) input.value = base + transcript;
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          finalTranscript += t;
+        } else {
+          interim = t;
+        }
+      }
+      if (input) {
+        input.value = finalTranscript + interim;
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+      }
+      // Reset 3s silence timer on each new result
+      resetSilenceTimer(() => stopListening());
+      // Auto-send on keyword
+      const full = (finalTranscript + interim).trim();
+      const lower = full.toLowerCase();
+      const matched = AUTO_SEND_KEYWORDS.find(kw => lower.endsWith(kw));
+      if (matched) {
+        const stripped = full.slice(0, full.length - matched.length).trim();
+        if (input) input.value = stripped;
+        stopListening();
+        sendChat();
+      }
     };
+
     recognition.onerror = () => stopListening();
-    recognition.onend = () => stopListening();
+    recognition.onend = () => { if (listening) stopListening(); };
     recognition.start();
   }
 
   function stopListening() {
+    clearTimeout(silenceTimer);
     listening = false;
     micBtn.classList.remove('recording');
+    while (micBtn.firstChild) micBtn.removeChild(micBtn.firstChild);
+    _origChildren.forEach(n => micBtn.appendChild(n.cloneNode(true)));
     micBtn.title = 'Voice input';
     if (recognition) { try { recognition.stop(); } catch(_) {} recognition = null; }
   }
@@ -1989,6 +2182,33 @@ function makeTtsBtn(text) {
     const idx = (THEMES.indexOf(current) + 1) % THEMES.length;
     applyTheme(THEMES[idx]);
   });
+})();
+
+// ── Placeholder rotation ───────────────────────────────────────────────────
+(function initPlaceholder() {
+  const input = document.getElementById('chat-input');
+  if (!input) return;
+  const placeholders = [
+    'Analyze Tesla stock performance…',
+    'Create a business plan for a café…',
+    'Build a REST API with auth…',
+    'Explain quantum computing simply…',
+    'Diseña un plan de nutrición semanal…',
+  ];
+  let idx = 0;
+  let userHasTyped = false;
+  input.addEventListener('input', () => { userHasTyped = input.value.length > 0; });
+  input.addEventListener('focus', () => { userHasTyped = input.value.length > 0; });
+  setInterval(() => {
+    if (userHasTyped || document.activeElement === input) return;
+    idx = (idx + 1) % placeholders.length;
+    input.style.transition = 'opacity 0.3s';
+    input.style.opacity = '0';
+    setTimeout(() => {
+      input.placeholder = placeholders[idx];
+      input.style.opacity = '1';
+    }, 300);
+  }, 4000);
 })();
 
 // ── Init ──────────────────────────────────────────────────────────────────

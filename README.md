@@ -36,7 +36,7 @@ and learns from the result.
 curl -fsSL https://raw.githubusercontent.com/senda-labs/DQIII8/main/install.sh | bash
 
 # Your first task
-dq "hello, who are you?"
+dq "Create a business plan for a coffee shop in my city"
 ```
 
 **Requirements:** Ubuntu 22.04+, 4GB RAM minimum (8GB recommended), Python 3.11+.
@@ -238,7 +238,7 @@ No Docker required. No Kubernetes. No complexity tax.
 
 - Health score: **91.1/100** HEALTHY (provisional)
 - 9/10 architectural blocks complete
-- 32/32 tests passing
+- 45+ tests passing
 - 601 semantic memories active
 - 5 domain knowledge centroids
 - Auto-learning: active, detecting patterns

@@ -32,17 +32,15 @@ done
 # Load environment variables
 [[ -f "$JARVIS_ROOT/.env" ]] && set -a && source "$JARVIS_ROOT/.env" && set +a
 
-# ── Dynamic Ollama model — auto-select by available RAM ───────────────────────
-_recommended_model="$(python3 -c "
-import sys
-sys.path.insert(0, '$JARVIS_ROOT/bin')
-try:
-    from system_profile import detect_hardware
-    print(detect_hardware()['recommended_model'])
-except Exception:
-    print('7b')
-" 2>/dev/null || echo '7b')"
-OLLAMA_MODEL="qwen2.5-coder:${_recommended_model}"
+# ── Dynamic Ollama model — auto-select by AVAILABLE RAM ───────────────────────
+_get_ollama_model() {
+    local avail
+    avail="$(awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 8000)"
+    if [ "${avail:-0}" -ge 8000 ]; then echo "qwen2.5-coder:7b"
+    elif [ "${avail:-0}" -ge 4000 ]; then echo "qwen2.5-coder:3b"
+    else echo "qwen2.5-coder:1.5b"; fi
+}
+OLLAMA_MODEL="$(_get_ollama_model)"
 
 # Environment validation
 if [[ "$VERBOSE" == "1" ]]; then
@@ -75,7 +73,7 @@ check_deps() {
         _active_tier="Ollama"
         [[ -n "${GROQ_API_KEY:-}" ]] && _active_tier="Groq"
         [[ -n "${ANTHROPIC_API_KEY:-}" ]] && _active_tier="Sonnet"
-        echo "✓ DQ ready | $_active_tier"
+        echo "✓ DQ | $_active_tier | ready"
     fi
 }
 
@@ -98,6 +96,18 @@ show_status() {
 
 ollama_available() {
     ollama ps &>/dev/null && ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"
+}
+
+# ── Output helpers — suppress routing noise in normal mode ────────────────────
+# _log: only prints in --verbose mode
+_log() { [[ "${VERBOSE:-0}" == "1" ]] && echo "[DQIII8] $*" >&2 || true; }
+# _wrap: exec OR_WRAPPER, suppressing stderr (routing messages) unless verbose
+_wrap() {
+    if [[ "${VERBOSE:-0}" == "1" ]]; then
+        exec python3 "$OR_WRAPPER" "$@"
+    else
+        exec python3 "$OR_WRAPPER" "$@" 2>/dev/null
+    fi
 }
 
 # ── Early flags — run before full env check ──────────────────────────────────
@@ -241,6 +251,10 @@ Generate an executive report comparing:
 Be specific and use the actual data."
             exit 0
             ;;
+        --chat)
+            shift
+            exec python3 "$JARVIS_ROOT/bin/interactive_chat.py" "$@"
+            ;;
         --verbose|--debug)
             VERBOSE=1
             shift
@@ -274,6 +288,7 @@ DQIII8 — 3-tier routing
   j --upload FILE [--agent A] [--domain D]  upload knowledge file (PDF/MD/TXT/DOCX/ZIP)
   j --dashboard [--host H] [--port P]       web dashboard (localhost:8080 by default)
   j --harvest [--domain D] [--agent A] [--all] [--prune]  harvest papers from arXiv + Semantic Scholar
+  j --chat                          interactive terminal chat (multi-turn session)
   j --verbose                       show full environment check output
 
 Tiers:
@@ -293,50 +308,45 @@ done
 case "$MODEL" in
 
     local|ollama)
-        echo "[DQIII8] Tier 1 — Ollama $OLLAMA_MODEL | Cost: \$0" >&2
+        _log "Tier 1 — Ollama $OLLAMA_MODEL | Cost: \$0"
         if ollama_available; then
             exec claude --model "ollama:$OLLAMA_MODEL" "$@"
         else
-            echo "[DQIII8] Ollama unavailable → fallback openrouter/$OLLAMA_FALLBACK" >&2
-            exec python3 "$OR_WRAPPER" --model "$OLLAMA_FALLBACK" "$@"
+            _log "Ollama unavailable → fallback openrouter/$OLLAMA_FALLBACK"
+            _wrap --model "$OLLAMA_FALLBACK" "$@"
         fi
         ;;
 
     groq)
-        echo "[DQIII8] Tier 2 — Groq llama-3.3-70b-versatile | Cost: free" >&2
-        exec python3 "$OR_WRAPPER" --agent git-specialist "$@"
+        _log "Tier 2 — Groq llama-3.3-70b-versatile | Cost: free"
+        _wrap --agent git-specialist "$@"
         ;;
 
     sonnet|"")
         # Respect DQ_DEFAULT_TIER when no explicit --model flag was given
         _dq_default="${DQ_DEFAULT_TIER:-auto}"
         if [[ "$_dq_default" == "groq-only" ]]; then
-            echo "[DQIII8] DQ_DEFAULT_TIER=groq-only → Tier 2 (Groq)" >&2
-            exec python3 "$OR_WRAPPER" --agent research-analyst "$@"
+            _log "DQ_DEFAULT_TIER=groq-only → Tier 2 (Groq)"
+            _wrap --agent research-analyst "$@"
         elif [[ "$_dq_default" == "groq+ollama" ]]; then
-            # Explicit code keywords → Ollama; everything else (including defaults) → Groq
-            # Note: openrouter_wrapper classify defaults to code_local for non-matching prompts,
-            # so we check for explicit code signals rather than relying on the classify output.
             if echo "$*" | grep -qiE '(python|refactor|debug|\.py|git commit|git push|fix bug|unittest|pytest|import |class |def |función|código|código|error traceback|optimize)'; then
-                echo "[DQIII8] DQ_DEFAULT_TIER=groq+ollama → code → Tier 1 (Ollama)" >&2
-                exec python3 "$OR_WRAPPER" --agent python-specialist "$@"
+                _log "DQ_DEFAULT_TIER=groq+ollama → code → Tier 1 (Ollama)"
+                _wrap --agent python-specialist "$@"
             else
-                echo "[DQIII8] DQ_DEFAULT_TIER=groq+ollama → general → Tier 2 (Groq)" >&2
-                exec python3 "$OR_WRAPPER" --agent research-analyst "$@"
+                _log "DQ_DEFAULT_TIER=groq+ollama → general → Tier 2 (Groq)"
+                _wrap --agent research-analyst "$@"
             fi
         elif [[ "$_dq_default" == "ollama-only" ]]; then
-            echo "[DQIII8] DQ_DEFAULT_TIER=$_dq_default → Tier 1 (Ollama, local)" >&2
+            _log "DQ_DEFAULT_TIER=$_dq_default → Tier 1 (Ollama, local)"
             if ollama_available; then
                 exec claude --model "ollama:$OLLAMA_MODEL" "$@"
             else
-                echo "[DQIII8] Ollama unavailable → fallback openrouter/$OLLAMA_FALLBACK" >&2
-                exec python3 "$OR_WRAPPER" --model "$OLLAMA_FALLBACK" "$@"
+                _log "Ollama unavailable → fallback openrouter/$OLLAMA_FALLBACK"
+                _wrap --model "$OLLAMA_FALLBACK" "$@"
             fi
         fi
         # auto (or unset) → default Sonnet behaviour
-        _router_out="$(python3 "$JARVIS_ROOT/bin/model_router.py" "código" 2>/dev/null || true)"
-        echo "[DQIII8] Tier 3 — Claude $MODEL_SONNET | Cost: standard" >&2
-        [[ -n "$_router_out" ]] && echo "[DQIII8] Active model: $_router_out" >&2
+        _log "Tier 3 — Claude $MODEL_SONNET | Cost: standard"
         cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT"
         ;;
 

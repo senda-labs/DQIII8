@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import webbrowser
 from pathlib import Path
 
 JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", Path.home() / "dqiii8"))
@@ -198,8 +199,13 @@ def setup() -> int:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        print("  Dashboard started at http://localhost:8080")
+        url = "http://localhost:8080"
+        print(f"  Dashboard started at {url}")
         print("  Stop it with: pkill -f dashboard.py")
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass  # no browser available (headless server)
     else:
         print("  Start later with: dq --dashboard")
     print()

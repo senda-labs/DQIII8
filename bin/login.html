@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DQ Dashboard — Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center font-mono">
+  <div class="w-full max-w-sm space-y-6 px-6">
+    <div class="text-center space-y-2">
+      <h1 class="text-4xl font-bold text-white">DQ</h1>
+      <p class="text-gray-500 text-sm">Works for you. Go outside and live.</p>
+    </div>
+
+    <form action="/" method="GET" class="space-y-4">
+      <div>
+        <label class="block text-xs text-gray-500 uppercase tracking-wider mb-2">Access Token</label>
+        <input
+          type="password"
+          name="token"
+          placeholder="Paste your token here"
+          autofocus
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 text-sm"
+        />
+      </div>
+      <button
+        type="submit"
+        class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-3 text-sm font-bold transition-colors"
+      >
+        Login
+      </button>
+    </form>
+
+    <p class="text-center text-xs text-gray-600">
+      Find your token in: <code class="text-gray-400">database/.dashboard_token</code>
+    </p>
+  </div>
+</body>
+</html>

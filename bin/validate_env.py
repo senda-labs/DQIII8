@@ -37,11 +37,14 @@ def check_tier_b():
 
 
 def check_tier_a():
-    """Tier A: Claude API."""
+    """Tier A: Claude API. Returns None when not needed for configured tier."""
     key = os.environ.get("ANTHROPIC_API_KEY", "")
     if key:
         return True, "ANTHROPIC_API_KEY configured"
-    return False, "ANTHROPIC_API_KEY not defined. Tier A unavailable."
+    tier_config = os.environ.get("DQ_DEFAULT_TIER", "auto")
+    if tier_config in ("groq-only", "groq+ollama", "ollama-only"):
+        return None, f"Tier A not configured (not needed for DQ_DEFAULT_TIER={tier_config})"
+    return False, "ANTHROPIC_API_KEY not defined. Tier A unavailable. Run: dq --setup"
 
 
 def check_db():
@@ -119,6 +122,10 @@ def main():
     print("─── DQIII8 Environment Check ───")
     for name, check_fn in checks:
         ok, msg = check_fn()
+        if ok is None:
+            # Informational — tier not needed for current config
+            print(f"  ℹ {name}: {msg}")
+            continue
         status = "✓" if ok else "✗"
         print(f"  {status} {name}: {msg}")
         if not ok and not name.startswith("Tier"):

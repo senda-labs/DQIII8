@@ -851,6 +851,18 @@ async def get_tiers(auth: bool = Depends(check_auth)):
     }
 
 
+@app.get("/api/claude/status")
+async def claude_status(auth: bool = Depends(check_auth)):
+    """Lightweight Claude Code status for navbar indicator."""
+    oauth = detect_claude_oauth()
+    return {
+        "available": oauth.get("available", False),
+        "method": oauth.get("method"),
+        "plan": oauth.get("plan"),
+        "version": oauth.get("version"),
+    }
+
+
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     """Settings UI page."""

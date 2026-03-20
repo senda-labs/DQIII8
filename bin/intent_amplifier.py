@@ -344,8 +344,8 @@ def amplify(
     _log("phase 2: domain scoring (hierarchical)")
     routing = None
     try:
-        from hierarchical_router import classify_hierarchical, retrieve_knowledge_by_routing
-        routing = classify_hierarchical(prompt)
+        from hierarchical_router import classify_hierarchical_cached, retrieve_knowledge_by_routing
+        routing = classify_hierarchical_cached(prompt)
         if routing["active_centroids"]:
             primary = routing["active_centroids"][0]
             domains = [

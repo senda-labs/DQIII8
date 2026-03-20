@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 DQ Dashboard — Web interface for DQIII8.
-Exposes metrics, task execution, and real-time intent amplification.
+Exposes metrics, task execution, and real-time task preview.
 
 Usage:
     python3 bin/dashboard.py                    # localhost:8080

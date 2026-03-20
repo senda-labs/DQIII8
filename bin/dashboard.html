@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DQ Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .pulse-dot { animation: pulseDot 1.5s ease-in-out infinite; }
+    @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+  <!-- Header -->
+  <header class="border-b border-gray-800/60 px-6 py-4">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <span class="text-2xl font-bold tracking-tight text-white">DQ</span>
+        <span class="text-gray-600 text-xs hidden sm:block">Works for you. Go outside and live.</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="health-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-gray-800 text-gray-500 transition-all duration-500">
+          <span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-gray-600 mr-1.5 align-middle"></span>loading
+        </span>
+        <span id="last-audit" class="text-xs text-gray-600 hidden sm:block"></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
+
+    <!-- Metric Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60 hover:border-gray-700 transition-colors">
+        <p class="text-gray-500 text-xs uppercase tracking-widest mb-3">Sessions (7d)</p>
+        <p id="m-sessions" class="text-3xl font-bold text-white tabular-nums">-</p>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60 hover:border-gray-700 transition-colors">
+        <p class="text-gray-500 text-xs uppercase tracking-widest mb-3">Success Rate</p>
+        <p id="m-success" class="text-3xl font-bold text-emerald-400 tabular-nums">-</p>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60 hover:border-gray-700 transition-colors">
+        <p class="text-gray-500 text-xs uppercase tracking-widest mb-3">Open Errors</p>
+        <p id="m-errors" class="text-3xl font-bold text-red-400 tabular-nums">-</p>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60 hover:border-gray-700 transition-colors">
+        <p class="text-gray-500 text-xs uppercase tracking-widest mb-3">Cost (7d)</p>
+        <p id="m-cost" class="text-3xl font-bold text-amber-400 tabular-nums">-</p>
+      </div>
+    </div>
+
+    <!-- Tier Distribution -->
+    <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60">
+      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">Tier Distribution (7d)</h2>
+      <div id="tier-bars" class="space-y-4">
+        <p class="text-gray-700 text-sm">Loading...</p>
+      </div>
+    </div>
+
+    <!-- Intent Amplification Panel -->
+    <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60">
+      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">
+        Intent Amplification
+        <span class="ml-2 text-blue-500 font-normal normal-case tracking-normal">real-time</span>
+      </h2>
+
+      <div class="space-y-4">
+        <textarea
+          id="intent-input"
+          rows="3"
+          placeholder="What do you want to build?"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:bg-gray-800/80 resize-none text-sm transition-colors"
+        ></textarea>
+
+        <div id="amplify-result" class="hidden"></div>
+
+        <div class="flex items-center gap-3">
+          <button
+            id="execute-btn"
+            class="hidden px-5 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Execute &#9654;
+          </button>
+          <span id="execute-status" class="hidden text-xs text-gray-500"></span>
+        </div>
+
+        <div id="execute-result" class="hidden bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm whitespace-pre-wrap max-h-72 overflow-y-auto"></div>
+      </div>
+    </div>
+
+    <!-- Recent Tasks -->
+    <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Recent Tasks</h2>
+        <span class="text-xs text-gray-700">auto-refresh 30s</span>
+      </div>
+      <div id="tasks-container"></div>
+    </div>
+
+  </main>
+
+  <footer class="border-t border-gray-800/60 px-6 py-4 mt-8">
+    <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-gray-700">
+      <span>DQ v0.1.0</span>
+      <span>Privacy</span>
+    </div>
+  </footer>
+
+  <script>
+    'use strict';
+
+    // ── XSS-safe helpers ─────────────────────────────────────────────────
+    function esc(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Safe text node setter
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = String(value);
+    }
+
+    // ── State ────────────────────────────────────────────────────────────
+    let lastAmplifyResult = null;
+    let debounceTimer = null;
+
+    const TIER_META = {
+      '1':       { label: 'Tier 1 · Local',  barColor: 'bg-emerald-500', textColor: 'text-emerald-400', free: true  },
+      '2':       { label: 'Tier 2 · Groq',   barColor: 'bg-blue-500',    textColor: 'text-blue-400',    free: true  },
+      '3':       { label: 'Tier 3 · Sonnet', barColor: 'bg-orange-500',  textColor: 'text-orange-400',  free: false },
+      'unknown': { label: 'Unknown',          barColor: 'bg-gray-600',    textColor: 'text-gray-400',    free: false },
+    };
+
+    // ── Health & Metrics ─────────────────────────────────────────────────
+    async function loadHealth() {
+      try {
+        const r = await fetch('/api/health');
+        if (!r.ok) return;
+        const d = await r.json();
+        applyHealth(d);
+      } catch (e) {
+        console.error('Health load failed:', e);
+      }
+    }
+
+    function applyHealth(d) {
+      // Health badge (uses only numeric score + safe static strings)
+      const badge = document.getElementById('health-badge');
+      if (d.health_score != null) {
+        const score = Math.round(Number(d.health_score));
+        const [bg, dotColor, tc] =
+          score >= 80 ? ['bg-emerald-900/60 border border-emerald-700/40', 'bg-emerald-400', 'text-emerald-300'] :
+          score >= 60 ? ['bg-amber-900/60 border border-amber-700/40',     'bg-amber-400',   'text-amber-300']   :
+                        ['bg-red-900/60 border border-red-700/40',          'bg-red-400',     'text-red-300'];
+        badge.className = 'px-3 py-1 rounded-full text-xs font-bold ' + bg + ' ' + tc + ' transition-all duration-500';
+        // Only score number is user-derived — sanitize via parseInt
+        badge.textContent = String(score);
+        const dot = document.createElement('span');
+        dot.className = 'inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle ' + dotColor;
+        badge.prepend(dot);
+      }
+
+      // Last audit — slice of timestamp string, safe
+      if (d.last_audit) {
+        document.getElementById('last-audit').textContent = 'Audit: ' + String(d.last_audit).slice(0, 10);
+      }
+
+      // Metric cards — all numeric, safe with textContent
+      setText('m-sessions', d.sessions_7d ?? '-');
+      setText('m-success',  d.success_rate != null ? d.success_rate + '%' : '-');
+      setText('m-errors',   d.errors_open ?? '-');
+
+      const totalCost = Object.values(d.tiers || {}).reduce((s, t) => s + (t.cost || 0), 0);
+      setText('m-cost', totalCost > 0 ? '$' + totalCost.toFixed(4) : '$0.0000');
+
+      renderTiers(d.tiers || {});
+    }
+
+    function renderTiers(tiers) {
+      const container = document.getElementById('tier-bars');
+      const total = Object.values(tiers).reduce((s, t) => s + (t.count || 0), 0);
+
+      if (total === 0) {
+        container.textContent = 'No data for the last 7 days';
+        return;
+      }
+
+      // Clear and rebuild safely
+      container.textContent = '';
+
+      const sorted = Object.entries(tiers).sort((a, b) => {
+        const order = { '1': 0, '2': 1, '3': 2, 'unknown': 3 };
+        return (order[a[0]] ?? 9) - (order[b[0]] ?? 9);
+      });
+
+      for (const [tier, data] of sorted) {
+        const pct  = total > 0 ? Math.round((data.count / total) * 100) : 0;
+        const meta = TIER_META[tier] || TIER_META.unknown;
+
+        const row = document.createElement('div');
+
+        // Label row
+        const labelRow = document.createElement('div');
+        labelRow.className = 'flex justify-between items-baseline text-xs mb-1.5';
+
+        const labelLeft = document.createElement('span');
+        labelLeft.className = 'text-gray-400';
+        labelLeft.textContent = meta.label;
+        if (meta.free) {
+          const freeBadge = document.createElement('span');
+          freeBadge.className = 'ml-1 text-emerald-500 text-xs';
+          freeBadge.textContent = 'free';
+          labelLeft.appendChild(freeBadge);
+        }
+
+        const labelRight = document.createElement('span');
+        labelRight.className = 'text-gray-500';
+        labelRight.textContent = pct + '% \u2022 ' + data.count + ' calls \u2022 $' + (data.cost || 0).toFixed(4);
+
+        labelRow.appendChild(labelLeft);
+        labelRow.appendChild(labelRight);
+
+        // Bar
+        const track = document.createElement('div');
+        track.className = 'w-full bg-gray-800 rounded-full h-2';
+        const fill = document.createElement('div');
+        fill.className = meta.barColor + ' h-2 rounded-full transition-all duration-700';
+        fill.style.width = pct + '%';
+        track.appendChild(fill);
+
+        row.appendChild(labelRow);
+        row.appendChild(track);
+        container.appendChild(row);
+      }
+    }
+
+    // ── Intent Amplification ──────────────────────────────────────────────
+    document.getElementById('intent-input').addEventListener('input', function(e) {
+      clearTimeout(debounceTimer);
+      const val = e.target.value.trim();
+
+      const resultEl  = document.getElementById('amplify-result');
+      const executeEl = document.getElementById('execute-btn');
+      const outputEl  = document.getElementById('execute-result');
+
+      if (!val) {
+        resultEl.classList.add('hidden');
+        executeEl.classList.add('hidden');
+        outputEl.classList.add('hidden');
+        lastAmplifyResult = null;
+        return;
+      }
+
+      resultEl.classList.remove('hidden');
+      resultEl.textContent = 'Analyzing your intent...';
+      resultEl.className = 'text-gray-600 text-xs py-2';
+
+      debounceTimer = setTimeout(() => runAmplify(val), 500);
+    });
+
+    async function runAmplify(input) {
+      try {
+        const r = await fetch('/api/amplify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input }),
+        });
+        const d = await r.json();
+        lastAmplifyResult = { input, ...d };
+        renderAmplifyResult(d, input.length);
+      } catch (e) {
+        const el = document.getElementById('amplify-result');
+        el.className = 'text-red-500 text-xs py-2';
+        el.textContent = 'Failed to analyze intent.';
+      }
+    }
+
+    function renderAmplifyResult(d, origLen) {
+      const container = document.getElementById('amplify-result');
+      container.textContent = '';
+      container.className = 'fade-in';
+
+      if (d.error && !d.action) {
+        const notice = document.createElement('div');
+        notice.className = 'bg-amber-950/30 border border-amber-800/40 rounded-lg p-4 text-sm text-amber-400';
+        notice.textContent = d.error;
+        container.appendChild(notice);
+        document.getElementById('execute-btn').classList.remove('hidden');
+        return;
+      }
+
+      const card = document.createElement('div');
+      card.className = 'bg-gray-800/60 border border-gray-700/60 rounded-xl p-5 space-y-4';
+
+      // Row 1: decomposition fields
+      const row1 = document.createElement('div');
+      row1.className = 'grid grid-cols-2 sm:grid-cols-4 gap-3';
+      for (const [label, val] of [
+        ['Action', d.action],
+        ['Entity', d.entity],
+        ['Niche',  d.niche],
+        ['Pattern', d.pattern],
+      ]) {
+        const cell = document.createElement('div');
+        const lbl  = document.createElement('p');
+        lbl.className = 'text-gray-600 text-xs mb-0.5';
+        lbl.textContent = label;
+        const v = document.createElement('p');
+        v.className = 'text-white text-sm font-bold';
+        v.textContent = val || '-';
+        cell.appendChild(lbl);
+        cell.appendChild(v);
+        row1.appendChild(cell);
+      }
+      card.appendChild(row1);
+
+      // Row 2: domain scores (safe — keys from our DB, values numeric)
+      const scores = d.all_scores || {};
+      const topDomains = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      if (topDomains.length > 0) {
+        const row2 = document.createElement('div');
+        row2.className = 'flex items-center gap-2 flex-wrap';
+        const domLabel = document.createElement('span');
+        domLabel.className = 'text-gray-600 text-xs mr-1';
+        domLabel.textContent = 'Domains:';
+        row2.appendChild(domLabel);
+        for (const [domain, score] of topDomains) {
+          const badge = document.createElement('span');
+          badge.className = 'px-2 py-0.5 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400';
+          badge.textContent = domain + ' ' + (Number(score) * 100).toFixed(0) + '%';
+          row2.appendChild(badge);
+        }
+        card.appendChild(row2);
+      }
+
+      // Row 3: subtasks
+      const subtasks = d.subtasks || [];
+      if (subtasks.length > 0) {
+        const row3 = document.createElement('div');
+        const header = document.createElement('p');
+        header.className = 'text-gray-600 text-xs uppercase tracking-widest mb-2';
+        header.textContent = 'Subtasks DQ will cover';
+        row3.appendChild(header);
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-2 gap-1';
+        for (const subtask of subtasks) {
+          const item = document.createElement('div');
+          item.className = 'flex items-center gap-2 text-gray-300 text-xs';
+          const tick = document.createElement('span');
+          tick.className = 'text-emerald-500 shrink-0';
+          tick.textContent = '\u2713';
+          const label = document.createElement('span');
+          label.textContent = subtask;
+          item.appendChild(tick);
+          item.appendChild(label);
+          grid.appendChild(item);
+        }
+        row3.appendChild(grid);
+        card.appendChild(row3);
+      }
+
+      // Row 4: stats bar
+      const meta   = TIER_META[String(d.tier)] || TIER_META.unknown;
+      const ampLen = d.amplified_prompt_length || 0;
+      const ratio  = origLen > 0 ? (ampLen / origLen).toFixed(1) : '?';
+
+      const row4 = document.createElement('div');
+      row4.className = 'flex items-center justify-between pt-1 border-t border-gray-700/60 text-xs flex-wrap gap-2';
+
+      const statsLeft = document.createElement('div');
+      statsLeft.className = 'flex items-center gap-4';
+
+      const knowledgeSpan = document.createElement('span');
+      knowledgeSpan.className = 'text-gray-500';
+      knowledgeSpan.textContent = 'Knowledge: ';
+      const knowledgeVal = document.createElement('span');
+      knowledgeVal.className = 'text-white font-bold';
+      knowledgeVal.textContent = String(d.knowledge_used || 0) + ' chunks';
+      knowledgeSpan.appendChild(knowledgeVal);
+
+      const tierSpan = document.createElement('span');
+      tierSpan.className = 'text-gray-500';
+      tierSpan.textContent = 'Tier: ';
+      const tierVal = document.createElement('span');
+      tierVal.className = meta.textColor + ' font-bold';
+      tierVal.textContent = meta.label;
+      tierSpan.appendChild(tierVal);
+
+      statsLeft.appendChild(knowledgeSpan);
+      statsLeft.appendChild(tierSpan);
+
+      const statsRight = document.createElement('span');
+      statsRight.className = 'text-gray-600';
+      statsRight.textContent = ampLen + ' chars amplified \u2022 ' + origLen + ' original \u2022 ' + ratio + 'x expansion';
+
+      row4.appendChild(statsLeft);
+      row4.appendChild(statsRight);
+      card.appendChild(row4);
+
+      container.appendChild(card);
+      document.getElementById('execute-btn').classList.remove('hidden');
+    }
+
+    // ── Execute Task ──────────────────────────────────────────────────────
+    document.getElementById('execute-btn').addEventListener('click', async function() {
+      const input = document.getElementById('intent-input').value.trim();
+      if (!input) return;
+
+      const btn      = document.getElementById('execute-btn');
+      const statusEl = document.getElementById('execute-status');
+      const resultEl = document.getElementById('execute-result');
+
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = 'Sending to pipeline...';
+      resultEl.classList.remove('hidden');
+      resultEl.className = 'bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm whitespace-pre-wrap max-h-72 overflow-y-auto text-gray-500';
+      resultEl.textContent = 'Waiting for response...';
+
+      try {
+        const r = await fetch('/api/task/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input }),
+        });
+        const d = await r.json();
+
+        // Use textContent — no innerHTML needed for plain output
+        resultEl.textContent = d.output || d.error || 'No output returned.';
+        resultEl.className = 'bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm whitespace-pre-wrap max-h-72 overflow-y-auto ' +
+          (d.exit_code === 0 ? 'text-emerald-400' : 'text-red-400');
+        statusEl.textContent = d.exit_code === 0 ? 'Done.' : 'Error (exit ' + d.exit_code + ')';
+      } catch (e) {
+        resultEl.textContent = 'Request failed: ' + e.message;
+        resultEl.className = 'bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm whitespace-pre-wrap max-h-72 overflow-y-auto text-red-400';
+        statusEl.textContent = 'Failed.';
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Execute \u25B6';
+    });
+
+    // ── Recent Tasks Table ────────────────────────────────────────────────
+    async function loadTasks() {
+      try {
+        const r = await fetch('/api/tasks/recent?limit=20');
+        if (!r.ok) return;
+        renderTasksTable(await r.json());
+      } catch (e) {
+        console.error('Tasks load failed:', e);
+      }
+    }
+
+    function renderTasksTable(tasks) {
+      const container = document.getElementById('tasks-container');
+      container.textContent = '';
+
+      if (!tasks.length) {
+        container.textContent = 'No tasks recorded yet.';
+        container.className = 'text-gray-700 text-sm';
+        return;
+      }
+
+      container.className = 'overflow-x-auto';
+
+      const table = document.createElement('table');
+      table.className = 'w-full';
+
+      // Header
+      const thead = document.createElement('thead');
+      const hrow  = document.createElement('tr');
+      hrow.className = 'text-gray-600 text-xs uppercase tracking-widest';
+      for (const [text, align] of [
+        ['Time', 'left'], ['Agent', 'left'], ['OK', 'center'],
+        ['Tier', 'left'], ['Duration', 'right'], ['Cost', 'right'],
+      ]) {
+        const th = document.createElement('th');
+        th.className = 'pb-3 px-3 text-' + align + ' font-normal';
+        th.textContent = text;
+        hrow.appendChild(th);
+      }
+      thead.appendChild(hrow);
+      table.appendChild(thead);
+
+      // Body
+      const tbody = document.createElement('tbody');
+      for (const t of tasks) {
+        const tr   = document.createElement('tr');
+        tr.className = 'border-t border-gray-800/60 hover:bg-gray-800/30 transition-colors';
+
+        const tierMeta = TIER_META[String(t.tier)] || TIER_META.unknown;
+        const ts       = t.timestamp ? String(t.timestamp).slice(0, 16).replace('T', ' ') : '-';
+        const dur      = t.duration_ms != null ? t.duration_ms + 'ms' : '-';
+        const cost     = t.cost ? '$' + parseFloat(t.cost).toFixed(4) : '-';
+
+        const cells = [
+          { text: ts,                      cls: 'text-gray-600 tabular-nums whitespace-nowrap' },
+          { text: t.agent || '-',          cls: 'text-gray-300 max-w-xs truncate' },
+          { text: t.success ? '\u2713' : '\u2717', cls: 'text-center font-bold text-sm ' + (t.success ? 'text-emerald-500' : 'text-red-500') },
+          { text: String(t.tier || '?'),   cls: tierMeta.textColor },
+          { text: dur,                     cls: 'text-gray-500 tabular-nums text-right' },
+          { text: cost,                    cls: 'text-amber-500/80 tabular-nums text-right' },
+        ];
+
+        for (const { text, cls } of cells) {
+          const td = document.createElement('td');
+          td.className = 'py-2 px-3 text-xs ' + cls;
+          td.textContent = text;
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      container.appendChild(table);
+    }
+
+    // ── Init + auto-refresh ───────────────────────────────────────────────
+    Promise.all([loadHealth(), loadTasks()]);
+    setInterval(() => Promise.all([loadHealth(), loadTasks()]), 30000);
+  </script>
+</body>
+</html>

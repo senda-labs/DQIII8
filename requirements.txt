@@ -9,6 +9,10 @@ PyYAML>=6.0.1
 # Telegram bot (optional — only for remote control)
 python-telegram-bot>=21.0
 
+# Dashboard (web UI)
+fastapi>=0.110.0
+uvicorn>=0.29.0
+
 # Analysis tools (optional — only for media analysis)
 numpy>=1.26.0
 Pillow>=10.0.0

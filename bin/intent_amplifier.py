@@ -389,6 +389,16 @@ def amplify(
         chunks = _retrieve_knowledge(effective_agent, prompt) if effective_agent else []
         _log(f"  {len(chunks)} chunks retrieved from '{effective_agent}'")
 
+    # Phase 4.5: Template injection
+    try:
+        from template_loader import find_template_by_routing, format_template_for_prompt
+        template = find_template_by_routing(routing) if routing else None
+        template_text = format_template_for_prompt(template, prompt) if template else ""
+    except ImportError:
+        template_text = ""
+    if template_text:
+        chunks.append(template_text)
+
     # Phase 5
     _log("phase 5: build prompt")
     amplified = _build_amplified_prompt(prompt, decomp, intent, domains, chunks, routing)

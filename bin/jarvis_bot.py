@@ -24,6 +24,9 @@ from telegram.ext import (
     filters,
 )
 
+sys.path.insert(0, str(Path(__file__).parent))
+from voice_handler import transcribe_audio, synthesize_speech
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB = JARVIS / "database" / "jarvis_metrics.db"
@@ -65,6 +68,9 @@ ACTION_VERBS_RE = re.compile(
     r"fix|create|implement|update|deploy)\b",
     re.IGNORECASE,
 )
+
+# ── Voice settings ───────────────────────────────────────────────────────────────
+VOICE_RESPONSES_ENABLED = False  # toggle with /voice on|off
 
 
 # ── Utilidades base ─────────────────────────────────────────────────────────────
@@ -440,7 +446,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/audit — local health audit (offline)\n"
         "/run [name.md] — runs jal\\_run.py\n\n"
         "Free message: action verb or \\>15 words → automatic /task.\n"
-        "Otherwise → quick response."
+        "Otherwise → quick response.\n\n"
+        "*Voice:*\n"
+        "Send a voice note → auto-transcribe via Groq Whisper → execute\n"
+        "/voice on|off — toggle audio responses"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
     log.info("/start from chat_id=%s", chat_id)
@@ -742,6 +751,121 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     log.info("Reference image saved to %s", REFERENCE_IMAGE_PATH)
 
 
+async def _download_telegram_file(context: ContextTypes.DEFAULT_TYPE, file_id: str) -> str:
+    """Download a Telegram file to tmp/ and return its local path."""
+    tmp_dir = JARVIS / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tg_file = await context.bot.get_file(file_id)
+    local_path = str(tmp_dir / f"tg_voice_{file_id}.ogg")
+    await tg_file.download_to_drive(local_path)
+    return local_path
+
+
+async def _send_voice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    """Synthesize text and send as voice message. Cleans up temp file after sending."""
+    audio_path = synthesize_speech(text[:500])
+    if not audio_path or not Path(audio_path).exists():
+        return
+    try:
+        with open(audio_path, "rb") as audio:
+            await context.bot.send_voice(
+                chat_id=update.effective_chat.id,
+                voice=audio,
+            )
+    except Exception as e:
+        log.warning("send_voice failed: %s", e)
+    finally:
+        Path(audio_path).unlink(missing_ok=True)
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Receive a Telegram voice/audio message, transcribe via Groq Whisper, and execute as task."""
+    if not authorized(update):
+        await update.message.reply_text("Unauthorized.")
+        return
+
+    voice = update.message.voice or update.message.audio
+    if not voice:
+        return
+
+    file_id = voice.file_id
+    await update.message.reply_text("Transcribing...")
+
+    audio_path = await _download_telegram_file(context, file_id)
+    try:
+        text = transcribe_audio(audio_path)
+    finally:
+        Path(audio_path).unlink(missing_ok=True)
+
+    if not text or text.startswith("[Error"):
+        await update.message.reply_text(f"Could not transcribe: {text}")
+        return
+
+    await update.message.reply_text(
+        f"*Heard:* {text}", parse_mode="Markdown"
+    )
+    log.info("Voice transcription: %s", text[:80])
+
+    word_count = len(text.split())
+    is_action = bool(ACTION_VERBS_RE.search(text)) or word_count > 15
+
+    if is_action:
+        task_id = await _spawn_task(update, text)
+        await update.message.reply_text(
+            f"Launched `{task_id}`\n_{text[:80]}_",
+            parse_mode="Markdown",
+        )
+        log.info("Voice → task: %s | %s", task_id, text[:60])
+    else:
+        await update.message.reply_text("Processing...")
+        prompt = (
+            "You are DQIII8, an AI orchestration system. "
+            f"Respond concisely and technically:\n\n{text}"
+        )
+        result = subprocess.run(
+            [
+                "python3",
+                str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                "--model",
+                "stepfun/step-3.5-flash:free",
+            ],
+            input=prompt,
+            capture_output=True,
+            text=True,
+            cwd=str(JARVIS),
+            timeout=60,
+            env=_load_env_dict(),
+        )
+        output = result.stdout.strip() or "(no response)"
+        await send_chunks(update, output)
+
+        if VOICE_RESPONSES_ENABLED:
+            await _send_voice_reply(update, context, output)
+
+        log.info("Voice quick response sent (%d chars)", len(output))
+
+
+async def cmd_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/voice on|off — toggle audio responses."""
+    global VOICE_RESPONSES_ENABLED
+    if not authorized(update):
+        await update.message.reply_text("Unauthorized.")
+        return
+    arg = (context.args[0] if context.args else "").lower()
+    if arg == "on":
+        VOICE_RESPONSES_ENABLED = True
+        await update.message.reply_text("Voice responses enabled. I'll reply with audio.")
+    elif arg == "off":
+        VOICE_RESPONSES_ENABLED = False
+        await update.message.reply_text("Voice responses disabled. Text only.")
+    else:
+        state = "on" if VOICE_RESPONSES_ENABLED else "off"
+        await update.message.reply_text(
+            f"Voice responses: *{state}*\nUse `/voice on` or `/voice off`.",
+            parse_mode="Markdown",
+        )
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not authorized(update):
         await update.message.reply_text("Unauthorized.")
@@ -923,7 +1047,9 @@ def main() -> None:
     APP.add_handler(MessageHandler(filters.Regex(r"^/rechazar"), _handle_rechazar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/aprobar"), _handle_aprobar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/denegar"), _handle_denegar))
+    APP.add_handler(CommandHandler("voice", cmd_voice))
     APP.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    APP.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     APP.add_handler(CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:"))
 

@@ -112,6 +112,9 @@ _wrap() {
 
 # ── Early flags — run before full env check ──────────────────────────────────
 case "${1:-}" in
+    --voice-test)
+        exec python3 "$JARVIS_ROOT/bin/voice_handler.py" --test
+        ;;
     --setup)
         shift
         exec python3 "$JARVIS_ROOT/bin/setup_wizard.py" "$@"

@@ -393,7 +393,7 @@ async def recent_tasks(limit: int = 50, auth: bool = Depends(check_auth)):
 
 @app.post("/api/amplify")
 async def amplify_intent(request: Request, auth: bool = Depends(check_auth)):
-    """Real-time intent amplification preview. Returns analysis without executing."""
+    """Real-time prompt analysis preview. Returns analysis without executing."""
     body = await request.json()
     user_input = body.get("input", "")
 
@@ -428,7 +428,7 @@ async def amplify_intent(request: Request, auth: bool = Depends(check_auth)):
         }
     except ImportError:
         return {
-            "error": "Intent Amplification not available",
+            "error": "Feature not available",
             "action": "",
             "entity": "",
             "niche": "",
@@ -446,7 +446,7 @@ async def amplify_intent(request: Request, auth: bool = Depends(check_auth)):
 
 @app.post("/api/route")
 async def route_preview(request: Request, auth: bool = Depends(check_auth)):
-    """Preview hierarchical routing for a given input (premium feature)."""
+    """Preview domain routing for a given input (premium feature)."""
     body = await request.json()
     user_input = body.get("input", "")
     if not user_input:
@@ -457,7 +457,7 @@ async def route_preview(request: Request, auth: bool = Depends(check_auth)):
         result = classify_hierarchical(user_input)
         return result
     except ImportError:
-        return {"error": "Hierarchical router not available (premium)"}
+        return {"error": "Feature not available"}
 
 
 @app.post("/api/task/execute")

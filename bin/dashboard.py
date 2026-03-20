@@ -271,6 +271,22 @@ async def amplify_intent(request: Request, auth: bool = Depends(check_auth)):
         }
 
 
+@app.post("/api/route")
+async def route_preview(request: Request, auth: bool = Depends(check_auth)):
+    """Preview hierarchical routing for a given input (premium feature)."""
+    body = await request.json()
+    user_input = body.get("input", "")
+    if not user_input:
+        raise HTTPException(400, "input required")
+
+    try:
+        from hierarchical_router import classify_hierarchical
+        result = classify_hierarchical(user_input)
+        return result
+    except ImportError:
+        return {"error": "Hierarchical router not available (premium)"}
+
+
 @app.post("/api/task/execute")
 async def execute_task(request: Request, auth: bool = Depends(check_auth)):
     """Execute a prompt through the openrouter_wrapper pipeline."""

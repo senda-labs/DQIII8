@@ -254,7 +254,11 @@ CREATE TABLE IF NOT EXISTS amplification_log (
     confidence      REAL    DEFAULT 0,    -- Phase 3+4
     knowledge_used  INTEGER DEFAULT 0,    -- Phase 3+4
     subtask_count   INTEGER DEFAULT 0,    -- Phase 3+4
-    success         INTEGER DEFAULT 1     -- Phase 3+4
+    success         INTEGER DEFAULT 1,    -- Phase 3+4
+    routing_method          TEXT    DEFAULT 'single',   -- HMCWR
+    active_centroids_count  INTEGER DEFAULT 1,          -- HMCWR
+    queued_centroids_count  INTEGER DEFAULT 0,          -- HMCWR
+    classification_ms       REAL    DEFAULT 0           -- HMCWR
 );
 
 -- ── Vault memory (semantic triple store) ─────────────────────────────────

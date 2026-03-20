@@ -441,6 +441,32 @@
     }
     .attach-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
 
+    /* Mic / TTS / lang */
+    .icon-btn {
+      width: 36px; height: 36px;
+      border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-dim);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.18s; flex-shrink: 0;
+    }
+    .icon-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+    .icon-btn.recording { border-color: var(--danger); color: var(--danger); animation: pulse-recording 1s ease-in-out infinite; }
+    @keyframes pulse-recording { 0%,100%{box-shadow:0 0 0 0 rgba(255,23,68,0.4)} 50%{box-shadow:0 0 0 6px rgba(255,23,68,0)} }
+    .tts-msg-btn {
+      background: transparent; border: none; color: var(--text-dim);
+      cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem;
+      transition: color 0.15s;
+    }
+    .tts-msg-btn:hover { color: var(--accent); }
+    .tts-msg-btn.speaking { color: var(--accent); }
+    .lang-sel {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-dim); font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.72rem; padding: 0 6px; height: 36px; border-radius: 8px;
+      cursor: pointer; outline: none;
+    }
+    .lang-sel:focus { border-color: var(--accent-dim); color: var(--text); }
+
     /* File chips */
     .file-chips {
       display: none;
@@ -868,6 +894,17 @@
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
               </svg>
             </button>
+            <button class="icon-btn" id="mic-btn" title="Voice input (hold to record)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            </button>
+            <select class="lang-sel" id="lang-sel" title="STT language">
+              <option value="auto">Auto</option>
+              <option value="en-US">EN</option>
+              <option value="es-ES">ES</option>
+              <option value="fr-FR">FR</option>
+              <option value="de-DE">DE</option>
+              <option value="pt-BR">PT</option>
+            </select>
             <textarea id="chat-input" rows="1" placeholder="Type a message&#x2026; (Enter to send, Shift+Enter for newline)"></textarea>
             <button id="send-btn" class="send-btn" title="Send">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -1407,14 +1444,20 @@ async function sendChat() {
           }
           if (evt.done) {
             if (evt.session_id) { currentSessionId = evt.session_id; loadChatHistory(); }
-            // Per-message badge
+            // Per-message badge + TTS button
+            const badgeRow = document.createElement('div');
+            badgeRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding-left:22px;margin-top:6px';
             const badge = document.createElement('span');
             badge.className = 'msg-badge';
+            badge.style.margin = '0';
             const parts = [];
             if (evt.tier_used) parts.push(tierLabel(evt.tier_used));
             if (evt.elapsed_ms) parts.push((evt.elapsed_ms / 1000).toFixed(1) + 's');
             badge.textContent = parts.join(' \u00b7 ');
-            aWrap.appendChild(badge);
+            badgeRow.appendChild(badge);
+            const ttsBtn = makeTtsBtn(accumulated);
+            badgeRow.appendChild(ttsBtn);
+            aWrap.appendChild(badgeRow);
             // Quick replies
             const opts = parseQuickReplies(accumulated);
             if (opts.length) addQuickReplies(aWrap, opts);
@@ -1569,6 +1612,11 @@ async function loadSession(sid) {
       if (m.role === 'assistant') {
         const bubble = wrap.querySelector('.msg-assistant');
         if (bubble) renderMd(bubble, m.content);
+        // TTS button for loaded history messages
+        const badgeRow = document.createElement('div');
+        badgeRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding-left:22px;margin-top:4px';
+        badgeRow.appendChild(makeTtsBtn(m.content));
+        wrap.appendChild(badgeRow);
       }
     }
     area.scrollTop = area.scrollHeight;
@@ -1676,6 +1724,110 @@ function showSaveStatus(msg) {
   if (!el) return;
   el.textContent = msg;
   setTimeout(() => { el.textContent = ''; }, 2500);
+}
+
+// ── Speech-to-Text (STT) ───────────────────────────────────────────────────
+(function initSTT() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const micBtn = document.getElementById('mic-btn');
+  const langSel = document.getElementById('lang-sel');
+  if (!micBtn) return;
+
+  if (!SpeechRecognition) {
+    micBtn.title = 'Speech recognition not supported in this browser';
+    micBtn.style.opacity = '0.35';
+    micBtn.disabled = true;
+    return;
+  }
+
+  let recognition = null;
+  let listening = false;
+
+  function getLang() {
+    const v = langSel?.value || 'auto';
+    if (v === 'auto') return navigator.language || 'en-US';
+    return v;
+  }
+
+  function startListening() {
+    if (listening) return;
+    recognition = new SpeechRecognition();
+    recognition.lang = getLang();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    const input = document.getElementById('chat-input');
+    const base = input?.value || '';
+
+    recognition.onstart = () => {
+      listening = true;
+      micBtn.classList.add('recording');
+      micBtn.title = 'Listening… click to stop';
+    };
+    recognition.onresult = e => {
+      const transcript = Array.from(e.results)
+        .map(r => r[0].transcript).join('');
+      if (input) input.value = base + transcript;
+    };
+    recognition.onerror = () => stopListening();
+    recognition.onend = () => stopListening();
+    recognition.start();
+  }
+
+  function stopListening() {
+    listening = false;
+    micBtn.classList.remove('recording');
+    micBtn.title = 'Voice input';
+    if (recognition) { try { recognition.stop(); } catch(_) {} recognition = null; }
+  }
+
+  micBtn.addEventListener('click', () => {
+    if (listening) stopListening();
+    else startListening();
+  });
+})();
+
+// ── Text-to-Speech (TTS) ───────────────────────────────────────────────────
+let _ttsCurrentBtn = null;
+
+function makeTtsBtn(text) {
+  const btn = document.createElement('button');
+  btn.className = 'tts-msg-btn';
+  btn.title = 'Read aloud';
+  btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+
+  if (!window.speechSynthesis) {
+    btn.disabled = true;
+    btn.style.opacity = '0.3';
+    return btn;
+  }
+
+  btn.addEventListener('click', () => {
+    const synth = window.speechSynthesis;
+    if (_ttsCurrentBtn && _ttsCurrentBtn !== btn) {
+      synth.cancel();
+      _ttsCurrentBtn.classList.remove('speaking');
+    }
+    if (btn.classList.contains('speaking')) {
+      synth.cancel();
+      btn.classList.remove('speaking');
+      _ttsCurrentBtn = null;
+      return;
+    }
+    // Strip markdown
+    const clean = text.replace(/```[\s\S]*?```/g, '').replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1')
+      .replace(/#{1,6}\s/g, '').replace(/\n+/g, ' ').trim();
+    const utt = new SpeechSynthesisUtterance(clean);
+    const langSel = document.getElementById('lang-sel');
+    const v = langSel?.value || 'auto';
+    if (v !== 'auto') utt.lang = v;
+    utt.rate = 1.05;
+    utt.onstart = () => { btn.classList.add('speaking'); _ttsCurrentBtn = btn; };
+    utt.onend = utt.onerror = () => { btn.classList.remove('speaking'); _ttsCurrentBtn = null; };
+    synth.speak(utt);
+  });
+  return btn;
 }
 
 // ── Canvas starfield ───────────────────────────────────────────────────────

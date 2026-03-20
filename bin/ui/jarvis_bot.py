@@ -557,7 +557,7 @@ async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.reply_text("Running local health audit...")
     log.info("/audit started")
-    output = run_cmd(["python3", "bin/auditor_local.py"], timeout=60)
+    output = run_cmd(["python3", "bin/monitoring/auditor_local.py"], timeout=60)
     await send_chunks(update, f"*DQ Health Audit:*\n```\n{output[:3800]}\n```")
     log.info("/audit completed")
 
@@ -825,7 +825,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         result = subprocess.run(
             [
                 "python3",
-                str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
                 "--model",
                 "stepfun/step-3.5-flash:free",
             ],
@@ -896,7 +896,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     result = subprocess.run(
         [
             "python3",
-            str(JARVIS / "bin" / "openrouter_wrapper.py"),
+            str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
             "--model",
             "stepfun/step-3.5-flash:free",
         ],

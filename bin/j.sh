@@ -19,7 +19,7 @@
 set -euo pipefail
 
 JARVIS_ROOT="${JARVIS_ROOT:-/root/jarvis}"
-OR_WRAPPER="$JARVIS_ROOT/bin/openrouter_wrapper.py"
+OR_WRAPPER="$JARVIS_ROOT/bin/core/openrouter_wrapper.py"
 MODEL_SONNET="claude-sonnet-4-6"
 OLLAMA_FALLBACK="qwen/qwen3-235b-a22b:free"
 
@@ -44,9 +44,9 @@ OLLAMA_MODEL="$(_get_ollama_model)"
 
 # Environment validation
 if [[ "$VERBOSE" == "1" ]]; then
-    python3 "$(dirname "$0")/validate_env.py" || echo "[warn] Environment check failed"
+    python3 "$(dirname "$0")/core/validate_env.py" || echo "[warn] Environment check failed"
 else
-    python3 "$(dirname "$0")/validate_env.py" --quiet >/dev/null 2>&1 || true
+    python3 "$(dirname "$0")/core/validate_env.py" --quiet >/dev/null 2>&1 || true
 fi
 
 # Flag A/B: purpose active if .jarvis_proposito exists
@@ -91,7 +91,7 @@ show_status() {
     echo "── tmux sessions ──"
     tmux ls 2>/dev/null || echo "(none)"
     echo ""
-    python3 "$JARVIS_ROOT/bin/subscription.py" 2>/dev/null || echo "(subscription unavailable)"
+    python3 "$JARVIS_ROOT/bin/monitoring/subscription.py" 2>/dev/null || echo "(subscription unavailable)"
 }
 
 ollama_available() {
@@ -117,7 +117,7 @@ case "${1:-}" in
         ;;
     --setup)
         shift
-        exec python3 "$JARVIS_ROOT/bin/setup_wizard.py" "$@"
+        exec python3 "$JARVIS_ROOT/bin/tools/setup_wizard.py" "$@"
         ;;
     --set-groq)
         if [ -z "${2:-}" ]; then
@@ -175,10 +175,10 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --audit)
-            exec python3 "$JARVIS_ROOT/bin/auditor_local.py"
+            exec python3 "$JARVIS_ROOT/bin/monitoring/auditor_local.py"
             ;;
         --setup)
-            exec python3 "$JARVIS_ROOT/bin/setup_wizard.py"
+            exec python3 "$JARVIS_ROOT/bin/tools/setup_wizard.py"
             ;;
         --set-groq|--set-anthropic)
             # Already handled above; reaching here means they were passed after other flags
@@ -256,7 +256,7 @@ Be specific and use the actual data."
             ;;
         --chat)
             shift
-            exec python3 "$JARVIS_ROOT/bin/interactive_chat.py" "$@"
+            exec python3 "$JARVIS_ROOT/bin/ui/interactive_chat.py" "$@"
             ;;
         --verbose|--debug)
             VERBOSE=1
@@ -264,15 +264,15 @@ Be specific and use the actual data."
             ;;
         --harvest)
             shift
-            exec python3 "$JARVIS_ROOT/bin/paper_harvester.py" "$@"
+            exec python3 "$JARVIS_ROOT/bin/tools/paper_harvester.py" "$@"
             ;;
         --upload|-u)
             shift
-            exec python3 "$JARVIS_ROOT/bin/knowledge_upload.py" "$@"
+            exec python3 "$JARVIS_ROOT/bin/agents/knowledge_upload.py" "$@"
             ;;
         --dashboard)
             shift
-            exec python3 "$JARVIS_ROOT/bin/dashboard.py" "$@"
+            exec python3 "$JARVIS_ROOT/bin/ui/dashboard.py" "$@"
             ;;
         --help|-h)
             cat <<EOF

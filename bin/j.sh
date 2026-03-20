@@ -277,9 +277,20 @@ case "$MODEL" in
     sonnet|"")
         # Respect DQ_DEFAULT_TIER when no explicit --model flag was given
         _dq_default="${DQ_DEFAULT_TIER:-auto}"
-        if [[ "$_dq_default" == "groq-only" || "$_dq_default" == "groq+ollama" ]]; then
-            echo "[DQIII8] DQ_DEFAULT_TIER=$_dq_default → Tier 2 (Groq, free)" >&2
-            exec python3 "$OR_WRAPPER" --agent git-specialist "$@"
+        if [[ "$_dq_default" == "groq-only" ]]; then
+            echo "[DQIII8] DQ_DEFAULT_TIER=groq-only → Tier 2 (Groq)" >&2
+            exec python3 "$OR_WRAPPER" --agent research-analyst "$@"
+        elif [[ "$_dq_default" == "groq+ollama" ]]; then
+            # Explicit code keywords → Ollama; everything else (including defaults) → Groq
+            # Note: openrouter_wrapper classify defaults to code_local for non-matching prompts,
+            # so we check for explicit code signals rather than relying on the classify output.
+            if echo "$*" | grep -qiE '(python|refactor|debug|\.py|git commit|git push|fix bug|unittest|pytest|import |class |def |función|código|código|error traceback|optimize)'; then
+                echo "[DQIII8] DQ_DEFAULT_TIER=groq+ollama → code → Tier 1 (Ollama)" >&2
+                exec python3 "$OR_WRAPPER" --agent python-specialist "$@"
+            else
+                echo "[DQIII8] DQ_DEFAULT_TIER=groq+ollama → general → Tier 2 (Groq)" >&2
+                exec python3 "$OR_WRAPPER" --agent research-analyst "$@"
+            fi
         elif [[ "$_dq_default" == "ollama-only" ]]; then
             echo "[DQIII8] DQ_DEFAULT_TIER=$_dq_default → Tier 1 (Ollama, local)" >&2
             if ollama_available; then

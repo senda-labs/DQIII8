@@ -1,10 +1,15 @@
 # DQ Beta Program
 
-Welcome to the DQ beta! You have access to ALL features including:
+Welcome to the DQ beta! You have access to:
+- Dashboard (web UI at localhost:8080)
+- 3-tier routing (local → free cloud → paid)
+- Self-auditing system with SPC health score
+- Auto-learning from error patterns
+
+Coming soon (premium):
 - Intent Amplification (automatic prompt enhancement)
 - Hierarchical Multi-Centroid Router (multi-domain classification)
 - Knowledge Upload (add your own documents)
-- Dashboard (web UI at localhost:8080)
 
 ## How to give feedback
 1. Open an issue on GitHub: github.com/senda-labs/DQIII8/issues
@@ -20,4 +25,4 @@ bash install.sh
 dq "Create a business plan for a specialty coffee shop"
 dq --dashboard   # Open http://localhost:8080
 dq --status      # Check your usage
-dq --upload myfile.pdf   # Upload knowledge
+# dq --upload myfile.pdf   # Coming soon

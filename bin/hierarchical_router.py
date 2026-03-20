@@ -18,12 +18,14 @@ Math:
   Level 3: spec_w_k = sub_w_j × softmax(cosine(E_prompt, SP_jk) / τ₃)  where τ₃ = 0.25
 """
 
+import hashlib
 import json
 import math
 import os
 import struct
 import sys
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
@@ -52,6 +54,11 @@ BETA_3 = 0.03  # Minimum weight to activate a sub-agent
 # Resource limits
 MAX_ACTIVE_CENTROIDS = 2   # Max simultaneous centroids (scale to 5 with more RAM)
 MAX_KNOWLEDGE_CHUNKS = 8   # Total chunks across all active domains
+
+# Semantic cache for recent classifications
+_CLASSIFICATION_CACHE: OrderedDict = OrderedDict()
+_CACHE_MAX_SIZE = 256
+_CACHE_TTL_SECONDS = 3600  # 1 hour
 
 # ── Domain hierarchy definition ───────────────────────────────────────────
 # Each centroid has agents (subdirectories), each agent has knowledge files
@@ -271,6 +278,12 @@ def compute_agent_centroid(domain: str, agent: str) -> Optional[list]:
 
 # ── Main classification pipeline ─────────────────────────────────────────
 
+def _cache_key(embedding: list) -> str:
+    """Generate cache key from embedding fingerprint (first 20 dims)."""
+    fingerprint = str([round(e, 4) for e in embedding[:20]])
+    return hashlib.md5(fingerprint.encode()).hexdigest()
+
+
 def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dict:
     """
     3-level hierarchical classification.
@@ -412,6 +425,41 @@ def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dic
         "total_chunks": MAX_KNOWLEDGE_CHUNKS,
         "classification_ms": classification_ms,
     }
+
+
+def classify_hierarchical_cached(user_input: str, prompt_embedding: list = None) -> dict:
+    """Cached version of classify_hierarchical.
+    Returns cached result if a similar query was classified within TTL.
+    Cache key is based on first 20 embedding dimensions."""
+    if prompt_embedding is None:
+        try:
+            prompt_embedding = get_embedding(user_input)
+        except Exception:
+            return _fallback_result(user_input)
+
+    key = _cache_key(prompt_embedding)
+
+    # Check cache
+    if key in _CLASSIFICATION_CACHE:
+        entry = _CLASSIFICATION_CACHE[key]
+        if time.time() - entry["timestamp"] < _CACHE_TTL_SECONDS:
+            _CLASSIFICATION_CACHE.move_to_end(key)
+            result = dict(entry["result"])
+            result["from_cache"] = True
+            return result
+        else:
+            del _CLASSIFICATION_CACHE[key]
+
+    # Classify (cache miss)
+    result = classify_hierarchical(user_input, prompt_embedding)
+    result["from_cache"] = False
+
+    # Store in cache
+    _CLASSIFICATION_CACHE[key] = {"result": dict(result), "timestamp": time.time()}
+    if len(_CLASSIFICATION_CACHE) > _CACHE_MAX_SIZE:
+        _CLASSIFICATION_CACHE.popitem(last=False)
+
+    return result
 
 
 def retrieve_knowledge_by_routing(routing_result: dict, prompt_embedding: list = None) -> str:

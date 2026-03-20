@@ -40,6 +40,74 @@ HOST = os.environ.get("DQIII8_DASHBOARD_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DQIII8_DASHBOARD_PORT", "8080"))
 REQUIRE_AUTH = HOST != "127.0.0.1"
 
+
+# ── Claude OAuth detection ────────────────────────────────────────────────
+
+def detect_claude_oauth() -> dict:
+    """Check if user has authenticated with Claude Code OAuth."""
+    claude_dir = Path.home() / ".claude"
+    for fname in ("credentials.json", "auth.json", ".credentials.json"):
+        f = claude_dir / fname
+        if f.exists():
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                if data.get("token") or data.get("access_token") or data.get("sessionKey"):
+                    return {"available": True, "method": "oauth", "plan": "Pro/Team"}
+            except Exception:
+                pass
+    # Fallback: test claude CLI silently
+    try:
+        r = subprocess.run(
+            ["claude", "--version"], capture_output=True, text=True, timeout=5
+        )
+        if r.returncode == 0:
+            r2 = subprocess.run(
+                ["claude", "-p", "say ok"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if r2.returncode == 0 and "ok" in r2.stdout.lower():
+                return {"available": True, "method": "oauth_cli", "plan": "Pro/Team"}
+    except Exception:
+        pass
+    return {"available": False, "method": None, "plan": None}
+
+
+def _mask_key(v: str) -> str:
+    if not v or len(v) < 10:
+        return ""
+    return v[:4] + "••••" + v[-4:]
+
+
+def _load_env_dict() -> dict:
+    env_file = JARVIS / ".env"
+    result: dict = {}
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, _, v = line.partition("=")
+                result[k.strip()] = v.strip()
+    return result
+
+
+def _write_env_key(key: str, value: str) -> None:
+    """Safely update or append a single key in .env."""
+    env_file = JARVIS / ".env"
+    lines = env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else []
+    written = False
+    output = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            if stripped.partition("=")[0].strip() == key:
+                output.append(f"{key}={value}")
+                written = True
+                continue
+        output.append(line)
+    if not written:
+        output.append(f"{key}={value}")
+    env_file.write_text("\n".join(output) + "\n", encoding="utf-8")
+    env_file.chmod(0o600)
+
 # Intent pattern → representative subtasks
 _INTENT_SUBTASKS: dict[str, list[str]] = {
     "analyze":   ["Data Collection", "Statistical Analysis", "Pattern Detection", "Report Generation"],
@@ -352,30 +420,95 @@ async def subscription_status(auth: bool = Depends(check_auth)):
 
 @app.post("/api/chat")
 async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
-    """Stream a chat response via SSE. Body: {message, session_id?}"""
+    """Stream a chat response via SSE. Body: {message, session_id?, tier?}
+    tier: auto | local | groq | claude
+    """
     body = await request.json()
     message = body.get("message", "").strip()
     session_id = body.get("session_id") or str(uuid.uuid4())[:8]
+    tier = body.get("tier", "auto")  # auto | local | groq | claude
 
     if not message:
         raise HTTPException(400, "message required")
 
-    agent = "research-analyst"
     env = {**os.environ, "JARVIS_ROOT": str(JARVIS)}
+    # Merge .env values (so API keys are available even if not in process env)
+    for k, v in _load_env_dict().items():
+        env.setdefault(k, v)
 
     async def _generate():
+        t_start = time.time()
+        tier_used = tier
+        full_text = ""
         try:
-            # safe: list form, no shell=True
-            proc = await asyncio.create_subprocess_exec(
-                "python3",
-                str(JARVIS / "bin" / "openrouter_wrapper.py"),
-                "--agent", agent,
-                message,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-                env=env,
-            )
-            full_text = ""
+            if tier == "claude":
+                # Priority 1: OAuth via claude -p CLI
+                oauth = detect_claude_oauth()
+                if oauth["available"]:
+                    proc = await asyncio.create_subprocess_exec(
+                        "claude", "-p", message,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=env,
+                    )
+                    tier_used = "claude_oauth"
+                elif env.get("ANTHROPIC_API_KEY"):
+                    # Priority 2: ANTHROPIC_API_KEY via openrouter_wrapper
+                    proc = await asyncio.create_subprocess_exec(
+                        "python3",
+                        str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                        "--agent", "research-analyst",
+                        "--force-provider", "anthropic",
+                        message,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=env,
+                    )
+                    tier_used = "claude_api"
+                else:
+                    yield (
+                        f"data: {json.dumps({'error': 'Claude not available. '
+                        'Authenticate with Claude Code (claude /login) or '
+                        'add ANTHROPIC_API_KEY to Settings.'})}\n\n"
+                    )
+                    return
+
+            elif tier == "groq":
+                proc = await asyncio.create_subprocess_exec(
+                    "python3",
+                    str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                    "--agent", "research-analyst",
+                    message,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=env,
+                )
+                tier_used = "groq"
+
+            elif tier == "local":
+                proc = await asyncio.create_subprocess_exec(
+                    "python3",
+                    str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                    "--agent", "python-specialist",
+                    message,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=env,
+                )
+                tier_used = "local"
+
+            else:  # auto
+                proc = await asyncio.create_subprocess_exec(
+                    "python3",
+                    str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                    "--agent", "research-analyst",
+                    message,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=env,
+                )
+                tier_used = "auto"
+
             while True:
                 chunk = await proc.stdout.read(64)
                 if not chunk:
@@ -386,10 +519,10 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
 
             await proc.wait()
 
-            # Persist to DB (best-effort)
+            elapsed_ms = int((time.time() - t_start) * 1000)
             _persist_chat(session_id, message, full_text)
+            yield f"data: {json.dumps({'done': True, 'session_id': session_id, 'tier_used': tier_used, 'elapsed_ms': elapsed_ms})}\n\n"
 
-            yield f"data: {json.dumps({'done': True, 'session_id': session_id})}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
@@ -473,6 +606,107 @@ async def chat_session_messages(session_id: str, auth: bool = Depends(check_auth
     except Exception:
         rows = []
     return [{"role": r[0], "content": r[1], "ts": r[2]} for r in rows]
+
+
+# ── Tiers / Settings endpoints ────────────────────────────────────────────
+
+SETTINGS_HTML_PATH = JARVIS / "bin" / "settings.html"
+
+_SETTINGS_FALLBACK = """<!DOCTYPE html><html><body style="background:#0a0a0f;color:#fff;font-family:monospace;padding:2rem">
+<h2>Settings</h2><p>settings.html not found.</p><a href="/" style="color:#60a5fa">Back</a></body></html>"""
+
+
+@app.get("/api/tiers")
+async def get_tiers(auth: bool = Depends(check_auth)):
+    """Return available tiers with status and model info."""
+    env = _load_env_dict()
+    oauth = detect_claude_oauth()
+    has_groq = bool(env.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY"))
+    has_anthropic = bool(env.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+
+    return {
+        "tiers": [
+            {
+                "id": "auto",
+                "label": "Auto",
+                "description": "DQ picks the best tier per message",
+                "available": True,
+                "cost": "free",
+                "model": "llama-3.3-70b / qwen2.5-coder",
+            },
+            {
+                "id": "local",
+                "label": "Local",
+                "description": "Ollama — fully private, no internet",
+                "available": True,
+                "cost": "free",
+                "model": "qwen2.5-coder:7b",
+            },
+            {
+                "id": "groq",
+                "label": "Groq",
+                "description": "Fast cloud inference, free tier",
+                "available": has_groq,
+                "cost": "free",
+                "model": "llama-3.3-70b-versatile",
+                "setup": None if has_groq else "Add GROQ_API_KEY in Settings",
+            },
+            {
+                "id": "claude",
+                "label": "Claude",
+                "description": "Claude Sonnet via OAuth or API key",
+                "available": oauth["available"] or has_anthropic,
+                "cost": oauth["available"] and not has_anthropic and "$0 (Pro plan)" or "$3/Mtok",
+                "model": "claude-sonnet-4-6",
+                "method": oauth["method"] if oauth["available"] else ("api_key" if has_anthropic else None),
+                "setup": None if (oauth["available"] or has_anthropic) else "Login with Claude Code or add ANTHROPIC_API_KEY",
+            },
+        ],
+        "oauth": oauth,
+    }
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    """Settings UI page."""
+    if REQUIRE_AUTH:
+        token = request.query_params.get("token", "") or request.cookies.get("dq_token", "")
+        if not token or not verify_token(token):
+            return HTMLResponse(content=LOGIN_HTML, status_code=401)
+    html = _load_html(SETTINGS_HTML_PATH, _SETTINGS_FALLBACK)
+    return HTMLResponse(content=html)
+
+
+@app.get("/api/settings")
+async def get_settings(auth: bool = Depends(check_auth)):
+    """Return current settings (masked keys, tier config, OAuth status)."""
+    env = _load_env_dict()
+    oauth = detect_claude_oauth()
+    return {
+        "groq_key": _mask_key(env.get("GROQ_API_KEY", "")),
+        "anthropic_key": _mask_key(env.get("ANTHROPIC_API_KEY", "")),
+        "default_tier": env.get("DQ_DEFAULT_TIER", os.environ.get("DQ_DEFAULT_TIER", "auto")),
+        "oauth": oauth,
+        "tier_options": ["auto", "groq-only", "groq+ollama", "ollama-only"],
+    }
+
+
+@app.post("/api/settings")
+async def update_settings(request: Request, auth: bool = Depends(check_auth)):
+    """Update .env settings (GROQ_API_KEY, ANTHROPIC_API_KEY, DQ_DEFAULT_TIER)."""
+    body = await request.json()
+    allowed_keys = {"GROQ_API_KEY", "ANTHROPIC_API_KEY", "DQ_DEFAULT_TIER"}
+    updated = []
+    for key, value in body.items():
+        if key not in allowed_keys:
+            continue
+        if not isinstance(value, str):
+            continue
+        value = value.strip()
+        if value:
+            _write_env_key(key, value)
+            updated.append(key)
+    return {"updated": updated, "ok": True}
 
 
 # ── HTML routes ───────────────────────────────────────────────────────────

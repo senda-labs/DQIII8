@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DQ Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <style>
     body { font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
     .fade-in { animation: fadeIn 0.3s ease-in; }
@@ -110,6 +112,52 @@
     </div>
 
   </main>
+
+  <!-- ── Chat Panel ──────────────────────────────────────────────────────── -->
+  <section class="max-w-7xl mx-auto px-6 pb-8">
+    <div class="bg-gray-900 rounded-xl border border-gray-800/60 overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800/60">
+        <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Chat</h2>
+        <div class="flex items-center gap-3">
+          <span id="chat-tier-badge" class="px-2 py-0.5 rounded text-xs bg-blue-900/40 text-blue-400 hidden"></span>
+          <button id="chat-new-btn" class="px-3 py-1 text-xs text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 rounded transition-colors">New chat</button>
+        </div>
+      </div>
+
+      <div class="flex h-[520px]">
+        <!-- Sidebar: history -->
+        <div id="chat-sidebar" class="w-44 shrink-0 border-r border-gray-800/60 overflow-y-auto hidden sm:block">
+          <div id="chat-history-list" class="p-2 space-y-1">
+            <p class="text-gray-700 text-xs px-2 py-1">No history yet</p>
+          </div>
+        </div>
+
+        <!-- Main: messages + input -->
+        <div class="flex flex-col flex-1 min-w-0">
+          <!-- Messages area -->
+          <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4">
+            <div class="flex justify-center">
+              <p class="text-gray-700 text-xs">Send a message to start chatting</p>
+            </div>
+          </div>
+
+          <!-- Input row -->
+          <div class="border-t border-gray-800/60 p-3 flex gap-2">
+            <textarea
+              id="chat-input"
+              rows="2"
+              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+              class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-blue-500 resize-none transition-colors"
+            ></textarea>
+            <button
+              id="chat-send-btn"
+              class="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors self-end disabled:opacity-40 disabled:cursor-not-allowed"
+            >Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <footer class="border-t border-gray-800/60 px-6 py-4 mt-8">
     <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-gray-700">
@@ -602,6 +650,171 @@
     Promise.all([loadHealth(), loadTasks(), loadSubscription()]);
     setInterval(() => Promise.all([loadHealth(), loadTasks()]), 30000);
     setInterval(loadSubscription, 60000);
+
+    // ── Chat ──────────────────────────────────────────────────────────────
+    let currentSessionId = null;
+    let chatStreaming = false;
+
+    marked.setOptions({ breaks: true, gfm: true });
+
+    // Safe markdown renderer — purifies before DOM insertion
+    function renderMd(el, text) {
+      const dirty = marked.parse(text || '');
+      el.innerHTML = DOMPurify.sanitize(dirty, { USE_PROFILES: { html: true } });
+    }
+
+    function appendMessage(role, content, streaming) {
+      const area = document.getElementById('chat-messages');
+      const wrap = document.createElement('div');
+      wrap.className = role === 'user' ? 'flex justify-end' : 'flex justify-start';
+
+      const bubble = document.createElement('div');
+      bubble.className = role === 'user'
+        ? 'max-w-[75%] px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm'
+        : 'max-w-[80%] px-4 py-2.5 rounded-xl bg-gray-800 text-gray-100 text-sm';
+
+      if (role === 'user') {
+        bubble.textContent = content;
+      } else if (!streaming) {
+        renderMd(bubble, content);
+      }
+
+      wrap.appendChild(bubble);
+      area.appendChild(wrap);
+      area.scrollTop = area.scrollHeight;
+      return bubble;
+    }
+
+    async function sendChat() {
+      const input = document.getElementById('chat-input');
+      const msg = input.value.trim();
+      if (!msg || chatStreaming) return;
+
+      input.value = '';
+      chatStreaming = true;
+      document.getElementById('chat-send-btn').disabled = true;
+
+      appendMessage('user', msg, false);
+      const assistantBubble = appendMessage('assistant', '', true);
+      assistantBubble.textContent = 'Thinking...';
+      assistantBubble.className += ' text-gray-500 italic';
+
+      let accumulated = '';
+
+      try {
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, session_id: currentSessionId }),
+        });
+
+        if (!resp.ok || !resp.body) throw new Error('Request failed: ' + resp.status);
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        let firstChunk = true;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (!raw) continue;
+            try {
+              const evt = JSON.parse(raw);
+              if (evt.text) {
+                if (firstChunk) {
+                  assistantBubble.className = assistantBubble.className
+                    .replace(' text-gray-500 italic', '');
+                  firstChunk = false;
+                }
+                accumulated += evt.text;
+                renderMd(assistantBubble, accumulated);
+                document.getElementById('chat-messages').scrollTop =
+                  document.getElementById('chat-messages').scrollHeight;
+              }
+              if (evt.done && evt.session_id) {
+                currentSessionId = evt.session_id;
+                loadChatHistory();
+              }
+              if (evt.error) {
+                assistantBubble.textContent = 'Error: ' + evt.error;
+              }
+            } catch (_) { /* incomplete JSON */ }
+          }
+        }
+      } catch (e) {
+        assistantBubble.textContent = 'Connection error: ' + e.message;
+      }
+
+      chatStreaming = false;
+      document.getElementById('chat-send-btn').disabled = false;
+      document.getElementById('chat-input').focus();
+    }
+
+    document.getElementById('chat-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+    });
+    document.getElementById('chat-send-btn').addEventListener('click', sendChat);
+
+    document.getElementById('chat-new-btn').addEventListener('click', function() {
+      currentSessionId = null;
+      const area = document.getElementById('chat-messages');
+      area.textContent = '';
+      const hint = document.createElement('div');
+      hint.className = 'flex justify-center';
+      const p = document.createElement('p');
+      p.className = 'text-gray-700 text-xs';
+      p.textContent = 'Send a message to start chatting';
+      hint.appendChild(p);
+      area.appendChild(hint);
+    });
+
+    async function loadChatHistory() {
+      try {
+        const r = await fetch('/api/chat/history?limit=10');
+        if (!r.ok) return;
+        const sessions = await r.json();
+        const list = document.getElementById('chat-history-list');
+        list.textContent = '';
+        if (!sessions.length) {
+          const p = document.createElement('p');
+          p.className = 'text-gray-700 text-xs px-2 py-1';
+          p.textContent = 'No history yet';
+          list.appendChild(p);
+          return;
+        }
+        for (const s of sessions) {
+          const btn = document.createElement('button');
+          btn.className = 'w-full text-left px-2 py-1.5 rounded text-xs truncate transition-colors ' +
+            (s.id === currentSessionId ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white');
+          btn.textContent = s.preview || s.id;
+          btn.title = s.preview || s.id;
+          btn.addEventListener('click', () => loadSession(s.id));
+          list.appendChild(btn);
+        }
+      } catch(_) { /* ignore */ }
+    }
+
+    async function loadSession(sid) {
+      try {
+        const r = await fetch('/api/chat/' + encodeURIComponent(sid) + '/messages');
+        if (!r.ok) return;
+        const msgs = await r.json();
+        currentSessionId = sid;
+        const area = document.getElementById('chat-messages');
+        area.textContent = '';
+        for (const m of msgs) { appendMessage(m.role, m.content, false); }
+        area.scrollTop = area.scrollHeight;
+      } catch(_) { /* ignore */ }
+    }
+
+    loadChatHistory();
   </script>
 </body>
 </html>

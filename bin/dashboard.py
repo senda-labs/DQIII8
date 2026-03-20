@@ -8,9 +8,14 @@ Usage:
     python3 bin/dashboard.py --host 0.0.0.0     # all interfaces (token required)
     python3 bin/dashboard.py --port 9090        # custom port
 """
+import asyncio
+import json
 import os
+import sqlite3
 import sys
 import subprocess
+import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -20,7 +25,7 @@ sys.path.insert(0, str(JARVIS / "bin"))
 
 try:
     from fastapi import FastAPI, Request, HTTPException, Depends
-    from fastapi.responses import HTMLResponse, JSONResponse
+    from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
     from fastapi.middleware.cors import CORSMiddleware
     import uvicorn
 except ImportError:
@@ -341,6 +346,133 @@ async def subscription_status(auth: bool = Depends(check_auth)):
         return get_status()
     except Exception as exc:
         return {"error": str(exc), "unlimited": True, "used_usd": 0.0, "budget_usd": 0}
+
+
+# ── Chat endpoints ────────────────────────────────────────────────────────
+
+@app.post("/api/chat")
+async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
+    """Stream a chat response via SSE. Body: {message, session_id?}"""
+    body = await request.json()
+    message = body.get("message", "").strip()
+    session_id = body.get("session_id") or str(uuid.uuid4())[:8]
+
+    if not message:
+        raise HTTPException(400, "message required")
+
+    agent = "research-analyst"
+    env = {**os.environ, "JARVIS_ROOT": str(JARVIS)}
+
+    async def _generate():
+        try:
+            # safe: list form, no shell=True
+            proc = await asyncio.create_subprocess_exec(
+                "python3",
+                str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                "--agent", agent,
+                message,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                env=env,
+            )
+            full_text = ""
+            while True:
+                chunk = await proc.stdout.read(64)
+                if not chunk:
+                    break
+                text = chunk.decode("utf-8", errors="replace")
+                full_text += text
+                yield f"data: {json.dumps({'text': text})}\n\n"
+
+            await proc.wait()
+
+            # Persist to DB (best-effort)
+            _persist_chat(session_id, message, full_text)
+
+            yield f"data: {json.dumps({'done': True, 'session_id': session_id})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(_generate(), media_type="text/event-stream")
+
+
+def _persist_chat(session_id: str, user_msg: str, assistant_msg: str) -> None:
+    """Write chat turn to DB. Creates tables if missing (graceful on older schemas)."""
+    db = JARVIS / "database" / "jarvis_metrics.db"
+    if not db.exists():
+        return
+    try:
+        ts = datetime.utcnow().isoformat()
+        conn = sqlite3.connect(str(db), timeout=3)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS chat_sessions "
+            "(session_id TEXT PRIMARY KEY, created_at TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS chat_messages "
+            "(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, "
+            "role TEXT, content TEXT, created_at TEXT)"
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_sessions (session_id, created_at) VALUES (?, ?)",
+            (session_id, ts),
+        )
+        conn.execute(
+            "INSERT INTO chat_messages (session_id, role, content, created_at) "
+            "VALUES (?, 'user', ?, ?)",
+            (session_id, user_msg[:2000], ts),
+        )
+        conn.execute(
+            "INSERT INTO chat_messages (session_id, role, content, created_at) "
+            "VALUES (?, 'assistant', ?, ?)",
+            (session_id, assistant_msg[:4000], ts),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+@app.get("/api/chat/history")
+async def chat_history(limit: int = 10, auth: bool = Depends(check_auth)):
+    """Return last N sessions with first user message as preview."""
+    db = JARVIS / "database" / "jarvis_metrics.db"
+    if not db.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(db), timeout=3)
+        rows = conn.execute("""
+            SELECT s.session_id, s.created_at,
+                   (SELECT content FROM chat_messages
+                    WHERE session_id = s.session_id AND role = 'user'
+                    ORDER BY id LIMIT 1) as preview
+            FROM chat_sessions s
+            ORDER BY s.created_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        conn.close()
+    except Exception:
+        rows = []
+    return [{"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows]
+
+
+@app.get("/api/chat/{session_id}/messages")
+async def chat_session_messages(session_id: str, auth: bool = Depends(check_auth)):
+    """Return all messages for a given session."""
+    db = JARVIS / "database" / "jarvis_metrics.db"
+    if not db.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(db), timeout=3)
+        rows = conn.execute(
+            "SELECT role, content, created_at FROM chat_messages "
+            "WHERE session_id = ? ORDER BY id",
+            (session_id,),
+        ).fetchall()
+        conn.close()
+    except Exception:
+        rows = []
+    return [{"role": r[0], "content": r[1], "ts": r[2]} for r in rows]
 
 
 # ── HTML routes ───────────────────────────────────────────────────────────

@@ -119,7 +119,13 @@
       <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800/60">
         <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Chat</h2>
         <div class="flex items-center gap-3">
-          <span id="chat-tier-badge" class="px-2 py-0.5 rounded text-xs bg-blue-900/40 text-blue-400 hidden"></span>
+          <!-- Tier selector -->
+          <div id="tier-selector" class="flex gap-1">
+            <button data-tier="auto"  class="tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors border-blue-600 text-blue-400 bg-blue-900/30">Auto</button>
+            <button data-tier="local" class="tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300">Local</button>
+            <button data-tier="groq"  class="tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300">Groq</button>
+            <button data-tier="claude" class="tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300">Claude</button>
+          </div>
           <button id="chat-new-btn" class="px-3 py-1 text-xs text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 rounded transition-colors">New chat</button>
         </div>
       </div>
@@ -162,7 +168,7 @@
   <footer class="border-t border-gray-800/60 px-6 py-4 mt-8">
     <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-gray-700">
       <span>DQ v0.1.0</span>
-      <span>Privacy</span>
+      <a href="/settings" class="text-gray-600 hover:text-gray-400 transition-colors">Settings</a>
     </div>
   </footer>
 
@@ -654,8 +660,29 @@
     // ── Chat ──────────────────────────────────────────────────────────────
     let currentSessionId = null;
     let chatStreaming = false;
+    let selectedTier = 'auto';
 
     marked.setOptions({ breaks: true, gfm: true });
+
+    // Tier selector
+    const TIER_COLORS = {
+      auto: 'border-blue-600 text-blue-400 bg-blue-900/30',
+      local: 'border-green-600 text-green-400 bg-green-900/30',
+      groq: 'border-purple-600 text-purple-400 bg-purple-900/30',
+      claude: 'border-amber-600 text-amber-400 bg-amber-900/30',
+    };
+    const TIER_INACTIVE = 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300';
+
+    document.querySelectorAll('.tier-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        selectedTier = this.dataset.tier;
+        document.querySelectorAll('.tier-btn').forEach(b => {
+          const t = b.dataset.tier;
+          b.className = 'tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors ' +
+            (t === selectedTier ? TIER_COLORS[t] : TIER_INACTIVE);
+        });
+      });
+    });
 
     // Safe markdown renderer — purifies before DOM insertion
     function renderMd(el, text) {
@@ -663,10 +690,16 @@
       el.innerHTML = DOMPurify.sanitize(dirty, { USE_PROFILES: { html: true } });
     }
 
+    function _tierBadgeText(tierUsed) {
+      const map = { auto: 'Auto', local: 'Local', groq: 'Groq',
+        claude_oauth: 'Claude OAuth', claude_api: 'Claude API' };
+      return map[tierUsed] || tierUsed;
+    }
+
     function appendMessage(role, content, streaming) {
       const area = document.getElementById('chat-messages');
       const wrap = document.createElement('div');
-      wrap.className = role === 'user' ? 'flex justify-end' : 'flex justify-start';
+      wrap.className = role === 'user' ? 'flex justify-end' : 'flex flex-col items-start gap-1';
 
       const bubble = document.createElement('div');
       bubble.className = role === 'user'
@@ -682,7 +715,7 @@
       wrap.appendChild(bubble);
       area.appendChild(wrap);
       area.scrollTop = area.scrollHeight;
-      return bubble;
+      return { bubble, wrap };
     }
 
     async function sendChat() {
@@ -695,7 +728,7 @@
       document.getElementById('chat-send-btn').disabled = true;
 
       appendMessage('user', msg, false);
-      const assistantBubble = appendMessage('assistant', '', true);
+      const { bubble: assistantBubble, wrap: assistantWrap } = appendMessage('assistant', '', true);
       assistantBubble.textContent = 'Thinking...';
       assistantBubble.className += ' text-gray-500 italic';
 
@@ -705,7 +738,7 @@
         const resp = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg, session_id: currentSessionId }),
+          body: JSON.stringify({ message: msg, session_id: currentSessionId, tier: selectedTier }),
         });
 
         if (!resp.ok || !resp.body) throw new Error('Request failed: ' + resp.status);
@@ -740,9 +773,17 @@
               }
               if (evt.done && evt.session_id) {
                 currentSessionId = evt.session_id;
+                // Append per-message metadata badge
+                const badge = document.createElement('span');
+                const elapsedS = evt.elapsed_ms ? (evt.elapsed_ms / 1000).toFixed(1) + 's' : '';
+                const tierLabel = _tierBadgeText(evt.tier_used || selectedTier);
+                badge.textContent = [tierLabel, elapsedS].filter(Boolean).join(' · ');
+                badge.className = 'text-xs text-gray-600 px-1';
+                assistantWrap.appendChild(badge);
                 loadChatHistory();
               }
               if (evt.error) {
+                assistantBubble.className = assistantBubble.className.replace(' text-gray-500 italic', '');
                 assistantBubble.textContent = 'Error: ' + evt.error;
               }
             } catch (_) { /* incomplete JSON */ }

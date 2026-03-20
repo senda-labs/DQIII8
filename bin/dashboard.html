@@ -1,861 +1,1377 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DQ Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DQIII∞</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
-    body { font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
-    .fade-in { animation: fadeIn 0.3s ease-in; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-    .pulse-dot { animation: pulseDot 1.5s ease-in-out infinite; }
-    @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    /* ── CSS Variables ───────────────────────────────────────────────────── */
+    :root {
+      --bg-deep:     #020810;
+      --bg-surface:  #0a1628;
+      --bg-surface2: #0f1f3a;
+      --border:      #1a2d4d;
+      --text:        #e0e8f5;
+      --text-dim:    #5a7090;
+      --accent:      #00e5ff;
+      --accent-dim:  #006674;
+      --accent-glow: 0 0 20px rgba(0,229,255,0.3);
+      --success:     #00e676;
+      --warning:     #ffc400;
+      --danger:      #ff1744;
+      --tier-local:  #78909c;
+      --tier-groq:   #00e5ff;
+      --tier-claude: #b388ff;
+    }
+
+    /* ── Reset ───────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg-deep);
+      color: var(--text);
+      overflow: hidden;
+      position: relative;
+    }
+
+    code, .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* ── Starfield ───────────────────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(1px 1px at 10% 15%, rgba(255,255,255,0.4), transparent),
+        radial-gradient(1px 1px at 22% 68%, rgba(255,255,255,0.25), transparent),
+        radial-gradient(1px 1px at 38% 30%, rgba(255,255,255,0.3), transparent),
+        radial-gradient(1px 1px at 52% 80%, rgba(255,255,255,0.2), transparent),
+        radial-gradient(1px 1px at 65% 22%, rgba(255,255,255,0.35), transparent),
+        radial-gradient(1px 1px at 78% 55%, rgba(255,255,255,0.2), transparent),
+        radial-gradient(1px 1px at 90% 10%, rgba(255,255,255,0.3), transparent),
+        radial-gradient(2px 2px at 15% 82%, rgba(0,229,255,0.15), transparent),
+        radial-gradient(2px 2px at 85% 35%, rgba(0,229,255,0.12), transparent),
+        radial-gradient(1px 1px at 45% 50%, rgba(255,255,255,0.15), transparent);
+      background-size: 350% 350%;
+      animation: starfield 70s linear infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      top: 50%; left: 50%;
+      width: 900px; height: 900px;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle, rgba(0,229,255,0.03) 0%, transparent 65%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    @keyframes starfield {
+      0%   { background-position: 0% 0%; }
+      100% { background-position: 100% 100%; }
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { text-shadow: 0 0 10px rgba(0,229,255,0.3); }
+      50%       { text-shadow: 0 0 28px rgba(0,229,255,0.65), 0 0 55px rgba(0,229,255,0.2); }
+    }
+
+    @keyframes thinking-dot {
+      0%, 60%, 100% { opacity: 0.25; transform: scale(0.75); }
+      30%            { opacity: 1;    transform: scale(1); }
+    }
+
+    /* ── App shell ───────────────────────────────────────────────────────── */
+    #app {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Navbar ──────────────────────────────────────────────────────────── */
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 56px;
+      background: rgba(10,22,40,0.88);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      z-index: 100;
+      flex-shrink: 0;
+      gap: 16px;
+    }
+
+    /* Logo */
+    .logo {
+      display: flex;
+      align-items: baseline;
+      gap: 1px;
+      font-weight: 700;
+      user-select: none;
+      cursor: default;
+    }
+    .logo-text   { font-size: 1.35rem; color: var(--text); }
+    .logo-roman  { font-size: 1.1rem;  color: var(--text); letter-spacing: -1px; }
+    .logo-inf    {
+      font-size: 1.65rem;
+      color: var(--accent);
+      animation: pulse-glow 3s ease-in-out infinite;
+      margin-left: 1px;
+    }
+
+    /* Nav tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 3px;
+      background: rgba(2,8,16,0.6);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+    }
+    .nav-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 18px;
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: color 0.2s, background 0.2s;
+    }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active {
+      background: var(--bg-surface2);
+      color: var(--accent);
+      box-shadow: inset 0 0 0 1px var(--accent-dim);
+    }
+
+    /* Health indicator */
+    .health-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--success);
+    }
+    .health-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 7px var(--success);
+    }
+
+    /* ── Views ───────────────────────────────────────────────────────────── */
+    .view { display: none; flex: 1; min-height: 0; }
+    .view.active { display: flex; flex-direction: column; }
+
+    /* ── CHAT VIEW ───────────────────────────────────────────────────────── */
+    .chat-container {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    .chat-sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+      overflow: hidden;
+    }
+    .new-chat-btn {
+      width: 100%;
+      padding: 10px;
+      background: transparent;
+      border: 1px solid var(--accent-dim);
+      color: var(--accent);
+      border-radius: 8px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .new-chat-btn:hover {
+      background: rgba(0,229,255,0.07);
+      box-shadow: var(--accent-glow);
+    }
+    .sidebar-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-dim);
+      padding: 0 2px;
+    }
+    .chat-hist-scroll { flex: 1; overflow-y: auto; }
+    .hist-item {
+      display: block;
+      width: 100%;
+      padding: 8px 10px;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.78rem;
+      text-align: left;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: all 0.15s;
+    }
+    .hist-item:hover  { background: var(--bg-surface2); color: var(--text); }
+    .hist-item.active { background: var(--bg-surface2); color: var(--accent); }
+
+    /* Chat main */
+    .chat-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 24px;
+      scroll-behavior: smooth;
+    }
+
+    /* Welcome */
+    .welcome {
+      text-align: center;
+      padding-top: 20vh;
+    }
+    .welcome-logo {
+      font-size: 3.8rem;
+      font-weight: 700;
+      color: var(--accent);
+      animation: pulse-glow 3s ease-in-out infinite;
+      margin-bottom: 14px;
+    }
+    .welcome p { color: var(--text-dim); font-size: 1.05rem; }
+
+    /* Message bubbles */
+    .msg-wrap { max-width: 760px; margin: 0 auto 22px; }
+    .msg-user {
+      background: var(--bg-surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 14px 18px;
+      border-radius: 12px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+    .msg-assistant {
+      color: var(--text);
+      padding: 2px 0 4px 20px;
+      border-left: 2px solid var(--accent-dim);
+      line-height: 1.75;
+    }
+    /* Markdown inside assistant */
+    .msg-assistant p { margin-bottom: 0.7em; }
+    .msg-assistant p:last-child { margin-bottom: 0; }
+    .msg-assistant code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.84em;
+      background: var(--bg-surface2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent);
+    }
+    .msg-assistant pre {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      overflow-x: auto;
+      margin: 10px 0;
+    }
+    .msg-assistant pre code { background: none; padding: 0; color: var(--text); }
+    .msg-assistant h1, .msg-assistant h2, .msg-assistant h3 { color: var(--text); margin: 1em 0 0.5em; }
+    .msg-assistant ul, .msg-assistant ol { padding-left: 1.5em; margin: 0.5em 0; }
+    .msg-assistant li { margin-bottom: 0.25em; }
+    .msg-assistant a { color: var(--accent); }
+    .msg-assistant blockquote {
+      border-left: 3px solid var(--accent-dim);
+      padding-left: 12px;
+      color: var(--text-dim);
+      margin: 0.5em 0;
+    }
+    .msg-badge {
+      display: block;
+      margin-top: 6px;
+      padding-left: 22px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+
+    /* Thinking dots */
+    .thinking { display: flex; gap: 4px; padding: 8px 0; }
+    .thinking span {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      animation: thinking-dot 1.3s ease-in-out infinite;
+    }
+    .thinking span:nth-child(2) { animation-delay: 0.2s; }
+    .thinking span:nth-child(3) { animation-delay: 0.4s; }
+
+    /* Input area */
+    .chat-input-area {
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
+      background: rgba(10,22,40,0.55);
+    }
+    .tier-pills {
+      display: flex;
+      gap: 6px;
+      padding: 10px 24px 0;
+    }
+    .tier-pill {
+      padding: 4px 14px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      border-radius: 20px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    .tier-pill:hover { border-color: var(--text-dim); color: var(--text); }
+    .tier-pill.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,229,255,0.07);
+    }
+    .input-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      padding: 10px 24px 18px;
+    }
+    #chat-input {
+      flex: 1;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 11px 15px;
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.93rem;
+      resize: none;
+      outline: none;
+      min-height: 46px;
+      max-height: 150px;
+      overflow-y: auto;
+      transition: border-color 0.2s;
+      line-height: 1.5;
+    }
+    #chat-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); }
+    #chat-input::placeholder { color: var(--text-dim); }
+    .send-btn {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: var(--bg-deep);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .send-btn:hover   { box-shadow: var(--accent-glow); transform: scale(1.05); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* ── METRICS VIEW ────────────────────────────────────────────────────── */
+    .metrics-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    .kpi-card {
+      background: rgba(10,22,40,0.65);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 22px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .kpi-card:hover {
+      border-color: var(--accent-dim);
+      box-shadow: 0 0 28px rgba(0,229,255,0.05);
+    }
+    .kpi-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+    .kpi-val {
+      font-size: 2.3rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .kpi-val.cyan    { color: var(--accent); text-shadow: 0 0 18px rgba(0,229,255,0.2); }
+    .kpi-val.green   { color: var(--success); }
+    .kpi-val.default { color: var(--text); }
+    .kpi-sub {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      margin-top: 5px;
+    }
+
+    .metrics-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+    .sec-card {
+      background: rgba(10,22,40,0.65);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px 22px;
+      transition: border-color 0.3s;
+    }
+    .sec-card:hover { border-color: rgba(26,45,77,0.9); }
+    .sec-title {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+
+    /* Tier bars */
+    .tier-bar { margin-bottom: 13px; }
+    .tier-bar:last-child { margin-bottom: 0; }
+    .tier-bar-hdr { display: flex; justify-content: space-between; margin-bottom: 5px; }
+    .tier-bar-name { font-size: 0.8rem; }
+    .tier-bar-info { font-size: 0.72rem; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+    .tier-bar-track { height: 4px; background: var(--bg-surface2); border-radius: 2px; overflow: hidden; }
+    .tier-bar-fill  { height: 100%; border-radius: 2px; transition: width 0.7s ease; }
+
+    /* Task preview */
+    .preview-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .preview-inp {
+      flex: 1;
+      background: var(--bg-surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 13px;
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.875rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .preview-inp:focus { border-color: var(--accent-dim); }
+    .preview-btn {
+      padding: 9px 18px;
+      background: rgba(0,229,255,0.09);
+      border: 1px solid var(--accent-dim);
+      color: var(--accent);
+      border-radius: 8px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .preview-btn:hover { background: rgba(0,229,255,0.15); }
+    .preview-out {
+      display: none;
+      background: var(--bg-surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.76rem;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .preview-out.show { display: block; }
+
+    /* Tasks table */
+    .tasks-table { width: 100%; border-collapse: collapse; }
+    .tasks-table th {
+      text-align: left;
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tasks-table td {
+      font-size: 0.8rem;
+      color: var(--text);
+      padding: 10px 8px 10px 0;
+      border-bottom: 1px solid rgba(26,45,77,0.4);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .tasks-table tr:last-child td { border-bottom: none; }
+    .tasks-table tr:hover td { background: rgba(15,31,58,0.5); }
+    .t-ok  { color: var(--success); }
+    .t-err { color: var(--danger); }
+    .tier-tag {
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.68rem;
+      background: rgba(0,229,255,0.07);
+      border: 1px solid rgba(0,229,255,0.15);
+    }
+
+    /* ── SETTINGS VIEW ───────────────────────────────────────────────────── */
+    .settings-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 24px;
+    }
+    .settings-inner {
+      max-width: 620px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .set-card {
+      background: rgba(10,22,40,0.65);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 22px 24px;
+    }
+    .set-title {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+    .oauth-row { display: flex; align-items: flex-start; gap: 12px; }
+    .oauth-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+      margin-top: 4px;
+    }
+    .oauth-dot.on { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .oauth-status { font-size: 0.9rem; }
+    .oauth-detail { font-size: 0.76rem; color: var(--text-dim); margin-top: 2px; }
+    .oauth-hint   { font-size: 0.76rem; color: var(--text-dim); margin-top: 12px; }
+    .oauth-hint code { color: var(--accent); font-family: 'JetBrains Mono', monospace; }
+
+    .set-field { margin-bottom: 16px; }
+    .set-field:last-child { margin-bottom: 0; }
+    .set-label {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      margin-bottom: 7px;
+    }
+    .set-label em { font-style: normal; font-size: 0.72rem; }
+    .set-input-row { display: flex; gap: 8px; }
+    .set-input {
+      flex: 1;
+      background: var(--bg-surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 13px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .set-input:focus { border-color: var(--accent-dim); }
+    .set-input::placeholder { color: var(--text-dim); }
+    .set-hint { font-size: 0.7rem; color: var(--text-dim); margin-top: 5px; }
+    .set-select {
+      background: var(--bg-surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 13px;
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.875rem;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.2s;
+      margin-bottom: 8px;
+    }
+    .set-select:focus { border-color: var(--accent-dim); }
+    .set-btn {
+      padding: 9px 18px;
+      background: rgba(0,229,255,0.09);
+      border: 1px solid var(--accent-dim);
+      color: var(--accent);
+      border-radius: 8px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .set-btn:hover { background: rgba(0,229,255,0.16); }
+    .set-status { font-size: 0.78rem; color: var(--success); min-height: 18px; display: block; margin-top: 4px; }
+
+    .tiers-list { display: flex; flex-direction: column; gap: 14px; }
+    .tier-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .tier-item-left { display: flex; flex-direction: column; gap: 3px; }
+    .tier-name-row { display: flex; align-items: center; gap: 8px; }
+    .ti-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+    .ti-dot.on { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .ti-name  { font-size: 0.875rem; font-weight: 600; }
+    .ti-model { font-size: 0.7rem; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+    .ti-desc  { font-size: 0.73rem; color: var(--text-dim); padding-left: 16px; }
+    .ti-setup { font-size: 0.71rem; color: var(--warning); padding-left: 16px; }
+    .ti-cost  { font-size: 0.73rem; color: var(--text-dim); flex-shrink: 0; }
+
+    /* ── Scrollbars ──────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .chat-sidebar { display: none; }
+      .metrics-row  { grid-template-columns: 1fr; }
+      .nav-tab span.nav-icon { display: none; }
+      .nav-tab { padding: 6px 12px; font-size: 0.8rem; }
+      .messages, .metrics-body, .settings-body { padding: 16px; }
+      .input-row { padding: 10px 16px 14px; }
+      .tier-pills { padding: 8px 16px 0; }
+    }
   </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen">
+<body>
+<div id="app">
 
-  <!-- Header -->
-  <header class="border-b border-gray-800/60 px-6 py-4">
-    <div class="max-w-7xl mx-auto flex items-center justify-between">
-      <div class="flex items-center gap-4">
-        <span class="text-2xl font-bold tracking-tight text-white">DQ</span>
-        <span class="text-gray-600 text-xs hidden sm:block">Works for you. Go outside and live.</span>
-      </div>
-      <div class="flex items-center gap-3">
-        <span id="health-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-gray-800 text-gray-500 transition-all duration-500">
-          <span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-gray-600 mr-1.5 align-middle"></span>loading
-        </span>
-        <span id="last-audit" class="text-xs text-gray-600 hidden sm:block"></span>
-      </div>
-    </div>
-  </header>
-
-  <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
-
-    <!-- Metric Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60 hover:border-gray-700 transition-colors">
-        <p class="text-gray-500 text-xs uppercase tracking-widest mb-3">Sessions (7d)</p>
-        <p id="m-sessions" class="text-3xl font-bold text-white tabular-nums">-</p>
-      </div>
-      <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60 hover:border-gray-700 transition-colors">
-        <p class="text-gray-500 text-xs uppercase tracking-widest mb-3">Success Rate</p>
-        <p id="m-success" class="text-3xl font-bold text-emerald-400 tabular-nums">-</p>
-      </div>
-      <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60 hover:border-gray-700 transition-colors">
-        <p class="text-gray-500 text-xs uppercase tracking-widest mb-3">Open Errors</p>
-        <p id="m-errors" class="text-3xl font-bold text-red-400 tabular-nums">-</p>
-      </div>
-      <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60 hover:border-gray-700 transition-colors">
-        <p class="text-gray-500 text-xs uppercase tracking-widest mb-3">Cost (7d)</p>
-        <p id="m-cost" class="text-3xl font-bold text-amber-400 tabular-nums">-</p>
-      </div>
+  <!-- ═══════════════════════════════════════════ NAVBAR -->
+  <nav class="navbar">
+    <div class="logo">
+      <span class="logo-text">DQ</span>
+      <span class="logo-roman">III</span>
+      <span class="logo-inf">∞</span>
     </div>
 
-    <!-- Tier Distribution -->
-    <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60">
-      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">Tier Distribution (7d)</h2>
-      <div id="tier-bars" class="space-y-4">
-        <p class="text-gray-700 text-sm">Loading...</p>
-      </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-view="chat">
+        <span class="nav-icon">💬</span> Chat
+      </button>
+      <button class="nav-tab" data-view="metrics">
+        <span class="nav-icon">📊</span> Metrics
+      </button>
+      <button class="nav-tab" data-view="settings">
+        <span class="nav-icon">⚙</span> Settings
+      </button>
     </div>
 
-    <!-- Subscription / Budget Card -->
-    <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60">
-      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Budget &amp; Usage</h2>
-      <div id="subscription-container">
-        <p class="text-gray-700 text-sm">Loading...</p>
-      </div>
+    <div class="health-indicator">
+      <div class="health-dot"></div>
+      <span id="nav-health">—</span>
     </div>
+  </nav>
 
-    <!-- Intent Amplification Panel -->
-    <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60">
-      <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">
-        Intent Amplification
-        <span class="ml-2 text-blue-500 font-normal normal-case tracking-normal">real-time</span>
-      </h2>
+  <!-- ═══════════════════════════════════════════ CHAT VIEW -->
+  <div id="view-chat" class="view active">
+    <div class="chat-container">
 
-      <div class="space-y-4">
-        <textarea
-          id="intent-input"
-          rows="3"
-          placeholder="What do you want to build?"
-          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:bg-gray-800/80 resize-none text-sm transition-colors"
-        ></textarea>
-
-        <div id="amplify-result" class="hidden"></div>
-
-        <div class="flex items-center gap-3">
-          <button
-            id="execute-btn"
-            class="hidden px-5 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Execute &#9654;
-          </button>
-          <span id="execute-status" class="hidden text-xs text-gray-500"></span>
-        </div>
-
-        <div id="execute-result" class="hidden bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm whitespace-pre-wrap max-h-72 overflow-y-auto"></div>
-      </div>
-    </div>
-
-    <!-- Recent Tasks -->
-    <div class="bg-gray-900 rounded-xl p-5 border border-gray-800/60">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Recent Tasks</h2>
-        <span class="text-xs text-gray-700">auto-refresh 30s</span>
-      </div>
-      <div id="tasks-container"></div>
-    </div>
-
-  </main>
-
-  <!-- ── Chat Panel ──────────────────────────────────────────────────────── -->
-  <section class="max-w-7xl mx-auto px-6 pb-8">
-    <div class="bg-gray-900 rounded-xl border border-gray-800/60 overflow-hidden">
-      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800/60">
-        <h2 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Chat</h2>
-        <div class="flex items-center gap-3">
-          <!-- Tier selector -->
-          <div id="tier-selector" class="flex gap-1">
-            <button data-tier="auto"  class="tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors border-blue-600 text-blue-400 bg-blue-900/30">Auto</button>
-            <button data-tier="local" class="tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300">Local</button>
-            <button data-tier="groq"  class="tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300">Groq</button>
-            <button data-tier="claude" class="tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300">Claude</button>
+      <!-- Sidebar -->
+      <div class="chat-sidebar">
+        <button class="new-chat-btn" id="new-chat-btn">+ New Chat</button>
+        <span class="sidebar-label">History</span>
+        <div class="chat-hist-scroll">
+          <div id="chat-hist-list">
+            <span style="font-size:.74rem;color:var(--text-dim);padding:4px 6px;display:block">No history yet</span>
           </div>
-          <button id="chat-new-btn" class="px-3 py-1 text-xs text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 rounded transition-colors">New chat</button>
         </div>
       </div>
 
-      <div class="flex h-[520px]">
-        <!-- Sidebar: history -->
-        <div id="chat-sidebar" class="w-44 shrink-0 border-r border-gray-800/60 overflow-y-auto hidden sm:block">
-          <div id="chat-history-list" class="p-2 space-y-1">
-            <p class="text-gray-700 text-xs px-2 py-1">No history yet</p>
+      <!-- Main -->
+      <div class="chat-main">
+        <div class="messages" id="messages">
+          <div class="welcome" id="welcome">
+            <div class="welcome-logo">DQIII∞</div>
+            <p>What would you like to build?</p>
           </div>
         </div>
 
-        <!-- Main: messages + input -->
-        <div class="flex flex-col flex-1 min-w-0">
-          <!-- Messages area -->
-          <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4">
-            <div class="flex justify-center">
-              <p class="text-gray-700 text-xs">Send a message to start chatting</p>
+        <div class="chat-input-area">
+          <div class="tier-pills" id="tier-pills">
+            <button class="tier-pill active" data-tier="auto">Auto</button>
+            <button class="tier-pill" data-tier="local">Local</button>
+            <button class="tier-pill" data-tier="groq">Groq</button>
+            <button class="tier-pill" data-tier="claude">Claude</button>
+          </div>
+          <div class="input-row">
+            <textarea id="chat-input" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+            <button id="send-btn" class="send-btn" title="Send">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ METRICS VIEW -->
+  <div id="view-metrics" class="view">
+    <div class="metrics-body">
+
+      <!-- KPI cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Health Score</div>
+          <div class="kpi-val cyan" id="m-health">—</div>
+          <div class="kpi-sub">/100</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Sessions (7d)</div>
+          <div class="kpi-val default" id="m-sessions">—</div>
+          <div class="kpi-sub">total sessions</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Actions (7d)</div>
+          <div class="kpi-val default" id="m-actions">—</div>
+          <div class="kpi-sub">agent calls</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Success Rate</div>
+          <div class="kpi-val green" id="m-success">—</div>
+          <div class="kpi-sub">percent</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Cost (7d)</div>
+          <div class="kpi-val default" id="m-cost">—</div>
+          <div class="kpi-sub">USD total</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Open Errors</div>
+          <div class="kpi-val default" id="m-errors">—</div>
+          <div class="kpi-sub">unresolved</div>
+        </div>
+      </div>
+
+      <!-- Tiers + Task Preview -->
+      <div class="metrics-row">
+        <div class="sec-card">
+          <div class="sec-title">Tier Distribution</div>
+          <div id="tier-bars">
+            <span style="font-size:.76rem;color:var(--text-dim)">Loading…</span>
+          </div>
+        </div>
+        <div class="sec-card">
+          <div class="sec-title">Task Preview</div>
+          <div class="preview-row">
+            <input type="text" class="preview-inp" id="preview-input"
+                   placeholder="analyze bitcoin trend...">
+            <button class="preview-btn" id="preview-btn">Preview</button>
+          </div>
+          <pre class="preview-out" id="preview-out"></pre>
+        </div>
+      </div>
+
+      <!-- Recent tasks -->
+      <div class="sec-card" style="margin-bottom:0">
+        <div class="sec-title">Recent Tasks</div>
+        <table class="tasks-table">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Tier</th>
+              <th>Status</th>
+              <th>Duration</th>
+              <th>Cost</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="tasks-tbody"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ SETTINGS VIEW -->
+  <div id="view-settings" class="view">
+    <div class="settings-body">
+      <div class="settings-inner">
+
+        <!-- OAuth -->
+        <div class="set-card">
+          <div class="set-title">Claude OAuth</div>
+          <div class="oauth-row">
+            <div class="oauth-dot" id="oauth-dot"></div>
+            <div>
+              <div class="oauth-status" id="oauth-status">Checking…</div>
+              <div class="oauth-detail" id="oauth-detail"></div>
             </div>
           </div>
+          <p class="oauth-hint">Run <code>claude /login</code> to use Claude at $0 with your Pro plan.</p>
+        </div>
 
-          <!-- Input row -->
-          <div class="border-t border-gray-800/60 p-3 flex gap-2">
-            <textarea
-              id="chat-input"
-              rows="2"
-              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-              class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-blue-500 resize-none transition-colors"
-            ></textarea>
-            <button
-              id="chat-send-btn"
-              class="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors self-end disabled:opacity-40 disabled:cursor-not-allowed"
-            >Send</button>
+        <!-- API Keys -->
+        <div class="set-card">
+          <div class="set-title">API Keys</div>
+
+          <div class="set-field">
+            <label class="set-label">Groq API Key <em>(free cloud models)</em></label>
+            <div class="set-input-row">
+              <input type="password" class="set-input" id="groq-key" placeholder="gsk_…">
+              <button class="set-btn" onclick="saveKey('GROQ_API_KEY','groq-key')">Save</button>
+            </div>
+            <div class="set-hint">console.groq.com/keys</div>
+          </div>
+
+          <div class="set-field">
+            <label class="set-label">Anthropic API Key <em>(Claude, paid)</em></label>
+            <div class="set-input-row">
+              <input type="password" class="set-input" id="anthropic-key" placeholder="sk-ant-…">
+              <button class="set-btn" onclick="saveKey('ANTHROPIC_API_KEY','anthropic-key')">Save</button>
+            </div>
+            <div class="set-hint">console.anthropic.com/settings/keys</div>
+          </div>
+
+          <span class="set-status" id="save-status"></span>
+        </div>
+
+        <!-- Default tier -->
+        <div class="set-card">
+          <div class="set-title">Default Routing Tier</div>
+          <select class="set-select" id="default-tier">
+            <option value="auto">auto — DQ picks best tier per task</option>
+            <option value="groq-only">groq-only — Groq handles everything</option>
+            <option value="groq+ollama">groq+ollama — Groq plans, Ollama runs</option>
+            <option value="ollama-only">ollama-only — Fully local, no internet</option>
+          </select>
+          <button class="set-btn" onclick="saveTier()">Save</button>
+        </div>
+
+        <!-- Tier status -->
+        <div class="set-card">
+          <div class="set-title">Available Tiers</div>
+          <div class="tiers-list" id="tiers-list">
+            <span style="font-size:.74rem;color:var(--text-dim)">Loading…</span>
           </div>
         </div>
+
       </div>
     </div>
-  </section>
+  </div>
 
-  <footer class="border-t border-gray-800/60 px-6 py-4 mt-8">
-    <div class="max-w-7xl mx-auto flex items-center justify-between text-xs text-gray-700">
-      <span>DQ v0.1.0</span>
-      <a href="/settings" class="text-gray-600 hover:text-gray-400 transition-colors">Settings</a>
-    </div>
-  </footer>
+</div><!-- #app -->
 
-  <script>
-    'use strict';
+<!-- CDN scripts loaded after content -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<script>
+'use strict';
 
-    // ── XSS-safe helpers ─────────────────────────────────────────────────
-    function esc(str) {
-      if (str == null) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+// ── Tier metadata ─────────────────────────────────────────────────────────
+const TIER_LABELS = {
+  'A': 'Claude Sonnet', 'S': 'Claude Opus', 'S+': 'Claude Opus+',
+  'B': 'Groq',          '2': 'Groq',         'groq': 'Groq',
+  'C': 'Ollama Local',  '1': 'Ollama Local',  'local': 'Ollama Local',
+  '3': 'Claude Sonnet', 'claude': 'Claude',   'claude_oauth': 'Claude OAuth',
+  'claude_api': 'Claude API', 'auto': 'Auto',
+};
+const TIER_COLORS = {
+  'A': 'var(--tier-claude)', 'S': 'var(--tier-claude)', 'S+': 'var(--tier-claude)',
+  'B': 'var(--tier-groq)',   '2': 'var(--tier-groq)',   'groq': 'var(--tier-groq)',
+  'C': 'var(--tier-local)',  '1': 'var(--tier-local)',  'local': 'var(--tier-local)',
+  '3': 'var(--tier-claude)', 'claude': 'var(--tier-claude)',
+  'claude_oauth': 'var(--tier-claude)', 'claude_api': 'var(--tier-claude)',
+  'auto': 'var(--accent)',
+};
+const SETTINGS_TIER_COLORS = {
+  auto: 'var(--accent)', local: 'var(--tier-local)',
+  groq: 'var(--tier-groq)', claude: 'var(--tier-claude)',
+};
+function tierLabel(t) { return TIER_LABELS[String(t)] || String(t) || '—'; }
+function tierColor(t) { return TIER_COLORS[String(t)] || 'var(--text-dim)'; }
+
+// ── Navigation ────────────────────────────────────────────────────────────
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    tab.classList.add('active');
+    const v = document.getElementById('view-' + tab.dataset.view);
+    if (v) v.classList.add('active');
+    if (tab.dataset.view === 'settings') { loadSettingsData(); loadTiersData(); }
+    if (tab.dataset.view === 'metrics')  { loadHealth(); loadTasks(); }
+  });
+});
+
+// ── Metrics: Health ───────────────────────────────────────────────────────
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val ?? '—';
+}
+
+async function loadHealth() {
+  try {
+    const r = await fetch('/api/health');
+    if (!r.ok) return;
+    const d = await r.json();
+    const score = d.health_score != null ? Math.round(Number(d.health_score)) : null;
+    setText('m-health',   score ?? '—');
+    setText('nav-health', score ?? '—');
+    setText('m-sessions', d.sessions_7d ?? '—');
+    setText('m-actions',  d.actions_7d ?? '—');
+    setText('m-success',  d.success_rate != null ? d.success_rate + '%' : '—');
+    const cost = Object.values(d.tiers || {}).reduce((s, t) => s + (t.cost || 0), 0);
+    setText('m-cost',     '$' + cost.toFixed(4));
+    setText('m-errors',   d.errors_open ?? '—');
+    renderTierBars(d.tiers || {});
+  } catch (_) {}
+}
+
+function renderTierBars(tiers) {
+  const el = document.getElementById('tier-bars');
+  if (!el) return;
+  const total = Object.values(tiers).reduce((s, t) => s + (t.count || 0), 0);
+  el.innerHTML = '';
+  if (!total) {
+    el.innerHTML = '<span style="font-size:.76rem;color:var(--text-dim)">No data for the last 7 days</span>';
+    return;
+  }
+  for (const [tier, data] of Object.entries(tiers)) {
+    const pct   = total > 0 ? ((data.count / total) * 100).toFixed(1) : 0;
+    const color = tierColor(tier);
+    const label = tierLabel(tier);
+    const bar   = document.createElement('div');
+    bar.className = 'tier-bar';
+    bar.innerHTML = `
+      <div class="tier-bar-hdr">
+        <span class="tier-bar-name" style="color:${color}">${label}</span>
+        <span class="tier-bar-info">${data.count} · $${(data.cost || 0).toFixed(4)}</span>
+      </div>
+      <div class="tier-bar-track">
+        <div class="tier-bar-fill" style="width:${pct}%;background:${color}"></div>
+      </div>`;
+    el.appendChild(bar);
+  }
+}
+
+// ── Metrics: Tasks ────────────────────────────────────────────────────────
+async function loadTasks() {
+  try {
+    const r = await fetch('/api/tasks/recent?limit=20');
+    if (!r.ok) return;
+    const tasks = await r.json();
+    const tbody = document.getElementById('tasks-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (!tasks.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-dim);text-align:center;padding:20px">No tasks yet</td></tr>';
+      return;
     }
-
-    // Safe text node setter
-    function setText(id, value) {
-      const el = document.getElementById(id);
-      if (el) el.textContent = String(value);
+    for (const t of tasks) {
+      const tr   = document.createElement('tr');
+      const ts   = t.timestamp ? String(t.timestamp).slice(0, 16).replace('T', ' ') : '—';
+      const dur  = t.duration_ms != null ? (t.duration_ms / 1000).toFixed(1) + 's' : '—';
+      const cost = t.cost != null ? '$' + Number(t.cost).toFixed(5) : '$0';
+      const col  = tierColor(t.tier);
+      tr.innerHTML = `
+        <td style="font-family:'Space Grotesk',sans-serif;color:var(--text)">${t.agent || '—'}</td>
+        <td><span class="tier-tag" style="color:${col};border-color:${col}33">${tierLabel(t.tier)}</span></td>
+        <td class="${t.success ? 't-ok' : 't-err'}">${t.success ? '✓' : '✗'}</td>
+        <td>${dur}</td>
+        <td>${cost}</td>
+        <td style="color:var(--text-dim)">${ts}</td>`;
+      tbody.appendChild(tr);
     }
+  } catch (_) {}
+}
 
-    // ── State ────────────────────────────────────────────────────────────
-    let lastAmplifyResult = null;
-    let debounceTimer = null;
+// ── Task Preview ──────────────────────────────────────────────────────────
+document.getElementById('preview-btn')?.addEventListener('click', runPreview);
+document.getElementById('preview-input')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); runPreview(); }
+});
 
-    const TIER_META = {
-      '1':       { label: 'Tier 1 · Local',  barColor: 'bg-emerald-500', textColor: 'text-emerald-400', free: true  },
-      '2':       { label: 'Tier 2 · Groq',   barColor: 'bg-blue-500',    textColor: 'text-blue-400',    free: true  },
-      '3':       { label: 'Tier 3 · Sonnet', barColor: 'bg-orange-500',  textColor: 'text-orange-400',  free: false },
-      'unknown': { label: 'Unknown',          barColor: 'bg-gray-600',    textColor: 'text-gray-400',    free: false },
-    };
-
-    // ── Health & Metrics ─────────────────────────────────────────────────
-    async function loadHealth() {
-      try {
-        const r = await fetch('/api/health');
-        if (!r.ok) return;
-        const d = await r.json();
-        applyHealth(d);
-      } catch (e) {
-        console.error('Health load failed:', e);
-      }
-    }
-
-    function applyHealth(d) {
-      // Health badge (uses only numeric score + safe static strings)
-      const badge = document.getElementById('health-badge');
-      if (d.health_score != null) {
-        const score = Math.round(Number(d.health_score));
-        const [bg, dotColor, tc] =
-          score >= 80 ? ['bg-emerald-900/60 border border-emerald-700/40', 'bg-emerald-400', 'text-emerald-300'] :
-          score >= 60 ? ['bg-amber-900/60 border border-amber-700/40',     'bg-amber-400',   'text-amber-300']   :
-                        ['bg-red-900/60 border border-red-700/40',          'bg-red-400',     'text-red-300'];
-        badge.className = 'px-3 py-1 rounded-full text-xs font-bold ' + bg + ' ' + tc + ' transition-all duration-500';
-        // Only score number is user-derived — sanitize via parseInt
-        badge.textContent = String(score);
-        const dot = document.createElement('span');
-        dot.className = 'inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle ' + dotColor;
-        badge.prepend(dot);
-      }
-
-      // Last audit — slice of timestamp string, safe
-      if (d.last_audit) {
-        document.getElementById('last-audit').textContent = 'Audit: ' + String(d.last_audit).slice(0, 10);
-      }
-
-      // Metric cards — all numeric, safe with textContent
-      setText('m-sessions', d.sessions_7d ?? '-');
-      setText('m-success',  d.success_rate != null ? d.success_rate + '%' : '-');
-      setText('m-errors',   d.errors_open ?? '-');
-
-      const totalCost = Object.values(d.tiers || {}).reduce((s, t) => s + (t.cost || 0), 0);
-      setText('m-cost', totalCost > 0 ? '$' + totalCost.toFixed(4) : '$0.0000');
-
-      renderTiers(d.tiers || {});
-    }
-
-    function renderTiers(tiers) {
-      const container = document.getElementById('tier-bars');
-      const total = Object.values(tiers).reduce((s, t) => s + (t.count || 0), 0);
-
-      if (total === 0) {
-        container.textContent = 'No data for the last 7 days';
-        return;
-      }
-
-      // Clear and rebuild safely
-      container.textContent = '';
-
-      const sorted = Object.entries(tiers).sort((a, b) => {
-        const order = { '1': 0, '2': 1, '3': 2, 'unknown': 3 };
-        return (order[a[0]] ?? 9) - (order[b[0]] ?? 9);
-      });
-
-      for (const [tier, data] of sorted) {
-        const pct  = total > 0 ? Math.round((data.count / total) * 100) : 0;
-        const meta = TIER_META[tier] || TIER_META.unknown;
-
-        const row = document.createElement('div');
-
-        // Label row
-        const labelRow = document.createElement('div');
-        labelRow.className = 'flex justify-between items-baseline text-xs mb-1.5';
-
-        const labelLeft = document.createElement('span');
-        labelLeft.className = 'text-gray-400';
-        labelLeft.textContent = meta.label;
-        if (meta.free) {
-          const freeBadge = document.createElement('span');
-          freeBadge.className = 'ml-1 text-emerald-500 text-xs';
-          freeBadge.textContent = 'free';
-          labelLeft.appendChild(freeBadge);
-        }
-
-        const labelRight = document.createElement('span');
-        labelRight.className = 'text-gray-500';
-        labelRight.textContent = pct + '% \u2022 ' + data.count + ' calls \u2022 $' + (data.cost || 0).toFixed(4);
-
-        labelRow.appendChild(labelLeft);
-        labelRow.appendChild(labelRight);
-
-        // Bar
-        const track = document.createElement('div');
-        track.className = 'w-full bg-gray-800 rounded-full h-2';
-        const fill = document.createElement('div');
-        fill.className = meta.barColor + ' h-2 rounded-full transition-all duration-700';
-        fill.style.width = pct + '%';
-        track.appendChild(fill);
-
-        row.appendChild(labelRow);
-        row.appendChild(track);
-        container.appendChild(row);
-      }
-    }
-
-    // ── Intent Amplification ──────────────────────────────────────────────
-    document.getElementById('intent-input').addEventListener('input', function(e) {
-      clearTimeout(debounceTimer);
-      const val = e.target.value.trim();
-
-      const resultEl  = document.getElementById('amplify-result');
-      const executeEl = document.getElementById('execute-btn');
-      const outputEl  = document.getElementById('execute-result');
-
-      if (!val) {
-        resultEl.classList.add('hidden');
-        executeEl.classList.add('hidden');
-        outputEl.classList.add('hidden');
-        lastAmplifyResult = null;
-        return;
-      }
-
-      resultEl.classList.remove('hidden');
-      resultEl.textContent = 'Analyzing your intent...';
-      resultEl.className = 'text-gray-600 text-xs py-2';
-
-      debounceTimer = setTimeout(() => runAmplify(val), 500);
+async function runPreview() {
+  const input = document.getElementById('preview-input');
+  const out   = document.getElementById('preview-out');
+  const val   = input?.value?.trim();
+  if (!val || !out) return;
+  out.textContent = 'Analyzing…';
+  out.classList.add('show');
+  try {
+    const r = await fetch('/api/amplify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: val }),
     });
+    const d = await r.json();
+    if (d.error && !d.action) { out.textContent = d.error; return; }
+    out.textContent = [
+      'action:    ' + (d.action    || '—'),
+      'entity:    ' + (d.entity    || '—'),
+      'domain:    ' + (d.domain    || '—') + ' (' + ((d.confidence || 0) * 100).toFixed(0) + '%)',
+      'pattern:   ' + (d.pattern   || '—'),
+      'tier:      ' + tierLabel(d.tier),
+      'knowledge: ' + (d.knowledge_used || 0) + ' chunks',
+      '',
+      'subtasks:  ' + (d.subtasks || []).join(', '),
+    ].join('\n');
+  } catch (e) { out.textContent = 'Error: ' + e.message; }
+}
 
-    async function runAmplify(input) {
-      try {
-        const r = await fetch('/api/amplify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input }),
-        });
-        const d = await r.json();
-        lastAmplifyResult = { input, ...d };
-        renderAmplifyResult(d, input.length);
-      } catch (e) {
-        const el = document.getElementById('amplify-result');
-        el.className = 'text-red-500 text-xs py-2';
-        el.textContent = 'Failed to analyze intent.';
-      }
+// ── Chat: setup ───────────────────────────────────────────────────────────
+let currentSessionId = null;
+let chatStreaming    = false;
+let selectedTier    = 'auto';
+
+marked.setOptions({ breaks: true, gfm: true });
+
+function renderMd(el, text) {
+  const dirty = marked.parse(text || '');
+  el.innerHTML = DOMPurify.sanitize(dirty, { USE_PROFILES: { html: true } });
+}
+
+// Tier pills
+document.querySelectorAll('#tier-pills .tier-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    selectedTier = btn.dataset.tier;
+    document.querySelectorAll('#tier-pills .tier-pill').forEach(b =>
+      b.classList.toggle('active', b === btn)
+    );
+  });
+});
+
+// ── Chat: messages ────────────────────────────────────────────────────────
+function hideWelcome() {
+  const w = document.getElementById('welcome');
+  if (w) w.style.display = 'none';
+}
+
+function appendMsg(role, content, isStreaming) {
+  hideWelcome();
+  const area = document.getElementById('messages');
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap';
+
+  if (role === 'user') {
+    const div = document.createElement('div');
+    div.className = 'msg-user';
+    div.textContent = content;
+    wrap.appendChild(div);
+  } else {
+    const div = document.createElement('div');
+    div.className = 'msg-assistant';
+    if (isStreaming) {
+      const dots = document.createElement('div');
+      dots.className = 'thinking';
+      dots.innerHTML = '<span></span><span></span><span></span>';
+      div.appendChild(dots);
+    } else {
+      renderMd(div, content);
     }
+    wrap.appendChild(div);
+  }
+  area.appendChild(wrap);
+  area.scrollTop = area.scrollHeight;
+  return wrap;
+}
 
-    function renderAmplifyResult(d, origLen) {
-      const container = document.getElementById('amplify-result');
-      container.textContent = '';
-      container.className = 'fade-in';
+// ── Chat: send ────────────────────────────────────────────────────────────
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msg = input?.value?.trim();
+  if (!msg || chatStreaming) return;
 
-      if (d.error && !d.action) {
-        const notice = document.createElement('div');
-        notice.className = 'bg-amber-950/30 border border-amber-800/40 rounded-lg p-4 text-sm text-amber-400';
-        notice.textContent = d.error;
-        container.appendChild(notice);
-        document.getElementById('execute-btn').classList.remove('hidden');
-        return;
-      }
+  input.value = '';
+  input.style.height = 'auto';
+  chatStreaming = true;
+  document.getElementById('send-btn').disabled = true;
 
-      const card = document.createElement('div');
-      card.className = 'bg-gray-800/60 border border-gray-700/60 rounded-xl p-5 space-y-4';
+  appendMsg('user', msg, false);
+  const aWrap  = appendMsg('assistant', '', true);
+  const aBubble = aWrap.querySelector('.msg-assistant');
+  let accumulated = '';
 
-      // Row 1: decomposition fields
-      const row1 = document.createElement('div');
-      row1.className = 'grid grid-cols-2 sm:grid-cols-4 gap-3';
-      for (const [label, val] of [
-        ['Action', d.action],
-        ['Entity', d.entity],
-        ['Niche',  d.niche],
-        ['Pattern', d.pattern],
-      ]) {
-        const cell = document.createElement('div');
-        const lbl  = document.createElement('p');
-        lbl.className = 'text-gray-600 text-xs mb-0.5';
-        lbl.textContent = label;
-        const v = document.createElement('p');
-        v.className = 'text-white text-sm font-bold';
-        v.textContent = val || '-';
-        cell.appendChild(lbl);
-        cell.appendChild(v);
-        row1.appendChild(cell);
-      }
-      card.appendChild(row1);
-
-      // Row 2: domain scores (safe — keys from our DB, values numeric)
-      const scores = d.all_scores || {};
-      const topDomains = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 3);
-      if (topDomains.length > 0) {
-        const row2 = document.createElement('div');
-        row2.className = 'flex items-center gap-2 flex-wrap';
-        const domLabel = document.createElement('span');
-        domLabel.className = 'text-gray-600 text-xs mr-1';
-        domLabel.textContent = 'Domains:';
-        row2.appendChild(domLabel);
-        for (const [domain, score] of topDomains) {
-          const badge = document.createElement('span');
-          badge.className = 'px-2 py-0.5 bg-gray-800 border border-gray-700 rounded text-xs text-gray-400';
-          badge.textContent = domain + ' ' + (Number(score) * 100).toFixed(0) + '%';
-          row2.appendChild(badge);
-        }
-        card.appendChild(row2);
-      }
-
-      // Row 3: subtasks
-      const subtasks = d.subtasks || [];
-      if (subtasks.length > 0) {
-        const row3 = document.createElement('div');
-        const header = document.createElement('p');
-        header.className = 'text-gray-600 text-xs uppercase tracking-widest mb-2';
-        header.textContent = 'Subtasks DQ will cover';
-        row3.appendChild(header);
-        const grid = document.createElement('div');
-        grid.className = 'grid grid-cols-2 gap-1';
-        for (const subtask of subtasks) {
-          const item = document.createElement('div');
-          item.className = 'flex items-center gap-2 text-gray-300 text-xs';
-          const tick = document.createElement('span');
-          tick.className = 'text-emerald-500 shrink-0';
-          tick.textContent = '\u2713';
-          const label = document.createElement('span');
-          label.textContent = subtask;
-          item.appendChild(tick);
-          item.appendChild(label);
-          grid.appendChild(item);
-        }
-        row3.appendChild(grid);
-        card.appendChild(row3);
-      }
-
-      // Row 4: stats bar
-      const meta   = TIER_META[String(d.tier)] || TIER_META.unknown;
-      const ampLen = d.amplified_prompt_length || 0;
-      const ratio  = origLen > 0 ? (ampLen / origLen).toFixed(1) : '?';
-
-      const row4 = document.createElement('div');
-      row4.className = 'flex items-center justify-between pt-1 border-t border-gray-700/60 text-xs flex-wrap gap-2';
-
-      const statsLeft = document.createElement('div');
-      statsLeft.className = 'flex items-center gap-4';
-
-      const knowledgeSpan = document.createElement('span');
-      knowledgeSpan.className = 'text-gray-500';
-      knowledgeSpan.textContent = 'Knowledge: ';
-      const knowledgeVal = document.createElement('span');
-      knowledgeVal.className = 'text-white font-bold';
-      knowledgeVal.textContent = String(d.knowledge_used || 0) + ' chunks';
-      knowledgeSpan.appendChild(knowledgeVal);
-
-      const tierSpan = document.createElement('span');
-      tierSpan.className = 'text-gray-500';
-      tierSpan.textContent = 'Tier: ';
-      const tierVal = document.createElement('span');
-      tierVal.className = meta.textColor + ' font-bold';
-      tierVal.textContent = meta.label;
-      tierSpan.appendChild(tierVal);
-
-      statsLeft.appendChild(knowledgeSpan);
-      statsLeft.appendChild(tierSpan);
-
-      const statsRight = document.createElement('span');
-      statsRight.className = 'text-gray-600';
-      statsRight.textContent = ampLen + ' chars amplified \u2022 ' + origLen + ' original \u2022 ' + ratio + 'x expansion';
-
-      row4.appendChild(statsLeft);
-      row4.appendChild(statsRight);
-      card.appendChild(row4);
-
-      container.appendChild(card);
-      document.getElementById('execute-btn').classList.remove('hidden');
-    }
-
-    // ── Execute Task ──────────────────────────────────────────────────────
-    document.getElementById('execute-btn').addEventListener('click', async function() {
-      const input = document.getElementById('intent-input').value.trim();
-      if (!input) return;
-
-      const btn      = document.getElementById('execute-btn');
-      const statusEl = document.getElementById('execute-status');
-      const resultEl = document.getElementById('execute-result');
-
-      btn.disabled = true;
-      btn.textContent = 'Running...';
-      statusEl.classList.remove('hidden');
-      statusEl.textContent = 'Sending to pipeline...';
-      resultEl.classList.remove('hidden');
-      resultEl.className = 'bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm whitespace-pre-wrap max-h-72 overflow-y-auto text-gray-500';
-      resultEl.textContent = 'Waiting for response...';
-
-      try {
-        const r = await fetch('/api/task/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input }),
-        });
-        const d = await r.json();
-
-        // Use textContent — no innerHTML needed for plain output
-        resultEl.textContent = d.output || d.error || 'No output returned.';
-        resultEl.className = 'bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm whitespace-pre-wrap max-h-72 overflow-y-auto ' +
-          (d.exit_code === 0 ? 'text-emerald-400' : 'text-red-400');
-        statusEl.textContent = d.exit_code === 0 ? 'Done.' : 'Error (exit ' + d.exit_code + ')';
-      } catch (e) {
-        resultEl.textContent = 'Request failed: ' + e.message;
-        resultEl.className = 'bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm whitespace-pre-wrap max-h-72 overflow-y-auto text-red-400';
-        statusEl.textContent = 'Failed.';
-      }
-
-      btn.disabled = false;
-      btn.textContent = 'Execute \u25B6';
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, session_id: currentSessionId, tier: selectedTier }),
     });
+    if (!resp.ok || !resp.body) throw new Error('Request failed: ' + resp.status);
 
-    // ── Recent Tasks Table ────────────────────────────────────────────────
-    async function loadTasks() {
-      try {
-        const r = await fetch('/api/tasks/recent?limit=20');
-        if (!r.ok) return;
-        renderTasksTable(await r.json());
-      } catch (e) {
-        console.error('Tasks load failed:', e);
-      }
-    }
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '', firstChunk = true;
 
-    function renderTasksTable(tasks) {
-      const container = document.getElementById('tasks-container');
-      container.textContent = '';
-
-      if (!tasks.length) {
-        container.textContent = 'No tasks recorded yet.';
-        container.className = 'text-gray-700 text-sm';
-        return;
-      }
-
-      container.className = 'overflow-x-auto';
-
-      const table = document.createElement('table');
-      table.className = 'w-full';
-
-      // Header
-      const thead = document.createElement('thead');
-      const hrow  = document.createElement('tr');
-      hrow.className = 'text-gray-600 text-xs uppercase tracking-widest';
-      for (const [text, align] of [
-        ['Time', 'left'], ['Agent', 'left'], ['OK', 'center'],
-        ['Tier', 'left'], ['Duration', 'right'], ['Cost', 'right'],
-      ]) {
-        const th = document.createElement('th');
-        th.className = 'pb-3 px-3 text-' + align + ' font-normal';
-        th.textContent = text;
-        hrow.appendChild(th);
-      }
-      thead.appendChild(hrow);
-      table.appendChild(thead);
-
-      // Body
-      const tbody = document.createElement('tbody');
-      for (const t of tasks) {
-        const tr   = document.createElement('tr');
-        tr.className = 'border-t border-gray-800/60 hover:bg-gray-800/30 transition-colors';
-
-        const tierMeta = TIER_META[String(t.tier)] || TIER_META.unknown;
-        const ts       = t.timestamp ? String(t.timestamp).slice(0, 16).replace('T', ' ') : '-';
-        const dur      = t.duration_ms != null ? t.duration_ms + 'ms' : '-';
-        const cost     = t.cost ? '$' + parseFloat(t.cost).toFixed(4) : '-';
-
-        const cells = [
-          { text: ts,                      cls: 'text-gray-600 tabular-nums whitespace-nowrap' },
-          { text: t.agent || '-',          cls: 'text-gray-300 max-w-xs truncate' },
-          { text: t.success ? '\u2713' : '\u2717', cls: 'text-center font-bold text-sm ' + (t.success ? 'text-emerald-500' : 'text-red-500') },
-          { text: String(t.tier || '?'),   cls: tierMeta.textColor },
-          { text: dur,                     cls: 'text-gray-500 tabular-nums text-right' },
-          { text: cost,                    cls: 'text-amber-500/80 tabular-nums text-right' },
-        ];
-
-        for (const { text, cls } of cells) {
-          const td = document.createElement('td');
-          td.className = 'py-2 px-3 text-xs ' + cls;
-          td.textContent = text;
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      }
-      table.appendChild(tbody);
-      container.appendChild(table);
-    }
-
-    // ── Subscription ─────────────────────────────────────────────────────
-    async function loadSubscription() {
-      try {
-        const r = await fetch('/api/subscription');
-        if (!r.ok) return;
-        const d = await r.json();
-        const c = document.getElementById('subscription-container');
-        if (!c) return;
-        // Clear container using safe DOM method
-        while (c.firstChild) c.removeChild(c.firstChild);
-
-        if (d.unlimited) {
-          const row = document.createElement('div');
-          row.className = 'flex items-center justify-between text-sm';
-          const label = document.createElement('span');
-          label.className = 'text-gray-500';
-          label.textContent = 'Budget';
-          const val = document.createElement('span');
-          val.className = 'text-white font-bold';
-          val.textContent = 'Unlimited';
-          row.appendChild(label); row.appendChild(val);
-          c.appendChild(row);
-        } else {
-          const pct = Math.min(d.percent_used || 0, 100);
-          const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
-
-          const header = document.createElement('div');
-          header.className = 'flex items-center justify-between text-sm mb-2';
-          const left = document.createElement('span');
-          left.className = 'text-gray-400';
-          left.textContent = '$' + (d.used_usd || 0).toFixed(4) + ' / $' + (d.budget_usd || 0).toFixed(2);
-          const right = document.createElement('span');
-          right.className = 'font-bold';
-          right.style.color = barColor;
-          right.textContent = pct.toFixed(1) + '%';
-          header.appendChild(left); header.appendChild(right);
-          c.appendChild(header);
-
-          const track = document.createElement('div');
-          track.className = 'w-full bg-gray-800 rounded-full h-2 mb-3';
-          const fill = document.createElement('div');
-          fill.className = 'h-2 rounded-full transition-all duration-500';
-          fill.style.width = pct + '%';
-          fill.style.backgroundColor = barColor;
-          track.appendChild(fill);
-          c.appendChild(track);
-
-          if (d.warning) {
-            const warn = document.createElement('p');
-            warn.className = 'text-xs text-red-400 mb-2';
-            warn.textContent = 'Budget >= 90% - Tier A/S requests may exceed cap';
-            c.appendChild(warn);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+        try {
+          const evt = JSON.parse(raw);
+          if (evt.text) {
+            if (firstChunk) { aBubble.innerHTML = ''; firstChunk = false; }
+            accumulated += evt.text;
+            renderMd(aBubble, accumulated);
+            document.getElementById('messages').scrollTop =
+              document.getElementById('messages').scrollHeight;
           }
-        }
-
-        const meta = document.createElement('p');
-        meta.className = 'text-xs text-gray-700 mt-1';
-        meta.textContent = (d.action_count || 0) + ' actions this month (' + (d.month || '') + ')';
-        c.appendChild(meta);
-
-      } catch(e) {
-        console.error('Subscription load failed:', e);
-      }
-    }
-
-    // ── Init + auto-refresh ───────────────────────────────────────────────
-    Promise.all([loadHealth(), loadTasks(), loadSubscription()]);
-    setInterval(() => Promise.all([loadHealth(), loadTasks()]), 30000);
-    setInterval(loadSubscription, 60000);
-
-    // ── Chat ──────────────────────────────────────────────────────────────
-    let currentSessionId = null;
-    let chatStreaming = false;
-    let selectedTier = 'auto';
-
-    marked.setOptions({ breaks: true, gfm: true });
-
-    // Tier selector
-    const TIER_COLORS = {
-      auto: 'border-blue-600 text-blue-400 bg-blue-900/30',
-      local: 'border-green-600 text-green-400 bg-green-900/30',
-      groq: 'border-purple-600 text-purple-400 bg-purple-900/30',
-      claude: 'border-amber-600 text-amber-400 bg-amber-900/30',
-    };
-    const TIER_INACTIVE = 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300';
-
-    document.querySelectorAll('.tier-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        selectedTier = this.dataset.tier;
-        document.querySelectorAll('.tier-btn').forEach(b => {
-          const t = b.dataset.tier;
-          b.className = 'tier-btn px-2.5 py-0.5 rounded text-xs border transition-colors ' +
-            (t === selectedTier ? TIER_COLORS[t] : TIER_INACTIVE);
-        });
-      });
-    });
-
-    // Safe markdown renderer — purifies before DOM insertion
-    function renderMd(el, text) {
-      const dirty = marked.parse(text || '');
-      el.innerHTML = DOMPurify.sanitize(dirty, { USE_PROFILES: { html: true } });
-    }
-
-    function _tierBadgeText(tierUsed) {
-      const map = { auto: 'Auto', local: 'Local', groq: 'Groq',
-        claude_oauth: 'Claude OAuth', claude_api: 'Claude API' };
-      return map[tierUsed] || tierUsed;
-    }
-
-    function appendMessage(role, content, streaming) {
-      const area = document.getElementById('chat-messages');
-      const wrap = document.createElement('div');
-      wrap.className = role === 'user' ? 'flex justify-end' : 'flex flex-col items-start gap-1';
-
-      const bubble = document.createElement('div');
-      bubble.className = role === 'user'
-        ? 'max-w-[75%] px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm'
-        : 'max-w-[80%] px-4 py-2.5 rounded-xl bg-gray-800 text-gray-100 text-sm';
-
-      if (role === 'user') {
-        bubble.textContent = content;
-      } else if (!streaming) {
-        renderMd(bubble, content);
-      }
-
-      wrap.appendChild(bubble);
-      area.appendChild(wrap);
-      area.scrollTop = area.scrollHeight;
-      return { bubble, wrap };
-    }
-
-    async function sendChat() {
-      const input = document.getElementById('chat-input');
-      const msg = input.value.trim();
-      if (!msg || chatStreaming) return;
-
-      input.value = '';
-      chatStreaming = true;
-      document.getElementById('chat-send-btn').disabled = true;
-
-      appendMessage('user', msg, false);
-      const { bubble: assistantBubble, wrap: assistantWrap } = appendMessage('assistant', '', true);
-      assistantBubble.textContent = 'Thinking...';
-      assistantBubble.className += ' text-gray-500 italic';
-
-      let accumulated = '';
-
-      try {
-        const resp = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg, session_id: currentSessionId, tier: selectedTier }),
-        });
-
-        if (!resp.ok || !resp.body) throw new Error('Request failed: ' + resp.status);
-
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = '';
-        let firstChunk = true;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split('\n');
-          buf = lines.pop();
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const raw = line.slice(6).trim();
-            if (!raw) continue;
-            try {
-              const evt = JSON.parse(raw);
-              if (evt.text) {
-                if (firstChunk) {
-                  assistantBubble.className = assistantBubble.className
-                    .replace(' text-gray-500 italic', '');
-                  firstChunk = false;
-                }
-                accumulated += evt.text;
-                renderMd(assistantBubble, accumulated);
-                document.getElementById('chat-messages').scrollTop =
-                  document.getElementById('chat-messages').scrollHeight;
-              }
-              if (evt.done && evt.session_id) {
-                currentSessionId = evt.session_id;
-                // Append per-message metadata badge
-                const badge = document.createElement('span');
-                const elapsedS = evt.elapsed_ms ? (evt.elapsed_ms / 1000).toFixed(1) + 's' : '';
-                const tierLabel = _tierBadgeText(evt.tier_used || selectedTier);
-                badge.textContent = [tierLabel, elapsedS].filter(Boolean).join(' · ');
-                badge.className = 'text-xs text-gray-600 px-1';
-                assistantWrap.appendChild(badge);
-                loadChatHistory();
-              }
-              if (evt.error) {
-                assistantBubble.className = assistantBubble.className.replace(' text-gray-500 italic', '');
-                assistantBubble.textContent = 'Error: ' + evt.error;
-              }
-            } catch (_) { /* incomplete JSON */ }
+          if (evt.done) {
+            if (evt.session_id) { currentSessionId = evt.session_id; loadChatHistory(); }
+            // Per-message badge
+            const badge = document.createElement('span');
+            badge.className = 'msg-badge';
+            const parts = [];
+            if (evt.tier_used) parts.push(tierLabel(evt.tier_used));
+            if (evt.elapsed_ms) parts.push((evt.elapsed_ms / 1000).toFixed(1) + 's');
+            badge.textContent = parts.join(' · ');
+            aWrap.appendChild(badge);
           }
-        }
-      } catch (e) {
-        assistantBubble.textContent = 'Connection error: ' + e.message;
+          if (evt.error) {
+            aBubble.innerHTML = '';
+            aBubble.textContent = 'Error: ' + evt.error;
+            aBubble.style.color = 'var(--danger)';
+          }
+        } catch (_) { /* partial JSON */ }
       }
-
-      chatStreaming = false;
-      document.getElementById('chat-send-btn').disabled = false;
-      document.getElementById('chat-input').focus();
     }
+  } catch (e) {
+    aBubble.innerHTML = '';
+    aBubble.textContent = 'Connection error: ' + e.message;
+    aBubble.style.color = 'var(--danger)';
+  }
 
-    document.getElementById('chat-input').addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  chatStreaming = false;
+  document.getElementById('send-btn').disabled = false;
+  input?.focus();
+}
+
+// Auto-resize textarea
+document.getElementById('chat-input')?.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+});
+document.getElementById('chat-input')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+document.getElementById('send-btn')?.addEventListener('click', sendChat);
+
+// New chat button
+document.getElementById('new-chat-btn')?.addEventListener('click', () => {
+  currentSessionId = null;
+  const area = document.getElementById('messages');
+  area.innerHTML = `
+    <div class="welcome" id="welcome">
+      <div class="welcome-logo">DQIII∞</div>
+      <p>What would you like to build?</p>
+    </div>`;
+});
+
+// ── Chat: history ─────────────────────────────────────────────────────────
+async function loadChatHistory() {
+  try {
+    const r = await fetch('/api/chat/history?limit=15');
+    if (!r.ok) return;
+    const sessions = await r.json();
+    const list = document.getElementById('chat-hist-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!sessions.length) {
+      list.innerHTML = '<span style="font-size:.74rem;color:var(--text-dim);padding:4px 6px;display:block">No history yet</span>';
+      return;
+    }
+    for (const s of sessions) {
+      const btn = document.createElement('button');
+      btn.className = 'hist-item' + (s.id === currentSessionId ? ' active' : '');
+      btn.textContent = s.preview || s.id;
+      btn.title = s.preview || s.id;
+      btn.addEventListener('click', () => loadSession(s.id));
+      list.appendChild(btn);
+    }
+  } catch (_) {}
+}
+
+async function loadSession(sid) {
+  try {
+    const r = await fetch('/api/chat/' + encodeURIComponent(sid) + '/messages');
+    if (!r.ok) return;
+    const msgs = await r.json();
+    currentSessionId = sid;
+    const area = document.getElementById('messages');
+    area.innerHTML = '';
+    hideWelcome();
+    for (const m of msgs) {
+      const wrap = appendMsg(m.role, m.content, false);
+      if (m.role === 'assistant') {
+        const bubble = wrap.querySelector('.msg-assistant');
+        if (bubble) renderMd(bubble, m.content);
+      }
+    }
+    area.scrollTop = area.scrollHeight;
+  } catch (_) {}
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────
+async function loadSettingsData() {
+  try {
+    const r = await fetch('/api/settings');
+    if (!r.ok) return;
+    const s = await r.json();
+
+    const dot      = document.getElementById('oauth-dot');
+    const statusEl = document.getElementById('oauth-status');
+    const detailEl = document.getElementById('oauth-detail');
+    if (s.oauth?.available) {
+      if (dot)      { dot.className = 'oauth-dot on'; }
+      if (statusEl) { statusEl.textContent = 'Authenticated'; statusEl.style.color = 'var(--success)'; }
+      if (detailEl) { detailEl.textContent = 'Method: ' + (s.oauth.method || '') + ' — ' + (s.oauth.plan || ''); }
+    } else {
+      if (dot)      { dot.className = 'oauth-dot'; }
+      if (statusEl) { statusEl.textContent = 'Not authenticated'; statusEl.style.color = 'var(--text-dim)'; }
+      if (detailEl) { detailEl.textContent = 'Run: claude /login'; }
+    }
+    if (s.groq_key) {
+      const el = document.getElementById('groq-key');
+      if (el) el.placeholder = s.groq_key;
+    }
+    if (s.anthropic_key) {
+      const el = document.getElementById('anthropic-key');
+      if (el) el.placeholder = s.anthropic_key;
+    }
+    if (s.default_tier) {
+      const el = document.getElementById('default-tier');
+      if (el) el.value = s.default_tier;
+    }
+  } catch (_) {}
+}
+
+async function loadTiersData() {
+  try {
+    const r = await fetch('/api/tiers');
+    if (!r.ok) return;
+    const data = await r.json();
+    const list = document.getElementById('tiers-list');
+    if (!list) return;
+    list.innerHTML = '';
+    for (const t of data.tiers) {
+      const col  = SETTINGS_TIER_COLORS[t.id] || 'var(--text)';
+      const item = document.createElement('div');
+      item.className = 'tier-item';
+      item.innerHTML = `
+        <div class="tier-item-left">
+          <div class="tier-name-row">
+            <div class="ti-dot ${t.available ? 'on' : ''}"></div>
+            <span class="ti-name" style="color:${col}">${t.label}</span>
+            <span class="ti-model">${t.model || ''}</span>
+          </div>
+          ${t.available
+            ? `<div class="ti-desc">${t.description || ''}</div>`
+            : `<div class="ti-setup">${t.setup || 'Not configured'}</div>`}
+        </div>
+        <span class="ti-cost">${t.cost || ''}</span>`;
+      list.appendChild(item);
+    }
+  } catch (_) {}
+}
+
+async function saveKey(envKey, inputId) {
+  const val = document.getElementById(inputId)?.value?.trim();
+  if (!val) return;
+  try {
+    const r = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [envKey]: val }),
     });
-    document.getElementById('chat-send-btn').addEventListener('click', sendChat);
+    const data = await r.json();
+    if (data.ok) {
+      const el = document.getElementById(inputId);
+      if (el) { el.value = ''; el.placeholder = val.slice(0, 4) + '••••' + val.slice(-4); }
+      showSaveStatus('Saved.');
+      loadTiersData();
+    }
+  } catch (e) { showSaveStatus('Error: ' + e.message); }
+}
 
-    document.getElementById('chat-new-btn').addEventListener('click', function() {
-      currentSessionId = null;
-      const area = document.getElementById('chat-messages');
-      area.textContent = '';
-      const hint = document.createElement('div');
-      hint.className = 'flex justify-center';
-      const p = document.createElement('p');
-      p.className = 'text-gray-700 text-xs';
-      p.textContent = 'Send a message to start chatting';
-      hint.appendChild(p);
-      area.appendChild(hint);
+async function saveTier() {
+  const val = document.getElementById('default-tier')?.value;
+  if (!val) return;
+  try {
+    const r = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ DQ_DEFAULT_TIER: val }),
     });
+    const d = await r.json();
+    if (d.ok) showSaveStatus('Saved.');
+  } catch (e) { showSaveStatus('Error: ' + e.message); }
+}
 
-    async function loadChatHistory() {
-      try {
-        const r = await fetch('/api/chat/history?limit=10');
-        if (!r.ok) return;
-        const sessions = await r.json();
-        const list = document.getElementById('chat-history-list');
-        list.textContent = '';
-        if (!sessions.length) {
-          const p = document.createElement('p');
-          p.className = 'text-gray-700 text-xs px-2 py-1';
-          p.textContent = 'No history yet';
-          list.appendChild(p);
-          return;
-        }
-        for (const s of sessions) {
-          const btn = document.createElement('button');
-          btn.className = 'w-full text-left px-2 py-1.5 rounded text-xs truncate transition-colors ' +
-            (s.id === currentSessionId ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white');
-          btn.textContent = s.preview || s.id;
-          btn.title = s.preview || s.id;
-          btn.addEventListener('click', () => loadSession(s.id));
-          list.appendChild(btn);
-        }
-      } catch(_) { /* ignore */ }
-    }
+function showSaveStatus(msg) {
+  const el = document.getElementById('save-status');
+  if (!el) return;
+  el.textContent = msg;
+  setTimeout(() => { el.textContent = ''; }, 2500);
+}
 
-    async function loadSession(sid) {
-      try {
-        const r = await fetch('/api/chat/' + encodeURIComponent(sid) + '/messages');
-        if (!r.ok) return;
-        const msgs = await r.json();
-        currentSessionId = sid;
-        const area = document.getElementById('chat-messages');
-        area.textContent = '';
-        for (const m of msgs) { appendMessage(m.role, m.content, false); }
-        area.scrollTop = area.scrollHeight;
-      } catch(_) { /* ignore */ }
-    }
-
-    loadChatHistory();
-  </script>
+// ── Init ──────────────────────────────────────────────────────────────────
+loadHealth();
+loadTasks();
+loadChatHistory();
+setInterval(() => { loadHealth(); loadTasks(); }, 30000);
+</script>
 </body>
 </html>

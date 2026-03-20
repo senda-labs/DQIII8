@@ -60,6 +60,8 @@ show_status() {
     echo ""
     echo "── tmux sessions ──"
     tmux ls 2>/dev/null || echo "(none)"
+    echo ""
+    python3 "$JARVIS_ROOT/bin/subscription.py" 2>/dev/null || echo "(subscription unavailable)"
 }
 
 ollama_available() {

@@ -309,9 +309,13 @@ if ! grep -q "alias dq=" "$SHELL_RC" 2>/dev/null; then
     echo "" >> "$SHELL_RC"
     echo "# DQIII8" >> "$SHELL_RC"
     echo "$ALIAS_LINE" >> "$SHELL_RC"
-    ok "Added 'dq' alias to $SHELL_RC"
+    echo "export JARVIS_ROOT='$PROJECT_DIR'" >> "$SHELL_RC"
+    ok "Added 'dq' alias and JARVIS_ROOT to $SHELL_RC"
+elif ! grep -q "JARVIS_ROOT" "$SHELL_RC" 2>/dev/null; then
+    echo "export JARVIS_ROOT='$PROJECT_DIR'" >> "$SHELL_RC"
+    ok "Added JARVIS_ROOT=$PROJECT_DIR to $SHELL_RC"
 else
-    ok "'dq' alias already in $SHELL_RC"
+    ok "'dq' alias and JARVIS_ROOT already in $SHELL_RC"
 fi
 
 # ── Phase 7: Security verification ──────────────────────────────────────────

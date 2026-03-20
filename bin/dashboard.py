@@ -24,12 +24,12 @@ JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 sys.path.insert(0, str(JARVIS / "bin"))
 
 try:
-    from fastapi import FastAPI, Request, HTTPException, Depends
+    from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File
     from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
     from fastapi.middleware.cors import CORSMiddleware
     import uvicorn
 except ImportError:
-    print("FastAPI not installed. Run: pip install fastapi uvicorn")
+    print("FastAPI not installed. Run: pip install fastapi uvicorn python-multipart")
     sys.exit(1)
 
 from dashboard_security import get_or_create_dashboard_token, verify_token
@@ -44,32 +44,75 @@ REQUIRE_AUTH = HOST != "127.0.0.1"
 # ── Claude OAuth detection ────────────────────────────────────────────────
 
 def detect_claude_oauth() -> dict:
-    """Check if user has authenticated with Claude Code OAuth."""
+    """Check if Claude Code CLI is installed and authenticated.
+
+    Detection priority:
+    1. Credential JSON files in ~/.claude/
+    2. Active session files or history (strong signal of authenticated usage)
+    3. Live CLI probe as last resort
+    """
     claude_dir = Path.home() / ".claude"
-    for fname in ("credentials.json", "auth.json", ".credentials.json"):
+
+    # 1) Check standard credential file locations
+    for fname in ("credentials.json", "auth.json", ".credentials.json", ".auth.json"):
         f = claude_dir / fname
         if f.exists():
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
-                if data.get("token") or data.get("access_token") or data.get("sessionKey"):
-                    return {"available": True, "method": "oauth", "plan": "Pro/Team"}
+                if any(data.get(k) for k in ("token", "access_token", "sessionKey", "claudeApiKey")):
+                    return {"available": True, "method": "oauth_file", "plan": "Pro/Team"}
             except Exception:
                 pass
-    # Fallback: test claude CLI silently
+
+    # 2) Check CLI is installed
     try:
-        r = subprocess.run(
+        v = subprocess.run(
             ["claude", "--version"], capture_output=True, text=True, timeout=5
         )
-        if r.returncode == 0:
-            r2 = subprocess.run(
-                ["claude", "-p", "say ok"],
-                capture_output=True, text=True, timeout=15,
-            )
-            if r2.returncode == 0 and "ok" in r2.stdout.lower():
-                return {"available": True, "method": "oauth_cli", "plan": "Pro/Team"}
+        if v.returncode != 0:
+            return {"available": False, "method": None, "plan": None}
+        version_str = v.stdout.strip().split("\n")[0]
+    except Exception:
+        return {"available": False, "method": None, "plan": None}
+
+    # 3) Strong signals: history.jsonl > 100 bytes OR sessions/ directory non-empty
+    #    Both mean the CLI has been actively used → almost certainly authenticated
+    history_file = claude_dir / "history.jsonl"
+    has_history = history_file.exists() and history_file.stat().st_size > 100
+
+    sessions_dir = claude_dir / "sessions"
+    has_sessions = sessions_dir.is_dir() and any(True for _ in sessions_dir.iterdir())
+
+    if has_history or has_sessions:
+        return {
+            "available": True,
+            "method": "oauth_cli",
+            "plan": "Pro/Team",
+            "version": version_str,
+        }
+
+    # 4) Last resort: live test (slow, ~5-20s)
+    try:
+        r2 = subprocess.run(
+            ["claude", "-p", "say ok"],
+            capture_output=True, text=True, timeout=20,
+        )
+        if r2.returncode == 0:
+            return {
+                "available": True,
+                "method": "oauth_cli",
+                "plan": "Pro/Team",
+                "version": version_str,
+            }
     except Exception:
         pass
-    return {"available": False, "method": None, "plan": None}
+
+    return {
+        "available": False,
+        "method": "installed_only",
+        "plan": None,
+        "version": version_str,
+    }
 
 
 def _mask_key(v: str) -> str:
@@ -147,6 +190,63 @@ def _load_html(path: Path, fallback: str = "") -> str:
         return path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return fallback
+
+
+# ── Upload directory ───────────────────────────────────────────────────────
+UPLOAD_DIR = JARVIS / "uploads" / "chat"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {
+    ".pdf", ".md", ".txt", ".json", ".csv", ".xlsx", ".xls",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif",
+}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def _extract_text(path: Path, suffix: str) -> str:
+    """Best-effort text extraction from uploaded file."""
+    if suffix in (".txt", ".md", ".json", ".csv"):
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")[:8000]
+        except Exception:
+            return ""
+    if suffix == ".pdf":
+        # Try pdftotext CLI first
+        try:
+            r = subprocess.run(
+                ["pdftotext", str(path), "-"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if r.returncode == 0 and r.stdout:
+                return r.stdout[:8000]
+        except FileNotFoundError:
+            pass
+        # Fallback: PyPDF2
+        try:
+            import PyPDF2  # type: ignore
+            text = []
+            with open(path, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages[:20]:
+                    text.append(page.extract_text() or "")
+            return "\n".join(text)[:8000]
+        except Exception:
+            pass
+        return "[PDF — text extraction unavailable; install pdftotext or PyPDF2]"
+    if suffix in (".xlsx", ".xls"):
+        try:
+            import openpyxl  # type: ignore
+            wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+            rows = []
+            for sheet in wb.worksheets[:3]:
+                for row in sheet.iter_rows(max_row=200, values_only=True):
+                    rows.append("\t".join("" if v is None else str(v) for v in row))
+            return "\n".join(rows)[:8000]
+        except Exception:
+            return "[Excel — install openpyxl for text extraction]"
+    if suffix in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+        return f"[Image file: {path.name}]"
+    return ""
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────
@@ -427,9 +527,25 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
     message = body.get("message", "").strip()
     session_id = body.get("session_id") or str(uuid.uuid4())[:8]
     tier = body.get("tier", "auto")  # auto | local | groq | claude
+    file_ids: list[str] = body.get("file_ids", [])
 
     if not message:
         raise HTTPException(400, "message required")
+
+    # Prepend file contents to prompt
+    if file_ids:
+        file_ctx_parts: list[str] = []
+        for fid in file_ids[:5]:
+            # Find the file by scanning upload dir for matching file_id prefix
+            matches = list(UPLOAD_DIR.glob(f"*_{fid}_*"))
+            if matches:
+                path = matches[0]
+                suffix = path.suffix.lower()
+                text = _extract_text(path, suffix)
+                if text:
+                    file_ctx_parts.append(f"[File: {path.name}]\n{text}\n[/File]")
+        if file_ctx_parts:
+            message = "\n\n".join(file_ctx_parts) + "\n\nUser question: " + message
 
     env = {**os.environ, "JARVIS_ROOT": str(JARVIS)}
     # Merge .env values (so API keys are available even if not in process env)
@@ -583,6 +699,75 @@ async def chat_history(limit: int = 10, auth: bool = Depends(check_auth)):
             ORDER BY s.created_at DESC
             LIMIT ?
         """, (limit,)).fetchall()
+        conn.close()
+    except Exception:
+        rows = []
+    return [{"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows]
+
+
+@app.post("/api/upload")
+async def upload_files(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    auth: bool = Depends(check_auth),
+):
+    """Upload files for chat context. Returns list of {file_id, name, size, text_preview}."""
+    if len(files) > 5:
+        raise HTTPException(400, "Max 5 files per upload")
+
+    results = []
+    ts = int(time.time())
+    for uf in files:
+        suffix = Path(uf.filename or "").suffix.lower()
+        if suffix not in ALLOWED_EXTENSIONS:
+            raise HTTPException(400, f"File type {suffix!r} not allowed")
+
+        data = await uf.read()
+        if len(data) > MAX_FILE_SIZE:
+            raise HTTPException(400, f"{uf.filename}: exceeds 10MB limit")
+
+        file_id = str(uuid.uuid4())[:8]
+        safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in (uf.filename or "file"))
+        dest = UPLOAD_DIR / f"{ts}_{file_id}_{safe_name}"
+        dest.write_bytes(data)
+
+        text = _extract_text(dest, suffix)
+        results.append({
+            "file_id": file_id,
+            "name": uf.filename,
+            "size": len(data),
+            "path": str(dest),
+            "text_preview": text[:300],
+            "text_full": text,
+        })
+
+    return results
+
+
+@app.get("/api/chat/search")
+async def search_chat(q: str = "", limit: int = 20, auth: bool = Depends(check_auth)):
+    """Search chat sessions by content. Returns sessions matching the query."""
+    if not q.strip():
+        return []
+    db = JARVIS / "database" / "jarvis_metrics.db"
+    if not db.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(db), timeout=3)
+        rows = conn.execute(
+            """
+            SELECT DISTINCT s.session_id, s.created_at,
+                (SELECT content FROM chat_messages
+                 WHERE session_id = s.session_id AND role = 'user'
+                 ORDER BY id LIMIT 1) as preview
+            FROM chat_sessions s
+            JOIN chat_messages m ON m.session_id = s.session_id
+            WHERE m.content LIKE ?
+            ORDER BY s.created_at DESC
+            LIMIT ?
+            """,
+            (f"%{q}%", limit),
+        ).fetchall()
         conn.close()
     except Exception:
         rows = []

@@ -1,0 +1,286 @@
+{
+  "summary": {
+    "run_at": "2026-03-20T01:56:27.290902",
+    "n_prompts": 10,
+    "avg_raw_overall": 0.0155,
+    "avg_amp_overall": 0.5813,
+    "avg_delta": 0.5658,
+    "avg_len_raw": 92,
+    "avg_len_amplified": 3661,
+    "wins": 10,
+    "ties": 0,
+    "losses": 0
+  },
+  "results": [
+    {
+      "prompt": "Analyze the risk profile of a $100K portfolio: 60% SPY, 25% BND, 10% GLD, 5% BTC at 95% confidence",
+      "prompt_short": "Analyze the risk profile of a $100K portfolio: 60% SPY,…",
+      "intent": "analyze",
+      "tier": 2,
+      "raw": {
+        "length": 98,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.0,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 4358,
+        "subtask_coverage": 0.25,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.2365,
+        "overall": 0.6223,
+        "grade": "C",
+        "ms": 707.3,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.6223,
+      "delta_pct": 6223.0
+    },
+    {
+      "prompt": "Forecast next quarter revenue for a SaaS company with $50K MRR and 8% monthly growth",
+      "prompt_short": "Forecast next quarter revenue for a SaaS company with $…",
+      "intent": "compare",
+      "tier": 2,
+      "raw": {
+        "length": 84,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.0,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 1686,
+        "subtask_coverage": 0.25,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.2661,
+        "overall": 0.5682,
+        "grade": "C",
+        "ms": 328.2,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.5682,
+      "delta_pct": 5682.0
+    },
+    {
+      "prompt": "Create a marketing campaign for organic cleaning products targeting eco-conscious homeowners, $2000/month budget",
+      "prompt_short": "Create a marketing campaign for organic cleaning produc…",
+      "intent": "generate",
+      "tier": 1,
+      "raw": {
+        "length": 112,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.04,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 6122,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.2936,
+        "overall": 0.5587,
+        "grade": "C",
+        "ms": 507.4,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.5187,
+      "delta_pct": 1296.8
+    },
+    {
+      "prompt": "Compare SEO vs Google Ads for a local bakery with $500/month marketing budget",
+      "prompt_short": "Compare SEO vs Google Ads for a local bakery with $500/…",
+      "intent": "compare",
+      "tier": 2,
+      "raw": {
+        "length": 77,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.0,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 2727,
+        "subtask_coverage": 0.25,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.2622,
+        "overall": 0.6274,
+        "grade": "C",
+        "ms": 425.7,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.6274,
+      "delta_pct": 6274.0
+    },
+    {
+      "prompt": "Create a business plan for a digital marketing agency specializing in cleaning products, starting with 5000 GBP",
+      "prompt_short": "Create a business plan for a digital marketing agency s…",
+      "intent": "generate",
+      "tier": 1,
+      "raw": {
+        "length": 111,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.04,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 3554,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.2925,
+        "overall": 0.5585,
+        "grade": "C",
+        "ms": 458.7,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.5185,
+      "delta_pct": 1296.2
+    },
+    {
+      "prompt": "Research the best strategies for bootstrapping a B2B SaaS startup to $10K MRR in 12 months",
+      "prompt_short": "Research the best strategies for bootstrapping a B2B Sa…",
+      "intent": "research",
+      "tier": 2,
+      "raw": {
+        "length": 90,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.0,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 5102,
+        "subtask_coverage": 0.25,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.2677,
+        "overall": 0.6285,
+        "grade": "C",
+        "ms": 390.0,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.6285,
+      "delta_pct": 6285.0
+    },
+    {
+      "prompt": "Design a microservices architecture for a food delivery app handling 10,000 concurrent orders",
+      "prompt_short": "Design a microservices architecture for a food delivery…",
+      "intent": "plan",
+      "tier": 3,
+      "raw": {
+        "length": 93,
+        "subtask_coverage": 0.25,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.075,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 3318,
+        "subtask_coverage": 0.25,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.3919,
+        "overall": 0.6534,
+        "grade": "C",
+        "ms": 366.1,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.5784,
+      "delta_pct": 771.2
+    },
+    {
+      "prompt": "Debug this Python function that crashes on empty input with a KeyError exception",
+      "prompt_short": "Debug this Python function that crashes on empty input …",
+      "intent": "debug",
+      "tier": 1,
+      "raw": {
+        "length": 80,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.0,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 1819,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.2405,
+        "overall": 0.4881,
+        "grade": "D",
+        "ms": 282.2,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.4881,
+      "delta_pct": 4881.0
+    },
+    {
+      "prompt": "Create a nutrition plan for a 28yo male, 182cm, 78kg, active lifestyle, goal: recomposition",
+      "prompt_short": "Create a nutrition plan for a 28yo male, 182cm, 78kg, a…",
+      "intent": "generate",
+      "tier": 1,
+      "raw": {
+        "length": 91,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.0,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 3867,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.2543,
+        "overall": 0.5509,
+        "grade": "C",
+        "ms": 381.4,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.5509,
+      "delta_pct": 5509.0
+    },
+    {
+      "prompt": "Explain how to validate a machine learning model's performance before deploying to production",
+      "prompt_short": "Explain how to validate a machine learning model's perf…",
+      "intent": "validate",
+      "tier": 1,
+      "raw": {
+        "length": 93,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 0.0,
+        "domain_confidence": 0.0,
+        "overall": 0.0,
+        "grade": "F",
+        "ms": 0.0
+      },
+      "amplified": {
+        "length": 4058,
+        "subtask_coverage": 0.0,
+        "knowledge_present": 1.0,
+        "domain_confidence": 0.2831,
+        "overall": 0.5566,
+        "grade": "C",
+        "ms": 386.7,
+        "chunks_used": 2
+      },
+      "delta_overall": 0.5566,
+      "delta_pct": 5566.0
+    }
+  ]
+}

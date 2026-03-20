@@ -25,7 +25,18 @@ CREATE TABLE IF NOT EXISTS agent_actions (
     files_modified  TEXT,               -- JSON array
     worktree        TEXT,
     skills_active   TEXT,               -- JSON array
-    blocked_by_hook INTEGER DEFAULT 0
+    blocked_by_hook INTEGER DEFAULT 0,
+    cost_eur        REAL    DEFAULT 0.0,
+    model_tier      INTEGER DEFAULT 0,
+    tokens_input    INTEGER DEFAULT 0,
+    tokens_output   INTEGER DEFAULT 0,
+    estimated_cost_usd REAL DEFAULT 0.0,
+    tier            TEXT    DEFAULT 'unknown',
+    domain_enriched BOOLEAN DEFAULT 0,
+    domain          TEXT,
+    knowledge_chunks_used INTEGER DEFAULT 0,
+    energy_wh       REAL    DEFAULT 0,     -- Phase 3+4
+    cpu_percent     REAL    DEFAULT 0      -- Phase 3+4
 );
 
 -- ── Errors with keywords (root cause analysis) ──────────────────
@@ -41,7 +52,8 @@ CREATE TABLE IF NOT EXISTS error_log (
     resolution      TEXT,
     resolved        INTEGER DEFAULT 0,
     resolution_ms   INTEGER,
-    lesson_added    INTEGER DEFAULT 0
+    lesson_added    INTEGER DEFAULT 0,
+    action_id       INTEGER REFERENCES agent_actions(id)
 );
 
 -- ── Session summary ─────────────────────────────────────────────
@@ -62,7 +74,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     skills_loaded       TEXT,           -- JSON array
     agents_used         TEXT,           -- JSON array
     lessons_added       INTEGER DEFAULT 0,
-    clear_contexts      INTEGER DEFAULT 0
+    clear_contexts      INTEGER DEFAULT 0,
+    compact_count       INTEGER DEFAULT 0
 );
 
 -- ── Skill performance ───────────────────────────────────────────
@@ -225,6 +238,68 @@ FROM objectives
 GROUP BY project;
 
 -- ── Multi-Tier Benchmark — Results by model ─────────────────────────────────
+-- ── Intent Amplification log ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS amplification_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at      TEXT,
+    original_prompt TEXT,
+    amplified_prompt TEXT,
+    action_detected TEXT,
+    entity_detected TEXT,
+    niche_detected  TEXT,
+    intent_pattern  TEXT,
+    top_domain      TEXT,
+    tier_selected   INTEGER,
+    elapsed_ms      INTEGER,
+    confidence      REAL    DEFAULT 0,    -- Phase 3+4
+    knowledge_used  INTEGER DEFAULT 0,    -- Phase 3+4
+    subtask_count   INTEGER DEFAULT 0,    -- Phase 3+4
+    success         INTEGER DEFAULT 1     -- Phase 3+4
+);
+
+-- ── Vault memory (semantic triple store) ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS vault_memory (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject     TEXT NOT NULL,
+    predicate   TEXT NOT NULL,
+    object      TEXT NOT NULL,
+    project     TEXT DEFAULT '',
+    confidence  REAL DEFAULT 1.0,
+    times_seen  INTEGER DEFAULT 1,
+    source      TEXT DEFAULT 'session_stop',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen   TEXT NOT NULL DEFAULT (datetime('now')),
+    entry_type  TEXT DEFAULT 'lesson' CHECK(entry_type IN ('adr','project_state','lesson','checkpoint')),
+    decay_score REAL DEFAULT 1.0,
+    last_accessed TEXT,
+    access_count  INTEGER DEFAULT 0,
+    scope         TEXT DEFAULT 'session',
+    embedding     BLOB,
+    transferable  INTEGER DEFAULT 0,
+    UNIQUE(subject, predicate, object)
+);
+
+-- ── Domain enrichment (Intent Amplifier centroid cache) ───────────────────
+CREATE TABLE IF NOT EXISTS domain_enrichment (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL UNIQUE,
+    description TEXT    NOT NULL,
+    keywords    TEXT    NOT NULL,  -- JSON array
+    centroid    BLOB,              -- packed float32 embedding
+    created_at  TEXT    DEFAULT (datetime('now')),
+    updated_at  TEXT    DEFAULT (datetime('now'))
+);
+
+-- ── Learning metrics (per-session aggregate) ──────────────────────────────
+CREATE TABLE IF NOT EXISTS learning_metrics (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id        TEXT,
+    timestamp         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    lessons_auto      INTEGER DEFAULT 0,
+    lessons_manual    INTEGER DEFAULT 0,
+    patterns_detected INTEGER DEFAULT 0
+);
+
 CREATE VIEW IF NOT EXISTS benchmark_results AS
 SELECT
     model_tier,

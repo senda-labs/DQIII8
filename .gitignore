@@ -1,5 +1,8 @@
 # JARVIS .gitignore
 
+# Premium modules (not in public repo)
+bin/hierarchical_router.py
+
 # Database (not versioned — too large and sensitive)
 database/*.db
 database/*.db-wal

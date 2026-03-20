@@ -412,6 +412,81 @@
     .send-btn:hover   { box-shadow: var(--accent-glow); transform: scale(1.05); }
     .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
+    /* File attach button */
+    .attach-btn {
+      width: 36px; height: 36px;
+      border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-dim);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.18s; flex-shrink: 0;
+    }
+    .attach-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+
+    /* File chips */
+    .file-chips {
+      display: none;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 0 24px 8px;
+    }
+    .file-chips.visible { display: flex; }
+    .file-chip {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--bg-surface2); border: 1px solid var(--border);
+      border-radius: 16px; padding: 3px 10px;
+      font-size: 0.76rem; color: var(--text-dim);
+    }
+    .file-chip-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-chip-size { color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; }
+    .file-chip-del {
+      background: none; border: none; color: var(--text-dim); cursor: pointer;
+      padding: 0; font-size: 0.9rem; line-height: 1; transition: color 0.15s;
+    }
+    .file-chip-del:hover { color: var(--danger); }
+
+    /* Quick reply buttons */
+    .quick-replies {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding-top: 10px;
+    }
+    .qr-btn {
+      padding: 5px 13px;
+      border: 1px solid var(--accent-dim);
+      background: rgba(0,229,255,0.05);
+      color: var(--accent); border-radius: 16px;
+      font-family: 'Space Grotesk', sans-serif; font-size: 0.78rem;
+      cursor: pointer; transition: all 0.18s;
+    }
+    .qr-btn:hover { background: rgba(0,229,255,0.12); }
+
+    /* Initial suggestions */
+    .suggestions {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      justify-content: center; margin-top: 24px;
+    }
+    .suggestion-btn {
+      padding: 8px 18px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface2);
+      color: var(--text-dim); border-radius: 10px;
+      font-family: 'Space Grotesk', sans-serif; font-size: 0.82rem;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .suggestion-btn:hover { border-color: var(--accent-dim); color: var(--text); }
+
+    /* Sidebar search */
+    .sidebar-search {
+      display: flex; gap: 4px;
+    }
+    .sidebar-search-input {
+      flex: 1; background: var(--bg-surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px; color: var(--text);
+      font-family: 'Space Grotesk', sans-serif; font-size: 0.76rem;
+      outline: none; transition: border-color 0.2s;
+    }
+    .sidebar-search-input:focus { border-color: var(--accent-dim); }
+    .sidebar-search-input::placeholder { color: var(--text-dim); }
+
     /* ── METRICS VIEW ────────────────────────────────────────────────────── */
     .metrics-body {
       flex: 1;
@@ -722,6 +797,9 @@
       <!-- Sidebar -->
       <div class="chat-sidebar">
         <button class="new-chat-btn" id="new-chat-btn">+ New Chat</button>
+        <div class="sidebar-search">
+          <input type="text" class="sidebar-search-input" id="hist-search" placeholder="Search history…">
+        </div>
         <span class="sidebar-label">History</span>
         <div class="chat-hist-scroll">
           <div id="chat-hist-list">
@@ -734,10 +812,21 @@
       <div class="chat-main">
         <div class="messages" id="messages">
           <div class="welcome" id="welcome">
-            <div class="welcome-logo">DQIII∞</div>
+            <div class="welcome-logo">DQIII&#8734;</div>
             <p>What would you like to build?</p>
+            <div class="suggestions" id="initial-suggestions">
+              <button class="suggestion-btn" data-text="Create a business plan for a new startup">Create a business plan</button>
+              <button class="suggestion-btn" data-text="Analyze my portfolio and suggest improvements">Analyze my portfolio</button>
+              <button class="suggestion-btn" data-text="Build a web app with Python and FastAPI">Build a web app</button>
+              <button class="suggestion-btn" data-text="Write a short sci-fi story about AI">Write a story</button>
+            </div>
           </div>
         </div>
+
+        <!-- Hidden file input -->
+        <input type="file" id="file-input" multiple
+               accept=".pdf,.md,.txt,.json,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp,.gif"
+               style="display:none">
 
         <div class="chat-input-area">
           <div class="tier-pills" id="tier-pills">
@@ -746,8 +835,14 @@
             <button class="tier-pill" data-tier="groq">Groq</button>
             <button class="tier-pill" data-tier="claude">Claude</button>
           </div>
+          <div class="file-chips" id="file-chips"></div>
           <div class="input-row">
-            <textarea id="chat-input" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+            <button class="attach-btn" id="attach-btn" title="Attach file (PDF, TXT, CSV, XLSX, image)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <textarea id="chat-input" rows="1" placeholder="Type a message&#x2026; (Enter to send, Shift+Enter for newline)"></textarea>
             <button id="send-btn" class="send-btn" title="Send">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                    stroke-linecap="round" stroke-linejoin="round">
@@ -1069,6 +1164,7 @@ async function runPreview() {
 let currentSessionId = null;
 let chatStreaming    = false;
 let selectedTier    = 'auto';
+let pendingFiles    = [];   // [{file_id, name, size}]
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -1086,6 +1182,111 @@ document.querySelectorAll('#tier-pills .tier-pill').forEach(btn => {
     );
   });
 });
+
+// ── File upload ───────────────────────────────────────────────────────────
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(0) + 'KB';
+  return (bytes / 1048576).toFixed(1) + 'MB';
+}
+
+function renderFileChips() {
+  const chips = document.getElementById('file-chips');
+  if (!chips) return;
+  chips.textContent = '';
+  if (!pendingFiles.length) { chips.classList.remove('visible'); return; }
+  chips.classList.add('visible');
+  for (const f of pendingFiles) {
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'file-chip-name';
+    nameSpan.textContent = String(f.name);
+    nameSpan.title = String(f.name);
+    const sizeSpan = document.createElement('span');
+    sizeSpan.className = 'file-chip-size';
+    sizeSpan.textContent = fmtSize(f.size);
+    const del = document.createElement('button');
+    del.className = 'file-chip-del';
+    del.textContent = '\u00d7';
+    del.title = 'Remove';
+    const fid = f.file_id;
+    del.addEventListener('click', () => {
+      pendingFiles = pendingFiles.filter(x => x.file_id !== fid);
+      renderFileChips();
+    });
+    chip.appendChild(nameSpan);
+    chip.appendChild(sizeSpan);
+    chip.appendChild(del);
+    chips.appendChild(chip);
+  }
+}
+
+document.getElementById('attach-btn')?.addEventListener('click', () => {
+  document.getElementById('file-input')?.click();
+});
+
+document.getElementById('file-input')?.addEventListener('change', async function() {
+  const files = Array.from(this.files || []);
+  if (!files.length) return;
+  if (pendingFiles.length + files.length > 5) {
+    alert('Max 5 files per message');
+    return;
+  }
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  try {
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    if (!r.ok) { const e = await r.json(); alert('Upload error: ' + (e.detail || r.status)); return; }
+    const results = await r.json();
+    pendingFiles.push(...results.map(x => ({ file_id: x.file_id, name: x.name, size: x.size })));
+    renderFileChips();
+  } catch (e) { alert('Upload error: ' + e.message); }
+  this.value = '';
+});
+
+// ── Initial suggestions ───────────────────────────────────────────────────
+document.querySelectorAll('.suggestion-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const text = btn.dataset.text;
+    if (!text) return;
+    const inp = document.getElementById('chat-input');
+    if (inp) { inp.value = text; inp.focus(); }
+    sendChat();
+  });
+});
+
+// ── Quick replies ─────────────────────────────────────────────────────────
+function parseQuickReplies(text) {
+  // Extract short bullet list items as quick-reply options
+  const lines = text.split('\n');
+  const options = [];
+  for (const line of lines) {
+    const m = line.match(/^[\s]*[-*\u2022]\s+(.+)$/) || line.match(/^[\s]*\d+\.\s+(.+)$/);
+    if (m) {
+      const opt = m[1].trim().replace(/\*+/g, '');
+      if (opt.length > 0 && opt.length <= 60) options.push(opt);
+    }
+  }
+  return options.length >= 2 && options.length <= 8 ? options : [];
+}
+
+function addQuickReplies(wrap, options) {
+  const qr = document.createElement('div');
+  qr.className = 'quick-replies';
+  for (const opt of options) {
+    const btn = document.createElement('button');
+    btn.className = 'qr-btn';
+    btn.textContent = opt;
+    btn.addEventListener('click', () => {
+      const inp = document.getElementById('chat-input');
+      if (inp) { inp.value = opt; }
+      sendChat();
+    });
+    qr.appendChild(btn);
+  }
+  wrap.appendChild(qr);
+}
 
 // ── Chat: messages ────────────────────────────────────────────────────────
 function hideWelcome() {
@@ -1133,6 +1334,10 @@ async function sendChat() {
   chatStreaming = true;
   document.getElementById('send-btn').disabled = true;
 
+  const fileIds = pendingFiles.map(f => f.file_id);
+  pendingFiles = [];
+  renderFileChips();
+
   appendMsg('user', msg, false);
   const aWrap  = appendMsg('assistant', '', true);
   const aBubble = aWrap.querySelector('.msg-assistant');
@@ -1142,7 +1347,12 @@ async function sendChat() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg, session_id: currentSessionId, tier: selectedTier }),
+      body: JSON.stringify({
+        message: msg,
+        session_id: currentSessionId,
+        tier: selectedTier,
+        file_ids: fileIds,
+      }),
     });
     if (!resp.ok || !resp.body) throw new Error('Request failed: ' + resp.status);
 
@@ -1177,8 +1387,11 @@ async function sendChat() {
             const parts = [];
             if (evt.tier_used) parts.push(tierLabel(evt.tier_used));
             if (evt.elapsed_ms) parts.push((evt.elapsed_ms / 1000).toFixed(1) + 's');
-            badge.textContent = parts.join(' · ');
+            badge.textContent = parts.join(' \u00b7 ');
             aWrap.appendChild(badge);
+            // Quick replies
+            const opts = parseQuickReplies(accumulated);
+            if (opts.length) addQuickReplies(aWrap, opts);
           }
           if (evt.error) {
             aBubble.innerHTML = '';
@@ -1212,35 +1425,85 @@ document.getElementById('send-btn')?.addEventListener('click', sendChat);
 // New chat button
 document.getElementById('new-chat-btn')?.addEventListener('click', () => {
   currentSessionId = null;
+  pendingFiles = [];
+  renderFileChips();
   const area = document.getElementById('messages');
-  area.innerHTML = `
-    <div class="welcome" id="welcome">
-      <div class="welcome-logo">DQIII∞</div>
-      <p>What would you like to build?</p>
-    </div>`;
+  area.textContent = '';
+  const welcome = document.createElement('div');
+  welcome.id = 'welcome'; welcome.className = 'welcome';
+  const logo = document.createElement('div');
+  logo.className = 'welcome-logo'; logo.textContent = 'DQIII\u221e';
+  const p = document.createElement('p'); p.textContent = 'What would you like to build?';
+  const sugg = document.createElement('div');
+  sugg.className = 'suggestions';
+  const suggestions = [
+    ['Create a business plan for a new startup', 'Create a business plan'],
+    ['Analyze my portfolio and suggest improvements', 'Analyze my portfolio'],
+    ['Build a web app with Python and FastAPI', 'Build a web app'],
+    ['Write a short sci-fi story about AI', 'Write a story'],
+  ];
+  for (const [text, label] of suggestions) {
+    const btn = document.createElement('button');
+    btn.className = 'suggestion-btn'; btn.dataset.text = text; btn.textContent = label;
+    btn.addEventListener('click', () => {
+      const inp = document.getElementById('chat-input');
+      if (inp) inp.value = text;
+      sendChat();
+    });
+    sugg.appendChild(btn);
+  }
+  welcome.appendChild(logo); welcome.appendChild(p); welcome.appendChild(sugg);
+  area.appendChild(welcome);
 });
 
-// ── Chat: history ─────────────────────────────────────────────────────────
+// ── Chat: history + search ────────────────────────────────────────────────
+let _histSearchTimer = null;
+
+document.getElementById('hist-search')?.addEventListener('input', function() {
+  clearTimeout(_histSearchTimer);
+  const q = this.value.trim();
+  _histSearchTimer = setTimeout(() => {
+    if (q) searchChatHistory(q);
+    else loadChatHistory();
+  }, 300);
+});
+
+async function searchChatHistory(q) {
+  try {
+    const r = await fetch('/api/chat/search?q=' + encodeURIComponent(q) + '&limit=15');
+    if (!r.ok) return;
+    const sessions = await r.json();
+    renderHistList(sessions, true);
+  } catch (_) {}
+}
+
+function renderHistList(sessions, isSearch) {
+  const list = document.getElementById('chat-hist-list');
+  if (!list) return;
+  list.textContent = '';
+  if (!sessions.length) {
+    const hint = document.createElement('span');
+    hint.style.cssText = 'font-size:.74rem;color:var(--text-dim);padding:4px 6px;display:block';
+    hint.textContent = isSearch ? 'No results' : 'No history yet';
+    list.appendChild(hint);
+    return;
+  }
+  for (const s of sessions) {
+    const btn = document.createElement('button');
+    btn.className = 'hist-item' + (s.id === currentSessionId ? ' active' : '');
+    btn.textContent = s.preview || s.id;
+    btn.title = s.preview || s.id;
+    btn.addEventListener('click', () => loadSession(s.id));
+    list.appendChild(btn);
+  }
+}
+
 async function loadChatHistory() {
   try {
     const r = await fetch('/api/chat/history?limit=15');
     if (!r.ok) return;
     const sessions = await r.json();
-    const list = document.getElementById('chat-hist-list');
-    if (!list) return;
-    list.innerHTML = '';
-    if (!sessions.length) {
-      list.innerHTML = '<span style="font-size:.74rem;color:var(--text-dim);padding:4px 6px;display:block">No history yet</span>';
-      return;
-    }
-    for (const s of sessions) {
-      const btn = document.createElement('button');
-      btn.className = 'hist-item' + (s.id === currentSessionId ? ' active' : '');
-      btn.textContent = s.preview || s.id;
-      btn.title = s.preview || s.id;
-      btn.addEventListener('click', () => loadSession(s.id));
-      list.appendChild(btn);
-    }
+    renderHistList(sessions, false);
   } catch (_) {}
 }
 

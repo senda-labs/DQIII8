@@ -13,8 +13,8 @@
       --bg-surface:  #0a1628;
       --bg-surface2: #0f1f3a;
       --border:      #1a2d4d;
-      --text:        #e0e8f5;
-      --text-dim:    #5a7090;
+      --text:        #eaf0ff;
+      --text-dim:    #607898;
       --accent:      #00e5ff;
       --accent-dim:  #006674;
       --accent-glow: 0 0 20px rgba(0,229,255,0.3);
@@ -40,28 +40,45 @@
 
     code, .mono { font-family: 'JetBrains Mono', monospace; }
 
-    /* ── Starfield ───────────────────────────────────────────────────────── */
-    body::before {
-      content: '';
+    /* ── Theme variants ──────────────────────────────────────────────────── */
+    [data-theme="midnight"] {
+      --bg-deep:     #080616;
+      --bg-surface:  #110d28;
+      --bg-surface2: #1a1340;
+      --border:      #2a1f5a;
+      --text:        #e8e0ff;
+      --text-dim:    #6050a0;
+      --accent:      #b388ff;
+      --accent-dim:  #5030a0;
+      --accent-glow: 0 0 20px rgba(179,136,255,0.3);
+      --tier-groq:   #b388ff;
+      --tier-claude: #00e5ff;
+    }
+    [data-theme="light"] {
+      --bg-deep:     #f0f4fa;
+      --bg-surface:  #ffffff;
+      --bg-surface2: #e8eef8;
+      --border:      #c8d4e8;
+      --text:        #1a2540;
+      --text-dim:    #6880a0;
+      --accent:      #0066cc;
+      --accent-dim:  #99bbee;
+      --accent-glow: 0 0 20px rgba(0,102,204,0.2);
+      --tier-local:  #607d8b;
+      --tier-groq:   #0066cc;
+      --tier-claude: #7b2fff;
+    }
+
+    /* ── Canvas starfield ────────────────────────────────────────────────── */
+    #stars-canvas {
       position: fixed;
       inset: 0;
-      background:
-        radial-gradient(1px 1px at 10% 15%, rgba(255,255,255,0.4), transparent),
-        radial-gradient(1px 1px at 22% 68%, rgba(255,255,255,0.25), transparent),
-        radial-gradient(1px 1px at 38% 30%, rgba(255,255,255,0.3), transparent),
-        radial-gradient(1px 1px at 52% 80%, rgba(255,255,255,0.2), transparent),
-        radial-gradient(1px 1px at 65% 22%, rgba(255,255,255,0.35), transparent),
-        radial-gradient(1px 1px at 78% 55%, rgba(255,255,255,0.2), transparent),
-        radial-gradient(1px 1px at 90% 10%, rgba(255,255,255,0.3), transparent),
-        radial-gradient(2px 2px at 15% 82%, rgba(0,229,255,0.15), transparent),
-        radial-gradient(2px 2px at 85% 35%, rgba(0,229,255,0.12), transparent),
-        radial-gradient(1px 1px at 45% 50%, rgba(255,255,255,0.15), transparent);
-      background-size: 350% 350%;
-      animation: starfield 70s linear infinite;
       pointer-events: none;
       z-index: 0;
     }
+    [data-theme="light"] #stars-canvas { opacity: 0.15; }
 
+    /* Nebula glow behind content */
     body::after {
       content: '';
       position: fixed;
@@ -72,11 +89,10 @@
       pointer-events: none;
       z-index: 0;
     }
-
-    @keyframes starfield {
-      0%   { background-position: 0% 0%; }
-      100% { background-position: 100% 100%; }
+    [data-theme="midnight"] body::after {
+      background: radial-gradient(circle, rgba(179,136,255,0.04) 0%, transparent 65%);
     }
+    [data-theme="light"] body::after { display: none; }
 
     @keyframes pulse-glow {
       0%, 100% { text-shadow: 0 0 10px rgba(0,229,255,0.3); }
@@ -228,7 +244,8 @@
     }
     .chat-hist-scroll { flex: 1; overflow-y: auto; }
     .hist-item {
-      display: block;
+      display: flex;
+      flex-direction: column;
       width: 100%;
       padding: 8px 10px;
       background: transparent;
@@ -239,13 +256,13 @@
       text-align: left;
       border-radius: 6px;
       cursor: pointer;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       transition: all 0.15s;
+      gap: 2px;
     }
     .hist-item:hover  { background: var(--bg-surface2); color: var(--text); }
     .hist-item.active { background: var(--bg-surface2); color: var(--accent); }
+    .hist-preview { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hist-meta { display: flex; align-items: center; gap: 6px; font-size: 0.68rem; opacity: 0.65; }
 
     /* Chat main */
     .chat-main {
@@ -289,8 +306,10 @@
     }
     .msg-assistant {
       color: var(--text);
-      padding: 2px 0 4px 20px;
+      padding: 10px 14px 10px 20px;
       border-left: 2px solid var(--accent-dim);
+      background: rgba(0,229,255,0.03);
+      border-radius: 0 8px 8px 0;
       line-height: 1.75;
     }
     /* Markdown inside assistant */
@@ -762,6 +781,7 @@
   </style>
 </head>
 <body>
+<canvas id="stars-canvas"></canvas>
 <div id="app">
 
   <!-- ═══════════════════════════════════════════ NAVBAR -->
@@ -774,19 +794,25 @@
 
     <div class="nav-tabs">
       <button class="nav-tab active" data-view="chat">
-        <span class="nav-icon">💬</span> Chat
+        <svg class="nav-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Chat
       </button>
       <button class="nav-tab" data-view="metrics">
-        <span class="nav-icon">📊</span> Metrics
+        <svg class="nav-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Metrics
       </button>
       <button class="nav-tab" data-view="settings">
-        <span class="nav-icon">⚙</span> Settings
+        <svg class="nav-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
       </button>
     </div>
 
-    <div class="health-indicator">
-      <div class="health-dot"></div>
-      <span id="nav-health">—</span>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="theme-btn" title="Switch theme" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);font-size:0.72rem;font-family:'Space Grotesk',sans-serif;padding:4px 10px;border-radius:6px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">Dark</button>
+      <div class="health-indicator">
+        <div class="health-dot"></div>
+        <span id="nav-health">—</span>
+      </div>
     </div>
   </nav>
 
@@ -1477,6 +1503,18 @@ async function searchChatHistory(q) {
   } catch (_) {}
 }
 
+function _relTime(isoStr) {
+  if (!isoStr) return '';
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? 'yesterday' : `${d}d ago`;
+}
+
 function renderHistList(sessions, isSearch) {
   const list = document.getElementById('chat-hist-list');
   if (!list) return;
@@ -1491,8 +1529,18 @@ function renderHistList(sessions, isSearch) {
   for (const s of sessions) {
     const btn = document.createElement('button');
     btn.className = 'hist-item' + (s.id === currentSessionId ? ' active' : '');
-    btn.textContent = s.preview || s.id;
     btn.title = s.preview || s.id;
+
+    const prevEl = document.createElement('span');
+    prevEl.className = 'hist-preview';
+    prevEl.textContent = s.preview || s.id;
+
+    const metaEl = document.createElement('span');
+    metaEl.className = 'hist-meta';
+    metaEl.textContent = _relTime(s.created_at);
+
+    btn.appendChild(prevEl);
+    btn.appendChild(metaEl);
     btn.addEventListener('click', () => loadSession(s.id));
     list.appendChild(btn);
   }
@@ -1629,6 +1677,89 @@ function showSaveStatus(msg) {
   el.textContent = msg;
   setTimeout(() => { el.textContent = ''; }, 2500);
 }
+
+// ── Canvas starfield ───────────────────────────────────────────────────────
+(function initStars() {
+  const canvas = document.getElementById('stars-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let W, H, stars = [], mouse = { x: 0, y: 0 };
+  const N = 160;
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  function mkStar() {
+    return {
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.2 + 0.2,
+      speed: Math.random() * 0.12 + 0.03,
+      twinkle: Math.random() * Math.PI * 2,
+      twinkleSpeed: Math.random() * 0.02 + 0.005,
+      cyan: Math.random() < 0.12,
+    };
+  }
+  function init() {
+    resize();
+    stars = Array.from({ length: N }, mkStar);
+  }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const mx = (mouse.x / W - 0.5) * 18;
+    const my = (mouse.y / H - 0.5) * 18;
+    for (const s of stars) {
+      s.twinkle += s.twinkleSpeed;
+      const alpha = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(s.twinkle));
+      ctx.beginPath();
+      ctx.arc(s.x + mx * s.r, s.y + my * s.r, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = s.cyan
+        ? `rgba(0,229,255,${alpha * 0.6})`
+        : `rgba(220,235,255,${alpha})`;
+      ctx.fill();
+      // drift upward slowly
+      s.y -= s.speed;
+      if (s.y < -2) { s.y = H + 2; s.x = Math.random() * W; }
+    }
+    // nebula follows mouse softly
+    const gx = W / 2 + mx * 6;
+    const gy = H / 2 + my * 6;
+    const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, 400);
+    g.addColorStop(0, 'rgba(0,229,255,0.025)');
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize', resize);
+  document.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+  init();
+  draw();
+})();
+
+// ── Theme switcher ─────────────────────────────────────────────────────────
+(function initTheme() {
+  const THEMES = ['dark', 'midnight', 'light'];
+  const LABELS = { dark: 'Dark', midnight: 'Night', light: 'Light' };
+  let current = localStorage.getItem('dq-theme') || 'dark';
+
+  function applyTheme(t) {
+    current = t;
+    const html = document.documentElement;
+    html.removeAttribute('data-theme');
+    if (t !== 'dark') html.setAttribute('data-theme', t);
+    localStorage.setItem('dq-theme', t);
+    const btn = document.getElementById('theme-btn');
+    if (btn) btn.textContent = LABELS[t];
+  }
+  applyTheme(current);
+
+  document.getElementById('theme-btn')?.addEventListener('click', () => {
+    const idx = (THEMES.indexOf(current) + 1) % THEMES.length;
+    applyTheme(THEMES[idx]);
+  });
+})();
 
 // ── Init ──────────────────────────────────────────────────────────────────
 loadHealth();

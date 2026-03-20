@@ -218,13 +218,24 @@ if [ "$SKIP_MODEL" = "1" ]; then
     info "Skipping model pull (--no-model)"
     ok "Pull later with: ollama pull qwen2.5-coder:7b"
 else
-    info "Pulling qwen2.5-coder:7b (~4.4GB, Tier 1 local model)..."
+    # Auto-select model size based on available RAM
+    _rec_model="$(python3 -c "
+import sys
+sys.path.insert(0, '$PROJECT_DIR/bin')
+try:
+    from system_profile import detect_hardware
+    print(detect_hardware()['recommended_model'])
+except Exception:
+    print('7b')
+" 2>/dev/null || echo '7b')"
+    _model_name="qwen2.5-coder:${_rec_model}"
+    info "Pulling ${_model_name} (recommended for your RAM)..."
     if ! ollama list &>/dev/null 2>&1; then
         ollama serve &>/tmp/ollama-dqiii8.log &
         sleep 3
     fi
-    ollama pull qwen2.5-coder:7b
-    ok "Model qwen2.5-coder:7b ready"
+    ollama pull "${_model_name}"
+    ok "Model ${_model_name} ready"
 fi
 
 # ── Phase 4: SQLite database ─────────────────────────────────────────────────
@@ -369,4 +380,7 @@ echo ""
 echo "  Or set keys directly:"
 echo "    dq --set-groq gsk_YOUR_KEY        # Free cloud models (Tier B)"
 echo "    dq --set-anthropic sk-ant_YOUR_KEY # Paid Claude models (Tier A)"
+echo ""
+echo "  Launch web dashboard:"
+echo "    dq --dashboard                    # UI at http://localhost:8080"
 echo ""

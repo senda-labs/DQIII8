@@ -108,6 +108,18 @@ def check_vps_health():
 
 
 def main():
+    import argparse as _ap
+    _parser = _ap.ArgumentParser(add_help=False)
+    _parser.add_argument("--quiet", action="store_true",
+                         help="Suppress all output except critical errors")
+    _parser.add_argument("--verbose", action="store_true")
+    _args, _ = _parser.parse_known_args()
+    quiet = _args.quiet and not _args.verbose
+
+    def _print(*a, **kw):
+        if not quiet:
+            print(*a, **kw)
+
     checks = [
         ("Tier C (local, $0)", check_tier_c),
         ("Tier B (cloud free)", check_tier_b),
@@ -119,23 +131,23 @@ def main():
     all_ok = True
     available_tiers = []
 
-    print("─── DQIII8 Environment Check ───")
+    _print("─── DQIII8 Environment Check ───")
     for name, check_fn in checks:
         ok, msg = check_fn()
         if ok is None:
-            # Informational — tier not needed for current config
-            print(f"  ℹ {name}: {msg}")
+            _print(f"  ℹ {name}: {msg}")
             continue
         status = "✓" if ok else "✗"
-        print(f"  {status} {name}: {msg}")
+        _print(f"  {status} {name}: {msg}")
         if not ok and not name.startswith("Tier"):
             all_ok = False
         if ok and name.startswith("Tier"):
             available_tiers.append(name)
 
-    print(f"  → Available tiers: {', '.join(available_tiers) if available_tiers else 'NONE'}")
+    _print(f"  → Available tiers: {', '.join(available_tiers) if available_tiers else 'NONE'}")
 
-    check_vps_health()
+    if not quiet:
+        check_vps_health()
 
     if not available_tiers:
         print(
@@ -145,11 +157,11 @@ def main():
         sys.exit(1)
 
     if not all_ok:
-        print(
+        _print(
             "\n  ⚠️  Some components have issues. The system will run with the available tiers."
         )
 
-    print("────────────────────────────────")
+    _print("────────────────────────────────")
 
     # Security hardening
     try:

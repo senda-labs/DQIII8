@@ -57,8 +57,21 @@ DOMAINS: dict[str, dict] = {
             "p-value",
             "confidence interval",
             "bayesian",
+            # Spanish math terms
+            "demuestra",
+            "demostrar",
+            "demostración",
+            "teorema",
+            "ecuación",
+            "número primo",
+            "números primos",
+            "suma de",
+            "cálculo",
+            "álgebra",
+            "geometría",
+            "probabilidad",
         ],
-        "description": "Mathematics, logic, statistics, computation, algorithms, theorems, proofs, probability theory",
+        "description": "Mathematics, logic, statistics, computation, algorithms, theorems, proofs, probability theory, demostración, ecuaciones",
     },
     "natural_sciences": {
         "keywords": [
@@ -194,19 +207,26 @@ DOMAINS: dict[str, dict] = {
             "tender",
             "bid",
             "licitación",
+            "licitación pública",
+            "oferta para licitación",
+            "oferta técnica",
             "lcsp",
             "solvency",
             "solvencia",
+            "solvencia técnica",
+            "solvencia económica",
             "placsp",
             "contrato público",
             "pliego",
+            "pliego de condiciones",
             "adjudicación",
             "rolece",
             "cpv",
             "public contract",
             "public procurement",
-            "concurso",
+            "concurso público",
             "contract award",
+            "mesa de contratación",
         ],
         "description": "Economics, psychology, sociology, politics, marketing, SEO, advertising, finance, portfolio management, risk management, business, law, public tenders, procurement",
     },
@@ -218,8 +238,11 @@ DOMAINS: dict[str, dict] = {
             "filosofía",
             "history",
             "historia",
-            "art",
-            "arte",
+            "fine art",
+            "bellas artes",
+            "visual art",
+            "arte visual",
+            "obra de arte",
             "music",
             "música",
             "language",
@@ -235,8 +258,26 @@ DOMAINS: dict[str, dict] = {
             "rhetoric",
             "ethics",
             "ética",
+            # creative writing
+            "novel",
+            "novela",
+            "chapter",
+            "capítulo",
+            "fiction",
+            "ficción",
+            "short story",
+            "cuento",
+            "screenplay",
+            "guión",
+            "creative writing",
+            "escritura creativa",
+            "plot",
+            "character development",
+            "sci-fi",
+            "fantasy",
+            "thriller",
         ],
-        "description": "Literature, philosophy, history, art, music, linguistics, culture, ethics",
+        "description": "Literature, philosophy, history, art, music, linguistics, culture, ethics, creative writing, novels, fiction, poetry",
     },
     "applied_sciences": {
         "keywords": [
@@ -379,16 +420,50 @@ def setup_db(force: bool = False) -> None:
 # ── Classification ────────────────────────────────────────────────────────────
 
 
-def _classify_by_keywords(prompt_lower: str) -> str | None:
-    """Keyword matching. Returns the domain with the most hits, or None."""
+def _classify_by_keywords(prompt_lower: str) -> tuple[str | None, int]:
+    """Keyword matching with word boundaries and weighted scoring.
+
+    Rules:
+    - Short keywords (<=3 chars): require word boundary to avoid false positives
+      e.g. 'art' must not match 'cartera', 'parte', 'artículo'
+    - Multi-word keywords: score 2 (more specific, less likely to be noise)
+    - Regular keywords (4+ chars, single word): score 1
+
+    Returns (domain, hit_score) or (None, 0).
+    """
+    import re
+
     scores: dict[str, int] = {}
     for domain_name, info in DOMAINS.items():
-        hits = sum(1 for kw in info["keywords"] if kw in prompt_lower)
-        if hits:
-            scores[domain_name] = hits
-    if not scores:
-        return None
-    return max(scores, key=lambda k: scores[k])
+        hits = 0
+        for kw in info["keywords"]:
+            kw_lower = kw.lower()
+            if len(kw_lower) <= 3:
+                # Short keyword: require word boundary
+                pattern = r"\b" + re.escape(kw_lower) + r"\b"
+                if re.search(pattern, prompt_lower):
+                    hits += 1
+            elif " " in kw_lower:
+                # Multi-word keyword: worth 2 points (high specificity)
+                if kw_lower in prompt_lower:
+                    hits += 2
+            else:
+                # Regular keyword: standard substring match
+                if kw_lower in prompt_lower:
+                    hits += 1
+        scores[domain_name] = hits
+
+    ranked = sorted(scores.items(), key=lambda x: -x[1])
+
+    if ranked[0][1] == 0:
+        return None, 0
+
+    # Clear winner: first domain has >= 1.5x hits of the second
+    if len(ranked) > 1 and ranked[1][1] > 0 and ranked[0][1] < ranked[1][1] * 1.5:
+        # Ambiguous — return best anyway for caller to decide
+        return ranked[0][0], ranked[0][1]
+
+    return ranked[0][0], ranked[0][1]
 
 
 def _classify_by_embedding(prompt: str) -> tuple[str, float] | None:
@@ -429,25 +504,48 @@ def classify_domain(prompt: str) -> tuple[str, float, str]:
     """
     Classifies the domain of the prompt.
 
+    Pipeline:
+    1. Keyword match (fast, no network)
+    2. If clear keyword winner (hits >= 2), skip embeddings entirely
+    3. Embedding similarity (slower, requires Ollama)
+    4. Conflict resolution: keyword wins if hits >= 3 or embedding score < 0.5
+
     Returns:
         (domain_name, confidence, method)
-        method: 'keyword' | 'embedding' | 'default'
+        method: 'keyword' | 'embedding' | 'keyword_fallback' | 'default'
     """
     prompt_lower = prompt.lower()
 
-    # 1. Keyword match (fast)
-    kw_domain = _classify_by_keywords(prompt_lower)
-    if kw_domain:
+    # 1. Keyword match
+    kw_domain, kw_hits = _classify_by_keywords(prompt_lower)
+
+    # 2. Clear keyword winner — skip embeddings entirely
+    if kw_domain and kw_hits >= 2:
         return kw_domain, 1.0, "keyword"
 
-    # 2. Embedding similarity (slower)
+    # 3. Embedding similarity
     emb_result = _classify_by_embedding(prompt)
+    emb_domain: str | None = None
+    emb_score: float = 0.0
     if emb_result:
-        domain, score = emb_result
-        return domain, score, "embedding"
+        emb_domain, emb_score = emb_result
 
-    # 3. Default
-    return "applied_sciences", 0.0, "default"
+    # 4. Resolve conflicts
+    if kw_domain and kw_hits >= 1:
+        # Keyword has at least one hit — trust keyword if embedding isn't decisive
+        if emb_domain is None or emb_score < 0.5 or kw_domain == emb_domain:
+            return kw_domain, max(emb_score, 0.5), "keyword"
+        # Embedding is strong but disagrees — keyword still wins if hits >= 3
+        if kw_hits >= 3:
+            return kw_domain, max(emb_score, 0.6), "keyword"
+
+    if emb_domain:
+        return emb_domain, emb_score, "embedding"
+
+    if kw_domain:
+        return kw_domain, 0.3, "keyword_fallback"
+
+    return "social_sciences", 0.0, "default"
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

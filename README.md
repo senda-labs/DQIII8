@@ -42,6 +42,26 @@ dq "hello, who are you?"
 **Requirements:** Ubuntu 22.04+, 4GB RAM minimum (8GB recommended), Python 3.11+.
 No GPU needed. Works fully offline with Tier C.
 
+### Dashboard
+
+Launch the web dashboard:
+
+```bash
+dq --dashboard
+# Open http://localhost:8080
+```
+
+For remote access (VPS):
+
+```bash
+dq --dashboard --host 0.0.0.0
+# Access via http://your-vps-ip:8080?token=YOUR_TOKEN
+# Token is stored in database/.dashboard_token
+```
+
+The dashboard shows real-time Intent Amplification: type any task and watch DQ
+decompose it into action, entity, domain, pattern, and subtasks before execution.
+
 ### Windows
 
 DQIII8 runs on Windows via WSL2 (Windows Subsystem for Linux):

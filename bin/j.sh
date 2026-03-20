@@ -165,6 +165,10 @@ Be specific and use the actual data."
             shift
             exec python3 "$JARVIS_ROOT/bin/knowledge_upload.py" "$@"
             ;;
+        --dashboard)
+            shift
+            exec python3 "$JARVIS_ROOT/bin/dashboard.py" "$@"
+            ;;
         --help|-h)
             cat <<EOF
 DQIII8 — 3-tier routing
@@ -177,6 +181,7 @@ DQIII8 — 3-tier routing
   j --loop PROJECT [N] [TIER]   OrchestratorLoop: tier1/tier2/tier3/haiku (def. tier3)
   j --benchmark-report         Sonnet report comparing tiers
   j --upload FILE [--agent A] [--domain D]  upload knowledge file (PDF/MD/TXT/DOCX/ZIP)
+  j --dashboard [--host H] [--port P]       web dashboard (localhost:8080 by default)
 
 Tiers:
   local   Tier 1 — Ollama $OLLAMA_MODEL (free, local)

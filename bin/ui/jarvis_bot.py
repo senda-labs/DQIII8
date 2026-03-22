@@ -72,6 +72,24 @@ ACTION_VERBS_RE = re.compile(
 # ── Voice settings ───────────────────────────────────────────────────────────────
 VOICE_RESPONSES_ENABLED = False  # toggle with /voice on|off
 
+# ── OAuth credentials helper ─────────────────────────────────────────────────
+_CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
+
+
+def _check_credentials() -> tuple[bool, str]:
+    """Check ~/.claude/.credentials.json for required OAuth tokens."""
+    import json as _json
+    if not _CREDENTIALS_PATH.exists():
+        return False, "credentials file missing"
+    try:
+        data = _json.loads(_CREDENTIALS_PATH.read_text(encoding="utf-8"))
+        oauth = data.get("claudeAiOauth", {})
+        if not oauth.get("accessToken") or not oauth.get("refreshToken"):
+            return False, "accessToken or refreshToken missing"
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
 
 # ── Utilidades base ─────────────────────────────────────────────────────────────
 def authorized(update: Update) -> bool:
@@ -1016,6 +1034,31 @@ async def cmd_stop_autonomous(update: Update, context: ContextTypes.DEFAULT_TYPE
     log.info("/stop: stop flag written to %s", stop_flag)
 
 
+async def cmd_auth_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Check Claude Code OAuth credentials status.
+
+    Usage: /auth_update
+    Reports whether ~/.claude/.credentials.json is healthy.
+    If broken: instructions to run `claude /login` in an interactive session.
+    """
+    if not authorized(update):
+        return
+    ok, msg = _check_credentials()
+    if ok:
+        await update.message.reply_text(
+            "Credentials OK — ~/.claude/.credentials.json has valid tokens.\n"
+            "Claude Code will auto-renew them as needed."
+        )
+    else:
+        await update.message.reply_text(
+            f"Credentials problem: {msg}\n\n"
+            "Fix: open an SSH session to the VPS and run:\n"
+            "  claude /login\n"
+            "Then follow the browser OAuth flow."
+        )
+    log.info("Auth status checked via /auth_update: ok=%s", ok)
+
+
 # ── Main ────────────────────────────────────────────────────────────────────────
 def main() -> None:
     global APP
@@ -1043,6 +1086,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("research_status", cmd_research_status))
     APP.add_handler(CommandHandler("sandbox_run", cmd_sandbox_run))
     APP.add_handler(CommandHandler("stop", cmd_stop_autonomous))
+    APP.add_handler(CommandHandler("auth_update", cmd_auth_update))
     APP.add_handler(MessageHandler(filters.Regex(r"^/integrar"), _handle_integrar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/rechazar"), _handle_rechazar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/aprobar"), _handle_aprobar))

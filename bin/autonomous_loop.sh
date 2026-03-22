@@ -13,6 +13,10 @@ set -euo pipefail
 export JARVIS_MODE=autonomous
 export JARVIS_ROOT=/root/jarvis
 
+# Prevent CLAUDE_CODE_OAUTH_TOKEN from overriding ~/.claude/.credentials.json
+# Claude Code uses credentials.json with auto-renewal — env var breaks auth
+unset CLAUDE_CODE_OAUTH_TOKEN
+
 OBJECTIVE="${1:-}"
 MAX_HOURS="${2:-8}"
 MAX_ITER="${3:-100}"  # Maximum claude invocations per session (safety cap)

@@ -36,7 +36,7 @@ for _d in [JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "too
         sys.path.insert(0, str(_d))
 
 from db import get_db
-from embeddings import cosine_similarity, get_embedding
+from embeddings import bytes_to_embedding, cosine_similarity, get_embedding
 from jal_common import load_env
 
 # ── Intent patterns (14) ──────────────────────────────────────────────────────
@@ -133,7 +133,6 @@ def _score_domains(prompt: str, top_n: int = 3) -> list[dict]:
         if not row[1]:
             continue
         try:
-            from embeddings import bytes_to_embedding
             centroid = bytes_to_embedding(row[1])
             score = cosine_similarity(embedding, centroid)
             scored.append({"domain": row[0], "score": round(score, 4)})

@@ -11,7 +11,7 @@ import pytest
 
 spec = importlib.util.spec_from_file_location(
     "auth_watchdog",
-    Path("/root/jarvis/bin/core/auth_watchdog.py"),
+    Path(__file__).parent.parent / "bin" / "core" / "auth_watchdog.py",
 )
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
@@ -39,6 +39,28 @@ class TestCheckCredentialsFile:
     def test_returns_error_when_tokens_empty(self, tmp_path):
         creds = tmp_path / ".credentials.json"
         creds.write_text(json.dumps({"claudeAiOauth": {}}), encoding="utf-8")
+        ok, msg = mod.check_credentials_file(creds)
+        assert ok is False
+        assert "token" in msg.lower()
+
+    def test_returns_error_when_only_access_token_present(self, tmp_path):
+        creds = tmp_path / ".credentials.json"
+        creds.write_text(json.dumps({
+            "claudeAiOauth": {"accessToken": "tok_access"}
+        }), encoding="utf-8")
+        ok, msg = mod.check_credentials_file(creds)
+        assert ok is False
+        assert "token" in msg.lower()
+
+    def test_returns_error_when_json_is_malformed(self, tmp_path):
+        creds = tmp_path / ".credentials.json"
+        creds.write_text("not valid json{{{", encoding="utf-8")
+        ok, msg = mod.check_credentials_file(creds)
+        assert ok is False
+
+    def test_returns_error_when_oauth_key_missing(self, tmp_path):
+        creds = tmp_path / ".credentials.json"
+        creds.write_text(json.dumps({"other": "data"}), encoding="utf-8")
         ok, msg = mod.check_credentials_file(creds)
         assert ok is False
         assert "token" in msg.lower()
@@ -82,6 +104,12 @@ class TestCheckClaudeProbe:
             ok, msg = mod.check_claude_probe()
         assert ok is False
         assert "timeout" in msg.lower()
+
+    def test_returns_false_when_claude_binary_not_found(self):
+        with patch("subprocess.run", side_effect=FileNotFoundError("claude not found")):
+            ok, msg = mod.check_claude_probe()
+        assert ok is False
+        assert "not found" in msg.lower() or "claude" in msg.lower()
 
 
 class TestRunWatchdog:

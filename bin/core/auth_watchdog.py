@@ -42,7 +42,7 @@ def check_credentials_file(path: Path = None) -> tuple[bool, str]:
 
 
 def check_env_conflict(env: dict = None) -> tuple[bool, str]:
-    """Warn if CLAUDE_CODE_OAUTH_TOKEN is set — it overrides credentials."""
+    """Fail if CLAUDE_CODE_OAUTH_TOKEN is set in env — it overrides credentials and breaks auth."""
     e = env if env is not None else os.environ
     val = e.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     if val:

@@ -19,11 +19,20 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+import requests  # moved to top level — was lazily imported in 5 methods
+
 JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
 DB_PATH = JARVIS_ROOT / "database" / "jarvis_metrics.db"
 MAX_RETRIES = 3  # Per objective — fails 3 times → BLOCKED
 MAX_CYCLES = 10  # Per loop session
 GROQ_MODEL = "llama-3.3-70b-versatile"
+
+
+def _conn() -> sqlite3.Connection:
+    """Open a WAL-mode SQLite connection. Caller must commit() and close()."""
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
 class OrchestratorLoop:
@@ -74,7 +83,7 @@ class OrchestratorLoop:
 
         # Pending/failed objectives from the DB
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            conn = _conn()
             rows = conn.execute(
                 "SELECT id, objective_text, status, retry_count, success_criteria "
                 "FROM objectives WHERE project=? AND status IN "
@@ -108,7 +117,7 @@ class OrchestratorLoop:
     def _get_recent_cycles(self, project: str, limit: int = 3) -> list[dict]:
         """Gets the last N completed cycles to avoid repeating objectives."""
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            conn = _conn()
             rows = conn.execute(
                 """
                 SELECT objective_text, status, result_summary
@@ -158,7 +167,6 @@ class OrchestratorLoop:
         Calls Groq to generate a new objective when there are no pending items in DB.
         Enriches the prompt with existing files and real project metrics.
         """
-        import requests
 
         groq_key = os.getenv("GROQ_API_KEY", "").strip()
         if not groq_key:
@@ -190,7 +198,7 @@ class OrchestratorLoop:
 
         # Read metrics from the last completed cycle
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            conn = _conn()
             last_metrics = conn.execute(
                 """
                 SELECT renderer, lines_of_code, cpu_seconds,
@@ -355,7 +363,7 @@ Respond ONLY in JSON:
         score = ssim_result.get("score") or 0
 
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            conn = _conn()
             conn.execute(
                 "UPDATE objectives SET result_summary=json_set("
                 "COALESCE(result_summary,'{}'), '$.ssim_score', ?) WHERE id=?",
@@ -391,15 +399,17 @@ Respond ONLY in JSON:
 
     def _analyze_reference_image(self) -> str:
         """
-        Analyzes the reference image and returns a technical description
-        to include in the mathematical generator prompt.
+        Analyzes the reference image for visual parameterization of generators.
+        Requires bin/tools/analyze_reference.py and a reference image at
+        tasks/reference_image.jpg. Returns "" if unavailable (non-blocking).
         """
         ref_path = JARVIS_ROOT / "tasks/reference_image.jpg"
-        if not ref_path.exists():
+        analyzer = JARVIS_ROOT / "bin" / "tools" / "analyze_reference.py"
+        if not ref_path.exists() or not analyzer.exists():
             return ""
         try:
             result = subprocess.run(
-                ["python3", str(JARVIS_ROOT / "bin/analyze_reference.py"), str(ref_path)],
+                ["python3", str(analyzer), str(ref_path)],
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -547,7 +557,6 @@ INSTRUCTIONS:
 
     def _execute_ollama(self, prompt: str, project: str) -> str:
         """Tier 1: 2-step — Qwen generates the plan, Claude Code executes it."""
-        import requests
 
         model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
 
@@ -744,7 +753,7 @@ INSTRUCTIONS:
 
     def store(self, obj_id: str, project: str, objective: dict, result: dict) -> None:
         """Saves result to DB and updates lessons.md."""
-        conn = sqlite3.connect(str(DB_PATH), timeout=10)
+        conn = _conn()
 
         status = "completed" if result.get("success") else "failed"
         if result.get("blocker"):
@@ -847,7 +856,7 @@ INSTRUCTIONS:
     ) -> str:
         """Inserts a new objective in the DB, including model_tier."""
         obj_id = str(uuid.uuid4())[:8]
-        conn = sqlite3.connect(str(DB_PATH), timeout=10)
+        conn = _conn()
         conn.execute(
             """
             INSERT INTO objectives
@@ -863,7 +872,6 @@ INSTRUCTIONS:
 
     def _send_image_telegram(self, image_path: str, caption: str) -> None:
         """Sends an image to the Telegram chat via Bot API (sendPhoto multipart)."""
-        import requests
 
         token = (os.getenv("DQIII8_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")).strip()
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -901,7 +909,6 @@ INSTRUCTIONS:
         due to ESCALATE or human blocker, or when it completes successfully.
         Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env
         """
-        import requests
 
         token = (os.getenv("DQIII8_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")).strip()
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -934,7 +941,7 @@ INSTRUCTIONS:
             "completed": "✅",
         }
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            conn = _conn()
             rows = conn.execute(
                 """
                 SELECT id, objective_text, status, retry_count,
@@ -983,7 +990,7 @@ INSTRUCTIONS:
     def _print_effectiveness(self, project: str) -> None:
         """Prints historical project metrics from loop_effectiveness."""
         try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            conn = _conn()
             row = conn.execute(
                 "SELECT total_cycles, successful, failed, escalated, "
                 "success_rate_pct FROM loop_effectiveness WHERE project=?",
@@ -1004,7 +1011,6 @@ INSTRUCTIONS:
         Sends a minimal prompt to Ollama to load the model
         before the loop starts. Avoids timeout on the first cycle.
         """
-        import requests
 
         try:
             resp = requests.post(
@@ -1051,7 +1057,7 @@ INSTRUCTIONS:
             if seeded_id:
                 # Pre-seeded objective: update to 'running', do not create new
                 obj_id = seeded_id
-                conn = sqlite3.connect(str(DB_PATH), timeout=10)
+                conn = _conn()
                 conn.execute("UPDATE objectives SET status='running' WHERE id=?", (obj_id,))
                 conn.commit()
                 conn.close()
@@ -1065,14 +1071,14 @@ INSTRUCTIONS:
                 )
 
             # Verify max_retries
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)
+            conn = _conn()
             retries = conn.execute(
                 "SELECT retry_count FROM objectives WHERE id=?", (obj_id,)
             ).fetchone()
             conn.close()
             if retries and retries[0] >= MAX_RETRIES:
                 print(f"  ⛔ Objective blocked after {MAX_RETRIES} attempts")
-                conn = sqlite3.connect(str(DB_PATH), timeout=10)
+                conn = _conn()
                 conn.execute("UPDATE objectives SET status='blocked' WHERE id=?", (obj_id,))
                 conn.commit()
                 conn.close()

@@ -253,7 +253,7 @@ ROUTING_TABLE = [
     ),
 ]
 
-TIMEOUT = 120
+TIMEOUT = 180
 DB_PATH = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis")) / "database" / "jarvis_metrics.db"
 
 
@@ -276,7 +276,24 @@ def sanitize_prompt(prompt: str) -> str:
     return sanitized
 
 
-def build_request(provider_name: str, model: str, prompt: str):
+def load_agent_system_prompt(agent_name: str) -> str:
+    """Load agent MD from .claude/agents/{agent_name}.md, stripping YAML frontmatter."""
+    if not agent_name or agent_name == "default":
+        return ""
+    jarvis = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+    md_path = jarvis / ".claude" / "agents" / f"{agent_name}.md"
+    if not md_path.exists():
+        return ""
+    content = md_path.read_text(encoding="utf-8")
+    # Strip YAML frontmatter (--- ... ---)
+    if content.startswith("---"):
+        end = content.find("---", 3)
+        if end != -1:
+            content = content[end + 3:].lstrip("\n")
+    return content.strip()
+
+
+def build_request(provider_name: str, model: str, prompt: str, system_prompt: str = ""):
     """Construye URL, headers y payload para una llamada de chat streaming."""
     cfg = PROVIDERS[provider_name]
     base = cfg["base_url"].rstrip("/")
@@ -291,10 +308,15 @@ def build_request(provider_name: str, model: str, prompt: str):
             headers["Authorization"] = f"Bearer {key}"
     headers.update(cfg["headers_extra"])
 
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
     payload = json.dumps(
         {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "stream": True,
         }
     ).encode("utf-8")
@@ -302,13 +324,13 @@ def build_request(provider_name: str, model: str, prompt: str):
     return url, headers, payload
 
 
-def stream_response(provider_name: str, model: str, prompt: str) -> tuple[str, int, int, bool]:
+def stream_response(provider_name: str, model: str, prompt: str, system_prompt: str = "") -> tuple[str, int, int, bool]:
     """
     Makes the request and streams to stdout.
     Returns (full_text, tokens_input, tokens_output, success).
     Uses real API tokens if available; estimates by chars otherwise.
     """
-    url, headers, payload = build_request(provider_name, model, sanitize_prompt(prompt))
+    url, headers, payload = build_request(provider_name, model, sanitize_prompt(prompt), system_prompt)
     req = urllib.request.Request(url, data=payload, headers=headers)
     full_text = ""
     tokens_in = 0
@@ -596,6 +618,11 @@ def main() -> None:
 
     agent_name = args.agent
 
+    # Load agent system prompt from .claude/agents/{agent}.md
+    system_prompt = load_agent_system_prompt(agent_name)
+    if system_prompt:
+        print(f"[DQIII8] system prompt loaded: {agent_name} ({len(system_prompt)} chars)", file=sys.stderr)
+
     # Construir cadena: primario + fallbacks
     chain = [(primary_provider, primary_model)]
     for fallback_provider in FALLBACK_CHAIN.get(primary_provider, []):
@@ -608,7 +635,7 @@ def main() -> None:
     for provider, model in chain:
         print(f"[DQIII8] {agent_name} | {provider} | {model}", file=sys.stderr)
         t0 = int(time.time() * 1000)
-        text, tokens_in, tokens_out, ok = stream_response(provider, model, prompt)
+        text, tokens_in, tokens_out, ok = stream_response(provider, model, prompt, system_prompt)
         duration_ms = int(time.time() * 1000) - t0
 
         err_msg = "" if ok else f"{provider}/{model} failed — no response or HTTP error"

@@ -11,9 +11,11 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 from urllib.parse import urlparse
 
 OLLAMA_URL = "http://localhost:11434/api/generate"  # nosemgrep
@@ -29,16 +31,35 @@ def _validate_url(url: str) -> None:
         raise ValueError(f"URL not allowed: {url}")
 
 
-def stream_response(model: str, prompt: str) -> int:
+def load_agent_system_prompt(agent_name: str) -> str:
+    """Load agent MD from .claude/agents/{agent_name}.md, stripping YAML frontmatter."""
+    if not agent_name or agent_name == "default":
+        return ""
+    jarvis = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+    md_path = jarvis / ".claude" / "agents" / f"{agent_name}.md"
+    if not md_path.exists():
+        return ""
+    content = md_path.read_text(encoding="utf-8")
+    if content.startswith("---"):
+        end = content.find("---", 3)
+        if end != -1:
+            content = content[end + 3:].lstrip("\n")
+    return content.strip()
+
+
+def stream_response(model: str, prompt: str, system_prompt: str = "") -> int:
     _validate_url(OLLAMA_URL)
-    payload = json.dumps({"model": model, "prompt": prompt, "stream": True}).encode("utf-8")
+    body: dict = {"model": model, "prompt": prompt, "stream": True}
+    if system_prompt:
+        body["system"] = system_prompt
+    payload = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(  # nosemgrep
         OLLAMA_URL,
         data=payload,
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:  # nosemgrep
+        with urllib.request.urlopen(req, timeout=180) as resp:  # nosemgrep
             for raw_line in resp:
                 line = raw_line.decode("utf-8").strip()
                 if not line:
@@ -70,6 +91,12 @@ def main() -> None:
         help=f"Ollama model to use (default: {DEFAULT_MODEL})",
     )
     parser.add_argument(
+        "--agent",
+        "-a",
+        default="",
+        help="Agent name — loads .claude/agents/{agent}.md as system prompt",
+    )
+    parser.add_argument(
         "prompt",
         nargs="*",
         help="Prompt as argument. If omitted, reads from stdin.",
@@ -88,7 +115,11 @@ def main() -> None:
         print("[ollama_wrapper] Empty prompt.", file=sys.stderr)
         sys.exit(1)
 
-    sys.exit(stream_response(args.model, prompt))
+    system_prompt = load_agent_system_prompt(args.agent)
+    if system_prompt:
+        print(f"[ollama_wrapper] system prompt loaded: {args.agent} ({len(system_prompt)} chars)", file=sys.stderr)
+
+    sys.exit(stream_response(args.model, prompt, system_prompt))
 
 
 if __name__ == "__main__":

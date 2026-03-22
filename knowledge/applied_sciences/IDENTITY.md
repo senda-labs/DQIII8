@@ -1,23 +1,27 @@
-# Applied Sciences
-
-This centroid covers practical application of scientific knowledge to solve
-real-world engineering and technology problems.
+# Applied Sciences — Knowledge Domain
 
 ## Agents
-- Software Engineering: architecture, design patterns, testing, CI/CD, code quality
-- Web Development: JavaScript, TypeScript, React, HTML/CSS, APIs, frontend/backend
-  - JavaScript: event loop, closures, async/await, DOM, Node.js
-  - TypeScript: type system, generics, patterns, strict mode
-  - React: hooks, state management, performance, component architecture
-- Data Engineering: databases, SQL, data pipelines, ETL, data warehousing
-- AI/ML: machine learning, NLP, prompt engineering, agent design, embeddings
-- DevOps: Docker, Kubernetes, cloud, infrastructure, deployment
-- Mobile Development: iOS, Android, React Native, Flutter, mobile UX
-- Cybersecurity: encryption, authentication, penetration testing, security audits
-- C++: modern C++17/20/23, systems programming, performance optimization
+- software-specialist: Architecture, design patterns, SOLID, CI/CD, and system design
+- web-specialist: HTTP, REST/GraphQL APIs, authentication, and frontend frameworks
+- data-specialist: SQL optimization, ETL pipelines, database design, and data modeling
+- ai-ml-specialist: LLM engineering, RAG systems, prompt design, and ML evaluation
+
+## Special agents (not centroid-bound, available globally)
+- python-specialist (Tier C): Python code, debugging, refactoring, file operations
+- code-reviewer (Tier B): Code quality review after features are written
+
+## Knowledge Files
+- software_engineering/architecture_fundamentals.md — Patterns, SOLID, system design principles
+- software_engineering/design_patterns_decision_matrix.md — GoF patterns selection guide
+- web_development/http_api_reference.md — HTTP status codes, headers, REST conventions
+- data_engineering/database_fundamentals.md — Normalization, indexing, query patterns
+- data_engineering/sql_advanced_patterns.md — Window functions, CTEs, optimization techniques
+- ai_ml/machine_learning_fundamentals.md — ML algorithms, evaluation metrics, bias-variance
+- ai_ml/prompt_engineering_fundamentals.md — Prompt patterns, few-shot, chain-of-thought
+- ai_ml/prompt_engineering_patterns.md — Advanced prompting techniques and agent design
 
 ## When this centroid activates
 - User asks to build, code, develop, deploy, or fix software
 - User asks about programming languages, frameworks, or tools
 - User asks about databases, APIs, servers, or infrastructure
-- Keywords: code, build, React, TypeScript, API, database, Docker, deploy, app, website
+- Keywords: code, build, React, TypeScript, API, database, Docker, deploy, SOLID, SQL, RAG

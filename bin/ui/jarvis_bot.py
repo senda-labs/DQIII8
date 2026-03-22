@@ -4,6 +4,7 @@ Requires: python-telegram-bot>=20, JARVIS_BOT_TOKEN in .env
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -78,17 +79,18 @@ _CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
 
 def _check_credentials() -> tuple[bool, str]:
     """Check ~/.claude/.credentials.json for required OAuth tokens."""
-    import json as _json
     if not _CREDENTIALS_PATH.exists():
         return False, "credentials file missing"
     try:
-        data = _json.loads(_CREDENTIALS_PATH.read_text(encoding="utf-8"))
+        data = json.loads(_CREDENTIALS_PATH.read_text(encoding="utf-8"))
         oauth = data.get("claudeAiOauth", {})
         if not oauth.get("accessToken") or not oauth.get("refreshToken"):
             return False, "accessToken or refreshToken missing"
         return True, ""
-    except Exception as exc:
-        return False, str(exc)
+    except json.JSONDecodeError as exc:
+        return False, f"credentials file is invalid JSON: {exc}"
+    except OSError as exc:
+        return False, f"cannot read credentials file: {exc}"
 
 
 # ── Utilidades base ─────────────────────────────────────────────────────────────

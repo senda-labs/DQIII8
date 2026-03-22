@@ -48,6 +48,14 @@ class TestCheckCredentials:
         assert ok is False
         assert "token" in msg.lower() or "missing" in msg.lower()
 
+    def test_returns_false_when_json_corrupt(self, tmp_path):
+        creds = tmp_path / ".credentials.json"
+        creds.write_text("not-valid-json{{{", encoding="utf-8")
+        with patch.object(mod, "_CREDENTIALS_PATH", creds):
+            ok, msg = mod._check_credentials()
+        assert ok is False
+        assert "json" in msg.lower() or "invalid" in msg.lower()
+
 
 class TestCmdAuthUpdate:
     @pytest.mark.anyio

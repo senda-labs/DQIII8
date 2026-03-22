@@ -51,8 +51,8 @@ def run_task(task, config):
         try:
             from intent_amplifier import amplify
             result = amplify(prompt)
-            prompt = result["amplified_prompt"]
-            knowledge_used = json.dumps(result.get("decomposition", {}).get("niche", []))
+            prompt = result["amplified"]
+            knowledge_used = json.dumps(result.get("niche", []))
         except Exception as e:
             print(f"  Warning: Amplification failed: {e}")
 
@@ -93,7 +93,7 @@ def _run_ollama(prompt, model):
         resp = requests.post(
             "http://localhost:11434/api/generate",
             json={"model": model, "prompt": prompt, "stream": False},
-            timeout=120,
+            timeout=180,
         )
         data = resp.json()
         return {

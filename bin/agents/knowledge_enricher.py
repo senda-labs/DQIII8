@@ -36,7 +36,7 @@ def enrich_with_knowledge(
     domain: str,
     max_chunks: int = 3,
     max_tokens: int = 1500,
-    min_similarity: float = 0.5,
+    min_similarity: float = 0.25,
 ) -> tuple[str, int]:
     """
     Search relevant chunks from the domain index and prepend them to the prompt.

@@ -208,30 +208,72 @@ def test_task_relevance_score_function():
 
 
 def test_task_relevance_reranking():
-    """Chunks re-ranked by task relevance must not contain 'task_relevance' key < score
-    and the most task-relevant chunk must score higher than the least task-relevant one
-    when intent+entity are provided.
+    """Reranking by task relevance must actually change the chunk ordering.
 
-    For 'analyze light Vermeer' the chunk about camera obscura/light technique should
-    rank above a chunk about auction prices — both mention Vermeer but only the first
-    is useful for the task.
+    We compare the chunk sequence produced WITHOUT intent/entity against the one
+    produced WITH intent+entity.  If the two sequences are identical the re-ranking
+    pass is a no-op — that would be a bug.
+
+    Additionally checks structural invariants:
+    - every returned dict has a 'task_relevance' key
+    - the reranked list is ordered descending by task_relevance
     """
+    from knowledge_enricher import get_relevant_chunks
+
+    prompt = "analyze the use of light in Vermeer paintings"
+
+    chunks_base = get_relevant_chunks(prompt, "humanities_arts", top_k=5)
+    chunks_reranked = get_relevant_chunks(
+        prompt, "humanities_arts", top_k=5, intent="analyze", entity="light Vermeer"
+    )
+
+    assert isinstance(
+        chunks_reranked, list
+    ), f"expected list, got {type(chunks_reranked)}"
+    if len(chunks_reranked) < 2:
+        return  # not enough data to test ordering
+
+    assert all(
+        "task_relevance" in c for c in chunks_reranked
+    ), "task_relevance key missing"
+
+    # Reranked list must be descending by task_relevance
+    assert (
+        chunks_reranked[0]["task_relevance"] >= chunks_reranked[-1]["task_relevance"]
+    ), (
+        f"task_relevance not descending: first={chunks_reranked[0]['task_relevance']} "
+        f"last={chunks_reranked[-1]['task_relevance']}"
+    )
+
+    # The ordering must actually change — otherwise the second embedding pass did nothing
+    if len(chunks_base) >= 2:
+        base_order = [c["text"][:60] for c in chunks_base]
+        reranked_order = [c["text"][:60] for c in chunks_reranked]
+        assert base_order != reranked_order, (
+            "Reranking with intent+entity must change at least one chunk position. "
+            "If every chunk stays in the same slot the task_relevance pass is inert."
+        )
+
+
+def test_vermeer_rerank_prefers_technique_over_prices():
+    """Task relevance should rank art technique above auction prices for analysis tasks."""
     from knowledge_enricher import get_relevant_chunks
 
     chunks = get_relevant_chunks(
         "analyze the use of light in Vermeer paintings",
         "humanities_arts",
-        top_k=5,
         intent="analyze",
         entity="light Vermeer",
     )
-    assert isinstance(chunks, list), f"expected list, got {type(chunks)}"
     if len(chunks) >= 2:
-        assert all("task_relevance" in c for c in chunks), "task_relevance key missing"
-        # First chunk should have highest task_relevance
-        assert chunks[0]["task_relevance"] >= chunks[-1]["task_relevance"], (
-            f"task_relevance not descending: first={chunks[0]['task_relevance']} "
-            f"last={chunks[-1]['task_relevance']}"
+        for c in chunks:
+            print(f'relevance={c.get("task_relevance", 0):.3f} {c["text"][:80]}')
+        assert chunks[0].get("task_relevance", 0) > chunks[-1].get(
+            "task_relevance", 0
+        ), (
+            f"First chunk should have higher task_relevance than last: "
+            f"first={chunks[0].get('task_relevance', 0):.3f} "
+            f"last={chunks[-1].get('task_relevance', 0):.3f}"
         )
 
 

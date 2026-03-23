@@ -56,7 +56,7 @@ DQIII8 never stores prompts or API responses in ways that could be accessed by t
 
 ## Local data storage
 
-All operational data (metrics, sessions, errors) is stored in `database/jarvis_metrics.db` on your machine. This file:
+All operational data (metrics, sessions, errors) is stored in `database/dqiii8.db` on your machine. This file:
 - Is excluded from git (listed in `.gitignore`)
 - Has permissions set to 600 (owner read/write only) at startup
 - Is never uploaded anywhere

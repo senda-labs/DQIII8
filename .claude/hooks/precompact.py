@@ -15,8 +15,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS / "database" / "jarvis_metrics.db"
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB = JARVIS / "database" / "dqiii8.db"
 STATE_FILE = JARVIS / "tasks" / "precompact_state.json"
 SESSION_ID = os.environ.get("CLAUDE_SESSION_ID", "unknown")
 

@@ -13,8 +13,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS / "database" / "jarvis_metrics.db"
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB = JARVIS / "database" / "dqiii8.db"
 REPORTS_DIR = JARVIS / "database" / "audit_reports"
 AIDER_PROMPT = """\
 You are a senior-level Python code reviewer. Analyze the file efficiently:

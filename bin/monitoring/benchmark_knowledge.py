@@ -17,7 +17,7 @@ import argparse
 import csv
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
 for subdir in ["core", "agents", "monitoring", "tools", "ui", ""]:
     p = str(JARVIS / "bin" / subdir) if subdir else str(JARVIS / "bin")
     if p not in sys.path:

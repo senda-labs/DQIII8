@@ -6,7 +6,7 @@ allowed_tools: ["Bash"]
 
 # /evolve — Convertir Instincts en Skills
 
-Lee instincts con alta confianza o alta frecuencia de aplicacion de `jarvis_metrics.db`,
+Lee instincts con alta confianza o alta frecuencia de aplicacion de `dqiii8.db`,
 los agrupa por keyword raiz, y genera skill drafts para clusters con 3+ instincts.
 
 ## Uso

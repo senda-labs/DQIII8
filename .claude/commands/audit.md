@@ -1,6 +1,6 @@
 # /audit -- System Health Audit
 
-Triggers the **auditor** agent to analyze `database/jarvis_metrics.db` and produce a structured health report.
+Triggers the **auditor** agent to analyze `database/dqiii8.db` and produce a structured health report.
 
 ## Usage
 

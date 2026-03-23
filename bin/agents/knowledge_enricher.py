@@ -17,8 +17,8 @@ import os
 import sys
 from pathlib import Path
 
-JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-KNOWLEDGE_ROOT = JARVIS_ROOT / "knowledge"
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
 
 sys.path.insert(0, str(Path(__file__).parent))
 from embeddings import get_embedding, cosine_similarity

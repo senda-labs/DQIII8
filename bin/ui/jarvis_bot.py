@@ -29,8 +29,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from voice_handler import transcribe_audio, synthesize_speech
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS / "database" / "jarvis_metrics.db"
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB = JARVIS / "database" / "dqiii8.db"
 LOG_FILE = JARVIS / "database" / "audit_reports" / "jarvis_bot.log"
 QUEUE_DIR = JARVIS / "objectives" / "queue"
 REFERENCE_IMAGE_PATH = JARVIS / "tasks" / "reference_image.jpg"
@@ -1153,7 +1153,7 @@ def _cc_blacklisted(prompt: str) -> str | None:
 def _log_cc_command(
     command: str, prompt: str, agent: str | None, success: bool, response_len: int
 ) -> None:
-    """Log /cc command usage to jarvis_metrics.db."""
+    """Log /cc command usage to dqiii8.db."""
     try:
         conn = sqlite3.connect(DB)
         conn.execute(

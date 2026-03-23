@@ -1,6 +1,7 @@
 # DQIII8 Architecture
 
 > Single-file system map. Last updated: 2026-03-23.
+> Verified against live files — not written from memory.
 
 ---
 
@@ -12,10 +13,10 @@ user prompt
   ├─► domain_classifier.py   classify_domain()        → domain label
   ├─► knowledge_enricher.py  get_relevant_chunks()    → top-k chunks (cosine sim)
   ├─► intent_amplifier.py    amplify()                → tier-specific prompt
-  │     ├─ Tier C  _build_prompt_tier_c()  XML+CoT, 1 chunk, 200 chars, <500 tok
+  │     ├─ Tier C  _build_prompt_tier_c()  XML+CoT, 1 chunk max, 200 chars, <500 tok
   │     ├─ Tier B  _build_prompt_tier_b()  reference block, 3 chunks (has_specific_data)
   │     └─ Tier A  _build_prompt_tier_a()  data-only injection, 5 chunks
-  └─► openrouter_wrapper.py  stream_response()        → modelo + log DB
+  └─► openrouter_wrapper.py  stream_response()        → model + log to DB
 ```
 
 **Tier routing**
@@ -30,9 +31,19 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 
 ---
 
-## 2. File map
+## 2. File map — 41 scripts
 
-### bin/core/ — infrastructure
+### bin/ root (5)
+
+| File                    | Purpose                                               |
+|-------------------------|-------------------------------------------------------|
+| `j.sh`                  | Main CLI entry point (`--model`, `--status`, `--classify`) |
+| `director.py`           | Central pipeline orchestrator v3                      |
+| `jal_run.py`            | JAL full-cycle orchestrator (plan → execute → score)  |
+| `autonomous_loop.sh`    | Unattended VPS loop with Telegram reporting           |
+| `nightly.sh`            | Nightly maintenance: DB vacuum, log rotation, report  |
+
+### bin/core/ — infrastructure (9)
 
 | File                  | Purpose                                                  |
 |-----------------------|----------------------------------------------------------|
@@ -43,10 +54,10 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 | `embeddings.py`       | Cosine similarity, nomic-embed-text via Ollama           |
 | `notify.py`           | `send_telegram()` — all system notifications             |
 | `rate_limiter.py`     | Per-key token bucket (Groq TPD guard)                    |
-| `auth_watchdog.py`    | Claude Code OAuth health check — cron every 30 min       |
+| `auth_watchdog.py`    | Claude Code OAuth health check (cron every 30 min)       |
 | `validate_env.py`     | Startup env var validation, fails fast with clear errors |
 
-### bin/agents/ — knowledge pipeline
+### bin/agents/ — knowledge pipeline (9)
 
 | File                    | Purpose                                                  |
 |-------------------------|----------------------------------------------------------|
@@ -58,9 +69,9 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 | `knowledge_indexer.py`  | Chunks .md files + embeds → `index.json` per domain      |
 | `knowledge_search.py`   | CLI search over index.json (cosine sim, top-k)           |
 | `memory_decay.py`       | Ages and prunes `instincts` / `vault_memory` tables      |
-| `template_loader.py`    | Loads and renders Jinja2-style agent prompt templates     |
+| `template_loader.py`    | Loads and renders Jinja2-style agent prompt templates    |
 
-### bin/monitoring/ — observability
+### bin/monitoring/ — observability (5)
 
 | File                    | Purpose                                                  |
 |-------------------------|----------------------------------------------------------|
@@ -70,7 +81,7 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 | `telemetry.py`          | Anonymous opt-in telemetry (disabled by default)         |
 | `system_profile.py`     | Hardware detection, model recommendation on install      |
 
-### bin/tools/ — utilities
+### bin/tools/ — utilities (10)
 
 | File                    | Purpose                                                  |
 |-------------------------|----------------------------------------------------------|
@@ -85,7 +96,7 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 | `sandbox_tester.py`     | Isolated test runner in `dqiii8-sandbox/` dir            |
 | `voice_handler.py`      | STT via Groq Whisper + TTS via gTTS                      |
 
-### bin/ui/ — interfaces
+### bin/ui/ — interfaces (3)
 
 | File                    | Purpose                                                  |
 |-------------------------|----------------------------------------------------------|
@@ -97,7 +108,7 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 
 ## 3. Database — dqiii8.db
 
-**Core tables**
+**Core tables** (43 total in live DB)
 
 | Table                       | Stores                                           |
 |-----------------------------|--------------------------------------------------|
@@ -111,7 +122,7 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 | `error_log`                 | Errors with session_id, agent, keyword tags      |
 | `permission_decisions`      | Hook allow/deny decisions for pre_tool_use       |
 
-**Analytical views** (read-only)
+**Analytical views** (19 total — 4 created by DQIII8, 15 pre-existing)
 
 | View                   | Answers                                              |
 |------------------------|------------------------------------------------------|
@@ -122,9 +133,9 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 
 ---
 
-## 4. Agents — .claude/agents/
+## 4. Agents — .claude/agents/ (26 total)
 
-**Core (8)** — use full .md as system prompt
+**Core (8)** — full .md used as system prompt
 
 | Agent               | Model              | Trigger                          |
 |---------------------|--------------------|----------------------------------|
@@ -143,7 +154,7 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 `language`, `legal`, `logic`, `marketing`, `nutrition`, `philosophy`,
 `physics`, `software`, `stats`, `web`, `writing`
 
-System prompt generated dynamically: `domain_lens.py` injects top-k
+System prompt generated dynamically: domain_lens.py injects top-k
 knowledge chunks relevant to the incoming query.
 
 ---
@@ -152,7 +163,7 @@ knowledge chunks relevant to the incoming query.
 
 ```
 knowledge/
-  formal_sciences/    28 docs → 92 chunks   (algorithms, math, stats)
+  formal_sciences/    28 docs →  92 chunks  (algorithms, math, stats)
   natural_sciences/   40 docs → 163 chunks  (biology, chemistry, physics)
   social_sciences/    67 docs → 324 chunks  (business, economics, finance, marketing)
   humanities_arts/     6 docs →  23 chunks  (history, language, philosophy)
@@ -167,16 +178,20 @@ Re-index: `python3 bin/agents/knowledge_indexer.py --domain {name}`
 
 ---
 
-## 6. Services
+## 6. Services & Crons
 
-| Service          | Entry point           | Schedule / Port      |
-|------------------|-----------------------|----------------------|
-| Telegram bot     | `bin/ui/jarvis_bot.py`| always-on (polling)  |
-| Dashboard        | `bin/ui/dashboard.py` | localhost:8080       |
-| Auth watchdog    | `bin/core/auth_watchdog.py` | cron every 30 min |
-| Nightly maint.   | `bin/nightly.sh`      | cron 03:00 UTC       |
-| Morning report   | `bin/ui/jarvis_bot.py`| cron 08:00 UTC       |
-| Autonomous loop  | `bin/autonomous_loop.sh` | manual / on-demand|
+| Service              | Entry point                       | Schedule               |
+|----------------------|-----------------------------------|------------------------|
+| Telegram bot         | `bin/ui/jarvis_bot.py`            | always-on (polling)    |
+| Dashboard            | `bin/ui/dashboard.py`             | localhost:8080         |
+| Auth watchdog        | `bin/core/auth_watchdog.py`       | every 30 min           |
+| Nightly maintenance  | `bin/nightly.sh`                  | 03:00 UTC daily        |
+| Morning report       | `bin/ui/jarvis_bot.py --morning-report` | 08:00 UTC daily  |
+| Analytics collector  | `bin/monitoring/analytics_collector.py` | 09:00 UTC daily  |
+| Memory decay         | `bin/agents/memory_decay.py`      | 04:00 UTC daily        |
+| Sandbox tester       | `bin/tools/sandbox_tester.py`     | every 6 h              |
+| Lessons consolidator | `bin/tools/lessons_consolidator.py` | 05:00 UTC monthly    |
+| Auto researcher      | `bin/tools/auto_researcher.py`    | 06:00 UTC Mondays      |
 
 **Telegram commands:** `/cc <prompt>`, `/cc_status`, `/auth_status`,
 `/auth_test`, `/audit`, `/github_research`, `/gemini_export`  
@@ -188,15 +203,15 @@ Rate limit: 10 `/cc` per hour per chat_id.
 
 ```
 senda-labs/DQIII8  (public, MIT)
-  bin/         ← all scripts
+  bin/         ← all 41 scripts
   knowledge/   ← 733 chunks, domain indexes
-  .claude/     ← agents, hooks, rules
+  .claude/     ← 26 agents, hooks, rules
   database/    ← schema_v2.sql only (no .db)
   install.sh   ← guided setup
 
 dqiii8-workspace  (private, personal)
   config/.env          ← secrets
-  database/dqiii8.db   ← live data
+  database/dqiii8.db   ← live data (43 tables, 19 views)
   my-projects/         ← user projects
   overlay.sh           ← links workspace into public repo clone
 ```

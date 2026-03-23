@@ -310,8 +310,15 @@ def sanitize_prompt(prompt: str) -> str:
     return sanitized
 
 
-def load_agent_system_prompt(agent_name: str) -> str:
-    """Load agent MD from .claude/agents/{agent_name}.md, stripping YAML frontmatter."""
+def load_agent_system_prompt(agent_name: str, prompt: str = "") -> str:
+    """Load agent system prompt.
+
+    For domain specialists (those with `domain:` in YAML frontmatter), calls
+    domain_lens.get_domain_lens() to generate a dynamic system prompt with
+    automatic knowledge enrichment.
+
+    For core agents (no `domain:` field), returns the MD body as before.
+    """
     if not agent_name or agent_name == "default":
         return ""
     jarvis = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
@@ -319,12 +326,41 @@ def load_agent_system_prompt(agent_name: str) -> str:
     if not md_path.exists():
         return ""
     content = md_path.read_text(encoding="utf-8")
-    # Strip YAML frontmatter (--- ... ---)
+
+    # Parse YAML frontmatter to detect domain field
+    domain = None
+    body = content
     if content.startswith("---"):
         end = content.find("---", 3)
         if end != -1:
-            content = content[end + 3:].lstrip("\n")
-    return content.strip()
+            frontmatter = content[3:end].strip()
+            body = content[end + 3:].lstrip("\n")
+            for line in frontmatter.splitlines():
+                if line.startswith("domain:"):
+                    domain = line.split(":", 1)[1].strip()
+                    break
+
+    # Domain specialist: use domain_lens for dynamic system prompt with knowledge
+    if domain and prompt:
+        try:
+            _dl_path = Path(__file__).parent.parent / "agents" / "domain_lens.py"
+            if _dl_path.exists():
+                import importlib.util as _ilu
+                _spec = _ilu.spec_from_file_location("domain_lens", _dl_path)
+                _dl = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_dl)
+                result = _dl.get_domain_lens(prompt, domain)
+                if result.get("system_prompt"):
+                    print(
+                        f"[DQIII8] domain lens: agent={agent_name} "
+                        f"domain={domain} chunks={result['chunks_used']}",
+                        file=sys.stderr,
+                    )
+                    return result["system_prompt"]
+        except Exception:
+            pass  # fall through to MD body on any error
+
+    return body.strip()
 
 
 def build_request(provider_name: str, model: str, prompt: str, system_prompt: str = ""):
@@ -672,8 +708,8 @@ def main() -> None:
         primary_model = "llama-3.3-70b-versatile"
         _escalated_from_ollama = True
 
-    # Load agent system prompt from .claude/agents/{agent}.md
-    system_prompt = load_agent_system_prompt(agent_name)
+    # Load agent system prompt — domain specialists get dynamic lens + knowledge
+    system_prompt = load_agent_system_prompt(agent_name, prompt)
     if system_prompt:
         print(f"[DQIII8] system prompt loaded: {agent_name} ({len(system_prompt)} chars)", file=sys.stderr)
 

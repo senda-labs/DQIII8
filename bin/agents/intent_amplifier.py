@@ -184,6 +184,82 @@ def _retrieve_knowledge(agent_name: str, query: str, top_k: int = 3) -> list[str
         return []
 
 
+# ── Tier-specific chunk filtering ────────────────────────────────────────────
+
+
+def has_specific_data(text: str) -> bool:
+    """True if chunk contains specific/numerical/recent data vs generic definitions."""
+    indicators = [
+        any(ch.isdigit() for ch in text),
+        any(yr in text for yr in ["2024", "2025", "2026"]),
+        any(sym in text for sym in ["%", "$", "€"]),
+        "|" in text,  # table data
+    ]
+    return sum(indicators) >= 2
+
+
+def filter_chunks_for_tier(chunks: list, tier: int) -> list:
+    """Return only the chunks a given tier actually benefits from.
+
+    Tier C (1, local ≤13B): needs everything — structure + knowledge + CoT.
+    Tier B (2, 70B cloud): top 3 most relevant suffice.
+    Tier A (3, frontier): only chunks with specific/numerical data — skip
+    generic definitions the model already knows.
+    """
+    if tier == 1:
+        return chunks
+    if tier == 2:
+        return chunks[:3]
+    # Tier A — filter to chunks containing specific data
+    if chunks and isinstance(chunks[0], dict):
+        filtered = [c for c in chunks if has_specific_data(c.get("text", ""))]
+    else:
+        filtered = [c for c in chunks if has_specific_data(str(c))]
+    return filtered
+
+
+# ── Tier-specific prompt builders ────────────────────────────────────────────
+
+
+def _build_prompt_tier_c(original: str, decomp: dict, domains: list, chunks: list, routing: dict) -> str:
+    """Tier C (local ≤13B): XML tags + explicit CoT for maximum uplift."""
+    parts = []
+    if chunks:
+        knowledge_block = "\n---\n".join(
+            c["text"] if isinstance(c, dict) else str(c) for c in chunks
+        )
+        parts.append(f"<context>\n{knowledge_block}\n</context>")
+    parts.append(f"<task>\n{original}\n</task>")
+    parts.append(
+        "<instructions>Think step by step. Show your reasoning before the final answer.</instructions>"
+    )
+    return "\n\n".join(parts)
+
+
+def _build_prompt_tier_b(original: str, decomp: dict, domains: list, chunks: list, routing: dict) -> str:
+    """Tier B (70B cloud): reference block + concise task — model reasons well on its own."""
+    parts = []
+    if chunks:
+        knowledge_block = "\n---\n".join(
+            c["text"] if isinstance(c, dict) else str(c) for c in chunks
+        )
+        parts.append(f"<reference>\n{knowledge_block}\n</reference>")
+    parts.append(original)
+    return "\n\n".join(parts)
+
+
+def _build_prompt_tier_a(original: str, chunks: list) -> str:
+    """Tier A (frontier): inject only specific data, no scaffolding or CoT."""
+    if not chunks:
+        return original
+    knowledge_block = "\n---\n".join(
+        c["text"] if isinstance(c, dict) else str(c) for c in chunks
+    )
+    if not knowledge_block.strip():
+        return original
+    return f"{knowledge_block}\n\n---\n\n{original}"
+
+
 # ── Phase 5: Prompt construction ─────────────────────────────────────────────
 
 
@@ -194,11 +270,28 @@ def _build_amplified_prompt(
     domains: list,
     chunks: list,
     routing: dict = None,
+    tier: int = None,
 ) -> str:
     """
-    Constructs the amplified prompt by injecting context layers.
-    When routing is provided, shows multi-centroid domain analysis.
+    Constructs the amplified prompt, dispatching to a tier-specific builder
+    when tier is provided. Tier C gets XML+CoT, Tier B gets a reference block,
+    Tier A gets only specific/numerical data with no scaffolding.
+    Falls back to the default [CONTEXT]/[KNOWLEDGE]/[REQUEST] format if tier is None.
     """
+    if tier is not None and chunks:
+        effective_chunks = filter_chunks_for_tier(chunks, tier)
+    else:
+        effective_chunks = chunks
+
+    if tier == 1:
+        return _build_prompt_tier_c(original, decomp, domains, effective_chunks, routing)
+    if tier == 2:
+        return _build_prompt_tier_b(original, decomp, domains, effective_chunks, routing)
+    if tier == 3:
+        return _build_prompt_tier_a(original, effective_chunks)
+
+    # Default: original [CONTEXT]/[KNOWLEDGE]/[REQUEST] format (tier=None or unknown)
+    chunks = effective_chunks
     parts = []
 
     # Context header
@@ -420,13 +513,13 @@ def amplify(
     if template_text:
         chunks.append(template_text)
 
-    # Phase 5
-    _log("phase 5: build prompt")
-    amplified = _build_amplified_prompt(prompt, decomp, intent, domains, chunks, routing)
-
-    # Phase 6
+    # Phase 6 (moved before Phase 5 so tier is available for prompt construction)
     _log("phase 6: tier selection")
     tier = _select_tier(intent, domains, decomp)
+
+    # Phase 5
+    _log("phase 5: build prompt")
+    amplified = _build_amplified_prompt(prompt, decomp, intent, domains, chunks, routing, tier=tier)
 
     elapsed_ms = int((time.time() - t0) * 1000)
     _log(f"done in {elapsed_ms}ms → tier={tier} ({TIER_LABELS[tier]})")

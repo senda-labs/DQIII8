@@ -329,6 +329,43 @@ def test_confidence_gate_skips_empty():
     assert should_enrich("anything", "any", [], 2) is False
 
 
+def test_intent_suffix_calculate():
+    """Calculate intent gets step-by-step suffix."""
+    from knowledge_enricher import get_relevant_chunks
+
+    chunks = get_relevant_chunks("calculate derivative of x^2", "formal_sciences")
+    r = amplify("calculate derivative of x^2", domain="formal_sciences", chunks=chunks)
+    assert (
+        "step" in r["amplified"].lower()
+    ), f"calculate intent must include 'step' in amplified prompt. Got: {r['amplified']}"
+
+
+def test_intent_suffix_compare():
+    """Compare intent gets comparison structure suffix."""
+    from knowledge_enricher import get_relevant_chunks
+
+    chunks = get_relevant_chunks("compare React vs Vue", "applied_sciences")
+    r = amplify(
+        "compare React vs Vue for a startup", domain="applied_sciences", chunks=chunks
+    )
+    assert (
+        "compar" in r["amplified"].lower()
+    ), f"compare intent must include 'compar' in amplified prompt. Got: {r['amplified']}"
+
+
+def test_no_duplicate_cot_tier_c():
+    """Tier C should not have both generic CoT AND intent suffix."""
+    r = amplify("calculate 2+2", domain="formal_sciences", chunks=[])
+    text = r["amplified"]
+    has_generic = "Think step by step" in text
+    has_specific = "each calculation step" in text or "each step" in text
+    assert not (has_generic and has_specific), (
+        f"Duplicate CoT instructions in Tier C: "
+        f"generic={'yes' if has_generic else 'no'} "
+        f"specific={'yes' if has_specific else 'no'}\n{text}"
+    )
+
+
 def test_amplifier_overhead_chars():
     """Amplified prompt overhead (not ratio) must stay in tier-appropriate range.
 

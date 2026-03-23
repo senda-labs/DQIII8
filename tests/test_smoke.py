@@ -277,6 +277,58 @@ def test_vermeer_rerank_prefers_technique_over_prices():
         )
 
 
+def test_confidence_gate_skips_generic():
+    """Confidence gate skips enrichment when chunks are generic definitions."""
+    from confidence_gate import should_enrich
+
+    generic_chunks = [
+        {
+            "text": "Photosynthesis is the process by which plants convert sunlight",
+            "score": 0.25,
+        },
+        {
+            "text": "The process occurs in the chloroplasts of plant cells",
+            "score": 0.22,
+        },
+    ]
+    assert (
+        should_enrich("explain photosynthesis", "natural_sciences", generic_chunks, 2)
+        is False
+    )
+
+
+def test_confidence_gate_enriches_specific():
+    """Confidence gate allows enrichment when chunks have specific data."""
+    from confidence_gate import should_enrich
+
+    specific_chunks = [
+        {
+            "text": "Tesla beta coefficient: 1.82 (2026 Q1). Risk-free rate: 4.25%",
+            "score": 0.35,
+        },
+    ]
+    assert (
+        should_enrich("calculate WACC for Tesla", "social_sciences", specific_chunks, 2)
+        is True
+    )
+
+
+def test_confidence_gate_always_enriches_tier_c():
+    """Tier C always gets enrichment regardless of chunk quality."""
+    from confidence_gate import should_enrich
+
+    assert (
+        should_enrich("anything", "any", [{"text": "generic", "score": 0.1}], 1) is True
+    )
+
+
+def test_confidence_gate_skips_empty():
+    """No chunks = no enrichment."""
+    from confidence_gate import should_enrich
+
+    assert should_enrich("anything", "any", [], 2) is False
+
+
 def test_amplifier_overhead_chars():
     """Amplified prompt overhead (not ratio) must stay in tier-appropriate range.
 

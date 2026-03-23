@@ -2,6 +2,8 @@
 domain: social_sciences
 type: reference_data
 last_updated: 2026-03
+last_verified: 2026-03
+data_quality: A=stable_regulatory B=temporal_market
 keywords_en: [interest rate, central bank, P/E ratio, sector multiple, yield curve, credit spread, EV/EBITDA, inflation, GDP, unemployment, SOFR, EURIBOR]
 keywords_es: [tipo interés, banco central, ratio PE, múltiplo sector, curva tipos, diferencial crédito, inflación, PIB, desempleo, SOFR, EURIBOR]
 ---
@@ -160,3 +162,31 @@ Covenant trigger (typical IG): Net Debt/EBITDA > 3.5x → ratings watch. HY: > 5
 | Leverage Ratio minimum | 3.0% | Tier 1 / Total Exposure |
 | TLAC (G-SIBs) | 18% RWA | Total Loss Absorbing Capacity |
 | Output floor (Basel IV) | 72.5% | SA-based floor on IRB models |
+
+
+## Data Quality Classification
+
+### Category A — Stable Regulatory Minimums (verify if regulations change):
+- Basel IV/CRR3 capital ratios: **BIS BCBS** (bis.org/bcbs/basel3.htm)
+  Published in Basel III: Finalisation of post-crisis reforms (Dec 2017), phased to 2028
+- G-SIB surcharges: **FSB annual G-SIB list** (fsb.org), updated Nov each year
+- NSFR/LCR minimums: **Basel III liquidity framework** (BIS, 2013)
+- TLAC requirement: **FSB TLAC standard** (2015, updated 2019)
+
+### Category B — Temporal Market Data (⚠ verify before use):
+All market rates and prices are approximate values from mid-2025 and WILL change.
+
+| Data | Source | Refresh |
+|------|--------|---------|
+| Central bank rates | Federal Reserve (federalreserve.gov), ECB (ecb.europa.eu), BoE (bankofengland.co.uk) | Per meeting |
+| SOFR, €STR, SONIA | NY Fed (newyorkfed.org/markets/reference-rates), ECB, BoE | Daily |
+| UST yield curve | US Treasury (home.treasury.gov/policy-issues/financing-the-government/interest-rate-statistics) | Daily |
+| S&P 500 sector P/E | Damodaran annual update (stern.nyu.edu/~adamodar/New_Home_Page/datafile/pedata.html) | Jan each year |
+| Credit spreads (OAS) | ICE BofA Global Research / FRED series (BAMLC0A0CM, etc.) | Daily |
+| Macro params (GDP/inflation) | IMF World Economic Outlook (imf.org/en/Publications/WEO) | Apr/Oct each year |
+| WACC ERP (4.6%) | Damodaran implied ERP (stern.nyu.edu/~adamodar/New_Home_Page/datafile/implprem.html) | Jan each year |
+
+### Category B — Estimates (wide ranges, directionally correct):
+- Private market multiples (5-10x ARR): aggregated from Pitchbook, CB Insights, OpenView SaaS Benchmarks
+  These are medians; individual deals vary widely. Not suitable for specific valuations.
+- Leverage ratios by sector: aggregated from Bloomberg, S&P CIQ, company filings. ±0.5x typical variance.

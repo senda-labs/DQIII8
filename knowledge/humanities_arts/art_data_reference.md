@@ -2,6 +2,8 @@
 domain: humanities_arts
 type: reference_data
 last_updated: 2026-03
+last_verified: 2026-03
+data_quality: see bottom
 keywords_en: [painting, artwork, auction, price, artist, date, museum, literature, Nobel Prize, film, box office, music, composition, biography]
 keywords_es: [pintura, obra de arte, subasta, precio, artista, fecha, museo, literatura, Premio Nobel, película, taquilla, música, composición, biografía]
 ---
@@ -150,3 +152,20 @@ Inflation-adjusted #1 (est.): Gone with the Wind (1939) ≈ $3.8B in 2023 dollar
 | The Shard | Renzo Piano | 2012 | 309 | £435M |
 | One World Trade Center | SOM | 2014 | 541 | $3.9B |
 | CCTV Headquarters | Rem Koolhaas (OMA) | 2012 | 234 | $800M |
+
+
+## Data Quality Classification
+
+### Category A — Verified Historical Records:
+- Painting dimensions and dates: museum websites (louvre.fr, moma.org, mauritshuis.nl, uffizi.it)
+- Auction prices (specific sales): Christie's (christies.com), Sotheby's (sothebys.com) official press releases
+- Artist biographical dates: Oxford Art Online / Grove Art, Encyclopaedia Britannica
+- Nobel Prize winners: Nobel Prize Foundation (nobelprize.org) — authoritative, updated annually
+- Box office records: Box Office Mojo (boxofficemojo.com), The Numbers (the-numbers.com)
+- Classical music premieres: Grove Music Online, concert archives
+
+### Category B — Estimates (⚠ verify before use):
+- "Est. Value ($M)": insurance/estimated values for museum-owned works. Not auction-derived.
+  These are rough order-of-magnitude for context; no authoritative public valuation exists.
+- "Est. Copies Sold" for literary works: publisher estimates, literary databases. Round numbers.
+- Paperback prices ($): approximate retail; varies by edition and retailer.

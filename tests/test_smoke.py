@@ -7,6 +7,7 @@ NO mockear nada — tests contra el sistema real.
 Falla → audit score baja a max 80 automáticamente.
 Ejecución: python3 -m pytest tests/test_smoke.py -v
 """
+
 import os
 import sys
 from pathlib import Path
@@ -20,6 +21,7 @@ os.environ.setdefault("DQIII8_ROOT", str(DQIII8_ROOT))
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(DQIII8_ROOT / ".env")
 except ImportError:
     pass
@@ -35,15 +37,16 @@ from embeddings import get_embedding
 
 # ── Prompts canónicos (1 por dominio) ──────────────────────────────────────
 CANONICAL: dict[str, str] = {
-    "formal_sciences":  "derivative of x squared",
+    "formal_sciences": "derivative of x squared",
     "natural_sciences": "photosynthesis process",
-    "social_sciences":  "inflation monetary policy impact",
-    "humanities_arts":  "romanticism in Keats poetry",
+    "social_sciences": "inflation monetary policy impact",
+    "humanities_arts": "romanticism in Keats poetry",
     "applied_sciences": "machine learning neural network training",
 }
 
 
 # ── Tests ──────────────────────────────────────────────────────────────────
+
 
 def test_imports():
     """Todos los módulos core importan sin error."""
@@ -82,9 +85,9 @@ def test_intent_amplifier():
     assert isinstance(result, dict), "amplify() debe devolver dict"
     for key in ("tier", "intent", "amplified"):
         assert key in result, f"key {key!r} ausente en {list(result.keys())}"
-    assert isinstance(result["tier"], int), (
-        f"tier debe ser int, got {type(result['tier'])}"
-    )
+    assert isinstance(
+        result["tier"], int
+    ), f"tier debe ser int, got {type(result['tier'])}"
     assert result["tier"] in (1, 2, 3), f"tier debe ser 1-3, got {result['tier']}"
 
 
@@ -106,21 +109,24 @@ def test_db_connection():
 def test_knowledge_enricher_get_chunks():
     """get_relevant_chunks returns list[dict] without modifying the prompt."""
     from knowledge_enricher import get_relevant_chunks
+
     original = "photosynthesis process"
     chunks = get_relevant_chunks(original, "natural_sciences")
     assert isinstance(chunks, list), f"expected list, got {type(chunks)}"
     if chunks:
         assert all(isinstance(c, dict) for c in chunks), "each item must be dict"
-        assert all("text" in c and "score" in c for c in chunks), "each dict must have text+score"
+        assert all(
+            "text" in c and "score" in c for c in chunks
+        ), "each dict must have text+score"
     assert original == "photosynthesis process", "prompt must not be mutated"
 
 
 def test_amplifier_entity_not_context():
     """Entity extracted from original prompt, not from domain-context prefix."""
     result = amplify("calculate WACC for Tesla", domain="social_sciences")
-    assert result["entity"] != "CONTEXT", (
-        f"entity should not be 'CONTEXT' (double-enrichment bug). Got: {result['entity']!r}"
-    )
+    assert (
+        result["entity"] != "CONTEXT"
+    ), f"entity should not be 'CONTEXT' (double-enrichment bug). Got: {result['entity']!r}"
 
 
 def test_amplifier_chunks_used_post_filter():
@@ -131,12 +137,17 @@ def test_amplifier_chunks_used_post_filter():
     how many chunks were retrieved.
     """
     from knowledge_enricher import get_relevant_chunks
-    chunks = get_relevant_chunks("prove convergence of Newton-Raphson", "formal_sciences", top_k=5)
-    result = amplify("prove convergence of Newton-Raphson", domain="formal_sciences", chunks=chunks)
-    assert result["tier"] == 1, f"expected Tier C (1), got {result['tier']}"
-    assert result["chunks_used"] <= 1, (
-        f"chunks_used should be post-filter (<=1 for Tier C), got {result['chunks_used']}"
+
+    chunks = get_relevant_chunks(
+        "prove convergence of Newton-Raphson", "formal_sciences", top_k=5
     )
+    result = amplify(
+        "prove convergence of Newton-Raphson", domain="formal_sciences", chunks=chunks
+    )
+    assert result["tier"] == 1, f"expected Tier C (1), got {result['tier']}"
+    assert (
+        result["chunks_used"] <= 1
+    ), f"chunks_used should be post-filter (<=1 for Tier C), got {result['chunks_used']}"
 
 
 def test_amplifier_niche_routing_to_tier_a():
@@ -145,8 +156,9 @@ def test_amplifier_niche_routing_to_tier_a():
     Fix 2: _select_tier checks decomp['niche'] first. 'finance' niche → Tier A (3).
     Previously: 'social_sciences' not in high_tier_domains → Tier C (1). Bug.
     """
-    result = amplify("calculate WACC for Tesla assuming 10% cost of equity",
-                     domain="social_sciences")
+    result = amplify(
+        "calculate WACC for Tesla assuming 10% cost of equity", domain="social_sciences"
+    )
     assert result["tier"] == 3, (
         f"finance niche must route to Tier A (3), got Tier {result['tier']}. "
         f"niche={result.get('niche')!r}"
@@ -161,17 +173,66 @@ def test_amplifier_tier_b_no_reference_when_no_specific_chunks():
     amplified == original (no tag injection).
     """
     from knowledge_enricher import get_relevant_chunks
-    chunks = get_relevant_chunks("analyze the use of light in Vermeer paintings",
-                                 "humanities_arts", top_k=5)
-    result = amplify("analyze the use of light in Vermeer paintings",
-                     domain="humanities_arts", chunks=chunks)
+
+    chunks = get_relevant_chunks(
+        "analyze the use of light in Vermeer paintings", "humanities_arts", top_k=5
+    )
+    result = amplify(
+        "analyze the use of light in Vermeer paintings",
+        domain="humanities_arts",
+        chunks=chunks,
+    )
     amp = result["amplified"]
     if result["chunks_used"] == 0:
-        assert amp == "analyze the use of light in Vermeer paintings", (
-            "With 0 specific chunks, Tier B must return original prompt unmodified"
-        )
+        assert (
+            amp == "analyze the use of light in Vermeer paintings"
+        ), "With 0 specific chunks, Tier B must return original prompt unmodified"
     else:
-        assert "<reference>" in amp, "With specific chunks, Tier B must use <reference> tag"
+        assert (
+            "<reference>" in amp
+        ), "With specific chunks, Tier B must use <reference> tag"
+
+
+def test_task_relevance_score_function():
+    """score_task_relevance returns float in [0, 1] for valid inputs, 0.0 for empty."""
+    from knowledge_enricher import score_task_relevance
+
+    score = score_task_relevance(
+        "Vermeer used camera obscura for light", "analyze", "light Vermeer"
+    )
+    assert isinstance(score, float), f"expected float, got {type(score)}"
+    assert 0.0 <= score <= 1.0, f"score out of [0,1]: {score}"
+
+    zero = score_task_relevance("some text", "", "")
+    assert zero == 0.0, f"empty intent+entity must return 0.0, got {zero}"
+
+
+def test_task_relevance_reranking():
+    """Chunks re-ranked by task relevance must not contain 'task_relevance' key < score
+    and the most task-relevant chunk must score higher than the least task-relevant one
+    when intent+entity are provided.
+
+    For 'analyze light Vermeer' the chunk about camera obscura/light technique should
+    rank above a chunk about auction prices — both mention Vermeer but only the first
+    is useful for the task.
+    """
+    from knowledge_enricher import get_relevant_chunks
+
+    chunks = get_relevant_chunks(
+        "analyze the use of light in Vermeer paintings",
+        "humanities_arts",
+        top_k=5,
+        intent="analyze",
+        entity="light Vermeer",
+    )
+    assert isinstance(chunks, list), f"expected list, got {type(chunks)}"
+    if len(chunks) >= 2:
+        assert all("task_relevance" in c for c in chunks), "task_relevance key missing"
+        # First chunk should have highest task_relevance
+        assert chunks[0]["task_relevance"] >= chunks[-1]["task_relevance"], (
+            f"task_relevance not descending: first={chunks[0]['task_relevance']} "
+            f"last={chunks[-1]['task_relevance']}"
+        )
 
 
 def test_amplifier_overhead_chars():
@@ -183,18 +244,33 @@ def test_amplifier_overhead_chars():
     - Tier A: 0-400 chars overhead (raw data only, no scaffolding)
     """
     from knowledge_enricher import get_relevant_chunks
+
     cases = [
-        ("formal_sciences",  "prove convergence of Newton-Raphson method",      1, 30,  600),
-        ("humanities_arts",  "analyze the use of light in Vermeer paintings",   2,  0,  500),
-        ("social_sciences",  "calculate WACC for Tesla assuming 10% cost of equity", 3, 0, 400),
+        ("formal_sciences", "prove convergence of Newton-Raphson method", 1, 30, 600),
+        # Upper bound raised: art_data_reference.md now has Vermeer-specific auction data
+        # that passes has_specific_data(), so Tier B injects a <reference> block (~2000 chars).
+        (
+            "humanities_arts",
+            "analyze the use of light in Vermeer paintings",
+            2,
+            0,
+            3000,
+        ),
+        (
+            "social_sciences",
+            "calculate WACC for Tesla assuming 10% cost of equity",
+            3,
+            0,
+            400,
+        ),
     ]
     for domain, prompt, expected_tier, min_oh, max_oh in cases:
         chunks = get_relevant_chunks(prompt, domain, top_k=5)
         result = amplify(prompt, domain=domain, chunks=chunks)
         overhead = len(result["amplified"]) - len(prompt)
-        assert result["tier"] == expected_tier, (
-            f"{domain}: expected tier {expected_tier}, got {result['tier']}"
-        )
+        assert (
+            result["tier"] == expected_tier
+        ), f"{domain}: expected tier {expected_tier}, got {result['tier']}"
         assert min_oh <= overhead <= max_oh, (
             f"{domain} Tier {expected_tier}: overhead {overhead} chars out of [{min_oh},{max_oh}]. "
             f"amp={len(result['amplified'])}, orig={len(prompt)}"

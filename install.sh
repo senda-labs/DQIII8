@@ -16,81 +16,122 @@ step() { echo -e "\n${YELLOW}▶ $*${NC}"; }
 echo "DQIII8 Install — root: $DQIII8_ROOT"
 echo ""
 
+_INSTALLED=()
+_SKIPPED=()
+_MISSING=()
+
 # ── 1. Python deps ────────────────────────────────────────────────────
-step "1/5 Python dependencies"
-if ! command -v python3 &>/dev/null; then err "python3 not found. Install Python 3.10+."; exit 1; fi
+step "1/6 Python dependencies"
+if ! command -v python3 &>/dev/null; then
+    err "python3 not found. Install Python 3.10+."
+    exit 1
+fi
 PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 ok "Python $PY_VERSION"
 pip install -q -r "$DQIII8_ROOT/requirements.txt" && ok "Python deps installed"
+_INSTALLED+=("Python deps")
 
 # ── 2. Ollama ─────────────────────────────────────────────────────────
-step "2/5 Ollama (local LLM — Tier C)"
+step "2/6 Ollama (local LLM — Tier C)"
 if command -v ollama &>/dev/null; then
     ok "Ollama already installed: $(ollama --version 2>/dev/null | head -1)"
+    _SKIPPED+=("Ollama (already present)")
 else
     warn "Ollama not found. Installing..."
     curl -fsSL https://ollama.com/install.sh | sh
     ok "Ollama installed"
+    _INSTALLED+=("Ollama")
 fi
-# Pull required models
+# Pull required models only if not already present
 for MODEL in qwen2.5-coder:7b nomic-embed-text; do
-    if ollama list 2>/dev/null | grep -q "$MODEL"; then
+    if ollama list 2>/dev/null | grep -q "^${MODEL}"; then
         ok "Model $MODEL already present"
+        _SKIPPED+=("$MODEL")
     else
         echo "  Pulling $MODEL (this may take a few minutes)..."
         ollama pull "$MODEL" && ok "Model $MODEL ready"
+        _INSTALLED+=("$MODEL")
     fi
 done
 
 # ── 3. Claude Code ────────────────────────────────────────────────────
-step "3/5 Claude Code (Anthropic CLI)"
+step "3/6 Claude Code (optional — needed for /cc Telegram command)"
 if command -v claude &>/dev/null; then
-    ok "Claude Code already installed: $(claude --version 2>/dev/null || echo 'version unknown')"
+    ok "Claude Code already installed: $(claude --version 2>/dev/null | echo 'installed')"
+    _SKIPPED+=("Claude Code (already present)")
 else
     warn "Claude Code not found."
     echo ""
     echo "  Claude Code requires accepting Anthropic's Terms of Service."
-    echo "  Install command: npm install -g @anthropic-ai/claude-code"
-    echo "  Docs: https://docs.anthropic.com/claude-code"
+    echo "  To install it manually:"
     echo ""
-    read -r -p "  Install Claude Code now? (y/N): " REPLY
-    if [[ "${REPLY,,}" == "y" ]]; then
-        if ! command -v npm &>/dev/null; then
-            err "npm not found. Install Node.js 18+ first: https://nodejs.org"
-            exit 1
-        fi
-        npm install -g @anthropic-ai/claude-code && ok "Claude Code installed"
+    echo "    curl -fsSL https://claude.ai/install.sh | bash"
+    echo ""
+    echo "  After installing, authenticate with:"
+    echo "    claude /login"
+    echo ""
+    read -r -p "  Proceed without Claude Code? (Y/n): " REPLY
+    if [[ "${REPLY,,}" == "n" ]]; then
+        echo "  Install Claude Code then re-run install.sh."
+        exit 0
     else
-        warn "Skipped. Install manually before using /cc Telegram commands."
+        warn "Skipped. /cc Telegram command will not work until Claude Code is installed."
+        _MISSING+=("Claude Code (optional)")
     fi
 fi
 
-# ── 4. .env ───────────────────────────────────────────────────────────
-step "4/5 Configuration"
+# ── 4. Configuration ──────────────────────────────────────────────────
+step "4/6 Configuration"
 ENV_FILE="$DQIII8_ROOT/config/.env"
 if [[ -f "$ENV_FILE" ]]; then
-    ok ".env already exists"
+    ok "config/.env already exists"
+    _SKIPPED+=("config/.env")
 else
     cp "$DQIII8_ROOT/config/.env.example" "$ENV_FILE"
-    warn ".env created from template — fill in your API keys: $ENV_FILE"
+    warn "config/.env created from template — add your API keys: $ENV_FILE"
+    _INSTALLED+=("config/.env (from template)")
 fi
 
-# ── 5. Database ───────────────────────────────────────────────────────
-step "5/5 Database"
-DB="$DQIII8_ROOT/database/dqiii8.db"
-if [[ -f "$DB" ]] || [[ -L "$DB" ]]; then
-    ok "Database exists: $DB"
+# ── 5. Knowledge index ────────────────────────────────────────────────
+step "5/6 Knowledge indexing"
+if python3 "$DQIII8_ROOT/bin/agents/knowledge_indexer.py" --all 2>&1; then
+    ok "Knowledge base indexed"
+    _INSTALLED+=("Knowledge index")
 else
-    sqlite3 "$DB" < "$DQIII8_ROOT/database/schema_v2.sql" && ok "Database created: $DB"
+    warn "Knowledge indexing failed — check that Ollama is running (ollama serve)"
+    _MISSING+=("Knowledge index (run: python3 bin/agents/knowledge_indexer.py --all)")
 fi
 
-# ── Done ──────────────────────────────────────────────────────────────
+# ── 6. Smoke tests ────────────────────────────────────────────────────
+step "6/6 Verification"
+if python3 -m pytest "$DQIII8_ROOT/tests/test_smoke.py" -q 2>&1; then
+    ok "Smoke tests passed"
+    _INSTALLED+=("Smoke tests ✓")
+else
+    warn "Some smoke tests failed — check the output above"
+    _MISSING+=("Smoke tests (run: python3 -m pytest tests/test_smoke.py -v)")
+fi
+
+# ── Summary ───────────────────────────────────────────────────────────
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-ok "DQIII8 installation complete."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+ok "Installation complete."
+echo ""
+if [[ ${#_INSTALLED[@]} -gt 0 ]]; then
+    echo "  Installed:"
+    for item in "${_INSTALLED[@]}"; do echo "    ✓ $item"; done
+fi
+if [[ ${#_SKIPPED[@]} -gt 0 ]]; then
+    echo "  Already present (skipped):"
+    for item in "${_SKIPPED[@]}"; do echo "    — $item"; done
+fi
+if [[ ${#_MISSING[@]} -gt 0 ]]; then
+    echo "  Missing / manual steps:"
+    for item in "${_MISSING[@]}"; do echo "    ⚠ $item"; done
+fi
 echo ""
 echo "  Next steps:"
-echo "  1. Edit config/.env — add your GROQ_API_KEY and DQIII8_BOT_TOKEN"
-echo "  2. bash bin/j.sh --status — verify system"
-echo "  3. See README.md for full setup guide"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  1. Edit config/.env — add GROQ_API_KEY (free: console.groq.com)"
+echo "  2. python3 bin/core/openrouter_wrapper.py --list  — verify routing"
+echo "  3. See README.md for full usage guide"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

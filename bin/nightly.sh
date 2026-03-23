@@ -1,11 +1,11 @@
 #!/bin/bash
 # DQIII8 Nightly Maintenance Script
-# Run with: bash /root/jarvis/bin/nightly.sh > /root/jarvis/tasks/nightly-report.md 2>&1 &
-# Review tomorrow: cat /root/jarvis/tasks/nightly-report.md
+# Run with: bash $(dirname "$0")/nightly.sh > $DQIII8_ROOT/tasks/nightly-report.md 2>&1 &
+# Review tomorrow: cat $DQIII8_ROOT/tasks/nightly-report.md
 
 set -e
-JARVIS_ROOT="${JARVIS_ROOT:-/root/jarvis}"
-cd "$JARVIS_ROOT"
+DQIII8_ROOT="${DQIII8_ROOT:-/root/jarvis}"
+cd "$DQIII8_ROOT"
 
 echo "# DQ Nightly Report — $(date -u '+%Y-%m-%d %H:%M UTC')"
 echo ""
@@ -49,7 +49,7 @@ echo ""
 
 # ── 4. Unresolved errors review ──
 echo "## 4. Unresolved errors"
-sqlite3 "$JARVIS_ROOT/database/jarvis_metrics.db" \
+sqlite3 "$DQIII8_ROOT/database/dqiii8.db" \
     "SELECT id, error_type, error_message FROM error_log WHERE resolved=0 ORDER BY id;" 2>&1 || echo "  ✗ query failed"
 echo ""
 
@@ -57,13 +57,13 @@ echo ""
 echo "## 5. System health"
 echo "  Disk: $(df -h / | tail -1 | awk '{print $4 " free (" $5 " used)"}')"
 echo "  RAM: $(free -m | awk '/Mem:/{print $7 "MB available"}')"
-echo "  DB size: $(du -h $JARVIS_ROOT/database/jarvis_metrics.db | cut -f1)"
+echo "  DB size: $(du -h $DQIII8_ROOT/database/dqiii8.db | cut -f1)"
 echo "  Uptime: $(uptime -p)"
 echo ""
 
 # ── 6. Local health audit ──
 echo "## 6. Health Audit"
-if python3 "$JARVIS_ROOT/bin/monitoring/auditor_local.py" 2>&1; then
+if python3 "$DQIII8_ROOT/bin/monitoring/auditor_local.py" 2>&1; then
     echo "✓ Audit completed"
 else
     EXIT_CODE=$?
@@ -77,7 +77,7 @@ echo ""
 
 # ── 7. Telemetry (opt-in) ──
 echo "## 6. Telemetry"
-python3 "$JARVIS_ROOT/bin/monitoring/telemetry.py" --send 2>&1 || echo "  Telemetry: disabled or failed"
+python3 "$DQIII8_ROOT/bin/monitoring/telemetry.py" --send 2>&1 || echo "  Telemetry: disabled or failed"
 echo ""
 
 # ── 8. Git commit (no push) ──
@@ -91,21 +91,21 @@ else
 fi
 echo ""
 
-REPORT="${JARVIS_ROOT}/tasks/nightly-report.md"
+REPORT="${DQIII8_ROOT}/tasks/nightly-report.md"
 
 # ── 9. Paper harvester ──
 echo "## 9. Paper Harvest"
-python3 "$JARVIS_ROOT/bin/tools/paper_harvester.py" --all 2>&1 || echo "  Paper harvest failed"
+python3 "$DQIII8_ROOT/bin/tools/paper_harvester.py" --all 2>&1 || echo "  Paper harvest failed"
 echo ""
 
 # ── 10. Prune outdated papers ──
 echo "## 10. Prune Outdated Papers"
-python3 "$JARVIS_ROOT/bin/tools/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
+python3 "$DQIII8_ROOT/bin/tools/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
 echo ""
 
 # ── 11. Smoke tests ──
 echo "## 11. Smoke Tests"
-if python3 -m pytest "$JARVIS_ROOT/tests/test_smoke.py" --tb=short -q 2>&1; then
+if python3 -m pytest "$DQIII8_ROOT/tests/test_smoke.py" --tb=short -q 2>&1; then
     echo "  ✓ All smoke tests passed"
 else
     echo "  ✗ Smoke tests FAILED — audit max score capped at 80"

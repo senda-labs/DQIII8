@@ -17,8 +17,8 @@ import sys
 import time
 from pathlib import Path
 
-JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-AGENTS_DIR = JARVIS_ROOT / ".claude" / "agents"
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+AGENTS_DIR = DQIII8_ROOT / ".claude" / "agents"
 
 sys.path.insert(0, str(Path(__file__).parent))
 from embeddings import get_embedding, cosine_similarity

@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
 
 sys.path.insert(0, str(JARVIS / "bin"))
 from db import get_db
@@ -78,12 +78,12 @@ STRICT RULES:
 3. DO NOT skip DB registration for any step
 4. DO NOT make decisions not in the instructions
 5. When all steps are done, run:
-   python3 /root/jarvis/bin/jal_critic.py
+   python3 $(dirname "$0")/jal_critic.py
 
 STEPS:
 {steps_text}
 
-DB: sqlite3 /root/jarvis/database/jarvis_metrics.db "[SQL]"
+DB: sqlite3 /root/jarvis/database/dqiii8.db "[SQL]"
 
 Start with Step 1."""
 

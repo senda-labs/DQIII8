@@ -30,7 +30,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
 for _d in [
     JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]
 ]:
@@ -266,15 +266,35 @@ def _retrieve_knowledge(agent_name: str, query: str, top_k: int = 3) -> list[str
 # ── Tier-specific chunk filtering ────────────────────────────────────────────
 
 
+_DEFINITION_PATTERNS = (
+    "is defined as",
+    "refers to",
+    "is the process of",
+    "is a type of",
+    "is a method of",
+    "is the study of",
+    "is an approach",
+)
+
+
 def has_specific_data(text: str) -> bool:
-    """True if chunk contains specific/numerical/recent data vs generic definitions."""
+    """True if chunk contains specific/numerical/recent data vs generic definitions.
+
+    Requires 3+ positive indicators (raised from 2) to reduce false positives
+    from domain-specific but off-topic chunks (e.g. biochemistry tables for a
+    photosynthesis query).  Also returns False for definition-style text.
+    """
+    tl = text.lower()
+    if any(pat in tl for pat in _DEFINITION_PATTERNS):
+        return False
     indicators = [
         any(ch.isdigit() for ch in text),
         any(yr in text for yr in ["2024", "2025", "2026"]),
         any(sym in text for sym in ["%", "$", "€"]),
         "|" in text,  # table data
+        any(op in text for op in ["=", "→", "±", "≈", "≤", "≥"]),  # equations
     ]
-    return sum(indicators) >= 2
+    return sum(indicators) >= 3
 
 
 def filter_chunks_for_tier(chunks: list, tier: int) -> list:
@@ -282,14 +302,20 @@ def filter_chunks_for_tier(chunks: list, tier: int) -> list:
 
     Tier C (1, local ≤13B): 1 chunk max — qwen runs at ~15 tok/s on CPU,
     extra chunks cause 180s timeouts without improving quality.
-    Tier B (2, 70B cloud): top 3 most relevant suffice.
+    Tier B (2, 70B cloud): apply has_specific_data filter (same as Tier A)
+    but keep up to 3 results — 70B models know general domain knowledge,
+    only inject chunks with specific/numerical data they may not have.
     Tier A (3, frontier): only chunks with specific/numerical data — skip
     generic definitions the model already knows.
     """
     if tier == 1:
         return chunks[:1]
     if tier == 2:
-        return chunks[:3]
+        if chunks and isinstance(chunks[0], dict):
+            filtered = [c for c in chunks if has_specific_data(c.get("text", ""))]
+        else:
+            filtered = [c for c in chunks if has_specific_data(str(c))]
+        return filtered[:3]
     # Tier A — filter to chunks containing specific data
     if chunks and isinstance(chunks[0], dict):
         filtered = [c for c in chunks if has_specific_data(c.get("text", ""))]

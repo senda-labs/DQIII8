@@ -18,8 +18,8 @@
 
 set -euo pipefail
 
-JARVIS_ROOT="${JARVIS_ROOT:-/root/jarvis}"
-OR_WRAPPER="$JARVIS_ROOT/bin/core/openrouter_wrapper.py"
+DQIII8_ROOT="${DQIII8_ROOT:-/root/jarvis}"
+OR_WRAPPER="$DQIII8_ROOT/bin/core/openrouter_wrapper.py"
 MODEL_SONNET="claude-sonnet-4-6"
 OLLAMA_FALLBACK="qwen/qwen3-235b-a22b:free"
 
@@ -30,7 +30,7 @@ for _varg in "$@"; do
 done
 
 # Load environment variables
-[[ -f "$JARVIS_ROOT/.env" ]] && set -a && source "$JARVIS_ROOT/.env" && set +a
+[[ -f "$DQIII8_ROOT/.env" ]] && set -a && source "$DQIII8_ROOT/.env" && set +a
 
 # ── Dynamic Ollama model — auto-select by AVAILABLE RAM ───────────────────────
 _get_ollama_model() {
@@ -52,7 +52,7 @@ fi
 # Flag A/B: purpose active if .jarvis_proposito exists
 # Enable: touch /root/jarvis/.jarvis_proposito
 # Disable: rm /root/jarvis/.jarvis_proposito
-if [[ -f "$JARVIS_ROOT/.jarvis_proposito" ]]; then
+if [[ -f "$DQIII8_ROOT/.jarvis_proposito" ]]; then
     export JARVIS_PROPOSITO=1
 else
     export JARVIS_PROPOSITO=0
@@ -61,7 +61,7 @@ fi
 check_deps() {
     python3 --version > /dev/null 2>&1 || { echo "❌ Python3 not found"; exit 1; }
     ollama list > /dev/null 2>&1 || echo "⚠️  Ollama not responding — using Tier 2/3 only"
-    [ -f "$JARVIS_ROOT/.env" ] || { echo "❌ .env not found in $JARVIS_ROOT"; exit 1; }
+    [ -f "$DQIII8_ROOT/.env" ] || { echo "❌ .env not found in $DQIII8_ROOT"; exit 1; }
     # Anthropic key is optional — only required when DQ_DEFAULT_TIER=auto and user calls Tier A
     _dq_tier="${DQ_DEFAULT_TIER:-auto}"
     if [[ "$_dq_tier" == "auto" || "$_dq_tier" == "" ]] && [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
@@ -81,7 +81,7 @@ MODEL="sonnet"
 
 show_status() {
     echo "=== DQIII8 Status ==="
-    echo "Project  : $(basename "$JARVIS_ROOT")"
+    echo "Project  : $(basename "$DQIII8_ROOT")"
     echo "Modelo   : $MODEL_SONNET"
     echo "Tier     : 3 (sonnet) | 2 (groq) | 1 (ollama)"
     echo ""
@@ -91,7 +91,7 @@ show_status() {
     echo "── tmux sessions ──"
     tmux ls 2>/dev/null || echo "(none)"
     echo ""
-    python3 "$JARVIS_ROOT/bin/monitoring/subscription.py" 2>/dev/null || echo "(subscription unavailable)"
+    python3 "$DQIII8_ROOT/bin/monitoring/subscription.py" 2>/dev/null || echo "(subscription unavailable)"
 }
 
 ollama_available() {
@@ -113,24 +113,24 @@ _wrap() {
 # ── Early flags — run before full env check ──────────────────────────────────
 case "${1:-}" in
     --voice-test)
-        exec python3 "$JARVIS_ROOT/bin/voice_handler.py" --test
+        exec python3 "$DQIII8_ROOT/bin/voice_handler.py" --test
         ;;
     --setup)
         shift
-        exec python3 "$JARVIS_ROOT/bin/tools/setup_wizard.py" "$@"
+        exec python3 "$DQIII8_ROOT/bin/tools/setup_wizard.py" "$@"
         ;;
     --set-groq)
         if [ -z "${2:-}" ]; then
             echo "Usage: dq --set-groq gsk_YOUR_KEY"
             exit 1
         fi
-        chmod 600 "$JARVIS_ROOT/.env" 2>/dev/null || true
-        if grep -q "^GROQ_API_KEY=" "$JARVIS_ROOT/.env" 2>/dev/null; then
-            sed -i "s|^GROQ_API_KEY=.*|GROQ_API_KEY=$2|" "$JARVIS_ROOT/.env"
+        chmod 600 "$DQIII8_ROOT/.env" 2>/dev/null || true
+        if grep -q "^GROQ_API_KEY=" "$DQIII8_ROOT/.env" 2>/dev/null; then
+            sed -i "s|^GROQ_API_KEY=.*|GROQ_API_KEY=$2|" "$DQIII8_ROOT/.env"
         else
-            echo "GROQ_API_KEY=$2" >> "$JARVIS_ROOT/.env"
+            echo "GROQ_API_KEY=$2" >> "$DQIII8_ROOT/.env"
         fi
-        chmod 600 "$JARVIS_ROOT/.env"
+        chmod 600 "$DQIII8_ROOT/.env"
         echo "✓ Groq API key configured. Tier B now available."
         exit 0
         ;;
@@ -139,13 +139,13 @@ case "${1:-}" in
             echo "Usage: dq --set-anthropic sk-ant-YOUR_KEY"
             exit 1
         fi
-        chmod 600 "$JARVIS_ROOT/.env" 2>/dev/null || true
-        if grep -q "^ANTHROPIC_API_KEY=" "$JARVIS_ROOT/.env" 2>/dev/null; then
-            sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$2|" "$JARVIS_ROOT/.env"
+        chmod 600 "$DQIII8_ROOT/.env" 2>/dev/null || true
+        if grep -q "^ANTHROPIC_API_KEY=" "$DQIII8_ROOT/.env" 2>/dev/null; then
+            sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$2|" "$DQIII8_ROOT/.env"
         else
-            echo "ANTHROPIC_API_KEY=$2" >> "$JARVIS_ROOT/.env"
+            echo "ANTHROPIC_API_KEY=$2" >> "$DQIII8_ROOT/.env"
         fi
-        chmod 600 "$JARVIS_ROOT/.env"
+        chmod 600 "$DQIII8_ROOT/.env"
         echo "✓ Anthropic API key configured. Tiers A/S/S+ now available."
         exit 0
         ;;
@@ -175,10 +175,10 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --audit)
-            exec python3 "$JARVIS_ROOT/bin/monitoring/auditor_local.py"
+            exec python3 "$DQIII8_ROOT/bin/monitoring/auditor_local.py"
             ;;
         --setup)
-            exec python3 "$JARVIS_ROOT/bin/tools/setup_wizard.py"
+            exec python3 "$DQIII8_ROOT/bin/tools/setup_wizard.py"
             ;;
         --set-groq|--set-anthropic)
             # Already handled above; reaching here means they were passed after other flags
@@ -195,7 +195,7 @@ while [[ $# -gt 0 ]]; do
             shift
             OBJECTIVE="${1:-}"
             MAX_HOURS="${2:-8}"
-            exec bash "$JARVIS_ROOT/bin/autonomous_loop.sh" "$OBJECTIVE" "$MAX_HOURS"
+            exec bash "$DQIII8_ROOT/bin/autonomous_loop.sh" "$OBJECTIVE" "$MAX_HOURS"
             ;;
         loop)
             # j loop → starts Claude Code as jarvis user (non-root)
@@ -205,7 +205,7 @@ while [[ $# -gt 0 ]]; do
                 echo "  PermissionAnalyzer active via hooks"
                 echo "  To authenticate: /login"
                 exec su - jarvis -c "
-                    export JARVIS_ROOT='/root/jarvis'
+                    export DQIII8_ROOT='/root/jarvis'
                     export JARVIS_MODE='autonomous'
                     cd /root/math-image-generator
                     claude --add-dir /root/jarvis \
@@ -223,7 +223,7 @@ while [[ $# -gt 0 ]]; do
                 fi
             done
             echo "[DQIII8] Loop → $PROJECT | $CYCLES cycles | model: $TIER" >&2
-            JARVIS_MODE=autonomous python3 "$JARVIS_ROOT/bin/orchestrator_loop.py" \
+            JARVIS_MODE=autonomous python3 "$DQIII8_ROOT/bin/orchestrator_loop.py" \
                 --project "$PROJECT" --cycles "$CYCLES" --tier "$TIER"
             exit 0
             ;;
@@ -232,7 +232,7 @@ while [[ $# -gt 0 ]]; do
             REPORT=$(python3 -c "
 import sqlite3, json
 from pathlib import Path
-DB = Path('$JARVIS_ROOT/database/jarvis_metrics.db')
+DB = Path('$DQIII8_ROOT/database/dqiii8.db')
 conn = sqlite3.connect(str(DB))
 results = conn.execute('SELECT * FROM benchmark_results').fetchall()
 conn.close()
@@ -256,7 +256,7 @@ Be specific and use the actual data."
             ;;
         --chat)
             shift
-            exec python3 "$JARVIS_ROOT/bin/ui/interactive_chat.py" "$@"
+            exec python3 "$DQIII8_ROOT/bin/ui/interactive_chat.py" "$@"
             ;;
         --verbose|--debug)
             VERBOSE=1
@@ -264,15 +264,15 @@ Be specific and use the actual data."
             ;;
         --harvest)
             shift
-            exec python3 "$JARVIS_ROOT/bin/tools/paper_harvester.py" "$@"
+            exec python3 "$DQIII8_ROOT/bin/tools/paper_harvester.py" "$@"
             ;;
         --upload|-u)
             shift
-            exec python3 "$JARVIS_ROOT/bin/agents/knowledge_upload.py" "$@"
+            exec python3 "$DQIII8_ROOT/bin/agents/knowledge_upload.py" "$@"
             ;;
         --dashboard)
             shift
-            exec python3 "$JARVIS_ROOT/bin/ui/dashboard.py" "$@"
+            exec python3 "$DQIII8_ROOT/bin/ui/dashboard.py" "$@"
             ;;
         --help|-h)
             cat <<EOF
@@ -350,7 +350,7 @@ case "$MODEL" in
         fi
         # auto (or unset) → default Sonnet behaviour
         _log "Tier 3 — Claude $MODEL_SONNET | Cost: standard"
-        cd "$JARVIS_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$JARVIS_ROOT"
+        cd "$DQIII8_ROOT" && exec claude --model "$MODEL_SONNET" --add-dir "$DQIII8_ROOT"
         ;;
 
     *)

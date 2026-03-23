@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -184,7 +185,9 @@ def _decompose(prompt: str) -> dict:
     niche = ""
     lowered = prompt.lower()
     for n, signals in niche_signals.items():
-        if any(s in lowered for s in signals):
+        # Use word-boundary match to prevent false positives on substrings
+        # e.g. "eth" must not match "method", "btc" must not match "abstract"
+        if any(re.search(r"\b" + re.escape(s) + r"\b", lowered) for s in signals):
             niche = n
             break
 
@@ -381,12 +384,15 @@ def _build_amplified_prompt(
     chunks: list,
     routing: dict = None,
     tier: int = None,
-) -> str:
+) -> tuple[str, int]:
     """
     Constructs the amplified prompt, dispatching to a tier-specific builder
     when tier is provided. Tier C gets XML+CoT, Tier B gets a reference block,
     Tier A gets only specific/numerical data with no scaffolding.
     Falls back to the default [CONTEXT]/[KNOWLEDGE]/[REQUEST] format if tier is None.
+
+    Returns:
+        (amplified_prompt, chunks_injected) — post-filter count for accurate reporting.
     """
     if tier is not None and chunks:
         effective_chunks = filter_chunks_for_tier(chunks, tier)
@@ -396,13 +402,13 @@ def _build_amplified_prompt(
     if tier == 1:
         return _build_prompt_tier_c(
             original, decomp, domains, effective_chunks, routing
-        )
+        ), len(effective_chunks)
     if tier == 2:
         return _build_prompt_tier_b(
             original, decomp, domains, effective_chunks, routing
-        )
+        ), len(effective_chunks)
     if tier == 3:
-        return _build_prompt_tier_a(original, effective_chunks)
+        return _build_prompt_tier_a(original, effective_chunks), len(effective_chunks)
 
     # Default: original [CONTEXT]/[KNOWLEDGE]/[REQUEST] format (tier=None or unknown)
     chunks = effective_chunks
@@ -444,31 +450,46 @@ def _build_amplified_prompt(
     # Original request
     parts.append(f"[REQUEST]\n{original}")
 
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), len(effective_chunks)
 
 
 # ── Phase 6: Tier selection ───────────────────────────────────────────────────
 
 
+# Niches that require precision over speed — always route to Tier A.
+# These domains have high cost-of-error (wrong WACC, wrong drug dosage, wrong clause).
+_HIGH_PRECISION_NICHES = {"finance", "trading", "legal", "medical", "regulatory"}
+
+
 def _select_tier(intent: dict, domains: list[dict], decomp: dict) -> int:
     """
-    Selects the minimum viable tier based on intent and domain signals.
-    Rules:
-    - finance/trading domain + forecast/plan/report intent → tier 3
-    - research/compare/analyze intent → tier 2
-    - everything else → tier 1
+    Selects the minimum viable tier based on 3 signals (priority order):
+
+    1. Niche (highest signal): precision niches always → Tier A.
+       Rationale: finance/legal/medical have high cost-of-error. Wrong WACC or
+       wrong drug dosage is worse than a slow response.
+    2. Domain + intent (existing logic): broad domain escalation rules.
+    3. Intent tier (fallback): intent's own tier estimate.
     """
+    niche = decomp.get("niche", "")
     domain_names = {d["domain"] for d in domains}
     high_tier_domains = {"finance", "economics", "trading", "business"}
     high_tier_intents = {"forecast", "plan", "report"}
     mid_tier_intents = {"research", "compare", "analyze"}
 
+    # Signal 1: precision niche → Tier A regardless of domain or intent
+    if niche in _HIGH_PRECISION_NICHES:
+        return 3
+
+    # Signal 2: domain-based escalation (unchanged)
     if domain_names & high_tier_domains and intent["id"] in high_tier_intents:
         return 3
     if intent["id"] in high_tier_intents:
         return 3
     if intent["id"] in mid_tier_intents:
         return max(2, intent["tier"])
+
+    # Signal 3: intent tier fallback
     return intent["tier"]
 
 
@@ -646,7 +667,7 @@ def amplify(
 
     # Phase 5
     _log("phase 5: build prompt")
-    amplified = _build_amplified_prompt(
+    amplified, chunks_injected = _build_amplified_prompt(
         prompt, decomp, intent, domains, chunks, routing, tier=tier
     )
 
@@ -667,7 +688,7 @@ def amplify(
         "domains": domains,
         "tier": tier,
         "tier_label": TIER_LABELS[tier],
-        "chunks_used": len(chunks),
+        "chunks_used": chunks_injected,  # post-filter: actual injected count
         "routing": routing,
     }
 

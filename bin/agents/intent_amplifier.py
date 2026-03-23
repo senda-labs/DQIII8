@@ -315,6 +315,8 @@ def amplify(
     prompt: str,
     agent_name: str = "",
     verbose: bool = False,
+    domain: str = None,
+    chunks: list = None,
 ) -> dict:
     """
     Amplifies a raw prompt through the 6-phase pipeline.
@@ -349,24 +351,28 @@ def amplify(
     decomp = _decompose(prompt)
 
     # Phase 2
-    _log("phase 2: domain scoring (hierarchical)")
     routing = None
-    try:
-        from hierarchical_router import classify_hierarchical_cached, retrieve_knowledge_by_routing
-        routing = classify_hierarchical_cached(prompt)
-        if routing["active_centroids"]:
-            primary = routing["active_centroids"][0]
-            domains = [
-                {"domain": c["domain"], "score": c["weight"]}
-                for c in routing["active_centroids"]
-            ]
-            _log(f"  hierarchical: {len(routing['active_centroids'])} active centroids")
-        else:
+    if domain is not None:
+        # Domain provided externally — skip scoring, no DB lookup needed
+        domains = [{"domain": domain, "score": 1.0}]
+        _log(f"phase 2: domain provided externally ({domain})")
+    else:
+        _log("phase 2: domain scoring (hierarchical)")
+        try:
+            from hierarchical_router import classify_hierarchical_cached, retrieve_knowledge_by_routing
+            routing = classify_hierarchical_cached(prompt)
+            if routing["active_centroids"]:
+                domains = [
+                    {"domain": c["domain"], "score": c["weight"]}
+                    for c in routing["active_centroids"]
+                ]
+                _log(f"  hierarchical: {len(routing['active_centroids'])} active centroids")
+            else:
+                domains = _score_domains(prompt)
+                routing = None
+        except ImportError:
             domains = _score_domains(prompt)
             routing = None
-    except ImportError:
-        domains = _score_domains(prompt)
-        routing = None
 
     # Phase 3
     _log("phase 3: intent match")
@@ -374,7 +380,14 @@ def amplify(
 
     # Phase 4
     _log("phase 4: knowledge retrieval")
-    if routing:
+    if chunks is not None:
+        # Chunks pre-retrieved from original prompt externally — normalize to list[str]
+        if chunks and isinstance(chunks[0], dict):
+            chunks = [c["text"] for c in chunks if c.get("text")]
+        else:
+            chunks = [str(c) for c in chunks if c]
+        _log(f"  {len(chunks)} chunks provided externally")
+    elif routing:
         try:
             from embeddings import get_embedding as _get_emb
             prompt_emb = _get_emb(prompt)

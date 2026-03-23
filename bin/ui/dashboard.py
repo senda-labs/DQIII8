@@ -666,7 +666,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
                         "-p",
                         message,
                         stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE,
                         env=env,
                     )
                     tier_used = "claude_oauth"
@@ -681,7 +681,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
                         "anthropic",
                         message,
                         stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE,
                         env=env,
                     )
                     tier_used = "claude_api"
@@ -739,6 +739,11 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
                 yield f"data: {json.dumps({'text': text})}\n\n"
 
             await proc.wait()
+
+            if not full_text:
+                err_hint = "No response from AI backend. Check API keys in Settings."
+                yield f"data: {json.dumps({'error': err_hint})}\n\n"
+                return
 
             elapsed_ms = int((time.time() - t_start) * 1000)
             _persist_chat(session_id, message, full_text)

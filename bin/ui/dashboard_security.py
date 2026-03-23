@@ -4,7 +4,7 @@ import os
 import secrets
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
 
 
 def get_or_create_dashboard_token() -> str:

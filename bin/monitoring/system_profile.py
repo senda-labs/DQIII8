@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
 
 
 def detect_hardware() -> dict:

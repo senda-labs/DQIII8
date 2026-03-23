@@ -4,8 +4,8 @@ import requests
 from datetime import datetime
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS / "database" / "jarvis_metrics.db"
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB = JARVIS / "database" / "dqiii8.db"
 ENV = JARVIS / ".env"
 
 

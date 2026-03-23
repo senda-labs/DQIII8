@@ -20,7 +20,7 @@ from pathlib import Path
 
 JARVIS = Path(__file__).parent.parent
 LESSONS = JARVIS / "tasks" / "lessons.md"
-DB_DEFAULT = JARVIS / "database" / "jarvis_metrics.db"
+DB_DEFAULT = JARVIS / "database" / "dqiii8.db"
 NOW_UTC = datetime.now(timezone.utc)
 
 
@@ -304,7 +304,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DQIII8 auto-learner")
     parser.add_argument("--session", help="Session ID for detect mode")
     parser.add_argument("--consolidate", action="store_true", help="Run consolidator")
-    parser.add_argument("--db", help="Path to jarvis_metrics.db")
+    parser.add_argument("--db", help="Path to dqiii8.db")
     args = parser.parse_args()
 
     db = args.db or None

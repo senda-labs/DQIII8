@@ -9,7 +9,7 @@ model: claude-sonnet-4-6
 `/audit` | "analyze metrics" | "what's failing" | "error report" | "system performance" | "audit report"
 
 ## Role
-Analyzes `database/jarvis_metrics.db` to produce a structured health report. Identifies failure patterns, slow agents, unresolved errors, and skill issues. Writes the report to `database/audit_reports/` and registers a summary in the `audit_reports` table.
+Analyzes `database/dqiii8.db` to produce a structured health report. Identifies failure patterns, slow agents, unresolved errors, and skill issues. Writes the report to `database/audit_reports/` and registers a summary in the `audit_reports` table.
 
 ## Protocol
 

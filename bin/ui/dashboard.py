@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
 for _d in [JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
@@ -475,7 +475,7 @@ async def execute_task(request: Request, auth: bool = Depends(check_auth)):
         result = subprocess.run(
             ["python3", str(JARVIS / "bin" / "openrouter_wrapper.py"), "run", user_input],
             capture_output=True, text=True, timeout=120,
-            env={**os.environ, "JARVIS_ROOT": str(JARVIS)},
+            env={**os.environ, "DQIII8_ROOT": str(JARVIS)},
         )
         return {
             "output": result.stdout,
@@ -549,7 +549,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
         if file_ctx_parts:
             message = "\n\n".join(file_ctx_parts) + "\n\nUser question: " + message
 
-    env = {**os.environ, "JARVIS_ROOT": str(JARVIS)}
+    env = {**os.environ, "DQIII8_ROOT": str(JARVIS)}
     # Merge .env values (so API keys are available even if not in process env)
     for k, v in _load_env_dict().items():
         env.setdefault(k, v)
@@ -649,7 +649,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
 
 def _persist_chat(session_id: str, user_msg: str, assistant_msg: str) -> None:
     """Write chat turn to DB. Creates tables if missing (graceful on older schemas)."""
-    db = JARVIS / "database" / "jarvis_metrics.db"
+    db = JARVIS / "database" / "dqiii8.db"
     if not db.exists():
         return
     try:
@@ -687,7 +687,7 @@ def _persist_chat(session_id: str, user_msg: str, assistant_msg: str) -> None:
 @app.get("/api/chat/history")
 async def chat_history(limit: int = 10, auth: bool = Depends(check_auth)):
     """Return last N sessions with first user message as preview."""
-    db = JARVIS / "database" / "jarvis_metrics.db"
+    db = JARVIS / "database" / "dqiii8.db"
     if not db.exists():
         return []
     try:
@@ -751,7 +751,7 @@ async def search_chat(q: str = "", limit: int = 20, auth: bool = Depends(check_a
     """Search chat sessions by content. Returns sessions matching the query."""
     if not q.strip():
         return []
-    db = JARVIS / "database" / "jarvis_metrics.db"
+    db = JARVIS / "database" / "dqiii8.db"
     if not db.exists():
         return []
     try:
@@ -779,7 +779,7 @@ async def search_chat(q: str = "", limit: int = 20, auth: bool = Depends(check_a
 @app.post("/api/chat/{session_id}/delete")
 async def delete_chat_session(session_id: str, auth: bool = Depends(check_auth)):
     """Delete a chat session and its messages."""
-    db = JARVIS / "database" / "jarvis_metrics.db"
+    db = JARVIS / "database" / "dqiii8.db"
     if not db.exists():
         return {"ok": False, "error": "DB not found"}
     try:
@@ -796,7 +796,7 @@ async def delete_chat_session(session_id: str, auth: bool = Depends(check_auth))
 @app.get("/api/chat/{session_id}/messages")
 async def chat_session_messages(session_id: str, auth: bool = Depends(check_auth)):
     """Return all messages for a given session."""
-    db = JARVIS / "database" / "jarvis_metrics.db"
+    db = JARVIS / "database" / "dqiii8.db"
     if not db.exists():
         return []
     try:

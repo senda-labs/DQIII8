@@ -21,10 +21,10 @@ import sqlite3
 import sys
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
 PROJECTS_DIR = JARVIS / "projects"
 LESSONS_FILE = JARVIS / "tasks" / "lessons.md"
-DB = JARVIS / "database" / "jarvis_metrics.db"
+DB = JARVIS / "database" / "dqiii8.db"
 
 # ── Timeout guard ─────────────────────────────────────────────────────────────
 

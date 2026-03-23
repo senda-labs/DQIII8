@@ -14,8 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-JARVIS_ROOT = Path(__file__).resolve().parent.parent.parent
-for _d in [JARVIS_ROOT / "bin" / "core", JARVIS_ROOT / "bin" / "agents"]:
+DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
+for _d in [DQIII8_ROOT / "bin" / "core", DQIII8_ROOT / "bin" / "agents"]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
 

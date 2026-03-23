@@ -11,7 +11,7 @@
 set -euo pipefail
 
 export JARVIS_MODE=autonomous
-export JARVIS_ROOT=/root/jarvis
+export DQIII8_ROOT="${DQIII8_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 # Prevent CLAUDE_CODE_OAUTH_TOKEN from overriding ~/.claude/.credentials.json
 # Claude Code uses credentials.json with auto-renewal — env var breaks auth
@@ -27,11 +27,11 @@ if [ -z "$OBJECTIVE" ]; then
     exit 1
 fi
 
-JARVIS_ROOT_PATH="/root/jarvis"
-NOTIFY="python3 $JARVIS_ROOT_PATH/bin/core/notify.py"
-OBJECTIVE_FILE="$JARVIS_ROOT_PATH/tasks/current_objective.txt"
+DQIII8_ROOT_PATH="${DQIII8_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+NOTIFY="python3 $DQIII8_ROOT_PATH/bin/core/notify.py"
+OBJECTIVE_FILE="$DQIII8_ROOT_PATH/tasks/current_objective.txt"
 WATCHDOG_PID_FILE="/tmp/jarvis_watchdog.pid"
-STOP_FLAG="$JARVIS_ROOT_PATH/tasks/.stop_flag"
+STOP_FLAG="$DQIII8_ROOT_PATH/tasks/.stop_flag"
 
 echo "DQIII8 Autonomous Mode — Supervisor: ACTIVE"
 echo "   Objective: $OBJECTIVE"
@@ -44,7 +44,7 @@ echo ""
 printf '%s\nStarted: %s\n' "$OBJECTIVE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OBJECTIVE_FILE"
 
 # Launch watchdog in background
-python3 "$JARVIS_ROOT_PATH/bin/autonomous_watchdog.py" &
+python3 "$DQIII8_ROOT_PATH/bin/autonomous_watchdog.py" &
 WATCHDOG_PID=$!
 echo $WATCHDOG_PID > "$WATCHDOG_PID_FILE"
 echo "   Watchdog PID: $WATCHDOG_PID"
@@ -61,8 +61,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cd "$JARVIS_ROOT_PATH"
-mkdir -p "$JARVIS_ROOT_PATH/tasks/results"
+cd "$DQIII8_ROOT_PATH"
+mkdir -p "$DQIII8_ROOT_PATH/tasks/results"
 
 # Calculate timeout in seconds
 MAX_SECONDS=$(( MAX_HOURS * 3600 ))
@@ -117,7 +117,7 @@ while true; do
     REMAINING=$(( MAX_SECONDS - ELAPSED ))
 
     timeout "$REMAINING" claude \
-        --add-dir /root/jarvis \
+        --add-dir "$DQIII8_ROOT_PATH" \
         -p "$OBJECTIVE" \
         < /dev/null \
         2>"$ERR_FILE" \

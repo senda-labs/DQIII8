@@ -18,8 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-JARVIS_ROOT = os.environ.get("JARVIS_ROOT", "/root/jarvis")
-DB = Path(JARVIS_ROOT) / "database" / "jarvis_metrics.db"
+DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/jarvis")
+DB = Path(DQIII8_ROOT) / "database" / "dqiii8.db"
 
 try:
     data = json.load(sys.stdin)

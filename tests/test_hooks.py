@@ -34,7 +34,7 @@ def test_precompact_exits_zero_and_outputs_empty_json():
         capture_output=True,
         text=True,
         timeout=10,
-        env={**os.environ, "JARVIS_ROOT": str(JARVIS), "CLAUDE_SESSION_ID": "test-precompact-01"},
+        env={**os.environ, "DQIII8_ROOT": str(JARVIS), "CLAUDE_SESSION_ID": "test-precompact-01"},
     )
     assert result.returncode == 0, f"precompact.py must exit 0, got {result.returncode}"
     out = json.loads(result.stdout)
@@ -65,7 +65,7 @@ def test_implicit_correction_captured_in_vault():
         tmp = Path(tmpdir)
         db_dir = tmp / "database"
         db_dir.mkdir()
-        db_path = db_dir / "jarvis_metrics.db"
+        db_path = db_dir / "dqiii8.db"
         session_id = "test-impl-corr"
 
         # Minimal DB with required tables
@@ -102,7 +102,7 @@ def test_implicit_correction_captured_in_vault():
 
         env = {
             **os.environ,
-            "JARVIS_ROOT": tmpdir,
+            "DQIII8_ROOT": tmpdir,
             "CLAUDE_SESSION_ID": session_id,
             "JARVIS_PROJECT": "test-project",
         }

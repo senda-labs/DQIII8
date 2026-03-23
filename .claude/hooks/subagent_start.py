@@ -46,13 +46,13 @@ WORKTREE_AGENTS = {"code-reviewer", "python-specialist", "orchestrator"}
 worktree_path = ""
 
 if resolved_name in WORKTREE_AGENTS and agent_id:
-    JARVIS_ROOT = os.environ.get("JARVIS_ROOT", "/root/jarvis")
+    DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/jarvis")
     wt_dir = f"/tmp/jarvis-wt/{agent_id}"
     branch = f"wt-{agent_id[:8]}"
     try:
         subprocess.run(
             ["git", "worktree", "add", wt_dir, "-b", branch],
-            cwd=JARVIS_ROOT,
+            cwd=DQIII8_ROOT,
             capture_output=True,
             timeout=15,
         )
@@ -82,8 +82,8 @@ try:
     import sqlite3
 
     DB = os.path.join(
-        os.environ.get("JARVIS_ROOT", "/root/jarvis"),
-        "database", "jarvis_metrics.db",
+        os.environ.get("DQIII8_ROOT", "/root/jarvis"),
+        "database", "dqiii8.db",
     )
     if os.path.exists(DB):
         conn = sqlite3.connect(DB, timeout=2)

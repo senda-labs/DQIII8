@@ -7,7 +7,7 @@
 4. Gemini responds → copy feedback back
 5. Claude Code applies corrections → registers in `gemini_audits` (DB)
 
-## Table: jarvis_metrics.db → gemini_audits
+## Table: dqiii8.db → gemini_audits
 Fields: `module, metric, report_path, question, gemini_response,
 issues_found, issues_resolved, impact_score, applied_to_code, notes`
 

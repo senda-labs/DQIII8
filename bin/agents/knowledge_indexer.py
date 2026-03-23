@@ -20,9 +20,9 @@ from pathlib import Path
 
 import requests
 
-JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-AGENTS_DIR = JARVIS_ROOT / ".claude" / "agents"
-KNOWLEDGE_ROOT = JARVIS_ROOT / "knowledge"
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+AGENTS_DIR = DQIII8_ROOT / ".claude" / "agents"
+KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text"
 

@@ -82,7 +82,7 @@ try:
     import sqlite3
 
     _DB = os.path.join(
-        os.environ.get("JARVIS_ROOT", "/root/jarvis"), "database", "jarvis_metrics.db"
+        os.environ.get("DQIII8_ROOT", "/root/jarvis"), "database", "dqiii8.db"
     )
     _model = os.environ.get("JARVIS_MODEL", agent)
     _tier = _model_tier(_model)

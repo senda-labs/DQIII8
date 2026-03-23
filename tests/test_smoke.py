@@ -12,15 +12,15 @@ import sys
 from pathlib import Path
 
 # ── Paths y env ────────────────────────────────────────────────────────────
-JARVIS_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(JARVIS_ROOT / "bin" / "core"))
-sys.path.insert(0, str(JARVIS_ROOT / "bin" / "agents"))
+DQIII8_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
+sys.path.insert(0, str(DQIII8_ROOT / "bin" / "agents"))
 
-os.environ.setdefault("JARVIS_ROOT", str(JARVIS_ROOT))
+os.environ.setdefault("DQIII8_ROOT", str(DQIII8_ROOT))
 
 try:
     from dotenv import load_dotenv
-    load_dotenv(JARVIS_ROOT / ".env")
+    load_dotenv(DQIII8_ROOT / ".env")
 except ImportError:
     pass
 

@@ -1,12 +1,12 @@
 ---
 name: instinct-status
-description: Shows learned instincts from jarvis_metrics.db, grouped by project and confidence.
+description: Shows learned instincts from dqiii8.db, grouped by project and confidence.
 allowed_tools: ["Bash"]
 ---
 
 # /instinct-status — Instinct Status
 
-Shows continuous learning instincts stored in `jarvis_metrics.db`.
+Shows continuous learning instincts stored in `dqiii8.db`.
 
 ## Usage
 
@@ -18,7 +18,7 @@ Shows continuous learning instincts stored in `jarvis_metrics.db`.
 
 ## What it does
 
-1. Reads the `instincts` table from `database/jarvis_metrics.db`
+1. Reads the `instincts` table from `database/dqiii8.db`
 2. Groups by project (project-scoped first, then global)
 3. Shows confidence bar + times applied
 4. Highlights high-confidence instincts (>0.7) as "consolidated"
@@ -29,7 +29,7 @@ Shows continuous learning instincts stored in `jarvis_metrics.db`.
 python3 -c "
 import sqlite3, os, sys
 
-DB = 'database/jarvis_metrics.db'
+DB = 'database/dqiii8.db'
 project_filter = None
 top_n = 20
 
@@ -107,7 +107,7 @@ for kw, pattern, conf, applied, successful, proj, created in rows:
 
 ## Notes
 
-- Source: `database/jarvis_metrics.db` table `instincts`
+- Source: `database/dqiii8.db` table `instincts`
 - Updated in each stop.py when there are new lessons in `tasks/lessons.md`
 - Lesson format for parsing: `[YYYY-MM-DD] [KEYWORD] cause → fix`
 - To view full history: `python3 -c "import sqlite3; ..."`

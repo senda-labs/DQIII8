@@ -11,8 +11,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS / "database" / "jarvis_metrics.db"
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB = JARVIS / "database" / "dqiii8.db"
 PROJ = Path(os.environ.get("CONTENT_PROJECT_ROOT", str(JARVIS)))
 OUT_DIR = JARVIS / "tasks" / "gemini_reports"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -138,7 +138,7 @@ def generate_gemini_report(
         "- **VPS:** Ubuntu 24.04 | 8GB RAM | 4 CPUs | 100GB NVMe\n"
         "- **Pipeline:** Python + MoviePy + ElevenLabs + FFmpeg\n"
         "- **Models:** Groq (LLaMA 3.3 70b) + ElevenLabs TTS + Claude API\n"
-        "- **DB:** SQLite jarvis_metrics.db\n"
+        "- **DB:** SQLite dqiii8.db\n"
         f"- **Repo:** {PROJ}/\n\n---\n"
     )
 

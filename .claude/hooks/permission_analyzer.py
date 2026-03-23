@@ -16,8 +16,8 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Configuration ───────────────────────────────────────────────────────────
-JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB_PATH = JARVIS_ROOT / "database" / "jarvis_metrics.db"
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 SESSION_ID = os.environ.get("CLAUDE_SESSION_ID", "unknown")
 JARVIS_MODE = os.environ.get("JARVIS_MODE", "supervised")
 
@@ -25,7 +25,7 @@ JARVIS_MODE = os.environ.get("JARVIS_MODE", "supervised")
 BLOCKED_PATHS = [
     ".env",
     "secrets",
-    "jarvis_metrics.db",
+    "dqiii8.db",
     ".claude/settings.json",
     "CLAUDE.md",
     "schema.sql",
@@ -107,7 +107,7 @@ DENIAL_HINTS: dict[str, str] = {
         "System instructions are not modified from code. "
         "The user updates them manually."
     ),
-    "blocked_path:jarvis_metrics.db": (
+    "blocked_path:dqiii8.db": (
         "Use INSERT/UPDATE via sqlite3 with the existing wrapper. "
         "Do not modify the DB file directly."
     ),
@@ -419,7 +419,7 @@ def _notify_telegram_activation(tool_name: str, pattern: str) -> None:
         import requests
         from dotenv import load_dotenv
 
-        load_dotenv(str(JARVIS_ROOT / ".env"))
+        load_dotenv(str(DQIII8_ROOT / ".env"))
         token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
         if not token or not chat_id:
@@ -544,7 +544,7 @@ def record_rejection(tool: str, inp: dict, result: dict) -> None:
 
     # Channel 2: JSON mailbox (append to array)
     try:
-        reject_path = JARVIS_ROOT / "tasks" / "permission_rejection.json"
+        reject_path = DQIII8_ROOT / "tasks" / "permission_rejection.json"
         existing: list = []
         if reject_path.exists():
             try:

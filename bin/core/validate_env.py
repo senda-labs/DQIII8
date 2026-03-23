@@ -49,15 +49,15 @@ def check_tier_a():
 
 def check_db():
     """Verifica que la DB existe y es accesible."""
-    root = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-    db_path = root / "database" / "jarvis_metrics.db"
+    root = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+    db_path = root / "database" / "dqiii8.db"
     if not db_path.exists():
         return False, f"DB not found at {db_path}"
     try:
         conn = sqlite3.connect(str(db_path), timeout=5)
         conn.execute("SELECT 1")
         conn.close()
-        return True, "jarvis_metrics.db accessible"
+        return True, "dqiii8.db accessible"
     except Exception as e:
         return False, f"DB error: {e}"
 
@@ -97,8 +97,8 @@ def check_vps_health():
         print(f"  ✓ RAM disponible: {mem_available}MB")
 
     # SQLite size
-    root = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-    db_path = root / "database" / "jarvis_metrics.db"
+    root = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+    db_path = root / "database" / "dqiii8.db"
     if db_path.exists():
         db_size_mb = db_path.stat().st_size / (1024**2)
         if db_size_mb > 100:
@@ -188,7 +188,7 @@ def main():
         print(f"  ⚠️  Hardware detection skipped: {_e}")
 
     # Verify .env is not tracked by git
-    ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+    ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
     _tracked = subprocess.run(
         ["git", "ls-files", ".env"],
         capture_output=True, text=True, cwd=str(ROOT)

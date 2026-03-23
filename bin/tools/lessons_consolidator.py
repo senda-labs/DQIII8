@@ -17,9 +17,9 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-LESSONS_FILE = JARVIS_ROOT / "tasks" / "lessons.md"
-ARCHIVE_DIR = JARVIS_ROOT / "tasks" / "lessons_archive"
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+LESSONS_FILE = DQIII8_ROOT / "tasks" / "lessons.md"
+ARCHIVE_DIR = DQIII8_ROOT / "tasks" / "lessons_archive"
 MAX_LESSONS_LINES = 100
 CONSOLIDATE_THRESHOLD = 3
 

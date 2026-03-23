@@ -31,8 +31,8 @@ import sys
 import time
 from pathlib import Path
 
-JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS_ROOT / "database" / "jarvis_metrics.db"
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB = DQIII8_ROOT / "database" / "dqiii8.db"
 
 # ── Layer 1: READ_PREFIXES ───────────────────────────────────────────────────
 # Bash commands starting with these prefixes → auto-approve without LLM
@@ -130,7 +130,7 @@ def _has_critical_pattern(tool_input: dict) -> str | None:
 
 def _read_current_objective() -> str:
     """Reads tasks/current_objective.txt for LLM supervisor context."""
-    obj_file = JARVIS_ROOT / "tasks" / "current_objective.txt"
+    obj_file = DQIII8_ROOT / "tasks" / "current_objective.txt"
     if obj_file.exists():
         return obj_file.read_text(encoding="utf-8").strip()[:300]
     return "No objective set — general autonomous session"
@@ -155,7 +155,7 @@ def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> di
         f"ESCALA = action is risky or ambiguous, needs human approval"
     )
 
-    wrapper = JARVIS_ROOT / "bin" / "openrouter_wrapper.py"
+    wrapper = DQIII8_ROOT / "bin" / "openrouter_wrapper.py"
     if not wrapper.exists():
         return {"decision": "PERMITE", "reason": "wrapper-not-found"}
 

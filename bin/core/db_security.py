@@ -7,8 +7,8 @@ import stat
 import subprocess
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB_PATH = JARVIS / "database" / "jarvis_metrics.db"
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB_PATH = JARVIS / "database" / "dqiii8.db"
 
 
 def secure_db_permissions():

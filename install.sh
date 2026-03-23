@@ -1,391 +1,96 @@
-#!/usr/bin/env bash
-# DQIII8 — Universal Installer
-# Supports: Ubuntu 22.04+, Debian 12+, macOS 13+ (Ventura)
-#
-# Usage:
-#   From cloned repo:  bash install.sh [--no-model]
-#   Via curl:          curl -fsSL https://raw.githubusercontent.com/senda-labs/DQIII8/main/install.sh | bash
-#
-# Flags:
-#   --no-model    Skip pulling qwen2.5-coder:7b (recommended for CI/Docker)
-#
-# Environment vars:
-#   DQIII8_DIR    Override install location (default: /opt/dqiii8 for root, ~/dqiii8 for users)
+#!/bin/bash
+# DQIII8 — Installation Script
+# Usage: bash install.sh
+# Tested on Ubuntu 22.04/24.04
 
 set -euo pipefail
 
-cat << 'BANNER'
+DQIII8_ROOT="${DQIII8_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
-    ██████╗  ██████╗ ██╗██╗██╗ █████╗
-    ██╔══██╗██╔═══██╗██║██║██║██╔══██╗
-    ██║  ██║██║   ██║██║██║██║╚█████╔╝
-    ██║  ██║██║▄▄ ██║██║██║██║██╔══██╗
-    ██████╔╝╚██████╔╝██║██║██║╚█████╔╝
-    ╚═════╝  ╚══▀▀═╝ ╚═╝╚═╝╚═╝ ╚════╝
+ok()   { echo -e "${GREEN}✓${NC} $*"; }
+warn() { echo -e "${YELLOW}⚠${NC} $*"; }
+err()  { echo -e "${RED}✗${NC} $*"; }
+step() { echo -e "\n${YELLOW}▶ $*${NC}"; }
 
-    Works for you. Go outside and live.
+echo "DQIII8 Install — root: $DQIII8_ROOT"
+echo ""
 
-    Self-auditing AI orchestrator
-    70% free model routing | Auto-learning | Zero prompting skill needed
+# ── 1. Python deps ────────────────────────────────────────────────────
+step "1/5 Python dependencies"
+if ! command -v python3 &>/dev/null; then err "python3 not found. Install Python 3.10+."; exit 1; fi
+PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+ok "Python $PY_VERSION"
+pip install -q -r "$DQIII8_ROOT/requirements.txt" && ok "Python deps installed"
 
-    github.com/senda-labs/DQIII8
-
-BANNER
-
-CYAN='\033[0;36m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-info()  { echo -e "${CYAN}[DQIII8]${NC} $*"; }
-ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
-fail()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
-step()  {
-    local num="$1" total="$2" msg="$3"
-    echo ""
-    echo -e "  ${BOLD}[$num/$total]${NC} $msg"
-    echo "  ─────────────────────────────────────"
-}
-
-# ── Parse flags ─────────────────────────────────────────────────────────────
-SKIP_MODEL=0
-for arg in "$@"; do
-    [[ "$arg" == "--no-model" ]] && SKIP_MODEL=1
+# ── 2. Ollama ─────────────────────────────────────────────────────────
+step "2/5 Ollama (local LLM — Tier C)"
+if command -v ollama &>/dev/null; then
+    ok "Ollama already installed: $(ollama --version 2>/dev/null | head -1)"
+else
+    warn "Ollama not found. Installing..."
+    curl -fsSL https://ollama.com/install.sh | sh
+    ok "Ollama installed"
+fi
+# Pull required models
+for MODEL in qwen2.5-coder:7b nomic-embed-text; do
+    if ollama list 2>/dev/null | grep -q "$MODEL"; then
+        ok "Model $MODEL already present"
+    else
+        echo "  Pulling $MODEL (this may take a few minutes)..."
+        ollama pull "$MODEL" && ok "Model $MODEL ready"
+    fi
 done
 
-# ── Root / sudo detection ────────────────────────────────────────────────────
-NO_SYSTEM_PKGS=0
-if [ "$(id -u)" = "0" ]; then
-    SUDO=""
-    info "Running as root"
-elif command -v sudo &>/dev/null; then
-    SUDO="sudo"
-    info "Running as user with sudo"
-else
-    warn "Not root and no sudo available."
-    warn "System packages must be pre-installed: python3.11+, python3-venv, git, curl, zstd, sqlite3"
-    SUDO=""
-    NO_SYSTEM_PKGS=1
-fi
-
-# ── OS / platform detection ──────────────────────────────────────────────────
-step 1 7 "Detecting platform..."
-
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-DISTRO=""
-OS_VERSION=""
-
-case "$OS" in
-    MINGW*|MSYS*|CYGWIN*)
-        echo ""
-        echo "══════════════════════════════════════════════════════"
-        echo "  Windows detected — DQIII8 requires WSL2"
-        echo ""
-        echo "  Install WSL2 (5 minutes, free):"
-        echo "  1. Open PowerShell as Administrator"
-        echo "  2. Run: wsl --install -d Ubuntu-24.04"
-        echo "  3. Restart your computer"
-        echo "  4. Open 'Ubuntu' from Start menu"
-        echo "  5. Run this installer again inside Ubuntu"
-        echo "══════════════════════════════════════════════════════"
-        exit 1
-        ;;
-    Linux)
-        if [ -f /etc/os-release ]; then
-            # shellcheck disable=SC1091
-            . /etc/os-release
-            DISTRO="${ID:-linux}"
-            OS_VERSION="${VERSION_ID:-}"
-        else
-            DISTRO="linux"
-        fi
-        ;;
-    Darwin)
-        DISTRO="macos"
-        OS_VERSION="$(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
-        ;;
-    *)
-        fail "Unsupported OS: $OS. DQIII8 supports Ubuntu 22.04+, Debian 12+, macOS 13+"
-        ;;
-esac
-
-# WSL2 detection (runs as Linux — just log it)
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    info "WSL2 detected — installing normally"
-fi
-
-ok "Platform: $DISTRO $OS_VERSION ($ARCH)"
-
-# ── Install directory ────────────────────────────────────────────────────────
-if [ "$(id -u)" = "0" ]; then
-    DEFAULT_DIR="/opt/dqiii8"
-else
-    DEFAULT_DIR="$HOME/dqiii8"
-fi
-
-# If requirements.txt exists here, we're already inside the repo
-if [ -f "requirements.txt" ] && [ -f "database/schema.sql" ]; then
-    PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
-    cd "$PROJECT_DIR"
-    info "Running from existing repo: $PROJECT_DIR"
-else
-    # Curl-pipe mode: clone the repo first
-    INSTALL_DIR="${DQIII8_DIR:-$DEFAULT_DIR}"
-    info "Target install location: $INSTALL_DIR"
-    if [ -d "$INSTALL_DIR/.git" ]; then
-        info "Repo already exists — pulling latest..."
-        git -C "$INSTALL_DIR" pull --quiet
-    else
-        info "Cloning DQIII8..."
-        git clone --depth=1 https://github.com/senda-labs/DQIII8.git "$INSTALL_DIR"
-    fi
-    PROJECT_DIR="$INSTALL_DIR"
-    cd "$PROJECT_DIR"
-fi
-
-# ── Phase 1: System packages (needs root/sudo) ───────────────────────────────
-step 2 7 "Installing system dependencies..."
-
-if [ "$NO_SYSTEM_PKGS" = "0" ]; then
-    case "$DISTRO" in
-        ubuntu|debian|linuxmint|pop)
-            $SUDO apt-get update -qq
-            $SUDO apt-get install -y -qq \
-                python3 python3-venv python3-pip git curl sqlite3 zstd > /dev/null
-            ok "System packages installed (apt)"
-            ;;
-        macos)
-            if ! command -v brew &>/dev/null; then
-                info "Homebrew not found. Installing..."
-                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            fi
-            brew install python@3.12 git curl sqlite zstd --quiet
-            ok "System packages installed (brew)"
-            ;;
-        *)
-            warn "Unknown distro '$DISTRO'. Skipping system package install."
-            warn "Please ensure python3.11+, python3-venv, git, curl, sqlite3, zstd are installed."
-            ;;
-    esac
-else
-    info "Skipping system package install (no sudo/root)"
-fi
-
-# ── Phase 2: Python virtual environment ─────────────────────────────────────
-PYTHON_BIN="python3"
-if [ "$DISTRO" = "macos" ] && command -v python3.12 &>/dev/null; then
-    PYTHON_BIN="python3.12"
-fi
-
-if [ ! -d "$PROJECT_DIR/.venv" ]; then
-    "$PYTHON_BIN" -m venv "$PROJECT_DIR/.venv"
-fi
-# shellcheck disable=SC1091
-source "$PROJECT_DIR/.venv/bin/activate"
-pip install --upgrade pip -q
-pip install -r "$PROJECT_DIR/requirements.txt" -q
-ok "Python venv ready (.venv) — $($PYTHON_BIN --version)"
-
-# ── Phase 3: Ollama ──────────────────────────────────────────────────────────
-step 3 7 "Installing Ollama (Tier C — free local AI)..."
-
-if command -v ollama &>/dev/null; then
-    ok "Ollama already installed"
-else
-    case "$DISTRO" in
-        macos)
-            if command -v brew &>/dev/null; then
-                brew install ollama --quiet
-                ok "Ollama installed (brew)"
-            else
-                warn "Homebrew not available. Download Ollama from https://ollama.com/download"
-                warn "Then re-run: bash $PROJECT_DIR/install.sh --no-model"
-                SKIP_MODEL=1
-            fi
-            ;;
-        *)
-            curl -fsSL https://ollama.com/install.sh | sh
-            ok "Ollama installed"
-            ;;
-    esac
-fi
-
-if [ "$SKIP_MODEL" = "1" ]; then
-    info "Skipping model pull (--no-model)"
-    ok "Pull later with: ollama pull qwen2.5-coder:7b"
-else
-    # Auto-select model size based on AVAILABLE RAM
-    _avail_mb="$(free -m 2>/dev/null | awk '/^Mem:/{print $7}' || echo 8000)"
-    if [ "${_avail_mb:-0}" -ge 8000 ]; then
-        _model_name="qwen2.5-coder:7b"
-    elif [ "${_avail_mb:-0}" -ge 4000 ]; then
-        _model_name="qwen2.5-coder:3b"
-    else
-        _model_name="qwen2.5-coder:1.5b"
-    fi
-    info "Pulling ${_model_name} (recommended for your RAM)..."
-    if ! ollama list &>/dev/null 2>&1; then
-        ollama serve &>/tmp/ollama-dqiii8.log &
-        sleep 3
-    fi
-    ollama pull "${_model_name}"
-    ok "Model ${_model_name} ready"
-fi
-
-# ── Phase 4: SQLite database ─────────────────────────────────────────────────
-step 4 7 "Setting up DQIII8..."
-
-info "Initializing SQLite database..."
-DB_PATH="$PROJECT_DIR/database/jarvis_metrics.db"
-SCHEMA_PATH="$PROJECT_DIR/database/schema.sql"
-mkdir -p "$PROJECT_DIR/database"
-if [ ! -f "$DB_PATH" ]; then
-    if [ -f "$SCHEMA_PATH" ]; then
-        sqlite3 "$DB_PATH" < "$SCHEMA_PATH"
-        ok "Database created from schema.sql"
-    else
-        sqlite3 "$DB_PATH" "SELECT 1;" > /dev/null
-        ok "Empty database created (schema.sql not found)"
-    fi
-else
-    ok "Database already exists"
-fi
-
-# Purge test/failure artifacts so fresh installs start at 100/100 health
-sqlite3 "$DB_PATH" "
-    DELETE FROM error_log;
-    DELETE FROM agent_actions WHERE success = 0;
-" 2>/dev/null || true
-ok "Database baseline — clean"
-
-# ── Phase 5: Claude Code (optional) ──────────────────────────────────────────
-step 5 7 "Installing Node.js + Claude Code..."
-
-_install_claude_code() {
-    if [ -n "$SUDO" ] && [ "$(id -u)" != "0" ]; then
-        npm install -g @anthropic-ai/claude-code --quiet 2>/dev/null \
-            || npm install --prefix "$HOME/.local" @anthropic-ai/claude-code --quiet 2>/dev/null \
-            || { warn "Claude Code install failed. Install manually: npm install -g @anthropic-ai/claude-code"; return 0; }
-    else
-        npm install -g @anthropic-ai/claude-code --quiet 2>/dev/null \
-            || { warn "Claude Code install failed. Install manually: npm install -g @anthropic-ai/claude-code"; return 0; }
-    fi
-    ok "Claude Code installed"
-}
-
+# ── 3. Claude Code ────────────────────────────────────────────────────
+step "3/5 Claude Code (Anthropic CLI)"
 if command -v claude &>/dev/null; then
-    ok "Claude Code already installed"
-elif command -v npm &>/dev/null; then
-    _install_claude_code
+    ok "Claude Code already installed: $(claude --version 2>/dev/null || echo 'version unknown')"
 else
-    info "Node.js not found. Installing..."
-    case "$DISTRO" in
-        ubuntu|debian|linuxmint|pop)
-            if [ -z "$SUDO" ]; then
-                curl -fsSL https://deb.nodesource.com/setup_22.x | bash - 2>/dev/null
-            else
-                curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - 2>/dev/null
-            fi
-            $SUDO apt-get install -y -qq nodejs > /dev/null
-            _install_claude_code
-            ;;
-        macos)
-            brew install node --quiet
-            _install_claude_code
-            ;;
-        *)
-            warn "Cannot auto-install Node.js on $DISTRO. Install manually then run: npm install -g @anthropic-ai/claude-code"
-            ;;
-    esac
-fi
-
-# ── Phase 6: Environment + alias ────────────────────────────────────────────
-step 6 7 "Configuring environment..."
-
-if [ ! -f "$PROJECT_DIR/.env" ]; then
-    if [ -f "$PROJECT_DIR/config/.env.example" ]; then
-        cp "$PROJECT_DIR/config/.env.example" "$PROJECT_DIR/.env"
-        info "Created .env from template — edit it with your API keys"
+    warn "Claude Code not found."
+    echo ""
+    echo "  Claude Code requires accepting Anthropic's Terms of Service."
+    echo "  Install command: npm install -g @anthropic-ai/claude-code"
+    echo "  Docs: https://docs.anthropic.com/claude-code"
+    echo ""
+    read -r -p "  Install Claude Code now? (y/N): " REPLY
+    if [[ "${REPLY,,}" == "y" ]]; then
+        if ! command -v npm &>/dev/null; then
+            err "npm not found. Install Node.js 18+ first: https://nodejs.org"
+            exit 1
+        fi
+        npm install -g @anthropic-ai/claude-code && ok "Claude Code installed"
     else
-        info ".env.example not found — create .env manually with your API keys"
+        warn "Skipped. Install manually before using /cc Telegram commands."
     fi
-else
+fi
+
+# ── 4. .env ───────────────────────────────────────────────────────────
+step "4/5 Configuration"
+ENV_FILE="$DQIII8_ROOT/config/.env"
+if [[ -f "$ENV_FILE" ]]; then
     ok ".env already exists"
-fi
-
-SHELL_RC="$HOME/.bashrc"
-[ -f "$HOME/.zshrc" ] && SHELL_RC="$HOME/.zshrc"
-
-ALIAS_LINE="alias dq='bash $PROJECT_DIR/bin/j.sh'"
-if ! grep -q "alias dq=" "$SHELL_RC" 2>/dev/null; then
-    echo "" >> "$SHELL_RC"
-    echo "# DQIII8" >> "$SHELL_RC"
-    echo "$ALIAS_LINE" >> "$SHELL_RC"
-    echo "export JARVIS_ROOT='$PROJECT_DIR'" >> "$SHELL_RC"
-    ok "Added 'dq' alias and JARVIS_ROOT to $SHELL_RC"
-elif ! grep -q "JARVIS_ROOT" "$SHELL_RC" 2>/dev/null; then
-    echo "export JARVIS_ROOT='$PROJECT_DIR'" >> "$SHELL_RC"
-    ok "Added JARVIS_ROOT=$PROJECT_DIR to $SHELL_RC"
 else
-    ok "'dq' alias and JARVIS_ROOT already in $SHELL_RC"
+    cp "$DQIII8_ROOT/config/.env.example" "$ENV_FILE"
+    warn ".env created from template — fill in your API keys: $ENV_FILE"
 fi
 
-# ── Phase 7: Security verification ──────────────────────────────────────────
-step 7 7 "Running security checks..."
-
-if [ -f "$PROJECT_DIR/bin/verify_install.py" ]; then
-    python3 "$PROJECT_DIR/bin/verify_install.py" || warn "Some security checks failed — see above"
+# ── 5. Database ───────────────────────────────────────────────────────
+step "5/5 Database"
+DB="$DQIII8_ROOT/database/dqiii8.db"
+if [[ -f "$DB" ]] || [[ -L "$DB" ]]; then
+    ok "Database exists: $DB"
 else
-    warn "bin/verify_install.py not found — skipping security check"
+    sqlite3 "$DB" < "$DQIII8_ROOT/database/schema_v2.sql" && ok "Database created: $DB"
 fi
 
-# ── Done ─────────────────────────────────────────────────────────────────────
-# Read API key status from .env for the tier summary
-GROQ_KEY=""
-ANTHROPIC_KEY=""
-if [ -f "$PROJECT_DIR/.env" ]; then
-    GROQ_KEY="$(grep -E '^GROQ_API_KEY=' "$PROJECT_DIR/.env" | cut -d= -f2 | tr -d '[:space:]')"
-    ANTHROPIC_KEY="$(grep -E '^ANTHROPIC_API_KEY=' "$PROJECT_DIR/.env" | cut -d= -f2 | tr -d '[:space:]')"
-fi
-
-TIER_B_STATUS="✗ Add GROQ_API_KEY to .env"
-TIER_A_STATUS="✗ Add ANTHROPIC_API_KEY to .env"
-[ -n "$GROQ_KEY" ] && TIER_B_STATUS="✓ Ready"
-[ -n "$ANTHROPIC_KEY" ] && TIER_A_STATUS="✓ Ready"
-
+# ── Done ──────────────────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}  ══════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}   DQIII8 installed successfully!${NC}"
-echo -e "${GREEN}  ══════════════════════════════════════════════════${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+ok "DQIII8 installation complete."
 echo ""
-echo "   Location:  $PROJECT_DIR"
-echo "   Config:    $PROJECT_DIR/.env"
-echo ""
-echo "   Quick start:"
-echo "     source $SHELL_RC"
-echo "     dq \"Create a business plan for a coffee shop in my city\""
-echo ""
-echo "   Tiers available:"
-echo "     Tier C (local, free)  ✓ Ready"
-echo "     Tier B (Groq, free)   $TIER_B_STATUS"
-echo "     Tier A (Claude, paid) $TIER_A_STATUS"
-echo ""
-echo "   Learn more:  github.com/senda-labs/DQIII8"
-echo "   Privacy:     $PROJECT_DIR/PRIVACY.md"
-echo -e "${GREEN}  ══════════════════════════════════════════════════${NC}"
-echo ""
-echo "═══ Quick Setup ═══"
-echo "  Configure API keys and default tier:"
-echo "    dq --setup"
-echo ""
-echo "  Or set keys directly:"
-echo "    dq --set-groq gsk_YOUR_KEY        # Free cloud models (Tier B)"
-echo "    dq --set-anthropic sk-ant_YOUR_KEY # Paid Claude models (Tier A)"
-echo ""
-echo "  Launch web dashboard:"
-echo "    dq --dashboard                    # UI at http://localhost:8080"
-echo ""
+echo "  Next steps:"
+echo "  1. Edit config/.env — add your GROQ_API_KEY and DQIII8_BOT_TOKEN"
+echo "  2. bash bin/j.sh --status — verify system"
+echo "  3. See README.md for full setup guide"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

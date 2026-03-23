@@ -87,8 +87,8 @@ def test_deny_edit_claude_md():
 
 
 def test_deny_write_to_db():
-    """Writing to jarvis_metrics.db should be denied."""
-    r = analyzer.evaluate("Write", {"file_path": "database/jarvis_metrics.db"})
+    """Writing to dqiii8.db should be denied."""
+    r = analyzer.evaluate("Write", {"file_path": "database/dqiii8.db"})
     assert r["decision"] == "DENY"
 
 

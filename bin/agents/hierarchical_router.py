@@ -29,15 +29,15 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
-_JARVIS_ROOT = Path(os.environ.get('JARVIS_ROOT', str(Path(__file__).parent.parent.parent)))
-for _d in [_JARVIS_ROOT / 'bin' / s for s in ['', 'core', 'agents', 'monitoring', 'tools', 'ui']]:
+_DQIII8_ROOT = Path(os.environ.get('DQIII8_ROOT', str(Path(__file__).parent.parent.parent)))
+for _d in [_DQIII8_ROOT / 'bin' / s for s in ['', 'core', 'agents', 'monitoring', 'tools', 'ui']]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
 
 from embeddings import cosine_similarity, get_embedding
 from db import get_db
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", str(_JARVIS_ROOT)))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", str(_DQIII8_ROOT)))
 KNOWLEDGE_DIR = JARVIS / "knowledge"
 
 # ── Configuration ─────────────────────────────────────────────────────────

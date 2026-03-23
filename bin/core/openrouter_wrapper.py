@@ -632,14 +632,17 @@ def main() -> None:
         print("[openrouter_wrapper] Error: empty prompt.", file=sys.stderr)
         sys.exit(1)
 
-    # Domain enrichment (best-effort — no failure if enricher/classifier unavailable)
+    # Linear pipeline: classify → get_chunks (no prompt mutation) → amplify(original)
+    # This prevents the double-enrichment bug where enrich_with_knowledge() prepended
+    # [DOMAIN CONTEXT] to the prompt before amplify() ran, causing entity="CONTEXT".
     _enriched_domain = None
     _routing_domain = None  # captured for tier escalation below
     _knowledge_chunks = 0
     try:
         _dc_path = Path(__file__).parent.parent / "agents" / "domain_classifier.py"
         _ke_path = Path(__file__).parent.parent / "agents" / "knowledge_enricher.py"
-        if _dc_path.exists() and _ke_path.exists():
+        _ia_path = Path(__file__).parent.parent / "agents" / "intent_amplifier.py"
+        if _dc_path.exists() and _ke_path.exists() and _ia_path.exists():
             import importlib.util as _ilu
 
             _spec = _ilu.spec_from_file_location("domain_classifier", _dc_path)
@@ -647,36 +650,34 @@ def main() -> None:
             _spec.loader.exec_module(_dc)
             _domain, _score, _method = _dc.classify_domain(prompt)
             _routing_domain = _domain  # always capture, used for escalation
+
             if _method != "default":
+                # Step 2: get chunks from ORIGINAL prompt — no mutation
                 _spec2 = _ilu.spec_from_file_location("knowledge_enricher", _ke_path)
                 _ke = _ilu.module_from_spec(_spec2)
                 _spec2.loader.exec_module(_ke)
-                prompt, _knowledge_chunks = _ke.enrich_with_knowledge(prompt, _domain)
-                if _knowledge_chunks > 0:
+                _chunks = _ke.get_relevant_chunks(prompt, _domain)
+
+                # Step 3: amplify ORIGINAL prompt with pre-fetched domain + chunks
+                _spec3 = _ilu.spec_from_file_location("intent_amplifier", _ia_path)
+                _ia = _ilu.module_from_spec(_spec3)
+                _spec3.loader.exec_module(_ia)
+                _ia_result = _ia.amplify(
+                    prompt,
+                    domain=_domain,
+                    chunks=_chunks,
+                    verbose=False,
+                )
+                if _ia_result.get("chunks_used", 0) > 0 or _ia_result.get("action"):
+                    prompt = _ia_result["amplified"]
+                    _knowledge_chunks = _ia_result["chunks_used"]
                     _enriched_domain = _domain
                     print(
-                        f"[DQIII8] knowledge enrichment: domain={_domain} chunks={_knowledge_chunks}",
+                        f"[DQIII8] pipeline: domain={_domain} "
+                        f"chunks={_knowledge_chunks} "
+                        f"intent={_ia_result['intent']} tier={_ia_result['tier']}",
                         file=sys.stderr,
                     )
-    except Exception:
-        pass
-
-    # Prompt enrichment (best-effort — adds domain context when available)
-    try:
-        _ia_path = Path(__file__).parent.parent / "agents" / "intent_amplifier.py"
-        if _ia_path.exists():
-            import importlib.util as _ilu2
-            _ia_spec = _ilu2.spec_from_file_location("intent_amplifier", _ia_path)
-            _ia_mod = _ilu2.module_from_spec(_ia_spec)
-            _ia_spec.loader.exec_module(_ia_mod)
-            _ia_result = _ia_mod.amplify(prompt, verbose=False)
-            if _ia_result.get("chunks_used", 0) > 0 or _ia_result.get("action"):
-                prompt = _ia_result["amplified"]
-                print(
-                    f"[DQIII8] amplifier: intent={_ia_result['intent']} "
-                    f"tier={_ia_result['tier']} chunks={_ia_result['chunks_used']}",
-                    file=sys.stderr,
-                )
     except Exception:
         pass
 

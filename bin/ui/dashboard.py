@@ -8,6 +8,7 @@ Usage:
     python3 bin/dashboard.py --host 0.0.0.0     # all interfaces (token required)
     python3 bin/dashboard.py --port 9090        # custom port
 """
+
 import asyncio
 import json
 import os
@@ -17,11 +18,13 @@ import subprocess
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
-for _d in [JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]]:
+for _d in [
+    JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]
+]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
 
@@ -45,6 +48,7 @@ REQUIRE_AUTH = HOST != "127.0.0.1"
 
 # ── Claude OAuth detection ────────────────────────────────────────────────
 
+
 def detect_claude_oauth() -> dict:
     """Check if Claude Code CLI is installed and authenticated.
 
@@ -61,8 +65,15 @@ def detect_claude_oauth() -> dict:
         if f.exists():
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
-                if any(data.get(k) for k in ("token", "access_token", "sessionKey", "claudeApiKey")):
-                    return {"available": True, "method": "oauth_file", "plan": "Pro/Team"}
+                if any(
+                    data.get(k)
+                    for k in ("token", "access_token", "sessionKey", "claudeApiKey")
+                ):
+                    return {
+                        "available": True,
+                        "method": "oauth_file",
+                        "plan": "Pro/Team",
+                    }
             except Exception:
                 pass
 
@@ -97,7 +108,9 @@ def detect_claude_oauth() -> dict:
     try:
         r2 = subprocess.run(
             ["claude", "-p", "say ok"],
-            capture_output=True, text=True, timeout=20,
+            capture_output=True,
+            text=True,
+            timeout=20,
         )
         if r2.returncode == 0:
             return {
@@ -137,7 +150,9 @@ def _load_env_dict() -> dict:
 def _write_env_key(key: str, value: str) -> None:
     """Safely update or append a single key in .env."""
     env_file = JARVIS / ".env"
-    lines = env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else []
+    lines = (
+        env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else []
+    )
     written = False
     output = []
     for line in lines:
@@ -153,22 +168,48 @@ def _write_env_key(key: str, value: str) -> None:
     env_file.write_text("\n".join(output) + "\n", encoding="utf-8")
     env_file.chmod(0o600)
 
+
 # Intent pattern → representative subtasks
 _INTENT_SUBTASKS: dict[str, list[str]] = {
-    "analyze":   ["Data Collection", "Statistical Analysis", "Pattern Detection", "Report Generation"],
-    "generate":  ["Requirements Analysis", "Draft Creation", "Review", "Finalization"],
-    "optimize":  ["Performance Profiling", "Bottleneck Identification", "Refactoring", "Benchmarking"],
-    "debug":     ["Error Reproduction", "Root Cause Analysis", "Fix Implementation", "Regression Testing"],
-    "research":  ["Source Discovery", "Data Extraction", "Analysis", "Synthesis"],
+    "analyze": [
+        "Data Collection",
+        "Statistical Analysis",
+        "Pattern Detection",
+        "Report Generation",
+    ],
+    "generate": ["Requirements Analysis", "Draft Creation", "Review", "Finalization"],
+    "optimize": [
+        "Performance Profiling",
+        "Bottleneck Identification",
+        "Refactoring",
+        "Benchmarking",
+    ],
+    "debug": [
+        "Error Reproduction",
+        "Root Cause Analysis",
+        "Fix Implementation",
+        "Regression Testing",
+    ],
+    "research": ["Source Discovery", "Data Extraction", "Analysis", "Synthesis"],
     "summarize": ["Content Parsing", "Key Points Extraction", "Summary Draft"],
-    "compare":   ["Criteria Definition", "Data Collection", "Analysis", "Recommendation"],
-    "forecast":  ["Historical Analysis", "Model Selection", "Projection", "Confidence Intervals"],
-    "explain":   ["Concept Decomposition", "Examples", "Analogies", "Summary"],
+    "compare": ["Criteria Definition", "Data Collection", "Analysis", "Recommendation"],
+    "forecast": [
+        "Historical Analysis",
+        "Model Selection",
+        "Projection",
+        "Confidence Intervals",
+    ],
+    "explain": ["Concept Decomposition", "Examples", "Analogies", "Summary"],
     "transform": ["Source Parsing", "Mapping", "Transformation", "Validation"],
-    "validate":  ["Schema Check", "Business Rules", "Edge Cases", "Report"],
-    "plan":      ["Requirements Gathering", "Architecture Design", "Task Breakdown", "Timeline"],
-    "automate":  ["Process Mapping", "Script Development", "Testing", "Deployment"],
-    "report":    ["Data Collection", "Analysis", "Visualization", "Executive Summary"],
+    "validate": ["Schema Check", "Business Rules", "Edge Cases", "Report"],
+    "plan": [
+        "Requirements Gathering",
+        "Architecture Design",
+        "Task Breakdown",
+        "Timeline",
+    ],
+    "automate": ["Process Mapping", "Script Development", "Testing", "Deployment"],
+    "report": ["Data Collection", "Analysis", "Visualization", "Executive Summary"],
 }
 
 # ── HTML templates (lazy-loaded on startup) ────────────────────────────────
@@ -199,8 +240,18 @@ UPLOAD_DIR = JARVIS / "uploads" / "chat"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {
-    ".pdf", ".md", ".txt", ".json", ".csv", ".xlsx", ".xls",
-    ".png", ".jpg", ".jpeg", ".webp", ".gif",
+    ".pdf",
+    ".md",
+    ".txt",
+    ".json",
+    ".csv",
+    ".xlsx",
+    ".xls",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -217,7 +268,9 @@ def _extract_text(path: Path, suffix: str) -> str:
         try:
             r = subprocess.run(
                 ["pdftotext", str(path), "-"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if r.returncode == 0 and r.stdout:
                 return r.stdout[:8000]
@@ -226,6 +279,7 @@ def _extract_text(path: Path, suffix: str) -> str:
         # Fallback: PyPDF2
         try:
             import PyPDF2  # type: ignore
+
             text = []
             with open(path, "rb") as f:
                 reader = PyPDF2.PdfReader(f)
@@ -238,6 +292,7 @@ def _extract_text(path: Path, suffix: str) -> str:
     if suffix in (".xlsx", ".xls"):
         try:
             import openpyxl  # type: ignore
+
             wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
             rows = []
             for sheet in wb.worksheets[:3]:
@@ -255,7 +310,9 @@ def _extract_text(path: Path, suffix: str) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global DASHBOARD_HTML, LOGIN_HTML
-    DASHBOARD_HTML = _load_html(DASHBOARD_HTML_PATH, "<h1>DQ Dashboard</h1><p>dashboard.html not found.</p>")
+    DASHBOARD_HTML = _load_html(
+        DASHBOARD_HTML_PATH, "<h1>DQ Dashboard</h1><p>dashboard.html not found.</p>"
+    )
     LOGIN_HTML = _load_html(LOGIN_HTML_PATH, _LOGIN_FALLBACK)
 
     token = get_or_create_dashboard_token()
@@ -299,34 +356,44 @@ async def check_auth(request: Request) -> bool:
 
 # ── API Endpoints ─────────────────────────────────────────────────────────
 
+
 @app.get("/api/health")
 async def health(auth: bool = Depends(check_auth)):
     """System health and aggregated metrics for the last 7 days."""
-    week_ago = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
 
     with get_db() as conn:
         sessions = conn.execute(
             "SELECT COUNT(*) FROM sessions WHERE date(start_time) >= ?", (week_ago,)
         ).fetchone()[0]
 
-        actions = conn.execute("""
+        actions = conn.execute(
+            """
             SELECT COUNT(*) as total,
                    ROUND(AVG(success) * 100, 1) as success_rate
             FROM agent_actions WHERE date(timestamp) >= ?
-        """, (week_ago,)).fetchone()
+        """,
+            (week_ago,),
+        ).fetchone()
 
-        errors = conn.execute("""
+        errors = conn.execute(
+            """
             SELECT COUNT(*) as total,
                    SUM(CASE WHEN resolved = 1 THEN 1 ELSE 0 END) as resolved
             FROM error_log WHERE date(timestamp) >= ?
-        """, (week_ago,)).fetchone()
+        """,
+            (week_ago,),
+        ).fetchone()
 
-        tiers = conn.execute("""
+        tiers = conn.execute(
+            """
             SELECT tier, COUNT(*) as count,
                    ROUND(SUM(estimated_cost_usd), 4) as cost
             FROM agent_actions WHERE date(timestamp) >= ?
             GROUP BY tier
-        """, (week_ago,)).fetchall()
+        """,
+            (week_ago,),
+        ).fetchall()
 
         audit = conn.execute(
             "SELECT overall_score, timestamp FROM audit_reports ORDER BY timestamp DESC LIMIT 1"
@@ -356,14 +423,17 @@ async def health(auth: bool = Depends(check_auth)):
 async def recent_sessions(limit: int = 20, auth: bool = Depends(check_auth)):
     """Recent sessions with derived status and action count."""
     with get_db() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT session_id, start_time, end_time,
                    CASE WHEN end_time IS NULL THEN 'active' ELSE 'ended' END as status,
                    (SELECT COUNT(*) FROM agent_actions WHERE session_id = s.session_id) as actions
             FROM sessions s
             ORDER BY start_time DESC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """,
+            (limit,),
+        ).fetchall()
 
     return [
         {"id": r[0], "start": r[1], "end": r[2], "status": r[3], "actions": r[4]}
@@ -375,19 +445,27 @@ async def recent_sessions(limit: int = 20, auth: bool = Depends(check_auth)):
 async def recent_tasks(limit: int = 50, auth: bool = Depends(check_auth)):
     """Recent agent_actions records."""
     with get_db() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT timestamp, agent_name, tier, success,
                    duration_ms, estimated_cost_usd, tokens_input, tokens_output
             FROM agent_actions
             ORDER BY timestamp DESC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """,
+            (limit,),
+        ).fetchall()
 
     return [
         {
-            "timestamp": r[0], "agent": r[1], "tier": r[2],
-            "success": bool(r[3]), "duration_ms": r[4],
-            "cost": r[5], "tokens_in": r[6], "tokens_out": r[7],
+            "timestamp": r[0],
+            "agent": r[1],
+            "tier": r[2],
+            "success": bool(r[3]),
+            "duration_ms": r[4],
+            "cost": r[5],
+            "tokens_in": r[6],
+            "tokens_out": r[7],
         }
         for r in rows
     ]
@@ -404,6 +482,7 @@ async def amplify_intent(request: Request, auth: bool = Depends(check_auth)):
 
     try:
         from intent_amplifier import amplify
+
         result = amplify(user_input)
 
         domains = result.get("domains", [])
@@ -456,6 +535,7 @@ async def route_preview(request: Request, auth: bool = Depends(check_auth)):
 
     try:
         from hierarchical_router import classify_hierarchical
+
         result = classify_hierarchical(user_input)
         return result
     except ImportError:
@@ -473,8 +553,15 @@ async def execute_task(request: Request, auth: bool = Depends(check_auth)):
 
     try:
         result = subprocess.run(
-            ["python3", str(JARVIS / "bin" / "openrouter_wrapper.py"), "run", user_input],
-            capture_output=True, text=True, timeout=120,
+            [
+                "python3",
+                str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                "run",
+                user_input,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
             env={**os.environ, "DQIII8_ROOT": str(JARVIS)},
         )
         return {
@@ -490,19 +577,28 @@ async def execute_task(request: Request, auth: bool = Depends(check_auth)):
 async def amplification_log(limit: int = 20, auth: bool = Depends(check_auth)):
     """Recent amplification log entries."""
     with get_db() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT created_at, original_prompt, action_detected, entity_detected,
                    niche_detected, top_domain, intent_pattern, tier_selected, elapsed_ms
             FROM amplification_log
             ORDER BY created_at DESC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """,
+            (limit,),
+        ).fetchall()
 
     return [
         {
-            "timestamp": r[0], "input": r[1], "action": r[2],
-            "entity": r[3], "niche": r[4], "domain": r[5],
-            "pattern": r[6], "tier": r[7], "elapsed_ms": r[8],
+            "timestamp": r[0],
+            "input": r[1],
+            "action": r[2],
+            "entity": r[3],
+            "niche": r[4],
+            "domain": r[5],
+            "pattern": r[6],
+            "tier": r[7],
+            "elapsed_ms": r[8],
         }
         for r in rows
     ]
@@ -513,12 +609,14 @@ async def subscription_status(auth: bool = Depends(check_auth)):
     """Monthly budget and API cost tracking."""
     try:
         from subscription import get_status
+
         return get_status()
     except Exception as exc:
         return {"error": str(exc), "unlimited": True, "used_usd": 0.0, "budget_usd": 0}
 
 
 # ── Chat endpoints ────────────────────────────────────────────────────────
+
 
 @app.post("/api/chat")
 async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
@@ -564,7 +662,9 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
                 oauth = detect_claude_oauth()
                 if oauth["available"]:
                     proc = await asyncio.create_subprocess_exec(
-                        "claude", "-p", message,
+                        "claude",
+                        "-p",
+                        message,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.DEVNULL,
                         env=env,
@@ -575,8 +675,10 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
                     proc = await asyncio.create_subprocess_exec(
                         "python3",
                         str(JARVIS / "bin" / "openrouter_wrapper.py"),
-                        "--agent", "research-analyst",
-                        "--force-provider", "anthropic",
+                        "--agent",
+                        "research-analyst",
+                        "--force-provider",
+                        "anthropic",
                         message,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.DEVNULL,
@@ -584,18 +686,17 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
                     )
                     tier_used = "claude_api"
                 else:
-                    yield (
-                        f"data: {json.dumps({'error': 'Claude not available. '
+                    yield (f"data: {json.dumps({'error': 'Claude not available. '
                         'Authenticate with Claude Code (claude /login) or '
-                        'add ANTHROPIC_API_KEY to Settings.'})}\n\n"
-                    )
+                        'add ANTHROPIC_API_KEY to Settings.'})}\n\n")
                     return
 
             elif tier == "groq":
                 proc = await asyncio.create_subprocess_exec(
                     "python3",
                     str(JARVIS / "bin" / "openrouter_wrapper.py"),
-                    "--agent", "research-analyst",
+                    "--agent",
+                    "research-analyst",
                     message,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
@@ -607,7 +708,8 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
                 proc = await asyncio.create_subprocess_exec(
                     "python3",
                     str(JARVIS / "bin" / "openrouter_wrapper.py"),
-                    "--agent", "python-specialist",
+                    "--agent",
+                    "python-specialist",
                     message,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
@@ -619,7 +721,8 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
                 proc = await asyncio.create_subprocess_exec(
                     "python3",
                     str(JARVIS / "bin" / "openrouter_wrapper.py"),
-                    "--agent", "research-analyst",
+                    "--agent",
+                    "research-analyst",
                     message,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.DEVNULL,
@@ -653,7 +756,7 @@ def _persist_chat(session_id: str, user_msg: str, assistant_msg: str) -> None:
     if not db.exists():
         return
     try:
-        ts = datetime.utcnow().isoformat()
+        ts = datetime.now(timezone.utc).isoformat()
         conn = sqlite3.connect(str(db), timeout=3)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS chat_sessions "
@@ -692,7 +795,8 @@ async def chat_history(limit: int = 10, auth: bool = Depends(check_auth)):
         return []
     try:
         conn = sqlite3.connect(str(db), timeout=3)
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT s.session_id, s.created_at,
                    (SELECT content FROM chat_messages
                     WHERE session_id = s.session_id AND role = 'user'
@@ -700,11 +804,15 @@ async def chat_history(limit: int = 10, auth: bool = Depends(check_auth)):
             FROM chat_sessions s
             ORDER BY s.created_at DESC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """,
+            (limit,),
+        ).fetchall()
         conn.close()
     except Exception:
         rows = []
-    return [{"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows]
+    return [
+        {"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows
+    ]
 
 
 @app.post("/api/upload")
@@ -729,19 +837,23 @@ async def upload_files(
             raise HTTPException(400, f"{uf.filename}: exceeds 10MB limit")
 
         file_id = str(uuid.uuid4())[:8]
-        safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in (uf.filename or "file"))
+        safe_name = "".join(
+            c if c.isalnum() or c in "._-" else "_" for c in (uf.filename or "file")
+        )
         dest = UPLOAD_DIR / f"{ts}_{file_id}_{safe_name}"
         dest.write_bytes(data)
 
         text = _extract_text(dest, suffix)
-        results.append({
-            "file_id": file_id,
-            "name": uf.filename,
-            "size": len(data),
-            "path": str(dest),
-            "text_preview": text[:300],
-            "text_full": text,
-        })
+        results.append(
+            {
+                "file_id": file_id,
+                "name": uf.filename,
+                "size": len(data),
+                "path": str(dest),
+                "text_preview": text[:300],
+                "text_full": text,
+            }
+        )
 
     return results
 
@@ -773,7 +885,9 @@ async def search_chat(q: str = "", limit: int = 20, auth: bool = Depends(check_a
         conn.close()
     except Exception:
         rows = []
-    return [{"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows]
+    return [
+        {"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows
+    ]
 
 
 @app.post("/api/chat/{session_id}/delete")
@@ -812,6 +926,30 @@ async def chat_session_messages(session_id: str, auth: bool = Depends(check_auth
     return [{"role": r[0], "content": r[1], "ts": r[2]} for r in rows]
 
 
+@app.post("/api/tts")
+async def text_to_speech(request: Request, auth: bool = Depends(check_auth)):
+    """Convert text to speech using gTTS. Returns audio/mpeg stream."""
+    data = await request.json()
+    text = (data.get("text") or "").strip()[:500]
+    if not text:
+        raise HTTPException(400, "text field required")
+    try:
+        from gtts import gTTS
+        import tempfile
+
+        tts = gTTS(text=text, lang="en")
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        tts.save(tmp.name)
+        return StreamingResponse(
+            open(tmp.name, "rb"),
+            media_type="audio/mpeg",
+        )
+    except ImportError:
+        raise HTTPException(503, "gTTS not installed: pip install gTTS")
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+
+
 # ── Tiers / Settings endpoints ────────────────────────────────────────────
 
 SETTINGS_HTML_PATH = JARVIS / "bin" / "settings.html"
@@ -826,7 +964,9 @@ async def get_tiers(auth: bool = Depends(check_auth)):
     env = _load_env_dict()
     oauth = detect_claude_oauth()
     has_groq = bool(env.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY"))
-    has_anthropic = bool(env.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+    has_anthropic = bool(
+        env.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+    )
 
     return {
         "tiers": [
@@ -860,10 +1000,21 @@ async def get_tiers(auth: bool = Depends(check_auth)):
                 "label": "Claude",
                 "description": "Claude Sonnet via OAuth or API key",
                 "available": oauth["available"] or has_anthropic,
-                "cost": oauth["available"] and not has_anthropic and "$0 (Pro plan)" or "$3/Mtok",
+                "cost": oauth["available"]
+                and not has_anthropic
+                and "$0 (Pro plan)"
+                or "$3/Mtok",
                 "model": "claude-sonnet-4-6",
-                "method": oauth["method"] if oauth["available"] else ("api_key" if has_anthropic else None),
-                "setup": None if (oauth["available"] or has_anthropic) else "Login with Claude Code or add ANTHROPIC_API_KEY",
+                "method": (
+                    oauth["method"]
+                    if oauth["available"]
+                    else ("api_key" if has_anthropic else None)
+                ),
+                "setup": (
+                    None
+                    if (oauth["available"] or has_anthropic)
+                    else "Login with Claude Code or add ANTHROPIC_API_KEY"
+                ),
             },
         ],
         "oauth": oauth,
@@ -886,7 +1037,9 @@ async def claude_status(auth: bool = Depends(check_auth)):
 async def settings_page(request: Request):
     """Settings UI page."""
     if REQUIRE_AUTH:
-        token = request.query_params.get("token", "") or request.cookies.get("dq_token", "")
+        token = request.query_params.get("token", "") or request.cookies.get(
+            "dq_token", ""
+        )
         if not token or not verify_token(token):
             return HTMLResponse(content=LOGIN_HTML, status_code=401)
     html = _load_html(SETTINGS_HTML_PATH, _SETTINGS_FALLBACK)
@@ -901,7 +1054,9 @@ async def get_settings(auth: bool = Depends(check_auth)):
     return {
         "groq_key": _mask_key(env.get("GROQ_API_KEY", "")),
         "anthropic_key": _mask_key(env.get("ANTHROPIC_API_KEY", "")),
-        "default_tier": env.get("DQ_DEFAULT_TIER", os.environ.get("DQ_DEFAULT_TIER", "auto")),
+        "default_tier": env.get(
+            "DQ_DEFAULT_TIER", os.environ.get("DQ_DEFAULT_TIER", "auto")
+        ),
         "oauth": oauth,
         "tier_options": ["auto", "groq-only", "groq+ollama", "ollama-only"],
     }
@@ -927,11 +1082,14 @@ async def update_settings(request: Request, auth: bool = Depends(check_auth)):
 
 # ── HTML routes ───────────────────────────────────────────────────────────
 
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     """Main dashboard page."""
     if REQUIRE_AUTH:
-        token = request.query_params.get("token", "") or request.cookies.get("dq_token", "")
+        token = request.query_params.get("token", "") or request.cookies.get(
+            "dq_token", ""
+        )
         if not token or not verify_token(token):
             return HTMLResponse(content=LOGIN_HTML, status_code=401)
     return HTMLResponse(content=DASHBOARD_HTML)

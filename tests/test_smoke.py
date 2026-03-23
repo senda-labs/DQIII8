@@ -101,3 +101,23 @@ def test_db_connection():
     row = query("SELECT COUNT(*) as n FROM agent_actions", fetchone=True)
     count = row["n"]
     assert count > 0, f"agent_actions vacía (count={count})"
+
+
+def test_knowledge_enricher_get_chunks():
+    """get_relevant_chunks returns list[dict] without modifying the prompt."""
+    from knowledge_enricher import get_relevant_chunks
+    original = "photosynthesis process"
+    chunks = get_relevant_chunks(original, "natural_sciences")
+    assert isinstance(chunks, list), f"expected list, got {type(chunks)}"
+    if chunks:
+        assert all(isinstance(c, dict) for c in chunks), "each item must be dict"
+        assert all("text" in c and "score" in c for c in chunks), "each dict must have text+score"
+    assert original == "photosynthesis process", "prompt must not be mutated"
+
+
+def test_amplifier_entity_not_context():
+    """Entity extracted from original prompt, not from domain-context prefix."""
+    result = amplify("calculate WACC for Tesla", domain="social_sciences")
+    assert result["entity"] != "CONTEXT", (
+        f"entity should not be 'CONTEXT' (double-enrichment bug). Got: {result['entity']!r}"
+    )

@@ -107,6 +107,57 @@ def enrich_with_knowledge(
     return enriched, len(top)
 
 
+def get_relevant_chunks(
+    prompt: str,
+    domain: str,
+    top_k: int = 3,
+    min_similarity: float = 0.25,
+) -> list[dict]:
+    """Returns raw chunks without modifying the prompt.
+
+    Each dict: {"text": str, "score": float, "source": str}
+    Returns empty list if index missing or no matches above threshold.
+    """
+    index_path = KNOWLEDGE_ROOT / domain / "index.json"
+    if not index_path.exists():
+        return []
+
+    try:
+        index: list[dict] = json.loads(index_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+    if not index:
+        return []
+
+    query_vec = _embed(prompt)
+    if query_vec is None:
+        return []
+
+    scored = []
+    for entry in index:
+        vec = entry.get("embedding")
+        if not vec:
+            continue
+        sim = _cosine(query_vec, vec)
+        if sim >= min_similarity:
+            scored.append((sim, entry))
+
+    if not scored:
+        return []
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [
+        {
+            "text": e.get("text", "").strip(),
+            "score": round(sim, 4),
+            "source": e.get("source", domain),
+        }
+        for sim, e in scored[:top_k]
+        if e.get("text", "").strip()
+    ]
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 

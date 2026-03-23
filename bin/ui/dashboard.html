@@ -336,6 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       var r = await fetch('/api/upload', { method: 'POST', headers: _H, body: fd });
       var arr = await r.json();
+      if (!r.ok) { prev.textContent = 'Upload failed: ' + (arr.detail || r.status); return; }
       var info = Array.isArray(arr) ? arr[0] : arr;
       _attachedFileIds.push(info.file_id);
       var suffix = file.name.split('.').pop().toLowerCase();

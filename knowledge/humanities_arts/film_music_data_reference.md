@@ -2,6 +2,8 @@
 domain: humanities_arts
 type: reference_data
 last_updated: 2026-03
+last_verified: 2026-03
+data_quality: see bottom
 keywords_en: [film, Oscar, Academy Award, director, box office, music, album, chart, Grammy, Grammy award, Billboard, platinum, genre, record label]
 keywords_es: [película, Óscar, Academia, director, taquilla, música, álbum, Billboard, Grammy, platino, sello discográfico]
 ---
@@ -168,3 +170,23 @@ Broadway 2023–2024 season total gross: ~$1.83B. Attendance: 13.9M tickets sold
 | UK | $1.3 | 150 | $8.7 | Inside Out 2 |
 | India | $1.6 | 1,800 | $0.9 | Kalki 2898 AD |
 | Germany | $0.9 | 95 | $9.5 | Inside Out 2 |
+
+
+## Data Quality Classification
+
+### Category A — Verified Records:
+- Oscar Best Picture winners: AMPAS (oscars.org/oscars/ceremonies)
+- Cannes Palme d'Or winners: Festival de Cannes (festival-cannes.com)
+- RIAA certification thresholds: RIAA (riaa.com/gold-platinum) — official, stable standard
+- Grammy Record of the Year: Recording Academy (recordingacademy.com)
+- Billboard Hot 100 longest #1: Billboard official charts (billboard.com)
+- Pulitzer Prize Fiction winners: Pulitzer Board (pulitzer.org)
+- Best-selling albums (certified): RIAA (USA), BPI (UK), IFPI global
+
+### Category B — Temporal Data (⚠ verify before use):
+- Streaming platform MAU / subscribers: company earnings reports (Q4 2024)
+  Spotify: spotifyjobs.com investor relations; others: company IR pages
+- Artist royalty rates per stream: estimates from streaming economy research
+  Source: Spotify Loud & Clear (loudandclear.byspotify.com), artist advocacy groups
+- Broadway weekly gross: Broadway League (broadwayleague.com) — updates weekly
+- International box office 2024: MPAA annual report (motionpictures.org/research-and-analysis)

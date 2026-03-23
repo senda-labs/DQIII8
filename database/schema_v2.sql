@@ -870,19 +870,18 @@ GROUP BY b_on.model, b_on.task_domain
 CREATE VIEW IF NOT EXISTS v_cost_savings AS
 SELECT 
     date(timestamp) as day,
-    CASE 
-        WHEN agent_name IN ('python-specialist','git-specialist','web-specialist',
-            'algo-specialist','content-automator') THEN 'C'
-        WHEN agent_name IN ('finance-specialist','auditor','orchestrator') THEN 'A'
-        ELSE 'B'
+    CASE model_tier
+        WHEN 1 THEN 'C (local $0)'
+        WHEN 2 THEN 'B (cloud free)'
+        WHEN 3 THEN 'A (paid)'
+        ELSE 'unknown'
     END as tier,
     COUNT(*) as actions,
-    ROUND(SUM(CASE 
-        WHEN agent_name IN ('finance-specialist','auditor','orchestrator') 
-        THEN duration_ms * 0.000015  -- estimación coste Sonnet por ms
-        ELSE 0 
-    END), 4) as actual_cost,
-    ROUND(COUNT(*) * 0.015, 4) as sonnet_equivalent_cost
+    ROUND(AVG(duration_ms)/1000.0, 1) as avg_s,
+    -- Actual cost: only Tier A (Sonnet) has cost; proxy 666 tok/call avg
+    ROUND(SUM(CASE WHEN model_tier = 3 THEN (666 * 0.000015) ELSE 0 END), 4) as actual_cost_usd,
+    -- Sonnet-equivalent: every action at Sonnet pricing (666 tok avg)
+    ROUND(COUNT(*) * 666 * 0.000015, 4) as sonnet_equivalent_usd
 FROM agent_actions
 WHERE timestamp >= date('now', '-30 days')
 GROUP BY day, tier;

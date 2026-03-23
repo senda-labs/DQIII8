@@ -98,13 +98,18 @@ echo "## 9. Paper Harvest"
 python3 "$DQIII8_ROOT/bin/tools/paper_harvester.py" --all 2>&1 || echo "  Paper harvest failed"
 echo ""
 
-# ── 10. Prune outdated papers ──
-echo "## 10. Prune Outdated Papers"
+# ── 10. Working memory cleanup ──
+echo "## 10. Working Memory Cleanup"
+python3 "$DQIII8_ROOT/bin/agents/working_memory.py" --cleanup 2>&1 || echo "  Working memory cleanup failed"
+echo ""
+
+# ── 11. Prune outdated papers ──
+echo "## 11. Prune Outdated Papers"
 python3 "$DQIII8_ROOT/bin/tools/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
 echo ""
 
-# ── 11. Smoke tests ──
-echo "## 11. Smoke Tests"
+# ── 12. Smoke tests ──
+echo "## 12. Smoke Tests"
 if python3 -m pytest "$DQIII8_ROOT/tests/test_smoke.py" --tb=short -q 2>&1; then
     echo "  ✓ All smoke tests passed"
 else

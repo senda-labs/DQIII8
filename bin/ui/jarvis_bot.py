@@ -1143,7 +1143,10 @@ def _log_cc_command(
 
 
 def _run_claude(
-    prompt: str, system_prompt: str | None = None, timeout: int = 300
+    prompt: str,
+    system_prompt: str | None = None,
+    timeout: int = 300,
+    session_id: str | None = None,
 ) -> tuple[bool, str]:
     """Run claude -p and return (success, text_output)."""
     cmd = [
@@ -1161,6 +1164,9 @@ def _run_claude(
     env = _load_env_dict()
     # OAuth via ~/.claude/.credentials.json — env var causes conflict
     env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    # Propagate session ID so openrouter_wrapper can read working memory
+    if session_id:
+        env["DQIII8_SESSION_ID"] = session_id
     try:
         result = subprocess.run(
             cmd,
@@ -1222,8 +1228,9 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
     await update.message.reply_text("Running claude...")
+    _tg_session_id = f"tg_{chat_id}"
     success, output = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: _run_claude(prompt)
+        None, lambda: _run_claude(prompt, session_id=_tg_session_id)
     )
     _log_cc_command("/cc", prompt, None, success, len(output))
     await send_chunks(update, output)

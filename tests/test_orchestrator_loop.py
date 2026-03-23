@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from bin.orchestrator_loop import OrchestratorLoop
+from bin.archive.orchestrator_loop import OrchestratorLoop
 
 loop = OrchestratorLoop()
 

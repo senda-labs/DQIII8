@@ -37,7 +37,14 @@ for _d in [JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "too
 
 from db import get_db
 from embeddings import bytes_to_embedding, cosine_similarity, get_embedding
-from jal_common import load_env
+def load_env() -> None:
+    """Load .env into os.environ (setdefault — does not overwrite existing vars)."""
+    env = JARVIS / ".env"
+    if env.exists():
+        for line in env.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
 
 # ── Intent patterns (14) ──────────────────────────────────────────────────────
 

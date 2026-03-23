@@ -247,6 +247,8 @@ ALLOWED_EXTENSIONS = {
     ".csv",
     ".xlsx",
     ".xls",
+    ".py",
+    ".js",
     ".png",
     ".jpg",
     ".jpeg",
@@ -258,7 +260,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 def _extract_text(path: Path, suffix: str) -> str:
     """Best-effort text extraction from uploaded file."""
-    if suffix in (".txt", ".md", ".json", ".csv"):
+    if suffix in (".txt", ".md", ".json", ".csv", ".py", ".js"):
         try:
             return path.read_text(encoding="utf-8", errors="replace")[:8000]
         except Exception:

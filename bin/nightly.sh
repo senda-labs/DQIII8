@@ -103,6 +103,15 @@ echo "## 10. Prune Outdated Papers"
 python3 "$JARVIS_ROOT/bin/tools/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
 echo ""
 
+# ── 11. Smoke tests ──
+echo "## 11. Smoke Tests"
+if python3 -m pytest "$JARVIS_ROOT/tests/test_smoke.py" --tb=short -q 2>&1; then
+    echo "  ✓ All smoke tests passed"
+else
+    echo "  ✗ Smoke tests FAILED — audit max score capped at 80"
+fi
+echo ""
+
 echo "## Summary"
 echo "  Completed at: $(date -u '+%Y-%m-%d %H:%M UTC')"
 echo "  Next action: review this report, then git push origin main"

@@ -71,8 +71,6 @@ tasks/precompact_state.json
 knowledge/*/user_uploads/
 knowledge/**/PREMIUM_*
 
-# Premium test suites
-tests/test_e2e_pipeline.py
 
 # Premium knowledge — deep domain expertise (not in public tier)
 knowledge/social_sciences/finance/portfolio_management/

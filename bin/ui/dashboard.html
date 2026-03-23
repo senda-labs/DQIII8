@@ -223,7 +223,7 @@
     <div class="card">
       <div class="card-header">
         <span>Recent Actions</span>
-        <button class="ghost" style="font-size:11px;padding:4px 10px" onclick="renderOverview()">Refresh</button>
+        <button class="ghost" style="font-size:11px;padding:4px 10px" onclick="refreshActions(this)">Refresh</button>
       </div>
       <table>
         <thead><tr><th>Time</th><th>Agent</th><th>Tier</th><th>Duration</th><th>Status</th></tr></thead>
@@ -668,6 +668,17 @@ function showSave(msg) {
   var el = $('save-msg');
   el.textContent = String(msg);
   setTimeout(function() { el.textContent = ''; }, 2500);
+}
+
+// Refresh button with visual feedback
+function refreshActions(btn) {
+  var orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '\u22ef';
+  renderOverview().finally(function() {
+    btn.disabled = false;
+    btn.textContent = orig;
+  });
 }
 
 // Init

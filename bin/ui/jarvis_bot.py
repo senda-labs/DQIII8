@@ -483,7 +483,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/score — latest scoring snapshot\n"
         "/logs — last 20 log lines\n"
         "/audit — local health audit (offline)\n"
-        "/run [name.md] — runs jal\\_run.py\n\n"
         "Free message: action verb or \\>15 words → automatic /task.\n"
         "Otherwise → quick response.\n\n"
         "*Voice:*\n"
@@ -632,36 +631,6 @@ async def cmd_dq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode="Markdown",
     )
     log.info("/dq: %s | %s", task_id, description[:60])
-
-
-async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not authorized(update):
-        await update.message.reply_text("Unauthorized.")
-        return
-    args = context.args
-    if not args:
-        queue_files = sorted(QUEUE_DIR.glob("*.md")) if QUEUE_DIR.exists() else []
-        if not queue_files:
-            await update.message.reply_text(
-                "Queue empty. Use `/run name.md` to execute."
-            )
-            return
-        names = "\n".join(f"- `{f.name}`" for f in queue_files)
-        await update.message.reply_text(
-            f"*Objectives in queue:*\n{names}\n\nUse `/run name.md` to execute.",
-            parse_mode="Markdown",
-        )
-        return
-    target = args[0]
-    if not target.endswith(".md"):
-        target += ".md"
-    await update.message.reply_text(
-        f"Ejecutando jal\\_run.py con `{target}`...", parse_mode="Markdown"
-    )
-    log.info("/run target=%s", target)
-    output = run_cmd(["python3", "bin/jal_run.py", target], timeout=300)
-    await send_chunks(update, f"*Resultado /run {target}:*\n```\n{output[:3800]}\n```")
-    log.info("/run completado target=%s", target)
 
 
 async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1351,7 +1320,6 @@ def main() -> None:
     APP.add_handler(CommandHandler("logs", cmd_logs))
     APP.add_handler(CommandHandler("audit", cmd_audit))
     APP.add_handler(CommandHandler("dq", cmd_dq))
-    APP.add_handler(CommandHandler("run", cmd_run))
     APP.add_handler(CommandHandler("task", cmd_task))
     APP.add_handler(CommandHandler("tasks", cmd_tasks))
     APP.add_handler(CommandHandler("output", cmd_output))

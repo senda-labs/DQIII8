@@ -31,15 +31,14 @@ Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 
 ---
 
-## 2. File map — 41 scripts
+## 2. File map — 40 scripts
 
-### bin/ root (5)
+### bin/ root (4)
 
 | File                    | Purpose                                               |
 |-------------------------|-------------------------------------------------------|
 | `j.sh`                  | Main CLI entry point (`--model`, `--status`, `--classify`) |
 | `director.py`           | Central pipeline orchestrator v3                      |
-| `jal_run.py`            | JAL full-cycle orchestrator (plan → execute → score)  |
 | `autonomous_loop.sh`    | Unattended VPS loop with Telegram reporting           |
 | `nightly.sh`            | Nightly maintenance: DB vacuum, log rotation, report  |
 
@@ -203,7 +202,7 @@ Rate limit: 10 `/cc` per hour per chat_id.
 
 ```
 senda-labs/DQIII8  (public, MIT)
-  bin/         ← all 41 scripts
+  bin/         ← all 40 scripts
   knowledge/   ← 733 chunks, domain indexes
   .claude/     ← 26 agents, hooks, rules
   database/    ← schema_v2.sql only (no .db)

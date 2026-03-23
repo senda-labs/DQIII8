@@ -64,6 +64,9 @@ ACTIVE_TASKS: dict[str, dict] = {}
 #                technical_success, tier_used}}
 PENDING_SATISFACTION: dict[str, dict] = {}
 
+# ── Bot start time (for uptime reporting) ────────────────────────────────────────
+_BOT_START_TIME: float = time.time()
+
 ACTION_VERBS_RE = re.compile(
     r"\b(arregla|crea|refactoriza|implementa|añade|ejecuta|"
     r"fix|create|implement|update|deploy)\b",
@@ -1061,6 +1064,206 @@ async def cmd_auth_update(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     log.info("Auth status checked via /auth_update: ok=%s", ok)
 
 
+# ── /cc Claude Code Terminal ────────────────────────────────────────────────────
+
+# Rate limit: max 10 /cc commands per hour per chat_id
+_CC_RATE: dict[str, list[float]] = {}
+_CC_MAX_PER_HOUR = 10
+_CC_BLACKLIST = frozenset({
+    "rm -rf", "rm -r", "drop table", "drop database",
+    "force-push", "--force", "-f origin", "format c",
+    "> /dev/", "truncate", "shred",
+    "delete", ".env", "credentials", "token",
+})
+
+
+def _cc_rate_ok(chat_id: str) -> bool:
+    """Returns True if the chat_id is within the rate limit."""
+    now = time.time()
+    window = _CC_RATE.setdefault(chat_id, [])
+    # purge entries older than 1 hour
+    _CC_RATE[chat_id] = [t for t in window if now - t < 3600]
+    if len(_CC_RATE[chat_id]) >= _CC_MAX_PER_HOUR:
+        return False
+    _CC_RATE[chat_id].append(now)
+    return True
+
+
+def _cc_blacklisted(prompt: str) -> str | None:
+    """Returns the matched blacklist term if dangerous, else None."""
+    lower = prompt.lower()
+    for term in _CC_BLACKLIST:
+        if term in lower:
+            return term
+    return None
+
+
+def _log_cc_command(command: str, prompt: str, agent: str | None, success: bool, response_len: int) -> None:
+    """Log /cc command usage to jarvis_metrics.db."""
+    try:
+        conn = sqlite3.connect(DB)
+        conn.execute(
+            "INSERT INTO agent_actions (agent_name, action_type, input_tokens, output_tokens, notes) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                agent or "cc_direct",
+                command,
+                len(prompt),
+                response_len,
+                f"success={success}",
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        log.warning("_log_cc_command DB error: %s", exc)
+
+
+def _run_claude(prompt: str, system_prompt: str | None = None, timeout: int = 300) -> tuple[bool, str]:
+    """Run claude -p and return (success, text_output)."""
+    cmd = [
+        "claude", "-p", prompt,
+        "--output-format", "json",
+        "--model", "claude-sonnet-4-6",
+    ]
+    if system_prompt:
+        cmd += ["--system-prompt", system_prompt]
+
+    env = _load_env_dict()
+    # OAuth via ~/.claude/.credentials.json — env var causes conflict
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=str(JARVIS),
+            env=env,
+            encoding="utf-8",
+        )
+        raw = result.stdout.strip()
+        # Try to parse JSON envelope {"result": "...", ...}
+        if raw.startswith("{"):
+            try:
+                data = json.loads(raw)
+                text = data.get("result") or data.get("content") or raw
+                return True, str(text).strip()
+            except json.JSONDecodeError:
+                pass
+        if raw:
+            return True, raw
+        stderr = result.stderr.strip()
+        if result.returncode == 0:
+            return True, "(no output)"
+        if "401" in stderr or "unauthorized" in stderr.lower():
+            return False, "Auth error (401). Run `claude /login` on the VPS."
+        return False, f"Error (exit {result.returncode}): {stderr[:500]}"
+    except subprocess.TimeoutExpired:
+        return False, f"Timeout after {timeout}s. Claude is still running in the background."
+    except FileNotFoundError:
+        return False, "`claude` CLI not found. Is Claude Code installed?"
+    except Exception as exc:
+        return False, f"Unexpected error: {exc}"
+
+
+async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/cc <prompt> — Run a prompt through Claude Code and return the response."""
+    if not authorized(update):
+        return
+    chat_id = str(update.effective_chat.id)
+    text = (update.message.text or "").strip()
+    prompt = text[len("/cc"):].strip()
+    if not prompt:
+        await update.message.reply_text("Usage: /cc <prompt>\nExample: /cc explain bin/director.py")
+        return
+    blocked = _cc_blacklisted(prompt)
+    if blocked:
+        await update.message.reply_text(f"Blocked: prompt contains '{blocked}'.")
+        _log_cc_command("/cc", prompt, None, False, 0)
+        return
+    if not _cc_rate_ok(chat_id):
+        await update.message.reply_text(f"Rate limit: max {_CC_MAX_PER_HOUR} /cc commands per hour.")
+        return
+    await update.message.reply_text("Running claude...")
+    success, output = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: _run_claude(prompt)
+    )
+    _log_cc_command("/cc", prompt, None, success, len(output))
+    await send_chunks(update, output)
+
+
+
+async def cmd_cc_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/cc_status — Show Claude Code version, credentials status, and last /cc usage."""
+    if not authorized(update):
+        return
+    version_out = run_cmd(["claude", "--version"], timeout=10)
+    ok, creds_msg = _check_credentials()
+    creds_status = "OK" if ok else f"PROBLEM: {creds_msg}"
+    # Last /cc usage from DB
+    rows = db_query(
+        "SELECT created_at, notes FROM agent_actions "
+        "WHERE agent_name='cc_direct' AND action_type='/cc' "
+        "ORDER BY id DESC LIMIT 1"
+    )
+    last_use = rows[0][0] if rows else "never"
+    # Bot uptime
+    import datetime as dt
+    uptime_secs = int(time.time() - _BOT_START_TIME)
+    uptime_str = str(dt.timedelta(seconds=uptime_secs))
+    lines = [
+        "**Claude Code Status**",
+        f"Version: `{version_out}`",
+        f"Credentials: {creds_status}",
+        f"Last /cc: `{last_use}`",
+        f"Bot uptime: `{uptime_str}`",
+        f"Rate limit: {len(_CC_RATE.get(str(update.effective_chat.id), []))}/{_CC_MAX_PER_HOUR} this hour",
+    ]
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def cmd_auth_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/auth_status — Show OAuth credentials file details."""
+    if not authorized(update):
+        return
+    if not _CREDENTIALS_PATH.exists():
+        await update.message.reply_text("No credentials file at ~/.claude/.credentials.json")
+        return
+    try:
+        data = json.loads(_CREDENTIALS_PATH.read_text(encoding="utf-8"))
+        oauth = data.get("claudeAiOauth", {})
+        has_access = bool(oauth.get("accessToken"))
+        has_refresh = bool(oauth.get("refreshToken"))
+        expires_at = oauth.get("expiresAt", "unknown")
+        lines = [
+            "**Auth Status**",
+            f"accessToken: {'present' if has_access else 'MISSING'}",
+            f"refreshToken: {'present' if has_refresh else 'MISSING'}",
+            f"expiresAt: `{expires_at}`",
+        ]
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as exc:
+        await update.message.reply_text(f"Error reading credentials: {exc}")
+
+
+async def cmd_auth_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/auth_test — Run a minimal Claude probe to verify auth works."""
+    if not authorized(update):
+        return
+    await update.message.reply_text("Testing Claude Code auth...")
+    success, output = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: _run_claude("reply with only: OK", timeout=30)
+    )
+    if success and "OK" in output.upper():
+        await update.message.reply_text("Auth test passed. Claude responds correctly.")
+    elif success:
+        await update.message.reply_text(f"Auth test: got response but unexpected content:\n{output[:200]}")
+    else:
+        await update.message.reply_text(f"Auth test FAILED:\n{output}")
+    _log_cc_command("/auth_test", "reply with only: OK", None, success, len(output))
+
+
 # ── Main ────────────────────────────────────────────────────────────────────────
 def main() -> None:
     global APP
@@ -1089,6 +1292,10 @@ def main() -> None:
     APP.add_handler(CommandHandler("sandbox_run", cmd_sandbox_run))
     APP.add_handler(CommandHandler("stop", cmd_stop_autonomous))
     APP.add_handler(CommandHandler("auth_update", cmd_auth_update))
+    APP.add_handler(CommandHandler("cc", cmd_cc))
+    APP.add_handler(CommandHandler("cc_status", cmd_cc_status))
+    APP.add_handler(CommandHandler("auth_status", cmd_auth_status))
+    APP.add_handler(CommandHandler("auth_test", cmd_auth_test))
     APP.add_handler(MessageHandler(filters.Regex(r"^/integrar"), _handle_integrar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/rechazar"), _handle_rechazar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/aprobar"), _handle_aprobar))

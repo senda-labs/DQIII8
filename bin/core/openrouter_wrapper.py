@@ -698,6 +698,37 @@ def main() -> None:
                     prompt, _domain, intent=_intent, entity=_entity
                 )
 
+                # Step 2c: confidence gate — skip enrichment when chunks add no value.
+                # Derive preliminary tier from agent provider (1=local, 2=cloud-free, 3=paid).
+                _gate_tier = (
+                    1
+                    if args.agent in _TIER_C_AGENTS
+                    else (
+                        3
+                        if AGENT_ROUTING.get(args.agent, (None, None))[0] == "anthropic"
+                        else 2
+                    )
+                )
+                try:
+                    _cg_path = (
+                        Path(__file__).parent.parent / "agents" / "confidence_gate.py"
+                    )
+                    if _cg_path.exists():
+                        _spec_cg = _ilu.spec_from_file_location(
+                            "confidence_gate", _cg_path
+                        )
+                        _cg = _ilu.module_from_spec(_spec_cg)
+                        _spec_cg.loader.exec_module(_cg)
+                        if not _cg.should_enrich(prompt, _domain, _chunks, _gate_tier):
+                            print(
+                                f"[DQIII8] confidence gate: skip enrichment "
+                                f"domain={_domain} tier={_gate_tier} chunks={len(_chunks)}",
+                                file=sys.stderr,
+                            )
+                            _chunks = []
+                except Exception:
+                    pass  # gate failure → keep chunks (fail open)
+
                 # Step 3: amplify ORIGINAL prompt with pre-fetched domain + chunks
                 _ia_result = _ia.amplify(
                     prompt,

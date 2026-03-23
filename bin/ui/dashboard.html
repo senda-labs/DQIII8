@@ -538,7 +538,7 @@ function addMsg(role, html) {
     btn.title = 'Play audio';
     btn.textContent = '\uD83D\uDD0A';
     btn.style.cssText = 'font-size:11px;padding:2px 7px;margin-top:6px;display:block';
-    btn.onclick = function() { playTTS(div.innerText, btn); };
+    btn.onclick = function() { playTTS(div.dataset.rawText || div.innerText, btn); };
     div.appendChild(btn);
   }
   box.appendChild(div);
@@ -599,6 +599,7 @@ async function sendChat() {
           if (d.text) {
             buf += d.text;
             resp.innerHTML = md(buf);
+            resp.dataset.rawText = buf;
             $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
           }
           if (d.done) {

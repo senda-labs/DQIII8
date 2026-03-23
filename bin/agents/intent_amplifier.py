@@ -31,12 +31,16 @@ from pathlib import Path
 from typing import Optional
 
 JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-for _d in [JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]]:
+for _d in [
+    JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]
+]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
 
 from db import get_db
 from embeddings import bytes_to_embedding, cosine_similarity, get_embedding
+
+
 def load_env() -> None:
     """Load .env into os.environ (setdefault — does not overwrite existing vars)."""
     env = JARVIS / ".env"
@@ -46,23 +50,80 @@ def load_env() -> None:
                 k, v = line.split("=", 1)
                 os.environ.setdefault(k.strip(), v.strip())
 
+
 # ── Intent patterns (14) ──────────────────────────────────────────────────────
 
 INTENT_PATTERNS: list[dict] = [
-    {"id": "analyze",       "keywords": ["analiza", "analyze", "review", "evalua", "assess"],        "tier": 2},
-    {"id": "generate",      "keywords": ["genera", "generate", "crea", "create", "produce", "write"],"tier": 1},
-    {"id": "optimize",      "keywords": ["optimiza", "optimize", "mejora", "improve", "refactor"],   "tier": 1},
-    {"id": "debug",         "keywords": ["debug", "fix", "corrige", "error", "falla", "bug"],        "tier": 1},
-    {"id": "research",      "keywords": ["investiga", "research", "busca", "find", "discover"],      "tier": 2},
-    {"id": "summarize",     "keywords": ["resume", "summarize", "condensa", "sintetiza", "brief"],   "tier": 1},
-    {"id": "compare",       "keywords": ["compara", "compare", "diferencia", "vs", "versus"],        "tier": 2},
-    {"id": "forecast",      "keywords": ["predice", "forecast", "proyecta", "project", "estima"],    "tier": 3},
-    {"id": "explain",       "keywords": ["explica", "explain", "describe", "clarifica", "define"],   "tier": 1},
-    {"id": "transform",     "keywords": ["convierte", "transform", "traduce", "translate", "migra"], "tier": 1},
-    {"id": "validate",      "keywords": ["valida", "validate", "verifica", "verify", "check"],       "tier": 1},
-    {"id": "plan",          "keywords": ["planifica", "plan", "diseña", "design", "architect"],      "tier": 3},
-    {"id": "automate",      "keywords": ["automatiza", "automate", "pipeline", "schedule", "cron"],  "tier": 1},
-    {"id": "report",        "keywords": ["reporte", "report", "informe", "dashboard", "executive"],  "tier": 3},
+    {
+        "id": "analyze",
+        "keywords": ["analiza", "analyze", "review", "evalua", "assess"],
+        "tier": 2,
+    },
+    {
+        "id": "generate",
+        "keywords": ["genera", "generate", "crea", "create", "produce", "write"],
+        "tier": 1,
+    },
+    {
+        "id": "optimize",
+        "keywords": ["optimiza", "optimize", "mejora", "improve", "refactor"],
+        "tier": 1,
+    },
+    {
+        "id": "debug",
+        "keywords": ["debug", "fix", "corrige", "error", "falla", "bug"],
+        "tier": 1,
+    },
+    {
+        "id": "research",
+        "keywords": ["investiga", "research", "busca", "find", "discover"],
+        "tier": 2,
+    },
+    {
+        "id": "summarize",
+        "keywords": ["resume", "summarize", "condensa", "sintetiza", "brief"],
+        "tier": 1,
+    },
+    {
+        "id": "compare",
+        "keywords": ["compara", "compare", "diferencia", "vs", "versus"],
+        "tier": 2,
+    },
+    {
+        "id": "forecast",
+        "keywords": ["predice", "forecast", "proyecta", "project", "estima"],
+        "tier": 3,
+    },
+    {
+        "id": "explain",
+        "keywords": ["explica", "explain", "describe", "clarifica", "define"],
+        "tier": 1,
+    },
+    {
+        "id": "transform",
+        "keywords": ["convierte", "transform", "traduce", "translate", "migra"],
+        "tier": 1,
+    },
+    {
+        "id": "validate",
+        "keywords": ["valida", "validate", "verifica", "verify", "check"],
+        "tier": 1,
+    },
+    {
+        "id": "plan",
+        "keywords": ["planifica", "plan", "diseña", "design", "architect"],
+        "tier": 3,
+    },
+    {
+        "id": "automate",
+        "keywords": ["automatiza", "automate", "pipeline", "schedule", "cron"],
+        "tier": 1,
+    },
+    {
+        "id": "report",
+        "keywords": ["reporte", "report", "informe", "dashboard", "executive"],
+        "tier": 3,
+    },
 ]
 
 # Tier labels for logging
@@ -81,7 +142,9 @@ def _decompose(prompt: str) -> dict:
     action = ""
     for pattern in INTENT_PATTERNS:
         for kw in pattern["keywords"]:
-            if kw in tokens or any(t.startswith(kw[:5]) for t in tokens if len(kw) >= 5):
+            if kw in tokens or any(
+                t.startswith(kw[:5]) for t in tokens if len(kw) >= 5
+            ):
                 action = pattern["id"]
                 break
         if action:
@@ -90,9 +153,22 @@ def _decompose(prompt: str) -> dict:
     # Entity: first capitalized word or noun-like token (heuristic)
     entity = ""
     for tok in prompt.split():
-        if tok[0].isupper() and len(tok) > 2 and tok.lower() not in {
-            "el", "la", "los", "las", "un", "una", "the", "a", "an",
-        }:
+        if (
+            tok[0].isupper()
+            and len(tok) > 2
+            and tok.lower()
+            not in {
+                "el",
+                "la",
+                "los",
+                "las",
+                "un",
+                "una",
+                "the",
+                "a",
+                "an",
+            }
+        ):
             entity = tok
             break
 
@@ -160,8 +236,10 @@ def _match_intent(tokens: list[str], prompt_lower: str) -> dict:
     best = {"id": "explain", "score": 0, "tier": 1}
     for pattern in INTENT_PATTERNS:
         score = sum(
-            1 for kw in pattern["keywords"]
-            if kw in prompt_lower or any(t.startswith(kw[:5]) for t in tokens if len(kw) >= 5)
+            1
+            for kw in pattern["keywords"]
+            if kw in prompt_lower
+            or any(t.startswith(kw[:5]) for t in tokens if len(kw) >= 5)
         )
         if score > best["score"]:
             best = {"id": pattern["id"], "score": score, "tier": pattern["tier"]}
@@ -178,6 +256,7 @@ def _retrieve_knowledge(agent_name: str, query: str, top_k: int = 3) -> list[str
     """
     try:
         from knowledge_search import search
+
         results = search(agent_name, query, top_k=top_k)
         return [r["text"] for r in results if r.get("text")]
     except Exception:
@@ -201,13 +280,14 @@ def has_specific_data(text: str) -> bool:
 def filter_chunks_for_tier(chunks: list, tier: int) -> list:
     """Return only the chunks a given tier actually benefits from.
 
-    Tier C (1, local ≤13B): needs everything — structure + knowledge + CoT.
+    Tier C (1, local ≤13B): 1 chunk max — qwen runs at ~15 tok/s on CPU,
+    extra chunks cause 180s timeouts without improving quality.
     Tier B (2, 70B cloud): top 3 most relevant suffice.
     Tier A (3, frontier): only chunks with specific/numerical data — skip
     generic definitions the model already knows.
     """
     if tier == 1:
-        return chunks
+        return chunks[:1]
     if tier == 2:
         return chunks[:3]
     # Tier A — filter to chunks containing specific data
@@ -221,22 +301,26 @@ def filter_chunks_for_tier(chunks: list, tier: int) -> list:
 # ── Tier-specific prompt builders ────────────────────────────────────────────
 
 
-def _build_prompt_tier_c(original: str, decomp: dict, domains: list, chunks: list, routing: dict) -> str:
-    """Tier C (local ≤13B): XML tags + explicit CoT for maximum uplift."""
+def _build_prompt_tier_c(
+    original: str, decomp: dict, domains: list, chunks: list, routing: dict
+) -> str:
+    """Tier C (local ≤13B): compact XML — 1 truncated chunk, CoT inside <task>.
+
+    Budget: ~500 tokens total. qwen runs at ~15 tok/s on CPU; longer prompts
+    cause 180s timeouts. No <instructions> tag — CoT inline keeps it tight.
+    """
     parts = []
     if chunks:
-        knowledge_block = "\n---\n".join(
-            c["text"] if isinstance(c, dict) else str(c) for c in chunks
-        )
-        parts.append(f"<context>\n{knowledge_block}\n</context>")
-    parts.append(f"<task>\n{original}\n</task>")
-    parts.append(
-        "<instructions>Think step by step. Show your reasoning before the final answer.</instructions>"
-    )
+        raw = chunks[0]["text"] if isinstance(chunks[0], dict) else str(chunks[0])
+        truncated = raw[:200]
+        parts.append(f"<context>\n{truncated}\n</context>")
+    parts.append(f"<task>\n{original}\nThink step by step.\n</task>")
     return "\n\n".join(parts)
 
 
-def _build_prompt_tier_b(original: str, decomp: dict, domains: list, chunks: list, routing: dict) -> str:
+def _build_prompt_tier_b(
+    original: str, decomp: dict, domains: list, chunks: list, routing: dict
+) -> str:
     """Tier B (70B cloud): reference block + concise task — model reasons well on its own."""
     parts = []
     if chunks:
@@ -284,9 +368,13 @@ def _build_amplified_prompt(
         effective_chunks = chunks
 
     if tier == 1:
-        return _build_prompt_tier_c(original, decomp, domains, effective_chunks, routing)
+        return _build_prompt_tier_c(
+            original, decomp, domains, effective_chunks, routing
+        )
     if tier == 2:
-        return _build_prompt_tier_b(original, decomp, domains, effective_chunks, routing)
+        return _build_prompt_tier_b(
+            original, decomp, domains, effective_chunks, routing
+        )
     if tier == 3:
         return _build_prompt_tier_a(original, effective_chunks)
 
@@ -309,7 +397,9 @@ def _build_amplified_prompt(
             agents_str = ", ".join(a["name"] for a in c.get("agents", []))
             label = c["domain"].replace("_", " ").title()
             domain_lines.append(f"- {label} ({c['weight']:.0%}): {agents_str}")
-        ctx_lines.append("Domain analysis (multi-centroid):\n" + "\n".join(domain_lines))
+        ctx_lines.append(
+            "Domain analysis (multi-centroid):\n" + "\n".join(domain_lines)
+        )
     elif domains:
         top_domains = ", ".join(f"{d['domain']}({d['score']:.2f})" for d in domains[:2])
         ctx_lines.append(f"Relevant domains: {top_domains}")
@@ -376,27 +466,30 @@ def _log_amplification(
         classification_ms = routing["classification_ms"] if routing else 0
 
         with get_db() as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO amplification_log
                 (created_at, original_prompt, amplified_prompt, action_detected, entity_detected,
                  niche_detected, intent_pattern, top_domain, tier_selected, elapsed_ms,
                  routing_method, active_centroids_count, queued_centroids_count, classification_ms)
                 VALUES (datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                original[:500],
-                amplified[:2000],
-                decomp["action"],
-                decomp["entity"],
-                decomp["niche"],
-                intent["id"],
-                domains[0]["domain"] if domains else "",
-                tier,
-                elapsed_ms,
-                routing_method,
-                active_count,
-                queued_count,
-                classification_ms,
-            ))
+            """,
+                (
+                    original[:500],
+                    amplified[:2000],
+                    decomp["action"],
+                    decomp["entity"],
+                    decomp["niche"],
+                    intent["id"],
+                    domains[0]["domain"] if domains else "",
+                    tier,
+                    elapsed_ms,
+                    routing_method,
+                    active_count,
+                    queued_count,
+                    classification_ms,
+                ),
+            )
     except Exception:
         pass  # Non-critical: log failures don't block execution
 
@@ -452,14 +545,20 @@ def amplify(
     else:
         _log("phase 2: domain scoring (hierarchical)")
         try:
-            from hierarchical_router import classify_hierarchical_cached, retrieve_knowledge_by_routing
+            from hierarchical_router import (
+                classify_hierarchical_cached,
+                retrieve_knowledge_by_routing,
+            )
+
             routing = classify_hierarchical_cached(prompt)
             if routing["active_centroids"]:
                 domains = [
                     {"domain": c["domain"], "score": c["weight"]}
                     for c in routing["active_centroids"]
                 ]
-                _log(f"  hierarchical: {len(routing['active_centroids'])} active centroids")
+                _log(
+                    f"  hierarchical: {len(routing['active_centroids'])} active centroids"
+                )
             else:
                 domains = _score_domains(prompt)
                 routing = None
@@ -483,6 +582,7 @@ def amplify(
     elif routing:
         try:
             from embeddings import get_embedding as _get_emb
+
             prompt_emb = _get_emb(prompt)
             knowledge_text = retrieve_knowledge_by_routing(routing, prompt_emb)
             chunks = [knowledge_text] if knowledge_text else []
@@ -495,9 +595,9 @@ def amplify(
             niche_agent_map = {
                 "finance": "finance-analyst",
                 "trading": "finance-analyst",
-                "video":   "content-automator",
-                "code":    "python-specialist",
-                "data":    "data-analyst",
+                "video": "content-automator",
+                "code": "python-specialist",
+                "data": "data-analyst",
             }
             effective_agent = niche_agent_map.get(decomp["niche"], "")
         chunks = _retrieve_knowledge(effective_agent, prompt) if effective_agent else []
@@ -506,6 +606,7 @@ def amplify(
     # Phase 4.5: Template injection
     try:
         from template_loader import find_template_by_routing, format_template_for_prompt
+
         template = find_template_by_routing(routing) if routing else None
         template_text = format_template_for_prompt(template, prompt) if template else ""
     except ImportError:
@@ -519,25 +620,29 @@ def amplify(
 
     # Phase 5
     _log("phase 5: build prompt")
-    amplified = _build_amplified_prompt(prompt, decomp, intent, domains, chunks, routing, tier=tier)
+    amplified = _build_amplified_prompt(
+        prompt, decomp, intent, domains, chunks, routing, tier=tier
+    )
 
     elapsed_ms = int((time.time() - t0) * 1000)
     _log(f"done in {elapsed_ms}ms → tier={tier} ({TIER_LABELS[tier]})")
 
-    _log_amplification(prompt, amplified, decomp, intent, domains, tier, elapsed_ms, routing)
+    _log_amplification(
+        prompt, amplified, decomp, intent, domains, tier, elapsed_ms, routing
+    )
 
     return {
-        "original":    prompt,
-        "amplified":   amplified,
-        "action":      decomp["action"],
-        "entity":      decomp["entity"],
-        "niche":       decomp["niche"],
-        "intent":      intent["id"],
-        "domains":     domains,
-        "tier":        tier,
-        "tier_label":  TIER_LABELS[tier],
+        "original": prompt,
+        "amplified": amplified,
+        "action": decomp["action"],
+        "entity": decomp["entity"],
+        "niche": decomp["niche"],
+        "intent": intent["id"],
+        "domains": domains,
+        "tier": tier,
+        "tier_label": TIER_LABELS[tier],
         "chunks_used": len(chunks),
-        "routing":     routing,
+        "routing": routing,
     }
 
 
@@ -584,8 +689,11 @@ def main():
     elif not sys.stdin.isatty():
         prompt = sys.stdin.read().strip()
     else:
-        print('Usage: python3 bin/intent_amplifier.py [--json] "<prompt>"', file=sys.stderr)
-        print('       python3 bin/intent_amplifier.py --test', file=sys.stderr)
+        print(
+            'Usage: python3 bin/intent_amplifier.py [--json] "<prompt>"',
+            file=sys.stderr,
+        )
+        print("       python3 bin/intent_amplifier.py --test", file=sys.stderr)
         sys.exit(1)
 
     result = amplify(prompt, verbose=not as_json)
@@ -593,8 +701,12 @@ def main():
     if as_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        print(f"\n[AMPLIFIER] Intent: {result['intent']} | Tier: {result['tier']} ({result['tier_label']})")
-        print(f"  Action={result['action']} Entity={result['entity']} Niche={result['niche']}")
+        print(
+            f"\n[AMPLIFIER] Intent: {result['intent']} | Tier: {result['tier']} ({result['tier_label']})"
+        )
+        print(
+            f"  Action={result['action']} Entity={result['entity']} Niche={result['niche']}"
+        )
         if result["domains"]:
             print(f"  Domains: {result['domains'][:2]}")
         print(f"\n--- Amplified prompt ---\n{result['amplified']}\n")

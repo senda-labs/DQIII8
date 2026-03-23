@@ -482,6 +482,7 @@ async function previewPipeline() {
   $('pipe-steps').innerHTML = '<div class="card">' + pipeFlow([pipeCard('Input', safeInput, true)].concat(pending)) + '</div>';
   try {
     var r = await fetch('/api/amplify', { method:'POST', headers:_jH, body: JSON.stringify({ input: input }) });
+    if (!r.ok) throw new Error('Server error ' + r.status + ': ' + (await r.text()).slice(0,120));
     var d = await r.json();
     var tierLabel = d.tier === 1 ? 'C local' : d.tier === 3 ? 'A paid' : 'B cloud';
     var amp = String(d.amplified_prompt || input);
@@ -495,6 +496,7 @@ async function previewPipeline() {
       pipeCard('Route',    tierLabel, true),
     ]) + '</div>';
     $('exec-btn').style.display = 'inline-block';
+    $('pipe-steps').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } catch (e) {
     $('pipe-steps').innerHTML += '<div style="color:var(--danger);padding:8px;font-size:12px">' + String(e.message).replace(/</g,'&lt;') + '</div>';
   } finally {

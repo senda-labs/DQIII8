@@ -121,3 +121,81 @@ def test_amplifier_entity_not_context():
     assert result["entity"] != "CONTEXT", (
         f"entity should not be 'CONTEXT' (double-enrichment bug). Got: {result['entity']!r}"
     )
+
+
+def test_amplifier_chunks_used_post_filter():
+    """chunks_used must reflect post-filter count, not raw retrieved count.
+
+    Fix 1: _build_amplified_prompt now returns (prompt, injected_count).
+    For Tier C the cap is 1; the return value must be <= 1 regardless of
+    how many chunks were retrieved.
+    """
+    from knowledge_enricher import get_relevant_chunks
+    chunks = get_relevant_chunks("prove convergence of Newton-Raphson", "formal_sciences", top_k=5)
+    result = amplify("prove convergence of Newton-Raphson", domain="formal_sciences", chunks=chunks)
+    assert result["tier"] == 1, f"expected Tier C (1), got {result['tier']}"
+    assert result["chunks_used"] <= 1, (
+        f"chunks_used should be post-filter (<=1 for Tier C), got {result['chunks_used']}"
+    )
+
+
+def test_amplifier_niche_routing_to_tier_a():
+    """Finance niche must route to Tier A even when domain classifier returns social_sciences.
+
+    Fix 2: _select_tier checks decomp['niche'] first. 'finance' niche → Tier A (3).
+    Previously: 'social_sciences' not in high_tier_domains → Tier C (1). Bug.
+    """
+    result = amplify("calculate WACC for Tesla assuming 10% cost of equity",
+                     domain="social_sciences")
+    assert result["tier"] == 3, (
+        f"finance niche must route to Tier A (3), got Tier {result['tier']}. "
+        f"niche={result.get('niche')!r}"
+    )
+
+
+def test_amplifier_tier_b_no_reference_when_no_specific_chunks():
+    """Tier B without specific-data chunks must return original prompt unchanged.
+
+    Fix 3: correct criterion — <reference> tag only appears when chunks pass
+    has_specific_data(). Art/humanities chunks are generic; correct output is
+    amplified == original (no tag injection).
+    """
+    from knowledge_enricher import get_relevant_chunks
+    chunks = get_relevant_chunks("analyze the use of light in Vermeer paintings",
+                                 "humanities_arts", top_k=5)
+    result = amplify("analyze the use of light in Vermeer paintings",
+                     domain="humanities_arts", chunks=chunks)
+    amp = result["amplified"]
+    if result["chunks_used"] == 0:
+        assert amp == "analyze the use of light in Vermeer paintings", (
+            "With 0 specific chunks, Tier B must return original prompt unmodified"
+        )
+    else:
+        assert "<reference>" in amp, "With specific chunks, Tier B must use <reference> tag"
+
+
+def test_amplifier_overhead_chars():
+    """Amplified prompt overhead (not ratio) must stay in tier-appropriate range.
+
+    Fix 4: ratio metric is prompt-length dependent. Overhead in chars is stable.
+    - Tier C: 30-600 chars overhead (XML tags + 1 truncated chunk + CoT)
+    - Tier B: 0-500 chars overhead (reference block only when specific chunks exist)
+    - Tier A: 0-400 chars overhead (raw data only, no scaffolding)
+    """
+    from knowledge_enricher import get_relevant_chunks
+    cases = [
+        ("formal_sciences",  "prove convergence of Newton-Raphson method",      1, 30,  600),
+        ("humanities_arts",  "analyze the use of light in Vermeer paintings",   2,  0,  500),
+        ("social_sciences",  "calculate WACC for Tesla assuming 10% cost of equity", 3, 0, 400),
+    ]
+    for domain, prompt, expected_tier, min_oh, max_oh in cases:
+        chunks = get_relevant_chunks(prompt, domain, top_k=5)
+        result = amplify(prompt, domain=domain, chunks=chunks)
+        overhead = len(result["amplified"]) - len(prompt)
+        assert result["tier"] == expected_tier, (
+            f"{domain}: expected tier {expected_tier}, got {result['tier']}"
+        )
+        assert min_oh <= overhead <= max_oh, (
+            f"{domain} Tier {expected_tier}: overhead {overhead} chars out of [{min_oh},{max_oh}]. "
+            f"amp={len(result['amplified'])}, orig={len(prompt)}"
+        )

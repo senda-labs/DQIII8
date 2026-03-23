@@ -862,3 +862,63 @@ JOIN knowledge_benchmark_results b_off
 WHERE b_on.dq_enabled = 1 AND b_off.dq_enabled = 0
 GROUP BY b_on.model, b_on.task_domain
 /* knowledge_benchmark_dq_uplift(model,task_domain,score_uplift,tokens_saved,messages_saved,hallucinations_reduced) */;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ANALYTICAL VIEWS  (read-only, no data stored)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE VIEW IF NOT EXISTS v_cost_savings AS
+SELECT 
+    date(timestamp) as day,
+    CASE 
+        WHEN agent_name IN ('python-specialist','git-specialist','web-specialist',
+            'algo-specialist','content-automator') THEN 'C'
+        WHEN agent_name IN ('finance-specialist','auditor','orchestrator') THEN 'A'
+        ELSE 'B'
+    END as tier,
+    COUNT(*) as actions,
+    ROUND(SUM(CASE 
+        WHEN agent_name IN ('finance-specialist','auditor','orchestrator') 
+        THEN duration_ms * 0.000015  -- estimación coste Sonnet por ms
+        ELSE 0 
+    END), 4) as actual_cost,
+    ROUND(COUNT(*) * 0.015, 4) as sonnet_equivalent_cost
+FROM agent_actions
+WHERE timestamp >= date('now', '-30 days')
+GROUP BY day, tier;
+
+CREATE VIEW IF NOT EXISTS v_agent_performance AS
+SELECT
+    agent_name,
+    COUNT(*) as total_actions,
+    ROUND(AVG(success) * 100, 1) as success_pct,
+    ROUND(AVG(duration_ms)) as avg_ms,
+    SUM(CASE WHEN success=0 THEN 1 ELSE 0 END) as failures
+FROM agent_actions
+WHERE timestamp >= date('now', '-7 days')
+GROUP BY agent_name
+ORDER BY total_actions DESC;
+
+CREATE VIEW IF NOT EXISTS v_tier_distribution AS
+SELECT
+    date(timestamp) as day,
+    CASE 
+        WHEN agent_name IN ('python-specialist','git-specialist','web-specialist',
+            'algo-specialist','content-automator') THEN 'C'
+        WHEN agent_name IN ('finance-specialist','auditor','orchestrator') THEN 'A'
+        ELSE 'B'
+    END as tier,
+    COUNT(*) as actions,
+    ROUND(AVG(duration_ms)) as avg_ms
+FROM agent_actions
+GROUP BY day, tier;
+
+CREATE VIEW IF NOT EXISTS v_dq_uplift AS
+SELECT
+    model,
+    dq_enabled,
+    task_domain as domain,
+    ROUND(AVG(overall_score), 2) as avg_score,
+    COUNT(*) as samples
+FROM knowledge_benchmark_results
+GROUP BY model, dq_enabled, task_domain;

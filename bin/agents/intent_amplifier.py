@@ -327,6 +327,18 @@ def filter_chunks_for_tier(chunks: list, tier: int) -> list:
     return filtered
 
 
+# ── Intent-specific suffixes ─────────────────────────────────────────────────
+
+INTENT_SUFFIXES: dict[str, str] = {
+    "calculate": "\nShow each calculation step. State the final answer.",
+    "explain": "\nStart with a one-sentence summary, then explain in detail.",
+    "compare": "\nUse a structured comparison with consistent criteria.",
+    "create": "\nOutline your approach briefly, then produce the deliverable.",
+    "debug": "\n1. Identify the error 2. Root cause 3. Fix 4. Verify.",
+    "review": "\nClassify issues as CRITICAL or SUGGESTION with location.",
+}
+
+
 # ── Tier-specific prompt builders ────────────────────────────────────────────
 
 
@@ -399,15 +411,31 @@ def _build_amplified_prompt(
     else:
         effective_chunks = chunks
 
+    intent_action = decomp.get("action", "explain") if decomp else "explain"
+    intent_suffix = INTENT_SUFFIXES.get(intent_action, "")
+
     if tier == 1:
-        return _build_prompt_tier_c(
+        amplified = _build_prompt_tier_c(
             original, decomp, domains, effective_chunks, routing
-        ), len(effective_chunks)
+        )
+        if intent_suffix:
+            # Replace generic CoT with intent-specific instruction to avoid duplication.
+            if "Think step by step." in amplified:
+                amplified = amplified.replace(
+                    "Think step by step.", intent_suffix.strip()
+                )
+            else:
+                amplified += intent_suffix
+        return amplified, len(effective_chunks)
     if tier == 2:
-        return _build_prompt_tier_b(
+        amplified = _build_prompt_tier_b(
             original, decomp, domains, effective_chunks, routing
-        ), len(effective_chunks)
+        )
+        if intent_suffix:
+            amplified += intent_suffix
+        return amplified, len(effective_chunks)
     if tier == 3:
+        # Tier A: frontier models don't need structural instructions
         return _build_prompt_tier_a(original, effective_chunks), len(effective_chunks)
 
     # Default: original [CONTEXT]/[KNOWLEDGE]/[REQUEST] format (tier=None or unknown)

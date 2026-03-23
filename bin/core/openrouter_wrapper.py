@@ -67,19 +67,53 @@ def _validate_url(url: str) -> None:
 # ── Tabla de routing por agente ─────────────────────────────────────────────
 
 AGENT_ROUTING = {
-    # Tier C — Ollama local (qwen2.5-coder:7b)
-    "python-specialist": ("ollama", "qwen2.5-coder:7b"),
-    "git-specialist": ("ollama", "qwen2.5-coder:7b"),
-    "content-automator": ("ollama", "qwen2.5-coder:7b"),
-    # Tier B — Cloud free
-    "backend-builder": ("openrouter", "qwen/qwen3-coder:free"),
-    "research-analyst": ("groq", "llama-3.3-70b-versatile"),
-    "auditor": ("openrouter", "stepfun/step-3.5-flash:free"),
-    "data-analyst": ("openrouter", "openai/gpt-oss-120b:free"),
-    "code-reviewer": ("openrouter", "openai/gpt-oss-120b:free"),
-    "creative-writer": ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
-    "default": ("openrouter", "stepfun/step-3.5-flash:free"),
+    # Tier C — Ollama local (qwen2.5-coder:7b) — code & pipeline tasks only
+    # Benchmark: qwen performs well for applied_sciences; timeouts/mediocre elsewhere (4.5/10 vs llama 7.9/10)
+    "python-specialist":    ("ollama", "qwen2.5-coder:7b"),
+    "git-specialist":       ("ollama", "qwen2.5-coder:7b"),
+    "web-specialist":       ("ollama", "qwen2.5-coder:7b"),
+    "algo-specialist":      ("ollama", "qwen2.5-coder:7b"),
+    "content-automator":    ("ollama", "qwen2.5-coder:7b"),
+    # Tier B — Cloud free (groq/llama-3.3-70b) — domain knowledge specialists
+    "ai-ml-specialist":     ("groq", "llama-3.3-70b-versatile"),
+    "biology-specialist":   ("groq", "llama-3.3-70b-versatile"),
+    "chemistry-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "data-specialist":      ("groq", "llama-3.3-70b-versatile"),
+    "economics-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "history-specialist":   ("groq", "llama-3.3-70b-versatile"),
+    "language-specialist":  ("groq", "llama-3.3-70b-versatile"),
+    "legal-specialist":     ("groq", "llama-3.3-70b-versatile"),
+    "logic-specialist":     ("groq", "llama-3.3-70b-versatile"),
+    "marketing-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "math-specialist":      ("groq", "llama-3.3-70b-versatile"),
+    "nutrition-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "philosophy-specialist":("groq", "llama-3.3-70b-versatile"),
+    "physics-specialist":   ("groq", "llama-3.3-70b-versatile"),
+    "software-specialist":  ("groq", "llama-3.3-70b-versatile"),
+    "stats-specialist":     ("groq", "llama-3.3-70b-versatile"),
+    "writing-specialist":   ("groq", "llama-3.3-70b-versatile"),
+    # Tier B — Other cloud-free agents
+    "backend-builder":      ("openrouter", "qwen/qwen3-coder:free"),
+    "research-analyst":     ("groq", "llama-3.3-70b-versatile"),
+    "code-reviewer":        ("openrouter", "openai/gpt-oss-120b:free"),
+    "data-analyst":         ("openrouter", "openai/gpt-oss-120b:free"),
+    "creative-writer":      ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
+    # Tier A — Paid / high-stakes agents
+    "finance-specialist":   ("anthropic", "claude-sonnet-4-6"),
+    "auditor":              ("anthropic", "claude-sonnet-4-6"),
+    "orchestrator":         ("anthropic", "claude-sonnet-4-6"),
+    "default":              ("openrouter", "stepfun/step-3.5-flash:free"),
 }
+
+# Agents for which Tier C (Ollama/qwen) is always correct regardless of domain.
+# All other agents on Tier C will be auto-escalated to Tier B when domain != applied_sciences.
+_TIER_C_AGENTS = frozenset({
+    "python-specialist",
+    "git-specialist",
+    "web-specialist",
+    "algo-specialist",
+    "content-automator",
+})
 
 # Fallback universal por proveedor (cuando el modelo primario falla)
 FALLBACK_MODELS = {
@@ -499,7 +533,7 @@ def classify_prompt(prompt: str) -> None:
     # Domain enrichment (best-effort — no failure if domain_classifier is unavailable)
     domain_suffix = ""
     try:
-        _dc_path = Path(__file__).parent / "domain_classifier.py"
+        _dc_path = Path(__file__).parent.parent / "agents" / "domain_classifier.py"
         if _dc_path.exists():
             import importlib.util as _ilu
 
@@ -564,10 +598,11 @@ def main() -> None:
 
     # Domain enrichment (best-effort — no failure if enricher/classifier unavailable)
     _enriched_domain = None
+    _routing_domain = None  # captured for tier escalation below
     _knowledge_chunks = 0
     try:
-        _dc_path = Path(__file__).parent / "domain_classifier.py"
-        _ke_path = Path(__file__).parent / "knowledge_enricher.py"
+        _dc_path = Path(__file__).parent.parent / "agents" / "domain_classifier.py"
+        _ke_path = Path(__file__).parent.parent / "agents" / "knowledge_enricher.py"
         if _dc_path.exists() and _ke_path.exists():
             import importlib.util as _ilu
 
@@ -575,6 +610,7 @@ def main() -> None:
             _dc = _ilu.module_from_spec(_spec)
             _spec.loader.exec_module(_dc)
             _domain, _score, _method = _dc.classify_domain(prompt)
+            _routing_domain = _domain  # always capture, used for escalation
             if _method != "default":
                 _spec2 = _ilu.spec_from_file_location("knowledge_enricher", _ke_path)
                 _ke = _ilu.module_from_spec(_spec2)
@@ -591,7 +627,7 @@ def main() -> None:
 
     # Prompt enrichment (best-effort — adds domain context when available)
     try:
-        _ia_path = Path(__file__).parent / "intent_amplifier.py"
+        _ia_path = Path(__file__).parent.parent / "agents" / "intent_amplifier.py"
         if _ia_path.exists():
             import importlib.util as _ilu2
             _ia_spec = _ilu2.spec_from_file_location("intent_amplifier", _ia_path)
@@ -618,6 +654,24 @@ def main() -> None:
 
     agent_name = args.agent
 
+    # Escalate from Tier C when domain is not applied_sciences.
+    # Code-specialist agents (_TIER_C_AGENTS) always stay on qwen regardless of domain.
+    # If Groq later fails, ollama is appended as last-resort fallback.
+    _escalated_from_ollama = False
+    if (
+        primary_provider == "ollama"
+        and agent_name not in _TIER_C_AGENTS
+        and _routing_domain is not None
+        and _routing_domain != "applied_sciences"
+    ):
+        print(
+            f"[DQIII8] Tier C skipped: domain={_routing_domain}, escalated to B",
+            file=sys.stderr,
+        )
+        primary_provider = "groq"
+        primary_model = "llama-3.3-70b-versatile"
+        _escalated_from_ollama = True
+
     # Load agent system prompt from .claude/agents/{agent}.md
     system_prompt = load_agent_system_prompt(agent_name)
     if system_prompt:
@@ -630,6 +684,9 @@ def main() -> None:
             fallback_provider, (fallback_provider, "gpt-4o-mini")
         )
         chain.append((fb_provider, fb_model))
+    # When escalated from Ollama, add qwen as last-resort (offline fallback)
+    if _escalated_from_ollama:
+        chain.append(("ollama", "qwen2.5-coder:7b"))
 
     # Intentar cada proveedor en orden
     for provider, model in chain:

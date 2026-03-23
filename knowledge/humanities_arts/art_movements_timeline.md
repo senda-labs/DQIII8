@@ -2,6 +2,8 @@
 domain: humanities_arts
 type: reference_data
 last_updated: 2026-03
+last_verified: 2026-03
+data_quality: see bottom
 keywords_en: [art movement, period, Renaissance, Baroque, Romanticism, Impressionism, Modernism, timeline, dates, style, architecture, sculpture]
 keywords_es: [movimiento artístico, período, Renacimiento, Barroco, Romanticismo, Impresionismo, Modernismo, cronología, fechas]
 ---
@@ -80,3 +82,18 @@ keywords_es: [movimiento artístico, período, Renacimiento, Barroco, Romanticis
 | Being and Nothingness | Sartre | 1943 | Existentialism | 700 | $16–25 |
 | Philosophical Investigations | Wittgenstein | 1953 | Analytic | 300 | $14–22 |
 | A Theory of Justice | Rawls | 1971 | Political Philosophy | 600 | $18–28 |
+
+
+## Data Quality Classification
+
+### Category A — Stable Historical Data:
+- Art movement dates and key works: Grove Art Online, Oxford Art History
+- Art prizes amounts: Turner Prize (tate.org.uk), Pritzker (pritzkerprize.com), MacArthur (macfound.org)
+- Literature period dates and key works: Norton Anthology of Literature, standard academic consensus
+- Philosophy works and dates: Stanford Encyclopedia of Philosophy (plato.stanford.edu)
+- Page counts: publisher data, commonly available editions
+
+### Category B — Estimates (⚠ directional only):
+- "Auction Peak ($M)" per movement: rough order-of-magnitude based on known record sales within each period.
+  Not from a single authoritative source; use only for ballpark comparison.
+- Edition prices ($): approximate contemporary retail prices; vary widely.

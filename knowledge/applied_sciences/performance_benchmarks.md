@@ -2,6 +2,8 @@
 domain: applied_sciences
 type: reference_data
 last_updated: 2026-03
+last_verified: 2026-03
+data_quality: A=algorithmic_complexity B=hardware_benchmark
 keywords_en: [algorithm complexity, Big O, benchmark, latency, throughput, framework, React, Vue, database, PostgreSQL, Redis, AWS, cloud, performance, sorting, search]
 keywords_es: [complejidad algorítmica, Big O, benchmark, latencia, rendimiento, framework, base de datos, PostgreSQL, Redis, AWS, nube, ordenación]
 ---
@@ -184,3 +186,26 @@ Lower is better. React with concurrent mode adds ~5ms overhead vs legacy mode.
 | Llama 3.3 70B (Groq) | $0.00 | $0.00 | 32K | Free tier; 100K TPD |
 | Llama 3.3 70B (Together) | $0.18 | $0.88 | 32K | Together AI |
 | Deepseek V3 | $0.27 | $1.10 | 128K | Deepseek |
+
+
+## Data Quality Classification
+
+### Category A — Stable (mathematical / algorithmic):
+- Big O complexity table: standard algorithm analysis (Cormen et al., "Introduction to Algorithms", MIT Press)
+- Sorting algorithm properties: textbook definitions, verified across multiple sources
+
+### Category B — Temporal Hardware/Software Benchmarks (⚠ verify before use):
+
+| Data | Source | Notes |
+|------|--------|-------|
+| PostgreSQL vs MySQL vs DuckDB | TPC-H official benchmark (tpc.org/tpch) | Scale factor 1, 2024 hardware |
+| Redis throughput | Redis official benchmark (redis.io/docs/management/optimization/benchmarks) | Commodity server, single node |
+| AWS service latencies | AWS documentation + CloudWatch typical values | us-east-1 baseline; varies by region |
+| Cross-region latency | AWS latency tool (cloudping.co), CloudPing | Approximate; varies with routing |
+| JS framework benchmark | krausest/js-framework-benchmark (github.com/krausest/js-framework-benchmark) | v8 round, Chrome 121, M3 Mac |
+| HTTP server throughput | TechEmpower Framework Benchmarks Round 22 (techempower.com/benchmarks) | Plaintext handler; hardware-dependent |
+| LLM inference tok/s | MLPerf, provider documentation, vLLM benchmarks | A100 80GB single-node baseline |
+| API pricing | Vendor pricing pages (openai.com/pricing, anthropic.com/pricing, together.ai/pricing) | Mid-2025; changes frequently |
+
+⚠ All benchmark numbers are order-of-magnitude estimates. Real performance varies significantly
+with hardware generation, network conditions, data characteristics, and workload patterns.

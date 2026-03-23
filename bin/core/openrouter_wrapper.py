@@ -654,6 +654,27 @@ def main() -> None:
         print("[openrouter_wrapper] Error: empty prompt.", file=sys.stderr)
         sys.exit(1)
 
+    # Capture original prompt for working memory (before DQ enrichment mutates it)
+    _original_prompt = prompt
+
+    # Session ID: use DQIII8_SESSION_ID if set (injected by Telegram bot or loop),
+    # otherwise derive from process ID so each CLI invocation is its own session.
+    try:
+        _wm_path = Path(__file__).parent.parent / "agents" / "working_memory.py"
+        if _wm_path.exists():
+            import importlib.util as _ilu_wm
+
+            _spec_wm = _ilu_wm.spec_from_file_location("working_memory", _wm_path)
+            _wm = _ilu_wm.module_from_spec(_spec_wm)
+            _spec_wm.loader.exec_module(_wm)
+            _session_id = _wm.get_session_id()
+        else:
+            _wm = None
+            _session_id = None
+    except Exception:
+        _wm = None
+        _session_id = None
+
     # Linear pipeline: classify → get_chunks (no prompt mutation) → amplify(original)
     # This prevents the double-enrichment bug where enrich_with_knowledge() prepended
     # [DOMAIN CONTEXT] to the prompt before amplify() ran, causing entity="CONTEXT".
@@ -796,6 +817,21 @@ def main() -> None:
     if _escalated_from_ollama:
         chain.append(("ollama", "qwen2.5-coder:7b"))
 
+    # Working memory: prepend recent session context for Tier B/A calls.
+    # Tier C (Ollama/qwen) skips this — small models choke on extra prefix tokens.
+    _wm_tier = (
+        3
+        if primary_provider == "anthropic"
+        else (1 if primary_provider == "ollama" else 2)
+    )
+    if _wm and _session_id and _wm_tier >= 2:
+        try:
+            _session_ctx = _wm.get_session_context(_session_id, max_exchanges=3)
+            if _session_ctx:
+                prompt = _session_ctx[:2000] + "\n\n" + prompt
+        except Exception:
+            pass  # fail-open
+
     # Intentar cada proveedor en orden
     for provider, model in chain:
         print(f"[DQIII8] {agent_name} | {provider} | {model}", file=sys.stderr)
@@ -818,6 +854,13 @@ def main() -> None:
         )
 
         if ok:
+            if _wm and _session_id:
+                try:
+                    _wm.save_exchange(
+                        _session_id, _original_prompt, text[:300], _enriched_domain
+                    )
+                except Exception:
+                    pass  # fail-open
             sys.exit(0)
 
         print(f"[DQIII8] {provider} failed — trying next...", file=sys.stderr)

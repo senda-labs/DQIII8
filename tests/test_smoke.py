@@ -106,6 +106,44 @@ def test_db_connection():
     assert count > 0, f"agent_actions vacía (count={count})"
 
 
+def test_working_memory_save_and_retrieve():
+    """Working memory persists via SQLite across function calls."""
+    import sqlite3
+    from working_memory import get_session_context, save_exchange
+
+    sid = "test_unit_wm_001"
+    conn = sqlite3.connect("database/jarvis_metrics.db")
+    conn.execute("DELETE FROM session_memory WHERE session_id = ?", (sid,))
+    conn.commit()
+    conn.close()
+
+    save_exchange(sid, "calculate WACC for Tesla", "WACC = 8.5%", "social_sciences")
+    ctx = get_session_context(sid)
+    assert "WACC" in ctx, f"Expected 'WACC' in context, got: {ctx!r}"
+    assert "Tesla" in ctx, f"Expected 'Tesla' in context, got: {ctx!r}"
+
+    conn = sqlite3.connect("database/jarvis_metrics.db")
+    conn.execute("DELETE FROM session_memory WHERE session_id = ?", (sid,))
+    conn.commit()
+    conn.close()
+
+
+def test_working_memory_empty_session():
+    """New session returns empty context."""
+    from working_memory import get_session_context
+
+    assert get_session_context("nonexistent_session_xyz_999") == ""
+
+
+def test_working_memory_session_ids():
+    """Session ID generators produce correctly prefixed strings."""
+    from working_memory import get_session_id
+
+    assert get_session_id("telegram", chat_id=12345).startswith("tg_")
+    assert get_session_id("autonomous").startswith("auto_")
+    assert get_session_id().startswith("cc_")
+
+
 def test_knowledge_enricher_get_chunks():
     """get_relevant_chunks returns list[dict] without modifying the prompt."""
     from knowledge_enricher import get_relevant_chunks

@@ -28,12 +28,12 @@ from db import get_db
 TASKS_FILE = JARVIS / "tasks" / "benchmark_tasks.json"
 
 CONFIGS = [
-    {"name": "A", "model": "qwen2.5-coder:7b",          "provider": "ollama",    "dq": False},
-    {"name": "B", "model": "qwen2.5-coder:7b",          "provider": "ollama",    "dq": True},
-    {"name": "C", "model": "llama-3.3-70b-versatile",   "provider": "groq",      "dq": False},
-    {"name": "D", "model": "llama-3.3-70b-versatile",   "provider": "groq",      "dq": True},
-    {"name": "E", "model": "claude-sonnet-4-6",          "provider": "anthropic", "dq": False},
-    {"name": "F", "model": "claude-sonnet-4-6",          "provider": "anthropic", "dq": True},
+    {"name": "A", "model": "qwen2.5-coder:7b", "provider": "ollama", "dq": False},
+    {"name": "B", "model": "qwen2.5-coder:7b", "provider": "ollama", "dq": True},
+    {"name": "C", "model": "llama-3.3-70b-versatile", "provider": "groq", "dq": False},
+    {"name": "D", "model": "llama-3.3-70b-versatile", "provider": "groq", "dq": True},
+    {"name": "E", "model": "claude-sonnet-4-6", "provider": "anthropic", "dq": False},
+    {"name": "F", "model": "claude-sonnet-4-6", "provider": "anthropic", "dq": True},
 ]
 
 
@@ -50,6 +50,7 @@ def run_task(task, config):
     if config["dq"]:
         try:
             from intent_amplifier import amplify
+
             result = amplify(prompt)
             prompt = result["amplified"]
             knowledge_used = json.dumps(result.get("niche", []))
@@ -80,7 +81,8 @@ def run_task(task, config):
         "response_text": response.get("text", ""),
         "tokens_prompt": response.get("tokens_prompt", 0),
         "tokens_response": response.get("tokens_response", 0),
-        "tokens_total": response.get("tokens_prompt", 0) + response.get("tokens_response", 0),
+        "tokens_total": response.get("tokens_prompt", 0)
+        + response.get("tokens_response", 0),
         "time_seconds": elapsed,
         "messages_needed": 1,
         "cost_usd": _estimate_cost(config, response),
@@ -90,10 +92,16 @@ def run_task(task, config):
 def _run_ollama(prompt, model):
     try:
         import requests
+
         resp = requests.post(
             "http://localhost:11434/api/generate",
-            json={"model": model, "prompt": prompt, "stream": False},
-            timeout=180,
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"num_predict": 400},
+            },
+            timeout=120,
         )
         data = resp.json()
         return {
@@ -102,12 +110,17 @@ def _run_ollama(prompt, model):
             "tokens_response": data.get("eval_count", 0),
         }
     except Exception as e:
-        return {"text": f"[Ollama error: {e}]", "tokens_prompt": 0, "tokens_response": 0}
+        return {
+            "text": f"[Ollama error: {e}]",
+            "tokens_prompt": 0,
+            "tokens_response": 0,
+        }
 
 
 def _run_groq(prompt, model):
     try:
         from groq import Groq
+
         client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
         resp = client.chat.completions.create(
             model=model,
@@ -126,6 +139,7 @@ def _run_groq(prompt, model):
 def _run_anthropic(prompt, model):
     try:
         import anthropic
+
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
         resp = client.messages.create(
             model=model,
@@ -138,7 +152,11 @@ def _run_anthropic(prompt, model):
             "tokens_response": resp.usage.output_tokens,
         }
     except Exception as e:
-        return {"text": f"[Anthropic error: {e}]", "tokens_prompt": 0, "tokens_response": 0}
+        return {
+            "text": f"[Anthropic error: {e}]",
+            "tokens_prompt": 0,
+            "tokens_response": 0,
+        }
 
 
 def _estimate_cost(config, response):
@@ -175,6 +193,7 @@ Respond ONLY with this JSON (no other text):
 
     try:
         from groq import Groq
+
         client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
         resp = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -187,16 +206,30 @@ Respond ONLY with this JSON (no other text):
         return json.loads(text)
     except Exception as e:
         print(f"  Warning: Judge failed: {e}")
-        return {"accuracy": 0, "completeness": 0, "precision": 0, "hallucinations": 0, "errors": f"judge error: {e}"}
+        return {
+            "accuracy": 0,
+            "completeness": 0,
+            "precision": 0,
+            "hallucinations": 0,
+            "errors": f"judge error: {e}",
+        }
 
 
 def save_result(result, eval_data):
     overall = round(
-        (eval_data.get("accuracy", 0) + eval_data.get("completeness", 0) + eval_data.get("precision", 0)) / 3,
+        (
+            eval_data.get("accuracy", 0)
+            + eval_data.get("completeness", 0)
+            + eval_data.get("precision", 0)
+        )
+        / 3,
         2,
     )
-    tier = "A" if result["model"].startswith("qwen") or "ollama" in result.get("knowledge_injected", "") else (
-        "B" if result["model"].startswith("llama") else "C"
+    tier = (
+        "A"
+        if result["model"].startswith("qwen")
+        or "ollama" in result.get("knowledge_injected", "")
+        else ("B" if result["model"].startswith("llama") else "C")
     )
     with get_db() as conn:
         conn.execute(
@@ -210,23 +243,38 @@ def save_result(result, eval_data):
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
-                result["task_id"], result["task_text"], result["task_domain"],
-                result["config"], result["model"], int(result["dq_enabled"]),
+                result["task_id"],
+                result["task_text"],
+                result["task_domain"],
+                result["config"],
+                result["model"],
+                int(result["dq_enabled"]),
                 result["knowledge_injected"],
-                eval_data.get("accuracy", 0), eval_data.get("completeness", 0),
-                eval_data.get("precision", 0), overall,
-                result["tokens_prompt"], result["tokens_response"], result["tokens_total"],
-                result["time_seconds"], result["messages_needed"], result["cost_usd"],
-                tier, False,
-                eval_data.get("hallucinations", 0), eval_data.get("errors", ""),
-                "llama-3.3-70b-versatile", False,
+                eval_data.get("accuracy", 0),
+                eval_data.get("completeness", 0),
+                eval_data.get("precision", 0),
+                overall,
+                result["tokens_prompt"],
+                result["tokens_response"],
+                result["tokens_total"],
+                result["time_seconds"],
+                result["messages_needed"],
+                result["cost_usd"],
+                tier,
+                False,
+                eval_data.get("hallucinations", 0),
+                eval_data.get("errors", ""),
+                "llama-3.3-70b-versatile",
+                False,
             ),
         )
 
 
 def generate_report():
     with get_db() as conn:
-        rows = conn.execute("SELECT COUNT(*) FROM knowledge_benchmark_results").fetchone()
+        rows = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_benchmark_results"
+        ).fetchone()
         if not rows or rows[0] == 0:
             print("No benchmark results yet. Run with --run first.")
             return
@@ -239,26 +287,43 @@ def generate_report():
             "SELECT * FROM knowledge_benchmark_summary ORDER BY model, dq_enabled"
         ).fetchall()
         if summary:
-            print(f"\n{'Config':<8} {'Model':<26} {'DQ':<4} {'Score':<7} {'Tokens':<8} {'Time':<7} {'Halluc':<8} {'N'}")
+            print(
+                f"\n{'Config':<8} {'Model':<26} {'DQ':<4} {'Score':<7} {'Tokens':<8} {'Time':<7} {'Halluc':<8} {'N'}"
+            )
             print("-" * 72)
             for r in summary:
                 dq_str = "ON " if r[2] else "OFF"
-                print(f"{r[0]:<8} {r[1]:<26} {dq_str:<4} {r[4]:<7} {r[5]:<8.0f} {r[6]:<7.1f} {r[9]:<8.1f} {r[10]}")
+                print(
+                    f"{r[0]:<8} {r[1]:<26} {dq_str:<4} {r[4]:<7} {r[5]:<8.0f} {r[6]:<7.1f} {r[9]:<8.1f} {r[10]}"
+                )
 
-        uplift = conn.execute("SELECT * FROM knowledge_benchmark_dq_uplift ORDER BY model").fetchall()
+        uplift = conn.execute(
+            "SELECT * FROM knowledge_benchmark_dq_uplift ORDER BY model"
+        ).fetchall()
         if uplift:
-            print(f"\n{'Model':<26} {'Domain':<22} {'Score ↑':<9} {'Tokens ↓':<11} {'Halluc ↓'}")
+            print(
+                f"\n{'Model':<26} {'Domain':<22} {'Score ↑':<9} {'Tokens ↓':<11} {'Halluc ↓'}"
+            )
             print("-" * 72)
             for r in uplift:
-                print(f"{r[0]:<26} {r[1]:<22} {r[2]:+.2f}     {r[3]:+.0f}        {r[5]:+.1f}")
+                print(
+                    f"{r[0]:<26} {r[1]:<22} {r[2]:+.2f}     {r[3]:+.0f}        {r[5]:+.1f}"
+                )
 
         print("\n" + "=" * 72)
 
 
 def export_csv(filepath="tasks/knowledge_benchmark_results.csv"):
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM knowledge_benchmark_results ORDER BY id").fetchall()
-        cols = [d[0] for d in conn.execute("PRAGMA table_info(knowledge_benchmark_results)").fetchall()]
+        rows = conn.execute(
+            "SELECT * FROM knowledge_benchmark_results ORDER BY id"
+        ).fetchall()
+        cols = [
+            d[0]
+            for d in conn.execute(
+                "PRAGMA table_info(knowledge_benchmark_results)"
+            ).fetchall()
+        ]
 
     path = JARVIS / filepath
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -273,7 +338,9 @@ def main():
     parser.add_argument("--run", action="store_true", help="Run benchmark evaluations")
     parser.add_argument("--task", type=int, help="Run specific task ID only")
     parser.add_argument("--config", type=str, help="Run specific config only (A-F)")
-    parser.add_argument("--report", action="store_true", help="Generate report from existing results")
+    parser.add_argument(
+        "--report", action="store_true", help="Generate report from existing results"
+    )
     parser.add_argument("--export", type=str, help="Export results (csv)")
     args = parser.parse_args()
 
@@ -302,10 +369,13 @@ def main():
                 done += 1
                 print(
                     f"[{done}/{total}] Task {task['id']} | Config {config['name']} "
-                    f"({config['model']}, DQ={'ON' if config['dq'] else 'OFF'})"
+                    f"({config['model']}, DQ={'ON' if config['dq'] else 'OFF'})",
+                    flush=True,
                 )
 
-                if config["provider"] == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+                if config["provider"] == "anthropic" and not os.environ.get(
+                    "ANTHROPIC_API_KEY"
+                ):
                     print("  Skipped (no ANTHROPIC_API_KEY)")
                     continue
 
@@ -318,12 +388,18 @@ def main():
                 save_result(result, eval_data)
 
                 score = round(
-                    (eval_data.get("accuracy", 0) + eval_data.get("completeness", 0) + eval_data.get("precision", 0)) / 3,
+                    (
+                        eval_data.get("accuracy", 0)
+                        + eval_data.get("completeness", 0)
+                        + eval_data.get("precision", 0)
+                    )
+                    / 3,
                     1,
                 )
                 print(
                     f"  Score: {score}/10 | Tokens: {result['tokens_total']} | "
-                    f"Time: {result['time_seconds']}s | Halluc: {eval_data.get('hallucinations', 0)}"
+                    f"Time: {result['time_seconds']}s | Halluc: {eval_data.get('hallucinations', 0)}",
+                    flush=True,
                 )
 
         print(f"\nBenchmark complete: {done} evaluations")

@@ -2,6 +2,8 @@
 domain: applied_sciences
 type: reference_data
 last_updated: 2026-03
+last_verified: 2026-03
+data_quality: A=standard B=temporal
 keywords_en: [cryptography, TLS, AES, RSA, ECDSA, hash, SHA, bcrypt, key size, cipher, security, NIST, vulnerability, CVE, CVSS]
 keywords_es: [criptografía, TLS, AES, RSA, ECDSA, hash, SHA, bcrypt, tamaño clave, cifrado, seguridad, NIST, vulnerabilidad]
 ---
@@ -72,12 +74,32 @@ TLS 1.3 mandatory cipher suites: TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384,
 
 ## CVSS v3.1 Scoring Ranges
 
-| Score Range | Severity | SLA to Patch | % of CVEs (2024) | Notes |
-|-------------|----------|-------------|-----------------|-------|
-| 9.0–10.0 | Critical | 24–72 hours | ~2% | Actively exploited: immediate |
-| 7.0–8.9 | High | 7–14 days | ~18% | Remote code execution typical |
-| 4.0–6.9 | Medium | 30 days | ~45% | Require auth or user interaction |
-| 0.1–3.9 | Low | 90 days | ~20% | Physical access or limited impact |
-| 0.0 | None | — | ~15% | No impact |
+| Score Range | Severity | SLA to Patch | Notes |
+|-------------|----------|-------------|-------|
+| 9.0–10.0 | Critical | 24–72 hours | Actively exploited: immediate |
+| 7.0–8.9 | High | 7–14 days | Remote code execution typical |
+| 4.0–6.9 | Medium | 30 days | Require auth or user interaction |
+| 0.1–3.9 | Low | 90 days | Physical access or limited impact |
+| 0.0 | None | — | No impact |
 
 Notable CVEs by CVSS 10.0: Log4Shell CVE-2021-44228 (10.0), Heartbleed CVE-2014-0160 (7.5), ShellShock CVE-2014-6271 (9.8).
+
+
+## Quality Notes
+
+### Category A (stable — verified against standards):
+- Key size recommendations: **NIST SP 800-57 Part 1 Rev. 5** (doi.org/10.6028/NIST.SP.800-57pt1r5)
+- AES standard: **NIST FIPS 197** (2001, revised 2023)
+- ML-KEM: **NIST FIPS 203** (August 2024)
+- TLS 1.3: **IETF RFC 8446** (August 2018)
+- TLS 1.1/1.2 deprecation: **IETF RFC 8996** (March 2021)
+- CVSS v3.1 scoring: **FIRST.org** (first.org/cvss/specification-document)
+- Password hashing (Argon2id, PBKDF2): **OWASP Password Storage Cheat Sheet** (2024)
+
+### Category B (temporal — verify before use):
+- Throughput numbers (AES-NI, hash speeds): hardware-dependent; measured on modern x86-64 with AES-NI
+  Source: OpenSSL speed benchmarks, BLAKE3 paper (2020), libsodium documentation
+- RSA/ECDSA ops/s: measured on ~Intel Core i7 (2022 generation); varies ±30% by CPU
+  Source: OpenSSL speed benchmarks
+
+⚠ Throughput values are approximate and hardware-dependent. Benchmark your specific hardware.

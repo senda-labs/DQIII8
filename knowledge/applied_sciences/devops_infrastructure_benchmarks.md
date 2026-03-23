@@ -2,6 +2,8 @@
 domain: applied_sciences
 type: reference_data
 last_updated: 2026-03
+last_verified: 2026-03
+data_quality: A=k8s_standards B=runtime_benchmarks
 keywords_en: [Docker, Kubernetes, k8s, CI/CD, GitHub Actions, deployment, container, CPU, memory, network, SLA, uptime, SRE, error budget, latency, throughput]
 keywords_es: [Docker, Kubernetes, despliegue, contenedor, CI/CD, GitHub Actions, SLA, disponibilidad, latencia, rendimiento]
 ---
@@ -94,3 +96,23 @@ Error budget (99.9%): 43.8 min/month. Burn rate >1.0 = consuming budget faster t
 | Cloudflare Workers | JS/WASM | N/A | <5 ms | 20 ms |
 
 Provisioned Concurrency (AWS): eliminates cold starts; cost ~$0.015/GB-hour (Lambda).
+
+
+## Data Quality Classification
+
+### Category A — Stable (official specs / pure math):
+- Kubernetes resource defaults and pod limits: **Kubernetes documentation** (kubernetes.io/docs)
+- HPA defaults: **Kubernetes HPA documentation** (kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale)
+- SLA downtime table: pure arithmetic from availability % (no external source needed)
+- TCP/TLS handshake RTT counts: IETF RFC standards (RFC 793, RFC 8446)
+- Network protocol header sizes: IETF RFCs
+
+### Category B — Temporal (⚠ verify before use):
+
+| Data | Source | Notes |
+|------|--------|-------|
+| Docker start/build times | Docker documentation + community benchmarks | Varies with host hardware/image size |
+| GitHub Actions job times | GitHub Actions documentation + experience | ubuntu-latest runner as of 2024 |
+| GitHub Actions pricing | github.com/features/actions (pricing page) | Changes with plans; check current |
+| Cold start latencies | AWS/GCP/Azure documentation + benchmarks (bref.sh, lumigo.io/blog) | Varies by runtime version |
+| Cloudflare Workers latency | Cloudflare documentation (developers.cloudflare.com) | Edge network; <5ms typical |

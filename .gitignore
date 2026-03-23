@@ -5,6 +5,18 @@ database/*.db
 database/*.db-wal
 database/*.db-shm
 
+# Config with real keys (example file IS committed, real file is NOT)
+config/.env
+
+# Claude Code credentials
+.claude/.credentials.json
+
+# Pytest
+.pytest_cache/
+
+# Nightly report (regenerated each run)
+tasks/nightly-report.md
+
 # Agent worktrees (ephemeral)
 .claude/worktrees/
 
@@ -113,6 +125,7 @@ claude-progress.txt
 PLAN_MAESTRO.md
 00_DASHBOARD.md
 CHANGELOG.md
+!docs/CHANGELOG.md
 pyproject.toml
 
 # Internal directories

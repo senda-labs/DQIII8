@@ -18,8 +18,8 @@ CONTENT_ROOT = os.environ.get("CONTENT_PROJECT_ROOT", "")
 if CONTENT_ROOT:
     sys.path.insert(0, CONTENT_ROOT)
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = str(JARVIS / "database" / "jarvis_metrics.db")
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB = str(JARVIS / "database" / "dqiii8.db")
 OUT_DIR = JARVIS / "tasks" / "github_reports"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 

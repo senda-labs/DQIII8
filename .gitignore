@@ -108,7 +108,6 @@ node_modules/
 .mcp.json
 
 # === Internal/Private — never push to public repo ===
-CLAUDE.md
 CLAUDE.md.save*
 claude-progress.txt
 PLAN_MAESTRO.md
@@ -125,6 +124,16 @@ decisions/
 database/audit_reports/
 database/system_metrics.log
 database/qdrant/
+
+# User projects — track placeholder only, never project contents
+my-projects/*/
+
+# Archive — not for public consumption
+bin/archive/
+
+# Personal skills — only README.md is public
+skills-registry/custom/*
+!skills-registry/custom/README.md
 
 # MCP local config
 .claude/.mcp.json

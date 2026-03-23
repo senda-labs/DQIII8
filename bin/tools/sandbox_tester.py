@@ -25,10 +25,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS_ROOT / "database" / "jarvis_metrics.db"
-SANDBOX_ROOT = Path("/root/jarvis-sandbox")
-RESULTS_DIR = JARVIS_ROOT / "tasks" / "test_results"
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB = DQIII8_ROOT / "database" / "dqiii8.db"
+SANDBOX_ROOT = Path(os.environ.get("DQIII8_SANDBOX", str(DQIII8_ROOT.parent / "dqiii8-sandbox")))
+RESULTS_DIR = DQIII8_ROOT / "tasks" / "test_results"
 
 SHANNON_THRESHOLD = 8.0
 MIN_SCORE_REQUIRED = 5.0

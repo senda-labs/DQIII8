@@ -3,7 +3,7 @@
 import os, sys, json
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
 KNOWLEDGE = JARVIS / "knowledge"
 
 def find_template(domain: str, agent: str) -> dict:

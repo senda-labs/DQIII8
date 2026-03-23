@@ -16,7 +16,7 @@ Launches an efficiency audit on unreviewed Python files using Aider + Gemini 2.0
 2. Passes each file to Aider with the `gemini/gemini-2.0-flash` model.
 3. Analyzes: bugs, efficiency, readability, security.
 4. Saves Markdown report to `database/audit_reports/gemini_review_<ts>.md`.
-5. Registers the review in `jarvis_metrics.db` (table `audit_reports`).
+5. Registers the review in `dqiii8.db` (table `audit_reports`).
 6. Git push → report available in Obsidian in ~1 min.
 
 ## Requirements

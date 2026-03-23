@@ -14,8 +14,8 @@ except Exception:
     data = {}
 
 session = data.get("session_id", "unknown")
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB = JARVIS / "database" / "jarvis_metrics.db"
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB = JARVIS / "database" / "dqiii8.db"
 LESSONS = JARVIS / "tasks" / "lessons.md"
 PROJECTS = JARVIS / "projects"
 NOW = datetime.now().isoformat()
@@ -336,7 +336,7 @@ except Exception:
 
 # ── 1. Close session in DB ────────────────────────────────────────
 try:
-    _bin = os.path.join(os.environ.get("JARVIS_ROOT", "/root/jarvis"), "bin")
+    _bin = os.path.join(os.environ.get("DQIII8_ROOT", "/root/jarvis"), "bin")
     if _bin not in sys.path:
         sys.path.insert(0, _bin)
     from db import get_db as _get_db
@@ -661,7 +661,7 @@ try:
     import json as _json
     from datetime import datetime as _dt
 
-    _db_path = JARVIS / "database" / "jarvis_metrics.db"
+    _db_path = JARVIS / "database" / "dqiii8.db"
     _progress_file = JARVIS / "claude-progress.txt"
 
     if _db_path.exists():

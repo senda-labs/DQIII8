@@ -26,9 +26,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-JARVIS_ROOT = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
-DB_PATH = JARVIS_ROOT / "database" / "jarvis_metrics.db"
-WRAPPER = JARVIS_ROOT / "bin" / "openrouter_wrapper.py"
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
+WRAPPER = DQIII8_ROOT / "bin" / "openrouter_wrapper.py"
 
 # ── Static mapping tables ─────────────────────────────────────────────────────
 
@@ -184,7 +184,7 @@ def _get_model_for_task(task_type: str) -> tuple[str, float]:
     Queries model_router.get_recommendation() for the given task_type.
     Returns (model_name, score). Falls back to defaults if import fails.
     """
-    bin_dir = str(JARVIS_ROOT / "bin")
+    bin_dir = str(DQIII8_ROOT / "bin")
     if bin_dir not in sys.path:
         sys.path.insert(0, bin_dir)
     try:

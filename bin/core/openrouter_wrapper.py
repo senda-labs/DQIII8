@@ -55,7 +55,9 @@ PROVIDERS = {
 }
 
 # Allowlist derived from PROVIDERS — only these hosts are ever called
-_ALLOWED_HOSTS = frozenset(urlparse(cfg["base_url"]).hostname for cfg in PROVIDERS.values())
+_ALLOWED_HOSTS = frozenset(
+    urlparse(cfg["base_url"]).hostname for cfg in PROVIDERS.values()
+)
 
 
 def _validate_url(url: str) -> None:
@@ -69,51 +71,53 @@ def _validate_url(url: str) -> None:
 AGENT_ROUTING = {
     # Tier C — Ollama local (qwen2.5-coder:7b) — code & pipeline tasks only
     # Benchmark: qwen performs well for applied_sciences; timeouts/mediocre elsewhere (4.5/10 vs llama 7.9/10)
-    "python-specialist":    ("ollama", "qwen2.5-coder:7b"),
-    "git-specialist":       ("ollama", "qwen2.5-coder:7b"),
-    "web-specialist":       ("ollama", "qwen2.5-coder:7b"),
-    "algo-specialist":      ("ollama", "qwen2.5-coder:7b"),
-    "content-automator":    ("ollama", "qwen2.5-coder:7b"),
+    "python-specialist": ("ollama", "qwen2.5-coder:7b"),
+    "git-specialist": ("ollama", "qwen2.5-coder:7b"),
+    "web-specialist": ("ollama", "qwen2.5-coder:7b"),
+    "algo-specialist": ("ollama", "qwen2.5-coder:7b"),
+    "content-automator": ("ollama", "qwen2.5-coder:7b"),
     # Tier B — Cloud free (groq/llama-3.3-70b) — domain knowledge specialists
-    "ai-ml-specialist":     ("groq", "llama-3.3-70b-versatile"),
-    "biology-specialist":   ("groq", "llama-3.3-70b-versatile"),
+    "ai-ml-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "biology-specialist": ("groq", "llama-3.3-70b-versatile"),
     "chemistry-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "data-specialist":      ("groq", "llama-3.3-70b-versatile"),
+    "data-specialist": ("groq", "llama-3.3-70b-versatile"),
     "economics-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "history-specialist":   ("groq", "llama-3.3-70b-versatile"),
-    "language-specialist":  ("groq", "llama-3.3-70b-versatile"),
-    "legal-specialist":     ("groq", "llama-3.3-70b-versatile"),
-    "logic-specialist":     ("groq", "llama-3.3-70b-versatile"),
+    "history-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "language-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "legal-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "logic-specialist": ("groq", "llama-3.3-70b-versatile"),
     "marketing-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "math-specialist":      ("groq", "llama-3.3-70b-versatile"),
+    "math-specialist": ("groq", "llama-3.3-70b-versatile"),
     "nutrition-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "philosophy-specialist":("groq", "llama-3.3-70b-versatile"),
-    "physics-specialist":   ("groq", "llama-3.3-70b-versatile"),
-    "software-specialist":  ("groq", "llama-3.3-70b-versatile"),
-    "stats-specialist":     ("groq", "llama-3.3-70b-versatile"),
-    "writing-specialist":   ("groq", "llama-3.3-70b-versatile"),
+    "philosophy-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "physics-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "software-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "stats-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "writing-specialist": ("groq", "llama-3.3-70b-versatile"),
     # Tier B — Other cloud-free agents
-    "backend-builder":      ("openrouter", "qwen/qwen3-coder:free"),
-    "research-analyst":     ("groq", "llama-3.3-70b-versatile"),
-    "code-reviewer":        ("openrouter", "openai/gpt-oss-120b:free"),
-    "data-analyst":         ("openrouter", "openai/gpt-oss-120b:free"),
-    "creative-writer":      ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
+    "backend-builder": ("openrouter", "qwen/qwen3-coder:free"),
+    "research-analyst": ("groq", "llama-3.3-70b-versatile"),
+    "code-reviewer": ("openrouter", "openai/gpt-oss-120b:free"),
+    "data-analyst": ("openrouter", "openai/gpt-oss-120b:free"),
+    "creative-writer": ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
     # Tier A — Paid / high-stakes agents
-    "finance-specialist":   ("anthropic", "claude-sonnet-4-6"),
-    "auditor":              ("anthropic", "claude-sonnet-4-6"),
-    "orchestrator":         ("anthropic", "claude-sonnet-4-6"),
-    "default":              ("openrouter", "stepfun/step-3.5-flash:free"),
+    "finance-specialist": ("anthropic", "claude-sonnet-4-6"),
+    "auditor": ("anthropic", "claude-sonnet-4-6"),
+    "orchestrator": ("anthropic", "claude-sonnet-4-6"),
+    "default": ("openrouter", "stepfun/step-3.5-flash:free"),
 }
 
 # Agents for which Tier C (Ollama/qwen) is always correct regardless of domain.
 # All other agents on Tier C will be auto-escalated to Tier B when domain != applied_sciences.
-_TIER_C_AGENTS = frozenset({
-    "python-specialist",
-    "git-specialist",
-    "web-specialist",
-    "algo-specialist",
-    "content-automator",
-})
+_TIER_C_AGENTS = frozenset(
+    {
+        "python-specialist",
+        "git-specialist",
+        "web-specialist",
+        "algo-specialist",
+        "content-automator",
+    }
+)
 
 # Fallback universal por proveedor (cuando el modelo primario falla)
 FALLBACK_MODELS = {
@@ -297,6 +301,7 @@ DB_PATH = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis")) / "database" / "dq
 def sanitize_prompt(prompt: str) -> str:
     """Remove potential prompt-injection patterns before sending to a model."""
     import re
+
     dangerous_patterns = [
         r"ignore previous instructions",
         r"ignore all previous",
@@ -334,7 +339,7 @@ def load_agent_system_prompt(agent_name: str, prompt: str = "") -> str:
         end = content.find("---", 3)
         if end != -1:
             frontmatter = content[3:end].strip()
-            body = content[end + 3:].lstrip("\n")
+            body = content[end + 3 :].lstrip("\n")
             for line in frontmatter.splitlines():
                 if line.startswith("domain:"):
                     domain = line.split(":", 1)[1].strip()
@@ -346,6 +351,7 @@ def load_agent_system_prompt(agent_name: str, prompt: str = "") -> str:
             _dl_path = Path(__file__).parent.parent / "agents" / "domain_lens.py"
             if _dl_path.exists():
                 import importlib.util as _ilu
+
                 _spec = _ilu.spec_from_file_location("domain_lens", _dl_path)
                 _dl = _ilu.module_from_spec(_spec)
                 _spec.loader.exec_module(_dl)
@@ -394,13 +400,17 @@ def build_request(provider_name: str, model: str, prompt: str, system_prompt: st
     return url, headers, payload
 
 
-def stream_response(provider_name: str, model: str, prompt: str, system_prompt: str = "") -> tuple[str, int, int, bool]:
+def stream_response(
+    provider_name: str, model: str, prompt: str, system_prompt: str = ""
+) -> tuple[str, int, int, bool]:
     """
     Makes the request and streams to stdout.
     Returns (full_text, tokens_input, tokens_output, success).
     Uses real API tokens if available; estimates by chars otherwise.
     """
-    url, headers, payload = build_request(provider_name, model, sanitize_prompt(prompt), system_prompt)
+    url, headers, payload = build_request(
+        provider_name, model, sanitize_prompt(prompt), system_prompt
+    )
     req = urllib.request.Request(url, data=payload, headers=headers)
     full_text = ""
     tokens_in = 0
@@ -468,7 +478,9 @@ def log_to_db(
         cost_in, cost_out = TIER_COSTS.get(provider, (0.0, 0.0))
         cost_usd = (tokens_in / 1000.0) * cost_in + (tokens_out / 1000.0) * cost_out
         tier = (
-            "A" if provider == "anthropic" else ("B" if provider in ("groq", "openrouter") else "C")
+            "A"
+            if provider == "anthropic"
+            else ("B" if provider in ("groq", "openrouter") else "C")
         )
         conn = sqlite3.connect(str(DB_PATH), timeout=2)
         conn.execute(
@@ -538,7 +550,9 @@ def print_routing_table() -> None:
     for tier, provider, model, route, _ in ROUTING_TABLE:
         print(f"  {tier:<6} {provider:<12} {model:<30} {route}")
     print()
-    print("Fallback chain (Tier C): Ollama → OpenRouter → Groq → llm7.io → Pollinations")
+    print(
+        "Fallback chain (Tier C): Ollama → OpenRouter → Groq → llm7.io → Pollinations"
+    )
     print()
 
 
@@ -604,7 +618,10 @@ def main() -> None:
         description="DQIII8 OpenRouter Wrapper — routing multi-provider con fallback."
     )
     parser.add_argument(
-        "--agent", "-a", default="default", help="Agente DQIII8 (define modelo y provider)"
+        "--agent",
+        "-a",
+        default="default",
+        help="Agente DQIII8 (define modelo y provider)",
     )
     parser.add_argument(
         "--model", "-m", default=None, help="Explicit model (overrides --agent)"
@@ -612,7 +629,9 @@ def main() -> None:
     parser.add_argument(
         "--list", "-l", action="store_true", help="Muestra la tabla de routing y sale"
     )
-    parser.add_argument("prompt", nargs="?", default=None, help="Prompt (o stdin si no se pasa)")
+    parser.add_argument(
+        "prompt", nargs="?", default=None, help="Prompt (o stdin si no se pasa)"
+    )
     args = parser.parse_args()
 
     if args.list:
@@ -625,7 +644,10 @@ def main() -> None:
     elif not sys.stdin.isatty():
         prompt = sys.stdin.read().strip()
     else:
-        print("[openrouter_wrapper] Error: proporciona un prompt o usa stdin.", file=sys.stderr)
+        print(
+            "[openrouter_wrapper] Error: proporciona un prompt o usa stdin.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if not prompt:
@@ -652,16 +674,31 @@ def main() -> None:
             _routing_domain = _domain  # always capture, used for escalation
 
             if _method != "default":
-                # Step 2: get chunks from ORIGINAL prompt — no mutation
-                _spec2 = _ilu.spec_from_file_location("knowledge_enricher", _ke_path)
-                _ke = _ilu.module_from_spec(_spec2)
-                _spec2.loader.exec_module(_ke)
-                _chunks = _ke.get_relevant_chunks(prompt, _domain)
-
-                # Step 3: amplify ORIGINAL prompt with pre-fetched domain + chunks
+                # Step 2a: load intent_amplifier first — decompose is fast (no network)
                 _spec3 = _ilu.spec_from_file_location("intent_amplifier", _ia_path)
                 _ia = _ilu.module_from_spec(_spec3)
                 _spec3.loader.exec_module(_ia)
+                _decomp = _ia._decompose(prompt)
+                # Skip task_relevance re-ranking for code-specialist agents (Tier C):
+                # their queries are about code, not domain knowledge, so the extra
+                # embedding pass adds latency without benefit.
+                _use_task_relevance = (
+                    args.agent not in _TIER_C_AGENTS if args.agent else True
+                )
+                _intent = (
+                    _decomp.get("action") or "explain" if _use_task_relevance else None
+                )
+                _entity = _decomp.get("entity") if _use_task_relevance else None
+
+                # Step 2b: get chunks — re-ranked by task relevance when intent+entity known
+                _spec2 = _ilu.spec_from_file_location("knowledge_enricher", _ke_path)
+                _ke = _ilu.module_from_spec(_spec2)
+                _spec2.loader.exec_module(_ke)
+                _chunks = _ke.get_relevant_chunks(
+                    prompt, _domain, intent=_intent, entity=_entity
+                )
+
+                # Step 3: amplify ORIGINAL prompt with pre-fetched domain + chunks
                 _ia_result = _ia.amplify(
                     prompt,
                     domain=_domain,
@@ -712,7 +749,10 @@ def main() -> None:
     # Load agent system prompt — domain specialists get dynamic lens + knowledge
     system_prompt = load_agent_system_prompt(agent_name, prompt)
     if system_prompt:
-        print(f"[DQIII8] system prompt loaded: {agent_name} ({len(system_prompt)} chars)", file=sys.stderr)
+        print(
+            f"[DQIII8] system prompt loaded: {agent_name} ({len(system_prompt)} chars)",
+            file=sys.stderr,
+        )
 
     # Construir cadena: primario + fallbacks
     chain = [(primary_provider, primary_model)]
@@ -729,7 +769,9 @@ def main() -> None:
     for provider, model in chain:
         print(f"[DQIII8] {agent_name} | {provider} | {model}", file=sys.stderr)
         t0 = int(time.time() * 1000)
-        text, tokens_in, tokens_out, ok = stream_response(provider, model, prompt, system_prompt)
+        text, tokens_in, tokens_out, ok = stream_response(
+            provider, model, prompt, system_prompt
+        )
         duration_ms = int(time.time() * 1000) - t0
 
         err_msg = "" if ok else f"{provider}/{model} failed — no response or HTTP error"
@@ -750,7 +792,9 @@ def main() -> None:
         print(f"[DQIII8] {provider} failed — trying next...", file=sys.stderr)
         _log_escalation("cli", agent_name, provider, model, err_msg)
 
-    print("\n[openrouter_wrapper] Error: todos los providers fallaron.", file=sys.stderr)
+    print(
+        "\n[openrouter_wrapper] Error: todos los providers fallaron.", file=sys.stderr
+    )
     sys.exit(1)
 
 
@@ -802,7 +846,9 @@ def get_recommendation(task_type: str) -> tuple[str, float, int]:
         if n >= _ROUTER_MIN_SAMPLES:
             return best_model, round(best_score, 2), n
         blended = round(
-            (best_score * n + _ROUTER_NEUTRAL * (_ROUTER_MIN_SAMPLES - n)) / _ROUTER_MIN_SAMPLES, 2
+            (best_score * n + _ROUTER_NEUTRAL * (_ROUTER_MIN_SAMPLES - n))
+            / _ROUTER_MIN_SAMPLES,
+            2,
         )
         return best_model, blended, n
 

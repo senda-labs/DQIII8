@@ -75,7 +75,7 @@
       user-select: none;
     }
     .nav-item:hover { color: var(--text); background: var(--bg); }
-    .nav-item.active { color: var(--accent); border-left-color: var(--accent); }
+    .nav-item.active { color: var(--accent); border-left: 3px solid var(--accent); background: rgba(0,180,216,0.08); }
     .nav-icon { font-size: 17px; flex-shrink: 0; width: 20px; text-align: center; line-height: 1; }
     .nav-label { font-size: 13px; }
     /* Main */
@@ -84,7 +84,8 @@
     .sec.active { display: block; }
     h2 { font-size: 15px; font-weight: 500; margin-bottom: 16px; }
     /* Cards */
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; transition: border-color 0.15s; }
+    .card:hover { border-color: var(--accent); }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
     .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
     .metric-value { font-size: 26px; font-weight: 500; line-height: 1; }
@@ -95,6 +96,7 @@
     th { text-align: left; color: var(--muted); font-weight: 400; padding: 5px 8px; border-bottom: 1px solid var(--border); }
     td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-family: var(--mono); }
     tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) { background: rgba(255,255,255,0.02); }
     .ok  { color: var(--success); }
     .err { color: var(--danger); }
     /* Badges */
@@ -109,6 +111,14 @@
     .pipe-num.done { background: var(--accent); color: var(--bg); }
     .pipe-title { font-size: 11px; color: var(--muted); }
     .pipe-value { font-size: 13px; margin-top: 3px; font-family: var(--mono); word-break: break-word; }
+    /* Pipeline horizontal flow */
+    .pipe-flow { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; padding-bottom: 4px; }
+    .pipe-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; min-width: 110px; max-width: 180px; flex-shrink: 0; }
+    .pipe-card.done { border-color: var(--accent); }
+    .pipe-arrow { color: var(--muted); padding: 0 6px; align-self: center; flex-shrink: 0; font-size: 16px; }
+    /* File upload preview */
+    #file-preview { font-size: 11px; color: var(--muted); padding: 4px 0; min-height: 0; }
+    #file-preview img { height: 48px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
     /* Chat */
     #chat-msgs { max-height: calc(100vh - 200px); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
     .msg { padding: 10px 14px; border-radius: var(--r); max-width: 85%; font-size: 13px; line-height: 1.55; }
@@ -248,7 +258,10 @@
       <input id="chat-in" type="text" placeholder="Message&#8230;" style="flex:1"
              onkeydown="if(event.key==='Enter'&&!event.shiftKey)sendChat()">
       <button id="chat-btn" onclick="sendChat()">Send</button>
+      <input type="file" id="chat-file" hidden accept=".pdf,.txt,.md,.py,.js,.csv,.png,.jpg,.mp3,.wav">
+      <button class="ghost" onclick="document.getElementById('chat-file').click()" title="Attach file" style="padding:8px 10px">&#128206;</button>
     </div>
+    <div id="file-preview"></div>
   </section>
 
   <!-- Settings -->
@@ -307,6 +320,42 @@ function api(url, opt) { return fetch(url, Object.assign({ headers: _H }, opt));
 
 // State
 var _chatSid = 'dash_' + Math.random().toString(36).slice(2, 8);
+var _attachedFileIds = [];
+
+// File upload
+document.addEventListener('DOMContentLoaded', function() {
+  var chatFile = document.getElementById('chat-file');
+  if (!chatFile) return;
+  chatFile.addEventListener('change', async function() {
+    var file = chatFile.files[0];
+    if (!file) return;
+    var prev = $('file-preview');
+    prev.textContent = 'Uploading ' + file.name + '\u2026';
+    var fd = new FormData();
+    fd.append('files', file);
+    try {
+      var r = await fetch('/api/upload', { method: 'POST', headers: _H, body: fd });
+      var arr = await r.json();
+      var info = Array.isArray(arr) ? arr[0] : arr;
+      _attachedFileIds.push(info.file_id);
+      var suffix = file.name.split('.').pop().toLowerCase();
+      var imgTypes = ['png','jpg','jpeg','gif','webp'];
+      if (imgTypes.indexOf(suffix) !== -1) {
+        var img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        prev.textContent = '';
+        prev.appendChild(img);
+        prev.appendChild(document.createTextNode(' ' + file.name));
+      } else {
+        var preview3 = (info.text_preview || '').split('\n').slice(0, 3).join('\n');
+        prev.textContent = '\uD83D\uDCCE ' + file.name + (preview3 ? ' — ' + preview3 : '');
+      }
+    } catch (e) {
+      prev.textContent = 'Upload failed: ' + e.message;
+    }
+    chatFile.value = '';
+  });
+});
 
 // Navigation
 function nav(id, el) {
@@ -373,7 +422,9 @@ async function renderOverview() {
     ]);
     var h = results[0], tasks = results[1];
 
-    $('m-health').textContent      = h.health_score != null ? h.health_score.toFixed(1) + '/100' : '&#8212;';
+    var hs = h.health_score;
+    $('m-health').textContent      = hs != null ? hs.toFixed(1) + '/100' : '&#8212;';
+    $('m-health').style.color      = hs == null ? '' : hs > 90 ? 'var(--success)' : hs >= 70 ? 'var(--warning)' : 'var(--danger)';
     $('m-health-sub').textContent   = h.last_audit ? 'Audited ' + fmtTime(h.last_audit) : '';
     $('m-actions').textContent     = h.actions_7d != null ? h.actions_7d : '&#8212;';
     $('m-actions-sub').textContent  = (h.sessions_7d || 0) + ' sessions this week';
@@ -403,7 +454,7 @@ async function renderOverview() {
             '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">' + agent + '</td>' +
             '<td>' + tierBadge(r.tier) + '</td>' +
             '<td>' + fmtDur(r.duration_ms) + '</td>' +
-            '<td class="' + (r.success ? 'ok' : 'err') + '">' + (r.success ? '&#10003;' : '&#10007;') + '</td></tr>';
+            '<td>' + (r.success ? '<span class="ok">&#10003;</span>' : '<span class="err">&#10007;</span>') + '</td></tr>';
         }).join('')
       : '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">No actions yet</td></tr>';
   } catch (e) {
@@ -411,12 +462,13 @@ async function renderOverview() {
   }
 }
 
-// Pipeline
-function pipeStep(n, title, value, done) {
-  return '<div class="pipe-step">' +
-    '<div class="pipe-num' + (done ? ' done' : '') + '">' + n + '</div>' +
-    '<div><div class="pipe-title">' + title + '</div>' +
-    '<div class="pipe-value">' + (value || '<span style="color:var(--muted)">&#8212;</span>') + '</div></div></div>';
+// Pipeline — horizontal card flow
+function pipeCard(title, value, done) {
+  var val = value || '<span style="color:var(--muted)">&#8212;</span>';
+  return '<div class="pipe-card' + (done ? ' done' : '') + '"><div class="pipe-title">' + title + '</div><div class="pipe-value">' + val + '</div></div>';
+}
+function pipeFlow(cards) {
+  return '<div class="pipe-flow">' + cards.map(function(c, i) { return (i > 0 ? '<span class="pipe-arrow">&#8594;</span>' : '') + c; }).join('') + '</div>';
 }
 
 async function previewPipeline() {
@@ -426,23 +478,22 @@ async function previewPipeline() {
   $('pipe-btn').disabled = true;
   $('pipe-btn').textContent = 'Analyzing\u2026';
   var safeInput = input.replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  var placeholder = ['Classify','Enrich','Amplify','Route'].map(function(t,i) {
-    return pipeStep(i+2, t, '', false);
-  }).join('');
-  $('pipe-steps').innerHTML = '<div class="card">' + pipeStep(1,'Input',safeInput,true) + placeholder + '</div>';
+  var pending = ['Classify','Enrich','Amplify','Route','Execute'].map(function(t) { return pipeCard(t, '', false); });
+  $('pipe-steps').innerHTML = '<div class="card">' + pipeFlow([pipeCard('Input', safeInput, true)].concat(pending)) + '</div>';
   try {
     var r = await fetch('/api/amplify', { method:'POST', headers:_jH, body: JSON.stringify({ input: input }) });
     var d = await r.json();
-    var tierLabel = d.tier === 1 ? 'C &#8212; local (Ollama)' : d.tier === 3 ? 'A &#8212; paid (Claude)' : 'B &#8212; cloud (Groq)';
+    var tierLabel = d.tier === 1 ? 'C local' : d.tier === 3 ? 'A paid' : 'B cloud';
     var amp = String(d.amplified_prompt || input);
-    var ampSafe = amp.replace(/&/g,'&amp;').replace(/</g,'&lt;').slice(0, 240) + (amp.length > 240 ? '&#8230;' : '');
-    $('pipe-steps').innerHTML = '<div class="card">' +
-      pipeStep(1, 'Input', safeInput, true) +
-      pipeStep(2, 'Classify', (d.domain || '&#8212;') + ' <span style="color:var(--muted)">(' + Math.round((d.confidence||0)*100) + '% conf)</span>', true) +
-      pipeStep(3, 'Enrich', (d.knowledge_used != null ? d.knowledge_used : 0) + ' chunks retrieved', true) +
-      pipeStep(4, 'Amplify', ampSafe, true) +
-      pipeStep(5, 'Route', tierLabel, true) +
-      '</div>';
+    var ampSafe = amp.replace(/&/g,'&amp;').replace(/</g,'&lt;').slice(0, 120) + (amp.length > 120 ? '&#8230;' : '');
+    var domSafe = String(d.domain || '').replace(/&/g,'&amp;').replace(/</g,'&lt;') || '&#8212;';
+    $('pipe-steps').innerHTML = '<div class="card">' + pipeFlow([
+      pipeCard('Input',    safeInput, true),
+      pipeCard('Classify', domSafe + ' <span style="color:var(--muted);font-size:10px">' + Math.round((d.confidence||0)*100) + '%</span>', true),
+      pipeCard('Enrich',   (d.knowledge_used != null ? d.knowledge_used : 0) + ' chunks', true),
+      pipeCard('Amplify',  ampSafe, true),
+      pipeCard('Route',    tierLabel, true),
+    ]) + '</div>';
     $('exec-btn').style.display = 'inline-block';
   } catch (e) {
     $('pipe-steps').innerHTML += '<div style="color:var(--danger);padding:8px;font-size:12px">' + String(e.message).replace(/</g,'&lt;') + '</div>';
@@ -478,9 +529,36 @@ function addMsg(role, html) {
   var div = document.createElement('div');
   div.className = 'msg msg-' + role;
   div.innerHTML = html;
+  if (role === 'assistant') {
+    var btn = document.createElement('button');
+    btn.className = 'ghost';
+    btn.title = 'Play audio';
+    btn.textContent = '\uD83D\uDD0A';
+    btn.style.cssText = 'font-size:11px;padding:2px 7px;margin-top:6px;display:block';
+    btn.onclick = function() { playTTS(div.innerText, btn); };
+    div.appendChild(btn);
+  }
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
+}
+
+async function playTTS(text, btn) {
+  if (btn) { btn.disabled = true; }
+  try {
+    var r = await fetch('/api/tts', {
+      method: 'POST',
+      headers: _jH,
+      body: JSON.stringify({ text: String(text).substring(0, 500) }),
+    });
+    if (!r.ok) { console.warn('TTS error', r.status); return; }
+    var blob = await r.blob();
+    var url = URL.createObjectURL(blob);
+    var audio = new Audio(url);
+    audio.onended = function() { URL.revokeObjectURL(url); };
+    audio.play();
+  } catch (e) { console.warn('TTS failed', e); }
+  finally { if (btn) { btn.disabled = false; } }
 }
 
 async function sendChat() {
@@ -488,7 +566,10 @@ async function sendChat() {
   var msg = inp.value.trim();
   if (!msg) return;
   var tier = $('chat-tier').value;
+  var fileIds = _attachedFileIds.slice();
   inp.value = '';
+  _attachedFileIds = [];
+  $('file-preview').textContent = '';
   $('chat-btn').disabled = true;
   addMsg('user', md(msg));
   var resp = addMsg('assistant', '<span style="color:var(--muted)">\u2026</span>');
@@ -497,7 +578,7 @@ async function sendChat() {
     var r = await fetch('/api/chat', {
       method: 'POST',
       headers: _jH,
-      body: JSON.stringify({ message: msg, session_id: _chatSid, tier: tier }),
+      body: JSON.stringify({ message: msg, session_id: _chatSid, tier: tier, file_ids: fileIds }),
     });
     var reader = r.body.getReader();
     var dec = new TextDecoder();

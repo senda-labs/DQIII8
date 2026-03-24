@@ -32,6 +32,8 @@ los agrupa por keyword raiz, y genera skill drafts para clusters con 3+ instinct
 python3 /root/dqiii8/bin/evolve.py "$@"
 ```
 
+<!-- TODO: bin/evolve.py does not exist — needs creation -->
+
 ## Flujo de aprobacion
 
 1. Revisar el draft en `skills-registry/custom/evolved/[raiz].md`

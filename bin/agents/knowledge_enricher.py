@@ -187,6 +187,7 @@ def get_relevant_chunks(
         }
         for sim, e in scored[:top_k]
         if e.get("text", "").strip()
+        and e.get("source", "").split("/")[-1] not in ("IDENTITY.md", "README.md")
     ]
     _log_chunk_usage(top_chunks, domain)
     return top_chunks

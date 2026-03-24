@@ -1,0 +1,84 @@
+{
+  "formal_sciences": {
+    "default_system": "You are a specialist in formal sciences: mathematics, logic, statistics, algorithms, and computation.",
+    "agents": {
+      "math-specialist": {
+        "triggers": ["derivative", "integral", "matrix", "eigenvalue", "convergence", "calculus", "algebra", "theorem", "proof", "derivada", "integral", "cálculo", "límite", "limit", "fourier", "laplace", "ecuación diferencial", "differential equation"]
+      },
+      "algo-specialist": {
+        "triggers": ["algorithm", "complexity", "sorting", "graph", "tree", "hash", "dynamic programming", "big o", "algoritmo", "complejidad", "ordenamiento", "búsqueda", "binary search", "recursion"]
+      },
+      "stats-specialist": {
+        "triggers": ["regression", "correlation", "hypothesis", "p-value", "confidence interval", "bayesian", "distribution", "variance", "standard deviation", "regresión", "hipótesis", "distribución"]
+      }
+    }
+  },
+  "natural_sciences": {
+    "default_system": "You are a specialist in natural sciences: physics, chemistry, biology, nutrition, and earth sciences.",
+    "agents": {
+      "biology-specialist": {
+        "triggers": ["cell", "DNA", "protein", "evolution", "organism", "genetics", "photosynthesis", "célula", "proteína", "evolución", "ADN", "chromosome", "enzyme", "bacteria", "virus", "metabolism"]
+      },
+      "chemistry-specialist": {
+        "triggers": ["molecule", "reaction", "element", "compound", "bond", "acid", "base", "pH", "molécula", "reacción", "elemento", "átomo", "compound", "oxidation", "reduction", "catalyst"]
+      },
+      "physics-specialist": {
+        "triggers": ["force", "energy", "quantum", "relativity", "thermodynamics", "wave", "particle", "fuerza", "energía", "cuántica", "relatividad", "velocidad", "momentum", "gravity", "electric field", "magnetic"]
+      },
+      "nutrition-specialist": {
+        "triggers": ["calories", "protein", "diet", "BMR", "macro", "calorie", "nutrient", "vitamin", "calorías", "proteína", "dieta", "metabolismo", "carbohydrate", "fat", "fiber", "supplement"]
+      }
+    }
+  },
+  "social_sciences": {
+    "default_system": "You are a specialist in social sciences: finance, economics, law, marketing, and business strategy.",
+    "agents": {
+      "finance-specialist": {
+        "triggers": ["WACC", "DCF", "VaR", "Sharpe", "portfolio", "bond", "equity", "CAPM", "valoración", "riesgo", "NPV", "IRR", "beta", "dividend", "yield", "valuation", "option pricing", "Black-Scholes", "leverage", "balance sheet", "income statement"]
+      },
+      "marketing-specialist": {
+        "triggers": ["SEO", "campaign", "funnel", "conversion", "brand", "ads", "campaña", "marca", "CTR", "ROI marketing", "social media", "content marketing", "audience", "engagement", "customer acquisition"]
+      },
+      "economics-specialist": {
+        "triggers": ["GDP", "inflation", "monetary", "fiscal", "supply", "demand", "PIB", "inflación", "interest rate", "central bank", "unemployment", "trade", "tariff", "recession", "macroeconomics", "microeconomics"]
+      },
+      "legal-specialist": {
+        "triggers": ["contract", "regulation", "compliance", "GDPR", "liability", "contrato", "regulación", "ley", "statute", "jurisdiction", "intellectual property", "trademark", "copyright", "lawsuit", "litigation"]
+      }
+    }
+  },
+  "humanities_arts": {
+    "default_system": "You are a specialist in humanities and arts: literature, philosophy, history, and creative writing.",
+    "agents": {
+      "writing-specialist": {
+        "triggers": ["chapter", "scene", "character", "plot", "narrative", "dialogue", "capítulo", "escena", "personaje", "novela", "novel", "story", "prose", "fiction", "poetry", "poem", "essay", "write a story", "write a poem"]
+      },
+      "history-specialist": {
+        "triggers": ["century", "war", "empire", "revolution", "ancient", "medieval", "siglo", "guerra", "imperio", "civilization", "historical", "dynasty", "battle", "colonialism", "Renaissance", "Enlightenment"]
+      },
+      "philosophy-specialist": {
+        "triggers": ["ethics", "epistemology", "ontology", "Kant", "Aristotle", "ética", "filosofía", "moral", "consciousness", "free will", "existentialism", "logic", "argument", "metaphysics", "Plato", "Nietzsche"]
+      },
+      "language-specialist": {
+        "triggers": ["grammar", "syntax", "semantics", "phonetics", "morphology", "gramática", "idiom", "translation", "linguistic", "dialect", "etymology", "vocabulary", "conjugation", "tense", "language learning"]
+      }
+    }
+  },
+  "applied_sciences": {
+    "default_system": "You are a specialist in applied sciences: software engineering, AI/ML, DevOps, and systems design.",
+    "agents": {
+      "python-specialist": {
+        "triggers": ["Python", "traceback", "refactor", "async", "pandas", "numpy", "django", "flask", "fastapi", "pytest", "pip", "virtualenv", "decorator", "generator", "class", "exception"]
+      },
+      "web-specialist": {
+        "triggers": ["HTML", "CSS", "JavaScript", "React", "Vue", "Angular", "frontend", "backend", "REST API", "GraphQL", "TypeScript", "webpack", "DOM", "HTTP", "JSON"]
+      },
+      "ai-ml-specialist": {
+        "triggers": ["neural network", "machine learning", "deep learning", "training", "model", "dataset", "overfitting", "loss function", "gradient descent", "transformer", "LLM", "embedding", "classification", "regression ml", "clustering"]
+      },
+      "content-automator": {
+        "triggers": ["video", "TTS", "subtitle", "FFmpeg", "render", "pipeline", "audio", "script generation", "elevenlabs", "voice", "reels", "thumbnail", "transcript"]
+      }
+    }
+  }
+}

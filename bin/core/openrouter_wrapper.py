@@ -95,11 +95,8 @@ AGENT_ROUTING = {
     "stats-specialist": ("groq", "llama-3.3-70b-versatile"),
     "writing-specialist": ("groq", "llama-3.3-70b-versatile"),
     # Tier B — Other cloud-free agents
-    "backend-builder": ("openrouter", "qwen/qwen3-coder:free"),
     "research-analyst": ("groq", "llama-3.3-70b-versatile"),
     "code-reviewer": ("openrouter", "openai/gpt-oss-120b:free"),
-    "data-analyst": ("openrouter", "openai/gpt-oss-120b:free"),
-    "creative-writer": ("openrouter", "meta-llama/llama-3.3-70b-instruct:free"),
     # Tier A — Paid / high-stakes agents
     "finance-specialist": ("anthropic", "claude-sonnet-4-6"),
     "auditor": ("anthropic", "claude-sonnet-4-6"),

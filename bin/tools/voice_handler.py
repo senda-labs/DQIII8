@@ -18,7 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 
 # ── STT: Groq Whisper ─────────────────────────────────────────────────────────
 

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import requests
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 AGENTS_DIR = DQIII8_ROOT / ".claude" / "agents"
 KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"

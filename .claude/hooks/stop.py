@@ -14,7 +14,7 @@ except Exception:
     data = {}
 
 session = data.get("session_id", "unknown")
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = JARVIS / "database" / "dqiii8.db"
 LESSONS = JARVIS / "tasks" / "lessons.md"
 PROJECTS = JARVIS / "projects"
@@ -383,7 +383,7 @@ except Exception:
 
 # ── 1. Close session in DB ────────────────────────────────────────
 try:
-    _bin = os.path.join(os.environ.get("DQIII8_ROOT", "/root/jarvis"), "bin")
+    _bin = os.path.join(os.environ.get("DQIII8_ROOT", "/root/dqiii8"), "bin")
     if _bin not in sys.path:
         sys.path.insert(0, _bin)
     from db import get_db as _get_db

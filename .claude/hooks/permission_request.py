@@ -31,7 +31,7 @@ import sys
 import time
 from pathlib import Path
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
 
 # ── Layer 1: READ_PREFIXES ───────────────────────────────────────────────────
@@ -75,7 +75,7 @@ READ_PREFIXES = (
     "systemctl status",
     "ps aux",
     "top -bn1",
-    "cat /root/jarvis/",
+    "cat /root/dqiii8/",
 )
 
 # Read-only tools → always Layer 1

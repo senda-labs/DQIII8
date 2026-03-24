@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from db import get_db, DB_PATH
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 TELEMETRY_ENABLED = os.environ.get("DQIII8_TELEMETRY", "false").lower() == "true"
 TELEMETRY_ENDPOINT = os.environ.get("DQIII8_TELEMETRY_URL", "")
 VERSION = "0.1.0"

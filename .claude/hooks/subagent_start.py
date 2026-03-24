@@ -46,7 +46,7 @@ WORKTREE_AGENTS = {"code-reviewer", "python-specialist", "orchestrator"}
 worktree_path = ""
 
 if resolved_name in WORKTREE_AGENTS and agent_id:
-    DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/jarvis")
+    DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/dqiii8")
     wt_dir = f"/tmp/jarvis-wt/{agent_id}"
     branch = f"wt-{agent_id[:8]}"
     try:
@@ -82,7 +82,7 @@ try:
     import sqlite3
 
     DB = os.path.join(
-        os.environ.get("DQIII8_ROOT", "/root/jarvis"),
+        os.environ.get("DQIII8_ROOT", "/root/dqiii8"),
         "database", "dqiii8.db",
     )
     if os.path.exists(DB):

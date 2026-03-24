@@ -24,7 +24,7 @@ import sqlite3
 import sys
 import time
 
-DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/jarvis")
+DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/dqiii8")
 DB = os.path.join(DQIII8_ROOT, "database", "dqiii8.db")
 
 # ── Timeout guard ─────────────────────────────────────────────────────────────

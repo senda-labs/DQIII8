@@ -21,7 +21,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
 QUEUE_DIR = DQIII8_ROOT / "tasks" / "research_queue"
 

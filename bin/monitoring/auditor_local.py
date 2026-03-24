@@ -23,7 +23,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
 HOOKS_DIR = DQIII8_ROOT / ".claude" / "hooks"
 REPORTS_DIR = DQIII8_ROOT / "database" / "audit_reports"

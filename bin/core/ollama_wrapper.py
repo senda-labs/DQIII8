@@ -35,7 +35,7 @@ def load_agent_system_prompt(agent_name: str) -> str:
     """Load agent MD from .claude/agents/{agent_name}.md, stripping YAML frontmatter."""
     if not agent_name or agent_name == "default":
         return ""
-    jarvis = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+    jarvis = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
     md_path = jarvis / ".claude" / "agents" / f"{agent_name}.md"
     if not md_path.exists():
         return ""

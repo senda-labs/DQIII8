@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-DQIII8_ROOT="${DQIII8_ROOT:-/root/jarvis}"
+DQIII8_ROOT="${DQIII8_ROOT:-/root/dqiii8}"
 OR_WRAPPER="$DQIII8_ROOT/bin/core/openrouter_wrapper.py"
 MODEL_SONNET="claude-sonnet-4-6"
 OLLAMA_FALLBACK="qwen/qwen3-235b-a22b:free"
@@ -50,8 +50,8 @@ else
 fi
 
 # Flag A/B: purpose active if .jarvis_proposito exists
-# Enable: touch /root/jarvis/.jarvis_proposito
-# Disable: rm /root/jarvis/.jarvis_proposito
+# Enable: touch /root/dqiii8/.jarvis_proposito
+# Disable: rm /root/dqiii8/.jarvis_proposito
 if [[ -f "$DQIII8_ROOT/.jarvis_proposito" ]]; then
     export JARVIS_PROPOSITO=1
 else
@@ -205,10 +205,10 @@ while [[ $# -gt 0 ]]; do
                 echo "  PermissionAnalyzer active via hooks"
                 echo "  To authenticate: /login"
                 exec su - jarvis -c "
-                    export DQIII8_ROOT='/root/jarvis'
+                    export DQIII8_ROOT='/root/dqiii8'
                     export JARVIS_MODE='autonomous'
                     cd /root/math-image-generator
-                    claude --add-dir /root/jarvis \
+                    claude --add-dir /root/dqiii8 \
                            --add-dir /root/math-image-generator
                 "
             fi

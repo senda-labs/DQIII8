@@ -21,7 +21,7 @@ Launches an efficiency audit on unreviewed Python files using Aider + Gemini 2.0
 
 ## Requirements
 
-- `GEMINI_API_KEY` configured in `$JARVIS_ROOT/.env`
+- `GEMINI_API_KEY` configured in `$DQIII8_ROOT/.env`
 - `aider` installed: `pip install aider-chat --break-system-packages`
 
 ## Auto-integration
@@ -34,3 +34,5 @@ if there are pending files. The process runs in the background and does not bloc
 ```bash
 python3 bin/gemini_review.py $ARGUMENTS
 ```
+
+<!-- TODO: bin/gemini_review.py does not exist — needs creation -->

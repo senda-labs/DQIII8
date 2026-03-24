@@ -12,7 +12,7 @@ reusable skills in `skills-registry/custom/`.
 ## Usage
 
 ```
-/skill-create                        # Analyze /root/jarvis (last 50 commits)
+/skill-create                        # Analyze /root/dqiii8 (last 50 commits)
 /skill-create --commits 100          # More commits
 /skill-create --repo <path>          # Analyze a specific repo path
 /skill-create --repo all             # Analyze all configured repos
@@ -32,7 +32,7 @@ reusable skills in `skills-registry/custom/`.
 ### Step 1: Collect git data
 
 ```bash
-REPO=${REPO:-$JARVIS_ROOT}
+REPO=${REPO:-$DQIII8_ROOT}
 cd $REPO
 
 # Significant commits (exclude noise)
@@ -135,7 +135,7 @@ evidence_commits: {count}
 
 | Repo | Path | Focus |
 |------|------|-------|
-| dqiii8 | `$JARVIS_ROOT` | Infrastructure, agents, JAL, routing |
+| dqiii8 | `$DQIII8_ROOT` | Infrastructure, agents, JAL, routing |
 
 ## Expected output
 
@@ -155,7 +155,7 @@ skills-registry/custom/
 - Output: `skills-registry/custom/` (NOT `~/.claude/skills/`)
 - Initial status always: `⏸ PENDING_REVIEW`
 - To approve: review → `✅ APPROVED` → add to combo in INDEX.md
-- Prohibition: do not load skills from `cache/` without review (see jarvis-prohibitions.md)
+- Prohibition: do not load skills from `cache/` without review (see dqiii8-prohibitions.md)
 
 ---
 *Adapted from ECC /skill-create for DQIII8*

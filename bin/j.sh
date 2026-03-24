@@ -347,6 +347,27 @@ case "$MODEL" in
                 _log "Ollama unavailable → fallback openrouter/$OLLAMA_FALLBACK"
                 _wrap --model "$OLLAMA_FALLBACK" "$@"
             fi
+        elif [[ "$_dq_default" == "smart" ]]; then
+            _predicted=$(python3 "$DQIII8_ROOT/bin/monitoring/ml_selector.py" \
+                --predict "$*" 2>/dev/null | head -1)
+            case "$_predicted" in
+                1)
+                    _log "DQ smart → Tier C (ML predicted local)"
+                    if ollama_available; then
+                        _wrap --agent python-specialist "$@"
+                    else
+                        _wrap --agent research-analyst "$@"
+                    fi
+                    ;;
+                3)
+                    _log "DQ smart → Tier A (ML predicted Sonnet)"
+                    cd "$DQIII8_ROOT" && exec claude -p "$@"
+                    ;;
+                *)
+                    _log "DQ smart → Tier B (ML predicted Groq)"
+                    _wrap --agent research-analyst "$@"
+                    ;;
+            esac
         fi
         # auto (or unset) → default Sonnet behaviour
         _log "Tier 3 — Claude $MODEL_SONNET | Cost: standard"

@@ -12,8 +12,10 @@ Uso:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -176,7 +178,7 @@ def get_relevant_chunks(
             reranked.sort(key=lambda x: x[0], reverse=True)
             scored = reranked  # replace ordering with task-relevance ranking
 
-    return [
+    top_chunks = [
         {
             "text": e.get("text", "").strip(),
             "score": round(sim, 4),
@@ -186,6 +188,36 @@ def get_relevant_chunks(
         for sim, e in scored[:top_k]
         if e.get("text", "").strip()
     ]
+    _log_chunk_usage(top_chunks, domain)
+    return top_chunks
+
+
+def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
+    """Log returned chunks to knowledge_usage for quality tracking."""
+    if not chunks:
+        return
+    db_path = DQIII8_ROOT / "database" / "jarvis_metrics.db"
+    if not db_path.exists():
+        return
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=2)
+        for chunk in chunks:
+            text_hash = hashlib.md5(chunk["text"][:100].encode()).hexdigest()[:16]
+            conn.execute(
+                "INSERT INTO knowledge_usage "
+                "(chunk_source, chunk_text_hash, domain, relevance_score) "
+                "VALUES (?, ?, ?, ?)",
+                (
+                    chunk.get("source", "unknown"),
+                    text_hash,
+                    domain,
+                    chunk.get("score", 0.0),
+                ),
+            )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # fail-open, never block enrichment
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────

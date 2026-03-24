@@ -173,6 +173,43 @@ def _decompose(prompt: str) -> dict:
             entity = tok
             break
 
+    # Fallback: if no capitalized token found (all-lowercase prompt),
+    # use the longest meaningful token as entity candidate.
+    if not entity:
+        _stopwords = {
+            "para",
+            "como",
+            "sobre",
+            "desde",
+            "entre",
+            "tiene",
+            "puede",
+            "what",
+            "how",
+            "the",
+            "this",
+            "that",
+            "with",
+            "from",
+            "into",
+            "when",
+            "where",
+            "which",
+            "analiza",
+            "analyze",
+            "calcula",
+            "calculate",
+            "explain",
+            "explica",
+            "genera",
+            "generate",
+        }
+        candidates = [
+            t for t in prompt.lower().split() if len(t) > 4 and t not in _stopwords
+        ]
+        if candidates:
+            entity = max(candidates, key=len)
+
     # Niche: domain-specific signals
     niche_signals = {
         "finance": ["wacc", "dcf", "ebitda", "roi", "irr", "npv", "balance", "p&l"],

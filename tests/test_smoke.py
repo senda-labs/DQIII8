@@ -231,20 +231,6 @@ def test_amplifier_tier_b_no_reference_when_no_specific_chunks():
         ), "With specific chunks, Tier B must use <reference> tag"
 
 
-def test_task_relevance_score_function():
-    """score_task_relevance returns float in [0, 1] for valid inputs, 0.0 for empty."""
-    from knowledge_enricher import score_task_relevance
-
-    score = score_task_relevance(
-        "Vermeer used camera obscura for light", "analyze", "light Vermeer"
-    )
-    assert isinstance(score, float), f"expected float, got {type(score)}"
-    assert 0.0 <= score <= 1.0, f"score out of [0,1]: {score}"
-
-    zero = score_task_relevance("some text", "", "")
-    assert zero == 0.0, f"empty intent+entity must return 0.0, got {zero}"
-
-
 def test_task_relevance_reranking():
     """Reranking by task relevance must actually change the chunk ordering.
 

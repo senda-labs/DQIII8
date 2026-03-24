@@ -25,7 +25,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from db import get_db, DB_PATH
-from embeddings import get_embedding, embedding_to_bytes, bytes_to_embedding, cosine_similarity
+from embeddings import (
+    get_embedding,
+    embedding_to_bytes,
+    bytes_to_embedding,
+    cosine_similarity,
+)
 
 EMBED_DIM = 768
 
@@ -518,7 +523,9 @@ def setup_db(force: bool = False) -> None:
                 updated_at  TEXT    DEFAULT (datetime('now'))
             )
         """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_domain_name ON domain_enrichment (name)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_domain_name ON domain_enrichment (name)"
+        )
 
         for domain_name, info in DOMAINS.items():
             existing = conn.execute(
@@ -527,11 +534,15 @@ def setup_db(force: bool = False) -> None:
             ).fetchone()
 
             if existing and not force and existing[1] is not None:
-                print(f"  ✓ {domain_name} — already has centroid (use --force to recalculate)")
+                print(
+                    f"  ✓ {domain_name} — already has centroid (use --force to recalculate)"
+                )
                 continue
 
             # Calculate centroid: embedding of descriptive text + keywords
-            centroid_text = info["description"] + ". Keywords: " + ", ".join(info["keywords"])
+            centroid_text = (
+                info["description"] + ". Keywords: " + ", ".join(info["keywords"])
+            )
             print(f"  → Calculating centroid for {domain_name}...", end="", flush=True)
             vec = _get_embedding(centroid_text)
 
@@ -541,12 +552,22 @@ def setup_db(force: bool = False) -> None:
             if existing:
                 conn.execute(
                     "UPDATE domain_enrichment SET description=?, keywords=?, centroid=?, updated_at=datetime('now') WHERE name=?",
-                    (info["description"], json.dumps(info["keywords"]), centroid_blob, domain_name),
+                    (
+                        info["description"],
+                        json.dumps(info["keywords"]),
+                        centroid_blob,
+                        domain_name,
+                    ),
                 )
             else:
                 conn.execute(
                     "INSERT INTO domain_enrichment (name, description, keywords, centroid) VALUES (?,?,?,?)",
-                    (domain_name, info["description"], json.dumps(info["keywords"]), centroid_blob),
+                    (
+                        domain_name,
+                        info["description"],
+                        json.dumps(info["keywords"]),
+                        centroid_blob,
+                    ),
                 )
             print(f" {status}")
 
@@ -633,7 +654,9 @@ def _classify_by_embedding(prompt: str) -> tuple[str, float] | None:
             if score > best_score:
                 best_score, best_name = score, name
 
-    return (best_name, round(best_score, 4)) if best_name else None
+    if not best_name or best_score < 0.50:
+        return None
+    return (best_name, round(best_score, 4))
 
 
 def classify_domain(prompt: str) -> tuple[str, float, str]:
@@ -698,7 +721,9 @@ def main() -> None:
 
     if not args:
         print('Usage: python3 bin/domain_classifier.py "prompt"', file=sys.stderr)
-        print("     python3 bin/domain_classifier.py --setup [--force]", file=sys.stderr)
+        print(
+            "     python3 bin/domain_classifier.py --setup [--force]", file=sys.stderr
+        )
         sys.exit(1)
 
     prompt = " ".join(a for a in args if not a.startswith("--"))

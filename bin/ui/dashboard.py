@@ -557,7 +557,7 @@ async def execute_task(request: Request, auth: bool = Depends(check_auth)):
         result = subprocess.run(
             [
                 "python3",
-                str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
                 "run",
                 user_input,
             ],
@@ -676,7 +676,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
                     # Priority 2: ANTHROPIC_API_KEY via openrouter_wrapper
                     proc = await asyncio.create_subprocess_exec(
                         "python3",
-                        str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                        str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
                         "--agent",
                         "research-analyst",
                         "--force-provider",
@@ -696,7 +696,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
             elif tier == "groq":
                 proc = await asyncio.create_subprocess_exec(
                     "python3",
-                    str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                    str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
                     "--agent",
                     "research-analyst",
                     message,
@@ -709,7 +709,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
             elif tier == "local":
                 proc = await asyncio.create_subprocess_exec(
                     "python3",
-                    str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                    str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
                     "--agent",
                     "python-specialist",
                     message,
@@ -722,7 +722,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
             else:  # auto
                 proc = await asyncio.create_subprocess_exec(
                     "python3",
-                    str(JARVIS / "bin" / "openrouter_wrapper.py"),
+                    str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
                     "--agent",
                     "research-analyst",
                     message,

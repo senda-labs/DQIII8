@@ -149,3 +149,35 @@ bin/script_benchmark.py
 *~
 database/.dashboard_token
 database/system_profile.json
+
+# Editor files (from ECC reference)
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+
+# Additional env patterns
+.env.local
+.env.*.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# Build outputs
+dist/
+build/
+.cache/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Logs (generic)
+logs/

@@ -84,23 +84,10 @@ knowledge/*/user_uploads/
 knowledge/**/PREMIUM_*
 
 
-# Premium knowledge — deep domain expertise (not in public tier)
-knowledge/social_sciences/finance/portfolio_management/
-knowledge/social_sciences/finance/risk_management/
-knowledge/social_sciences/finance/derivatives/
-knowledge/social_sciences/finance/quantitative_finance/
-knowledge/social_sciences/finance/accounting/
-knowledge/natural_sciences/biology/nutrition/
-knowledge/social_sciences/marketing/seo/
-knowledge/social_sciences/marketing/paid_advertising/
-knowledge/social_sciences/marketing/analytics/
-knowledge/social_sciences/law/public_tenders/
-knowledge/applied_sciences/web_development/javascript/
-knowledge/applied_sciences/web_development/typescript/
-knowledge/applied_sciences/web_development/react/
-knowledge/applied_sciences/software_engineering/cpp/
-knowledge/social_sciences/finance/templates/
-knowledge/natural_sciences/biology/templates/
+# Premium knowledge (not in public tier)
+knowledge/*/PREMIUM_*
+knowledge/*/*/PREMIUM_*
+knowledge/**/templates/
 tasks/diagnostic_*.md
 tasks/jarvis_architecture_v1.*
 tasks/*.zip

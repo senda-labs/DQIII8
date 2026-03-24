@@ -22,14 +22,14 @@ The PDF is generated at the end of every synthesis cycle and saved to disk. Duri
 ## 2. Architecture
 
 ```
-JSON Profile (candidate_id/profile.json)
+JSON Profile (profiles/<candidate_id>/profile_<timestamp>.json)
         │
         ▼
 ┌─────────────────────────┐
 │   dashboard/generator.py│  ← entry point, called by synthesis pipeline
 │   - reads JSON profile  │
 │   - scans past profiles │    (for trend data)
-│   - assembles 4 pages   │
+│   - assembles pages     │
 │   - writes PDF to disk  │
 │   - returns Path object │
 └──────────┬──────────────┘
@@ -38,12 +38,12 @@ JSON Profile (candidate_id/profile.json)
     │  pages/     │
     │  page_match.py     (Page 1)
     │  page_profile.py   (Page 2)
-    │  page_skills.py    (Page 3)
+    │  page_skills.py    (Page 3, continuation Page 3b if >15 skills)
     │  page_coaching.py  (Page 4)
     └─────────────┘
            │
            ▼
-  dashboards/[candidate_id]/dashboard_[timestamp].pdf
+  dashboards/<candidate_id>/dashboard_<timestamp>.pdf
            │
            ├── [testing]  → caller sends via notify.py / Telegram
            └── [web app]  → served as download or inline render
@@ -63,16 +63,20 @@ sentiment-jobsearch/
 │       ├── __init__.py
 │       ├── page_match.py     # Page 1: match score + history
 │       ├── page_profile.py   # Page 2: emotion, authenticity, sentiment, targeting
-│       ├── page_skills.py    # Page 3: skill table with bars and evidence
+│       ├── page_skills.py    # Page 3 (+3b if overflow): skill table with bars and evidence
 │       └── page_coaching.py  # Page 4: coaching flags + gap closers
 ├── dashboards/
-│   └── [candidate_id]/
-│       └── dashboard_[ISO8601_timestamp].pdf
-├── profiles/                 # existing JSON profiles
+│   └── <candidate_id>/
+│       └── dashboard_<ISO8601_timestamp>.pdf
+├── profiles/
+│   └── <candidate_id>/
+│       └── profile_<ISO8601_timestamp>.json   # naming convention for all profile files
 ├── reports/                  # existing Markdown reports (kept, not replaced)
 └── tests/
     └── test_dashboard.py
 ```
+
+The generator creates `dashboards/<candidate_id>/` if it does not exist. It never raises on a missing output directory.
 
 ---
 
@@ -110,6 +114,8 @@ One row per skill:
 
 Evidence bullets rendered below each skill row that has a gap. Collapsed (hidden) for skills with no gap. Skills sorted: no-gap first, then by gap size descending.
 
+**Overflow rule:** A maximum of 15 skills fit on one A4 landscape page at the defined font sizes. If `skill_profile` contains more than 15 skills, `page_skills.py` renders Page 3 with skills 1–15 and inserts a continuation page (Page 3b) with the remainder. The PDF page count is therefore 4 or 5, not always exactly 4.
+
 ### Page 4 — Coaching Actions
 
 | Element | Description |
@@ -134,12 +140,13 @@ Evidence bullets rendered below each skill row that has a gap. Collapsed (hidden
 
 No separate history store. The generator:
 
-1. Scans `profiles/[candidate_id]/` for all timestamped JSON files
-2. Reads `match_quality_history`, `sentiment_trend`, and `application_tailoring[*].match_score` from each
-3. Sorts by `last_updated` to reconstruct chronological series
-4. Passes the assembled series to the chart pages
+1. Derives `candidate_id` from `profile_path.parent.name` (the profile file lives at `profiles/<candidate_id>/profile_<timestamp>.json`, so the parent directory name is the candidate ID)
+2. Scans `profiles/<candidate_id>/` for all files matching `profile_*.json`
+3. Reads `match_quality_history`, `sentiment_trend`, and `application_tailoring[*].match_score` from each file
+4. Sorts by the `last_updated` field inside each JSON to reconstruct chronological order
+5. Passes the assembled series to the chart pages
 
-If only one profile exists (first session): charts render a single point with a note "More sessions needed for trend data."
+If only one profile file exists (first session): charts render a single data point with a note "More sessions needed for trend data."
 
 ---
 
@@ -152,6 +159,16 @@ def generate(profile_path: Path) -> Path:
     """
     Generate a candidate dashboard PDF from a JSON profile.
 
+    Expected profile path structure:
+        <project_root>/profiles/<candidate_id>/profile_<timestamp>.json
+
+    Required top-level fields (raise ValueError if absent or None):
+        - candidate_id (str)
+        - background (dict with at least 'domain' and 'seniority')
+
+    All other fields are optional. Missing optional fields render as
+    "No data yet" placeholders — they never raise.
+
     Args:
         profile_path: absolute path to the candidate's JSON profile file
 
@@ -160,7 +177,8 @@ def generate(profile_path: Path) -> Path:
 
     Raises:
         FileNotFoundError: if profile_path does not exist
-        ValueError: if the JSON profile is missing required top-level fields
+        ValueError: if the JSON is unparseable, or if 'candidate_id' or
+                    'background' are absent or None in the parsed JSON
     """
 ```
 
@@ -172,10 +190,11 @@ The caller is responsible for delivery (Telegram, web, file system). The generat
 
 | Failure Point | Behavior |
 |---|---|
-| Missing field in JSON profile | Render placeholder "No data yet" for that element — never raise |
-| No historical profiles found | Charts show single point + note, no trend line drawn |
-| Matplotlib rendering error on a page | Log warning, skip that page, continue — partial PDF saved |
-| PDF write fails | Raise exception — caller handles notification |
+| `candidate_id` or `background` absent in JSON | Raise `ValueError` — these are required to produce a meaningful dashboard |
+| Any other field missing in JSON profile | Render placeholder "No data yet" for that element — never raise |
+| No historical profile files found | Charts show single point + note, no trend line drawn |
+| Matplotlib rendering error on a page | Log warning, insert a placeholder page ("Page could not be rendered") — PDF always has the expected page count |
+| PDF write fails | Raise `IOError` — caller handles notification |
 | Profile JSON unparseable | Raise `ValueError` immediately — caller handles |
 
 ---
@@ -184,15 +203,17 @@ The caller is responsible for delivery (Telegram, web, file system). The generat
 
 | Level | Approach |
 |---|---|
-| Unit | Run `generate()` against the 3 existing PoC profiles (Elena, Col. Hayes, Priya). Assert: PDF file exists, size > 0, page count == 4. |
-| Edge cases | (1) First-session profile — no history. (2) All skills at max — no gaps. (3) No targeting directives. (4) No match quality history entries. |
+| Unit | Run `generate()` against the 3 existing PoC profiles (Elena, Col. Hayes, Priya). Assert: PDF file exists, size > 0, page count >= 4 (allows for skill overflow page). Use `pypdf` (zero-config, pip-installable) to count pages. |
+| Edge cases | (1) First-session profile — no history. (2) All skills at max — no gaps. (3) No targeting directives. (4) No match quality history entries. (5) More than 15 skills — assert page count >= 5. |
 | Visual spot-check | Open generated PDFs manually to verify layout, readability, and color coding. No automated assertion on visual output. |
 
 ---
 
 ## 10. Delivery (Testing Phase)
 
-During the testing phase, the synthesis pipeline calls `generate()` and then separately calls `notify.py` to send the returned PDF path via Telegram. This call lives in `poc_sentiment.py` (or the future synthesis module), not in `generator.py`.
+During the testing phase, the synthesis pipeline calls `generate()` and then separately uses `notify.py` to send the PDF via Telegram.
+
+`notify.py` currently only exposes `send_telegram(message)`. A `send_document(path, caption)` function must be added to `notify.py` as part of this implementation, using the Telegram Bot API `sendDocument` endpoint. This addition is in scope for the dashboard implementation task.
 
 ```python
 # in poc_sentiment.py — testing phase only

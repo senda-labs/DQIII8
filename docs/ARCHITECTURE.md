@@ -1,219 +1,193 @@
 # DQIII8 Architecture
 
-> Single-file system map. Last updated: 2026-03-23.
-> Verified against live files — not written from memory.
+> Last updated: 2026-03-24 — post Prompts 3–6 audit cycle.
+
+## Pipeline Overview
+
+Every prompt flows through 7 stages:
+
+1. **Domain Classification** — keyword match with embedding fallback.
+   Detects which of 5 knowledge domains the prompt belongs to
+   (formal_sciences, natural_sciences, social_sciences, humanities_arts, applied_sciences).
+   Script: `bin/agents/domain_classifier.py`
+
+2. **Domain Specialist Selection** — keyword trigger matching.
+   Selects the most relevant specialist agent within the domain
+   and injects its system prompt. 0ms overhead — pure string matching,
+   no LLM call. Word-boundary regex prevents substring false positives.
+   Script: `bin/agents/domain_agent_selector.py`
+
+3. **Knowledge Enrichment** — cosine similarity retrieval.
+   Searches domain-specific knowledge chunks and injects the top 3
+   most relevant into the prompt. A confidence gate skips enrichment
+   when chunks add no signal (low score, Tier C agent, or generic query).
+   Scripts: `bin/agents/knowledge_enricher.py`, `bin/agents/confidence_gate.py`
+
+4. **Intent Amplification** — prompt restructuring per tier.
+   Detects the intent (calculate, explain, compare, create, debug, review)
+   and restructures the prompt with tier-appropriate scaffolding.
+   Small models get more structure; large models get raw data.
+   Script: `bin/agents/intent_amplifier.py`
+
+5. **Tier Routing** — cheapest capable model.
+   Tier C (Ollama local, $0) → Tier B (Groq free, $0) → Tier A (Anthropic, paid).
+   Escalation rule: Tier C queries outside `applied_sciences` are automatically
+   bumped to Tier B. Full fallback chain on provider failure.
+   Script: `bin/core/openrouter_wrapper.py`
+
+6. **Execution** — LLM call with enriched context.
+   The model receives: specialist system prompt + knowledge chunks +
+   restructured prompt + session memory (last 3 exchanges, Tier B/A only).
+
+7. **Learning** — feedback loops.
+   Results log to `routing_feedback` (per-tier accuracy tracking),
+   `knowledge_usage` (chunk quality scoring), and `instincts` (pattern learning).
+   A daily watchdog verifies system health. Weekly audit compares against
+   baseline metrics and sends Telegram alerts on regressions.
 
 ---
 
-## 1. Pipeline DQ — flow of a prompt
+## Data Flow Diagram
 
 ```
-user prompt
-  │
-  ├─► domain_classifier.py   classify_domain()        → domain label
-  ├─► knowledge_enricher.py  get_relevant_chunks()    → top-k chunks (cosine sim)
-  ├─► intent_amplifier.py    amplify()                → tier-specific prompt
-  │     ├─ Tier C  _build_prompt_tier_c()  XML+CoT, 1 chunk max, 200 chars, <500 tok
-  │     ├─ Tier B  _build_prompt_tier_b()  reference block, 3 chunks (has_specific_data)
-  │     └─ Tier A  _build_prompt_tier_a()  data-only injection, 5 chunks
-  └─► openrouter_wrapper.py  stream_response()        → model + log to DB
+User prompt
+│
+▼
+[1] Classify domain ──── keyword → embedding fallback
+│
+▼
+[2] Select specialist ── trigger keywords → system prompt
+│
+▼
+[3] Enrich knowledge ── confidence gate → cosine retrieval → top 3 chunks
+│
+▼
+[4] Amplify intent ──── intent detection → tier-specific restructuring
+│
+▼
+[5] Route to tier ───── C (local) → B (free cloud) → A (paid)
+│
+▼
+[6] Execute ─────────── system prompt + chunks + prompt → LLM → response
+│
+▼
+[7] Learn ───────────── routing_feedback + knowledge_usage + instincts
 ```
 
-**Tier routing**
+---
 
-| Tier | Provider  | Model                   | When                               |
-|------|-----------|-------------------------|------------------------------------|
-| C    | Ollama    | qwen2.5-coder:7b        | code, refactor, debug, git         |
-| B    | Groq      | llama-3.3-70b-versatile | review, analysis, research         |
-| A    | Anthropic | claude-sonnet-4-6       | finance, architecture, orchestrate |
+## Key Files
 
-Classify: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
+| Component | Script | Lines |
+|-----------|--------|------:|
+| Entry point | `bin/j.sh` | 360 |
+| Router | `bin/core/openrouter_wrapper.py` | 986 |
+| Classifier | `bin/agents/domain_classifier.py` | 735 |
+| Specialist selector | `bin/agents/domain_agent_selector.py` | 88 |
+| Knowledge enricher | `bin/agents/knowledge_enricher.py` | 255 |
+| Confidence gate | `bin/agents/confidence_gate.py` | 64 |
+| Intent amplifier | `bin/agents/intent_amplifier.py` | 828 |
+| Working memory | `bin/agents/working_memory.py` | 121 |
+| Auditor | `bin/monitoring/auditor_local.py` | 322 |
+| Health watchdog | `bin/monitoring/health_watchdog.py` | 231 |
 
 ---
 
-## 2. File map — 40 scripts
+## Model Routing — 3 Tiers
 
-### bin/ root (4)
+| Tier | Provider | Model | Cost | When |
+|------|----------|-------|------|------|
+| C | Ollama (local) | `qwen2.5-coder:7b` | $0 | Code, refactor, debug, git |
+| B | Groq | `llama-3.3-70b-versatile` | $0 | Review, analysis, research |
+| A | Anthropic | `claude-sonnet-4-6` | ~$6/1M tokens | Finance, architecture, orchestration |
 
-| File                    | Purpose                                               |
-|-------------------------|-------------------------------------------------------|
-| `j.sh`                  | Main CLI entry point (`--model`, `--status`, `--classify`) |
-| `director.py`           | Central pipeline orchestrator v3                      |
-| `autonomous_loop.sh`    | Unattended VPS loop with Telegram reporting           |
-| `nightly.sh`            | Nightly maintenance: DB vacuum, log rotation, report  |
-
-### bin/core/ — infrastructure (9)
-
-| File                  | Purpose                                                  |
-|-----------------------|----------------------------------------------------------|
-| `db.py`               | SQLite context manager (`get_db()`), query helpers       |
-| `db_security.py`      | Input sanitization, SQL injection guards                 |
-| `openrouter_wrapper.py` | Multi-provider routing (Groq/Anthropic), classify CLI  |
-| `ollama_wrapper.py`   | Ollama local inference, agent system prompt loader       |
-| `embeddings.py`       | Cosine similarity, nomic-embed-text via Ollama           |
-| `notify.py`           | `send_telegram()` — all system notifications             |
-| `rate_limiter.py`     | Per-key token bucket (Groq TPD guard)                    |
-| `auth_watchdog.py`    | Claude Code OAuth health check (cron every 30 min)       |
-| `validate_env.py`     | Startup env var validation, fails fast with clear errors |
-
-### bin/agents/ — knowledge pipeline (9)
-
-| File                    | Purpose                                                  |
-|-------------------------|----------------------------------------------------------|
-| `domain_classifier.py`  | Classifies prompt into one of 5 knowledge domains        |
-| `knowledge_enricher.py` | Retrieves top-k chunks from domain index via embeddings  |
-| `intent_amplifier.py`   | **Prompt Architect** — tier-specific template injection  |
-| `domain_lens.py`        | Generates dynamic system prompts for domain specialists  |
-| `hierarchical_router.py`| Multi-centroid weighted router (HMCWR) for chunk ranking |
-| `knowledge_indexer.py`  | Chunks .md files + embeds → `index.json` per domain      |
-| `knowledge_search.py`   | CLI search over index.json (cosine sim, top-k)           |
-| `memory_decay.py`       | Ages and prunes `instincts` / `vault_memory` tables      |
-| `template_loader.py`    | Loads and renders Jinja2-style agent prompt templates    |
-
-### bin/monitoring/ — observability (5)
-
-| File                    | Purpose                                                  |
-|-------------------------|----------------------------------------------------------|
-| `benchmark_knowledge.py`| Runs 120-eval DQ uplift benchmark (configs A–F)          |
-| `auditor_local.py`      | Local health audit: DB stats, hook status, tier usage    |
-| `analytics_collector.py`| Aggregates agent_actions → daily metrics tables          |
-| `telemetry.py`          | Anonymous opt-in telemetry (disabled by default)         |
-| `system_profile.py`     | Hardware detection, model recommendation on install      |
-
-### bin/tools/ — utilities (10)
-
-| File                    | Purpose                                                  |
-|-------------------------|----------------------------------------------------------|
-| `research_skill.py`     | Importable research/verify/update/measure API            |
-| `paper_harvester.py`    | Fetches arXiv papers → adds to knowledge/ dirs           |
-| `auto_researcher.py`    | Autonomous research loop using research_skill            |
-| `auto_learner.py`       | Pattern-based lesson generator (no LLM, $0 cost)         |
-| `lessons_consolidator.py`| Merges raw lessons → structured instincts in DB         |
-| `github_researcher.py`  | GitHub topic search → `github_research` DB table         |
-| `gemini_export.py`      | Exports module context for Gemini Pro external audit     |
-| `gemini_review.py`      | Runs Gemini Pro code review via CLI                      |
-| `sandbox_tester.py`     | Isolated test runner in `dqiii8-sandbox/` dir            |
-| `voice_handler.py`      | STT via Groq Whisper + TTS via gTTS                      |
-
-### bin/ui/ — interfaces (3)
-
-| File                    | Purpose                                                  |
-|-------------------------|----------------------------------------------------------|
-| `jarvis_bot.py`         | Telegram bot — full mobile terminal (`/cc`, `/audit`)    |
-| `dashboard.py`          | Web UI at localhost:8080 (metrics, logs, controls)       |
-| `dashboard_security.py` | Session tokens, CSRF, login gate for dashboard           |
+Current measured savings vs all-Sonnet baseline: **13–14% per month**
+(1,215 of 9,141 queries deflected to Tier B/C over 30 days).
 
 ---
 
-## 3. Database — dqiii8.db
+## Database
 
-**Core tables** (43 total in live DB)
+SQLite at `database/jarvis_metrics.db` — 47 tables.
 
-| Table                       | Stores                                           |
-|-----------------------------|--------------------------------------------------|
-| `agent_actions`             | Every tool call: agent, duration, tokens, cost   |
-| `sessions`                  | Claude Code session start/end, model used        |
-| `instincts`                 | Auto-learned patterns with confidence scores     |
-| `vault_memory`              | Persistent cross-session memory (with decay)     |
-| `knowledge_benchmark_results`| Per-eval scores: accuracy, hallucinations, tokens|
-| `audit_reports`             | Structured health reports from auditor           |
-| `skill_metrics`             | Skill invocation counts and success rates        |
-| `error_log`                 | Errors with session_id, agent, keyword tags      |
-| `permission_decisions`      | Hook allow/deny decisions for pre_tool_use       |
+**Core tables:**
 
-**Analytical views** (19 total — 4 created by DQIII8, 15 pre-existing)
-
-| View                   | Answers                                              |
-|------------------------|------------------------------------------------------|
-| `v_cost_savings`       | Daily actual cost vs. all-Sonnet equivalent (30d)    |
-| `v_agent_performance`  | Success%, avg latency, failures by agent (7d)        |
-| `v_tier_distribution`  | Daily action count and latency per tier (all time)   |
-| `v_dq_uplift`          | Avg benchmark score by model × DQ × domain           |
+| Table | Purpose | Rows (2026-03) |
+|-------|---------|----------------|
+| `agent_actions` | Every LLM call with tokens, tier, success | 11,050 |
+| `sessions` | Session metadata and aggregates | 173 |
+| `error_log` | Errors with resolution tracking | 156 |
+| `instincts` | Learned patterns with confidence scores | 51 |
+| `vault_memory` | Long-term memory with decay scoring | 717 |
+| `routing_feedback` | Per-prompt tier routing decisions | 9,141 |
+| `knowledge_usage` | Knowledge chunk quality tracking | live |
+| `session_memory` | Recent exchange context (working memory) | live |
 
 ---
 
-## 4. Agents — .claude/agents/ (26 total)
+## Agents
 
-**Core (8)** — full .md used as system prompt
+27 agents defined in `.claude/agents/*.md`.
 
-| Agent               | Model              | Trigger                          |
-|---------------------|--------------------|----------------------------------|
-| `python-specialist` | qwen2.5-coder:7b   | Python code, tracebacks, refactor|
-| `git-specialist`    | qwen2.5-coder:7b   | Commits, branches, PRs           |
-| `code-reviewer`     | llama-3.3-70b      | Post-write code review           |
-| `math-specialist`   | llama-3.3-70b      | Maths, stats, proofs             |
-| `content-automator` | nemotron-nano-12b  | Video/content pipeline           |
-| `finance-specialist`| claude-sonnet-4-6  | WACC, DCF, financial analysis    |
-| `auditor`           | claude-sonnet-4-6  | `/audit`, system health          |
-| `orchestrator`      | claude-sonnet-4-6  | `/mobilize`, multi-agent tasks   |
+**Core agents** (always available via explicit `--agent` flag):
 
-**Domain specialists (18)** — thin wrappers via `domain_lens.py`
+| Agent | Model | Purpose |
+|-------|-------|---------|
+| `python-specialist` | Tier C | Python, tracebacks, refactor |
+| `git-specialist` | Tier C | Commits, branches, PRs |
+| `web-specialist` | Tier C | HTML/CSS/JS, scraping |
+| `finance-specialist` | Tier A | WACC, DCF, financial analysis |
+| `code-reviewer` | OpenRouter free | Code review |
+| `research-analyst` | Tier B | Research and synthesis |
+| `orchestrator` | Tier A | Multi-agent coordination |
+| `auditor` | Tier A | System health audit |
 
-`ai-ml`, `algo`, `biology`, `chemistry`, `data`, `economics`, `history`,
-`language`, `legal`, `logic`, `marketing`, `nutrition`, `philosophy`,
-`physics`, `software`, `stats`, `web`, `writing`
+**Domain specialists** (18 agents, auto-selected by keyword in pipeline):
 
-System prompt generated dynamically: domain_lens.py injects top-k
-knowledge chunks relevant to the incoming query.
+| Domain | Agents |
+|--------|--------|
+| formal_sciences | math, algo, stats |
+| natural_sciences | biology, chemistry, physics, nutrition |
+| social_sciences | finance, economics, marketing, legal |
+| humanities_arts | writing, history, philosophy, language |
+| applied_sciences | python, web, ai-ml, content-automator |
 
 ---
 
-## 5. Knowledge — knowledge/
+## Self-Monitoring
+
+| Frequency | Script | What it checks |
+|-----------|--------|----------------|
+| Every 30 min | `bin/core/auth_watchdog.py` | Claude OAuth token validity |
+| Daily 07:00 | `bin/monitoring/health_watchdog.py` | 8 system checks + Telegram alert |
+| Daily 09:00 | `bin/monitoring/analytics_collector.py` | YouTube/content metrics |
+| Weekly Mon | `bin/monitoring/weekly_audit.py` | SPC baseline + cost report |
+| Weekly Mon | `bin/monitoring/routing_analyzer.py` | Per-tier latency + success rate |
+| Monthly 1st | `bin/monitoring/knowledge_quality.py` | Chunk quality scoring |
+| Monthly 1st | `bin/tools/lessons_consolidator.py` | Instinct consolidation |
+
+Alert channel: Telegram bot (`bin/ui/jarvis_bot.py`, systemd service).
+
+---
+
+## Configuration
 
 ```
-knowledge/
-  formal_sciences/    28 docs →  92 chunks  (algorithms, math, stats)
-  natural_sciences/   40 docs → 163 chunks  (biology, chemistry, physics)
-  social_sciences/    67 docs → 324 chunks  (business, economics, finance, marketing)
-  humanities_arts/     6 docs →  23 chunks  (history, language, philosophy)
-  applied_sciences/   20 docs → 131 chunks  (software eng, web dev)
-  ─────────────────────────────────────────
-  TOTAL              161 docs → 733 chunks
+config/domain_agent_map.json   — 5 domains × N agents × trigger keywords
+.claude/agents/*.md            — agent system prompts + model declarations
+.claude/hooks/                 — 12 Claude Code lifecycle hooks
+database/jarvis_metrics.db     — single SQLite file, all metrics
+.env                           — API keys (not committed)
 ```
 
-Embedding model: `nomic-embed-text` (Ollama, 274 MB).  
-Index format: `knowledge/{domain}/index.json` — list of `{text, embedding, source}`.  
-Re-index: `python3 bin/agents/knowledge_indexer.py --domain {name}`
+## CLI
 
----
-
-## 6. Services & Crons
-
-| Service              | Entry point                       | Schedule               |
-|----------------------|-----------------------------------|------------------------|
-| Telegram bot         | `bin/ui/jarvis_bot.py`            | always-on (polling)    |
-| Dashboard            | `bin/ui/dashboard.py`             | localhost:8080         |
-| Auth watchdog        | `bin/core/auth_watchdog.py`       | every 30 min           |
-| Nightly maintenance  | `bin/nightly.sh`                  | 03:00 UTC daily        |
-| Morning report       | `bin/ui/jarvis_bot.py --morning-report` | 08:00 UTC daily  |
-| Analytics collector  | `bin/monitoring/analytics_collector.py` | 09:00 UTC daily  |
-| Memory decay         | `bin/agents/memory_decay.py`      | 04:00 UTC daily        |
-| Sandbox tester       | `bin/tools/sandbox_tester.py`     | every 6 h              |
-| Lessons consolidator | `bin/tools/lessons_consolidator.py` | 05:00 UTC monthly    |
-| Auto researcher      | `bin/tools/auto_researcher.py`    | 06:00 UTC Mondays      |
-
-**Telegram commands:** `/cc <prompt>`, `/cc_status`, `/auth_status`,
-`/auth_test`, `/audit`, `/github_research`, `/gemini_export`  
-Rate limit: 10 `/cc` per hour per chat_id.
-
----
-
-## 7. Repos
-
-```
-senda-labs/DQIII8  (public, MIT)
-  bin/         ← all 40 scripts
-  knowledge/   ← 733 chunks, domain indexes
-  .claude/     ← 26 agents, hooks, rules
-  database/    ← schema_v2.sql only (no .db)
-  install.sh   ← guided setup
-
-dqiii8-workspace  (private, personal)
-  config/.env          ← secrets
-  database/dqiii8.db   ← live data (43 tables, 19 views)
-  my-projects/         ← user projects
-  overlay.sh           ← links workspace into public repo clone
+```bash
+dq "prompt"                    # route through full pipeline (default Tier A)
+dq --model groq "prompt"       # force Tier B
+dq --model local "prompt"      # force Tier C
+dq --classify "prompt"         # show which tier would handle this
+dq --status                    # project info, model, services
 ```
 
-`overlay.sh` creates symlinks: `my-projects/`, `config/.env`,
-`.claude/settings.local.json`, `database/dqiii8.db`, `sessions/`, `tasks/`.
+`dq` is installed at `/usr/local/bin/dq` and works from any directory.

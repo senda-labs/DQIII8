@@ -11,6 +11,7 @@ Uso:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
@@ -467,6 +468,8 @@ def log_to_db(
     success: bool,
     session_id: str = "cli",
     error_message: str = "",
+    domain: str = "",
+    prompt_hash: str = "",
 ) -> None:
     """Registra la llamada en agent_actions con tokens reales y coste estimado."""
     if not DB_PATH.exists():
@@ -504,6 +507,25 @@ def log_to_db(
             ),
         )
         conn.commit()
+        # Routing feedback — track per-prompt routing decisions for quality analysis
+        if prompt_hash:
+            try:
+                conn.execute(
+                    "INSERT INTO routing_feedback "
+                    "(prompt_hash, domain, tier_used, model_used, success, duration_ms) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        prompt_hash,
+                        domain or None,
+                        tier,
+                        f"{provider}/{model}",
+                        1 if success else 0,
+                        duration_ms,
+                    ),
+                )
+                conn.commit()
+            except Exception:
+                pass  # fail-open, never block the pipeline
         conn.close()
     except Exception:
         pass
@@ -869,6 +891,7 @@ def main() -> None:
         duration_ms = int(time.time() * 1000) - t0
 
         err_msg = "" if ok else f"{provider}/{model} failed — no response or HTTP error"
+        _phash = hashlib.md5(_original_prompt[:200].encode()).hexdigest()[:16]
         log_to_db(
             agent_name,
             model,
@@ -878,6 +901,8 @@ def main() -> None:
             duration_ms,
             ok,
             error_message=err_msg,
+            domain=_routing_domain or "",
+            prompt_hash=_phash,
         )
 
         if ok:

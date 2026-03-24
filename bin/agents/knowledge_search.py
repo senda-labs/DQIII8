@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 AGENTS_DIR = DQIII8_ROOT / ".claude" / "agents"
 
 sys.path.insert(0, str(Path(__file__).parent))

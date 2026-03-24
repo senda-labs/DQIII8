@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from contextlib import contextmanager
 
-DB_PATH = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis")) / "database" / "dqiii8.db"
+DB_PATH = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "database" / "dqiii8.db"
 
 
 @contextmanager

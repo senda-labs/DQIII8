@@ -7,7 +7,7 @@ import stat
 import subprocess
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = JARVIS / "database" / "dqiii8.db"
 
 

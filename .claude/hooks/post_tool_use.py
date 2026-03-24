@@ -47,7 +47,7 @@ if tool in ("Edit", "Write", "MultiEdit"):
 
 # ── Patch 5: metrics in try/except — never block real work ──
 try:
-    _bin = os.path.join(os.environ.get("DQIII8_ROOT", "/root/jarvis"), "bin")
+    _bin = os.path.join(os.environ.get("DQIII8_ROOT", "/root/dqiii8"), "bin")
     if _bin not in sys.path:
         sys.path.insert(0, _bin)
     from db import get_db as _get_db, DB_PATH as _DB_PATH
@@ -168,7 +168,7 @@ try:
             with open(_PENDING, "w", encoding="utf-8") as _f:
                 json.dump(_pend, _f)
             _db_path = os.path.join(
-                os.environ.get("DQIII8_ROOT", "/root/jarvis"), "database", "dqiii8.db"
+                os.environ.get("DQIII8_ROOT", "/root/dqiii8"), "database", "dqiii8.db"
             )
             if os.path.exists(_db_path):
                 _vc = _ics.connect(_db_path, timeout=2)

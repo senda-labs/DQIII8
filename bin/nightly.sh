@@ -4,7 +4,7 @@
 # Review tomorrow: cat $DQIII8_ROOT/tasks/nightly-report.md
 
 set -e
-DQIII8_ROOT="${DQIII8_ROOT:-/root/jarvis}"
+DQIII8_ROOT="${DQIII8_ROOT:-/root/dqiii8}"
 cd "$DQIII8_ROOT"
 
 echo "# DQ Nightly Report — $(date -u '+%Y-%m-%d %H:%M UTC')"

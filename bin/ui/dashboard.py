@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 for _d in [
     JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]
 ]:

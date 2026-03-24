@@ -17,7 +17,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
 
 DECAY_RATE = 0.95

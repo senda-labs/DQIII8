@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = JARVIS / "database" / "dqiii8.db"
 REPORTS_DIR = JARVIS / "database" / "audit_reports"
 AIDER_PROMPT = """\

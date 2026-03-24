@@ -21,7 +21,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 PROJECTS_DIR = JARVIS / "projects"
 LESSONS_FILE = JARVIS / "tasks" / "lessons.md"
 DB = JARVIS / "database" / "dqiii8.db"

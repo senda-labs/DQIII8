@@ -8,7 +8,7 @@ User writes `/handover` at the end of a work session.
 Executes the handover script with a single call:
 
 ```bash
-python3 bin/handover.py
+python3 bin/tools/handover.py
 ```
 
 The script does everything without additional Claude tools:
@@ -22,7 +22,7 @@ The script does everything without additional Claude tools:
 ## Non-interactive invocation
 
 ```bash
-python3 bin/handover.py
+python3 bin/tools/handover.py
 ```
 
 ## Notes

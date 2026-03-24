@@ -13,12 +13,13 @@ Lesson prefix: [AUTO:keyword] — distinguishes from manual lessons.
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-JARVIS = Path(__file__).parent.parent
+JARVIS = Path(os.environ.get("DQIII8_ROOT", str(Path(__file__).parent.parent.parent)))
 LESSONS = JARVIS / "tasks" / "lessons.md"
 DB_DEFAULT = JARVIS / "database" / "dqiii8.db"
 NOW_UTC = datetime.now(timezone.utc)
@@ -58,7 +59,9 @@ def append_lesson(lesson: str) -> None:
         idx = content.index(marker) + len(marker)
         # Find end of section header line
         newline_idx = content.index("\n", idx)
-        content = content[: newline_idx + 1] + lesson + "\n" + content[newline_idx + 1 :]
+        content = (
+            content[: newline_idx + 1] + lesson + "\n" + content[newline_idx + 1 :]
+        )
     else:
         # Append at end
         content += lesson + "\n"
@@ -68,7 +71,9 @@ def append_lesson(lesson: str) -> None:
 # ── Component 1: Session-level detector ───────────────────────────────────
 
 
-def detect_auto_lessons(session_id: str, db_path: str | Path | None = None) -> tuple[int, int]:
+def detect_auto_lessons(
+    session_id: str, db_path: str | Path | None = None
+) -> tuple[int, int]:
     """
     Detect auto-lessons for a completed session.
 
@@ -143,7 +148,9 @@ def detect_auto_lessons(session_id: str, db_path: str | Path | None = None) -> t
 
         for row in retry_tools:
             patterns_detected += 1
-            kw = f"RetrySuccess-{row['tool_used'].replace('__','').replace('_','')[:20]}"
+            kw = (
+                f"RetrySuccess-{row['tool_used'].replace('__','').replace('_','')[:20]}"
+            )
             if lesson_exists(f"[AUTO:{kw}]", lessons_text):
                 continue
             lesson = (
@@ -314,6 +321,8 @@ if __name__ == "__main__":
         print(f"[auto-learner] consolidate: {added} systemic lessons added")
     elif args.session:
         added, patterns = detect_auto_lessons(args.session, db)
-        print(f"[auto-learner] session {args.session[:8]}: {added} lecciones, {patterns} patrones")
+        print(
+            f"[auto-learner] session {args.session[:8]}: {added} lecciones, {patterns} patrones"
+        )
     else:
         parser.print_help()

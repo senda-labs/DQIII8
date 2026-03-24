@@ -259,7 +259,29 @@ def main() -> None:
     baseline = load_baseline()
     alerts = detect_alerts(metrics, baseline, errors, instincts_at_risk)
 
+    # Cost summary (best-effort — skip if cost_tracker unavailable)
+    cost_summary = ""
+    try:
+        _ct_path = DQIII8_ROOT / "bin" / "monitoring" / "cost_tracker.py"
+        if _ct_path.exists():
+            import importlib.util as _ilu
+
+            _spec = _ilu.spec_from_file_location("cost_tracker", _ct_path)
+            _ct = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(_ct)
+            _crep = _ct.generate_cost_report(7)
+            cost_summary = (
+                f"\nCost (7d): ${_crep.get('actual_cost_usd', 0):.2f} actual, "
+                f"${_crep.get('baseline_cost_usd', 0):.2f} baseline, "
+                f"saved ${_crep.get('savings_usd', 0):.2f} "
+                f"({_crep.get('savings_pct', 0):.1f}%)"
+            )
+    except Exception:
+        pass
+
     report = build_report(metrics, errors, routing, services, alerts, baseline)
+    if cost_summary:
+        report += cost_summary
     print(report)
 
     # Save this week's metrics as next week's baseline

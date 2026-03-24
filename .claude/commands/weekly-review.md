@@ -7,7 +7,7 @@ User writes `/weekly-review` (typically on Mondays or Fridays).
 
 ### 1. Read sessions from the last 7 days
 ```bash
-find $JARVIS_ROOT/sessions/ -name "*.md" -newer <(date -d '7 days ago' +%Y-%m-%d) | sort
+find $DQIII8_ROOT/sessions/ -name "*.md" -newer <(date -d '7 days ago' +%Y-%m-%d) | sort
 ```
 For each session: extract frontmatter (project, date) and "What we did" section (first bullet).
 
@@ -83,9 +83,9 @@ tags: [dashboard, weekly]
 
 ### 5. Git push
 ```bash
-git -C $JARVIS_ROOT add 00_DASHBOARD.md sessions/
-git -C $JARVIS_ROOT commit -m "docs: weekly review week W[N]"
-git -C $JARVIS_ROOT push origin main
+git -C $DQIII8_ROOT add 00_DASHBOARD.md sessions/
+git -C $DQIII8_ROOT commit -m "docs: weekly review week W[N]"
+git -C $DQIII8_ROOT push origin main
 ```
 
 ### 6. Feedback

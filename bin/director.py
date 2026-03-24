@@ -34,12 +34,12 @@ WRAPPER = DQIII8_ROOT / "bin" / "openrouter_wrapper.py"
 
 TASK_AGENT_MAP: dict[str, str] = {
     "code": "python-specialist",
-    "analysis": "data-analyst",
-    "finance": "finance-analyst",
-    "writing": "creative-writer",
+    "analysis": "data-specialist",
+    "finance": "finance-specialist",
+    "writing": "writing-specialist",
     "research": "research-analyst",
     "pipeline": "content-automator",
-    "trading": "quant-analyst",
+    "trading": "finance-specialist",
     "mixed": "orchestrator",
 }
 
@@ -114,7 +114,7 @@ Required JSON schema:
   "subtasks": [
     {{
       "description": "<concise subtask description>",
-      "agent": "<python-specialist|data-analyst|finance-analyst|quant-analyst|creative-writer|research-analyst|content-automator|orchestrator|code-reviewer|git-specialist>",
+      "agent": "<python-specialist|data-specialist|finance-specialist|writing-specialist|research-analyst|content-automator|orchestrator|code-reviewer|git-specialist>",
       "parallel": <true|false>,
       "depends_on": []
     }}
@@ -128,10 +128,10 @@ Agent and tier assignment rules:
 - task_type=code      → agent=python-specialist,  tier=1
 - task_type=pipeline  → agent=content-automator,  tier=1
 - task_type=research  → agent=research-analyst,   tier=2
-- task_type=analysis  → agent=data-analyst,        tier=3  (pandas, matplotlib, statistics)
-- task_type=finance   → agent=finance-analyst,     tier=3  (WACC, DCF, valuation, ratios)
-- task_type=trading   → agent=quant-analyst,       tier=3  (backtesting, VaR, GARCH)
-- task_type=writing   → agent=creative-writer,     tier=3  (novel, narrative, dialogue)
+- task_type=analysis  → agent=data-specialist,    tier=3  (pandas, matplotlib, statistics)
+- task_type=finance   → agent=finance-specialist, tier=3  (WACC, DCF, valuation, ratios)
+- task_type=trading   → agent=finance-specialist, tier=3  (backtesting, VaR, GARCH)
+- task_type=writing   → agent=writing-specialist, tier=3  (novel, narrative, dialogue)
 - task_type=mixed     → multiple subtasks with depends_on, tier=3
 
 For mixed tasks, split into ordered subtasks. The first subtask
@@ -370,7 +370,12 @@ def analyze_intent(user_request: str, verbose: bool = True) -> dict:
         # LLM returned empty plan — rebuild from task_type
         agent = TASK_AGENT_MAP.get(plan["task_type"], "orchestrator")
         plan["subtasks"] = [
-            {"description": user_request, "agent": agent, "parallel": False, "depends_on": []}
+            {
+                "description": user_request,
+                "agent": agent,
+                "parallel": False,
+                "depends_on": [],
+            }
         ]
 
     # Step 4: Enrich subtasks with model_router

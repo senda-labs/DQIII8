@@ -50,15 +50,21 @@ _AGENT_DOMAIN: dict[str, str] = {
 
 
 # Model substring → tier letter (A/B/C)
-def _infer_tier(tier_col: str, model_used: str) -> str:
+def _infer_tier(tier_col: str, model_used: str, agent_name: str = "") -> str:
     if tier_col and tier_col not in ("unknown", ""):
         return tier_col  # trust the stored value
-    model = (model_used or "").lower()
-    if "claude" in model or "anthropic" in model:
+    # Check both model_used and agent_name (backfill uses agent_name as fallback)
+    combined = ((model_used or "") + " " + (agent_name or "")).lower()
+    if "claude" in combined or "anthropic" in combined:
         return "A"
-    if "llama" in model or "groq" in model or "openrouter" in model or "gpt" in model:
+    if (
+        "llama" in combined
+        or "groq" in combined
+        or "openrouter" in combined
+        or "gpt" in combined
+    ):
         return "B"
-    if "qwen" in model or "ollama" in model:
+    if "qwen" in combined or "ollama" in combined:
         return "C"
     return "B"  # default fallback to cloud-free
 
@@ -100,7 +106,7 @@ def backfill(dry_run: bool = False) -> None:
         domain_col = r["domain"] or ""
         ts = r["timestamp"]
 
-        tier = _infer_tier(tier_col, model_used)
+        tier = _infer_tier(tier_col, model_used, agent_name)
 
         # Domain: use stored value if meaningful, else infer from agent name
         domain = domain_col if domain_col and domain_col != "unknown" else None

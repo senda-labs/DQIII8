@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-model: groq:llama-3.3-70b-versatile
+model: openrouter/openai/gpt-oss-120b:free
 isolation: worktree
 ---
 

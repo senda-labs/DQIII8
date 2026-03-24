@@ -767,6 +767,34 @@ def main() -> None:
     except Exception:
         pass
 
+    # Domain agent selector — keyword match selects specialist system prompt when
+    # no explicit agent was requested (0ms LLM latency, pure string matching).
+    _domain_system: str = ""
+    if _routing_domain and (not args.agent or args.agent == "default"):
+        try:
+            import importlib.util as _ilu_das
+
+            _das_path = (
+                Path(__file__).parent.parent / "agents" / "domain_agent_selector.py"
+            )
+            if _das_path.exists():
+                _spec_das = _ilu_das.spec_from_file_location(
+                    "domain_agent_selector", _das_path
+                )
+                _das = _ilu_das.module_from_spec(_spec_das)
+                _spec_das.loader.exec_module(_das)
+                _sel_agent, _domain_system = _das.select_domain_agent(
+                    prompt, _routing_domain
+                )
+                if _sel_agent != "default":
+                    print(
+                        f"[DQIII8] domain selector: {_sel_agent} "
+                        f"(domain={_routing_domain})",
+                        file=sys.stderr,
+                    )
+        except Exception:
+            pass  # selector failure → continue with default system prompt
+
     # Resolver proveedor y modelo
     if args.model:
         primary_provider = "openrouter"
@@ -797,6 +825,8 @@ def main() -> None:
 
     # Load agent system prompt — domain specialists get dynamic lens + knowledge
     system_prompt = load_agent_system_prompt(agent_name, prompt)
+    if not system_prompt and _domain_system:
+        system_prompt = _domain_system
     if system_prompt:
         print(
             f"[DQIII8] system prompt loaded: {agent_name} ({len(system_prompt)} chars)",

@@ -26,7 +26,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 WRAPPER = DQIII8_ROOT / "bin" / "openrouter_wrapper.py"
 

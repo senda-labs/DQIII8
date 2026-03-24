@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Configuration ───────────────────────────────────────────────────────────
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 SESSION_ID = os.environ.get("CLAUDE_SESSION_ID", "unknown")
 JARVIS_MODE = os.environ.get("JARVIS_MODE", "supervised")
@@ -71,7 +71,7 @@ ALLOWED_DELETIONS = [
 
 # Project directories always safe for writing
 SAFE_PROJECT_DIRS = [
-    "/root/jarvis/",
+    "/root/dqiii8/",
     "/root/math-image-generator",
     "/tmp/",
 ]

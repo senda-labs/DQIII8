@@ -289,7 +289,7 @@ ROUTING_TABLE = [
 ]
 
 TIMEOUT = 180
-DB_PATH = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis")) / "database" / "dqiii8.db"
+DB_PATH = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "database" / "dqiii8.db"
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -323,7 +323,7 @@ def load_agent_system_prompt(agent_name: str, prompt: str = "") -> str:
     """
     if not agent_name or agent_name == "default":
         return ""
-    jarvis = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+    jarvis = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
     md_path = jarvis / ".claude" / "agents" / f"{agent_name}.md"
     if not md_path.exists():
         return ""

@@ -17,7 +17,7 @@ import os
 import sys
 from pathlib import Path
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
 
 sys.path.insert(0, str(Path(__file__).parent))

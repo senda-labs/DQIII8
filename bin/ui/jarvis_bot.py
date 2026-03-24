@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from voice_handler import transcribe_audio, synthesize_speech
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = JARVIS / "database" / "dqiii8.db"
 LOG_FILE = JARVIS / "database" / "audit_reports" / "jarvis_bot.log"
 QUEUE_DIR = JARVIS / "objectives" / "queue"

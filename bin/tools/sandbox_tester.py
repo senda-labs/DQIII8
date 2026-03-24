@@ -25,7 +25,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/jarvis"))
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
 SANDBOX_ROOT = Path(os.environ.get("DQIII8_SANDBOX", str(DQIII8_ROOT.parent / "dqiii8-sandbox")))
 RESULTS_DIR = DQIII8_ROOT / "tasks" / "test_results"

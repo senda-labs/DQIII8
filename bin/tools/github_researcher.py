@@ -14,6 +14,8 @@ from pathlib import Path
 from datetime import datetime
 import httpx
 
+import logging
+log = logging.getLogger(__name__)
 CONTENT_ROOT = os.environ.get("CONTENT_PROJECT_ROOT", "")
 if CONTENT_ROOT:
     sys.path.insert(0, CONTENT_ROOT)
@@ -166,8 +168,8 @@ class GitHubClient:
                     text = re.sub(r"\[.*?\]\(.*?\)", "", text)
                     text = re.sub(r"#{1,6}\s", "", text)
                     return text.strip()[:1500]
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning('%s: %s', __name__, _exc)
         return ""
 
     def get_topics(self, full_name: str) -> list:
@@ -180,8 +182,8 @@ class GitHubClient:
                 )
                 if resp.status_code == 200:
                     return resp.json().get("names", [])
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning('%s: %s', __name__, _exc)
         return []
 
     def scrape_page_markdown(self, url: str) -> str:
@@ -237,8 +239,8 @@ class GitHubClient:
                         ),
                         "py_files_sample": py_files[:10],
                     }
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning('%s: %s', __name__, _exc)
         return {}
 
     def get_repo_issues_summary(self, full_name: str) -> dict:
@@ -256,8 +258,8 @@ class GitHubClient:
                         "open_issues_sample": len(issues),
                         "latest_issue_title": (issues[0]["title"][:80] if issues else "none"),
                     }
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning('%s: %s', __name__, _exc)
         return {}
 
 
@@ -335,8 +337,8 @@ class ApplicabilityEvaluator:
                     score += 0.5
                 else:
                     reasons.append(f"Not updated in {days_old}d")
-            except Exception:
-                pass
+            except Exception as _exc:
+                log.warning('%s: %s', __name__, _exc)
 
         # ── Factor 6: Compatible license ─────────────────────────
         license_info = repo.get("license")

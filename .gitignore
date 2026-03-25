@@ -181,3 +181,4 @@ coverage/
 
 # Logs (generic)
 logs/
+.mcp.json

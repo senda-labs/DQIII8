@@ -26,6 +26,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import logging
+log = logging.getLogger(__name__)
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
 
@@ -134,8 +136,8 @@ def load_baseline() -> dict:
     if BASELINE_FILE.exists():
         try:
             return json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning('%s: %s', __name__, _exc)
     return {}
 
 
@@ -276,8 +278,8 @@ def main() -> None:
                 f"saved ${_crep.get('savings_usd', 0):.2f} "
                 f"({_crep.get('savings_pct', 0):.1f}%)"
             )
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning('%s: %s', __name__, _exc)
 
     report = build_report(metrics, errors, routing, services, alerts, baseline)
     if cost_summary:

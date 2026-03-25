@@ -19,6 +19,8 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import logging
+log = logging.getLogger(__name__)
 JARVIS = Path(os.environ.get("DQIII8_ROOT", str(Path(__file__).parent.parent.parent)))
 LESSONS = JARVIS / "tasks" / "lessons.md"
 DB_DEFAULT = JARVIS / "database" / "dqiii8.db"
@@ -194,8 +196,8 @@ def detect_auto_lessons(
 
         conn.close()
 
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning('%s: %s', __name__, _exc)
 
     return lessons_added, patterns_detected
 
@@ -297,8 +299,8 @@ def consolidate_learning(db_path: str | Path | None = None) -> int:
 
         conn.close()
 
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning('%s: %s', __name__, _exc)
 
     return lessons_added
 

@@ -1074,9 +1074,42 @@ async def cmd_auth_update(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ── /cc Claude Code Terminal ────────────────────────────────────────────────────
 
-# Rate limit: max 10 /cc commands per hour per chat_id
-_CC_RATE: dict[str, list[float]] = {}
+# Rate limit: max 10 /cc commands per hour per chat_id (persistent across restarts)
 _CC_MAX_PER_HOUR = 10
+
+
+def _cc_ensure_table() -> None:
+    """Create cc_rate_limit table if it doesn't exist."""
+    try:
+        conn = sqlite3.connect(str(DB), timeout=2)
+        conn.execute("""CREATE TABLE IF NOT EXISTS cc_rate_limit (
+                chat_id TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""")
+        conn.commit()
+        conn.close()
+    except Exception as _exc:
+        log.warning("cc_rate_limit table creation failed: %s", _exc)
+
+
+_cc_ensure_table()
+
+
+def _cc_rate_count(chat_id: str) -> int:
+    """Return number of /cc uses by chat_id in the last hour."""
+    try:
+        conn = sqlite3.connect(str(DB), timeout=2)
+        count = conn.execute(
+            "SELECT COUNT(*) FROM cc_rate_limit WHERE chat_id = ? "
+            "AND timestamp > datetime('now', '-1 hour')",
+            (str(chat_id),),
+        ).fetchone()[0]
+        conn.close()
+        return count
+    except Exception:
+        return 0
+
+
 _CC_BLACKLIST = frozenset(
     {
         # Destructive file operations
@@ -1125,15 +1158,25 @@ _CC_BLACKLIST = frozenset(
 
 
 def _cc_rate_ok(chat_id: str) -> bool:
-    """Returns True if the chat_id is within the rate limit."""
-    now = time.time()
-    window = _CC_RATE.setdefault(chat_id, [])
-    # purge entries older than 1 hour
-    _CC_RATE[chat_id] = [t for t in window if now - t < 3600]
-    if len(_CC_RATE[chat_id]) >= _CC_MAX_PER_HOUR:
-        return False
-    _CC_RATE[chat_id].append(now)
-    return True
+    """Returns True if chat_id is within rate limit (persistent SQLite store)."""
+    try:
+        conn = sqlite3.connect(str(DB), timeout=2)
+        conn.execute(
+            "DELETE FROM cc_rate_limit WHERE timestamp < datetime('now', '-1 hour')"
+        )
+        count = conn.execute(
+            "SELECT COUNT(*) FROM cc_rate_limit WHERE chat_id = ?", (str(chat_id),)
+        ).fetchone()[0]
+        if count >= _CC_MAX_PER_HOUR:
+            conn.close()
+            return False
+        conn.execute("INSERT INTO cc_rate_limit (chat_id) VALUES (?)", (str(chat_id),))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as _exc:
+        log.warning("_cc_rate_ok DB error: %s", _exc)
+        return True  # Fail-open: DB errors don't block legitimate usage
 
 
 def _cc_blacklisted(prompt: str) -> str | None:
@@ -1287,7 +1330,7 @@ async def cmd_cc_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"Credentials: {creds_status}",
         f"Last /cc: `{last_use}`",
         f"Bot uptime: `{uptime_str}`",
-        f"Rate limit: {len(_CC_RATE.get(str(update.effective_chat.id), []))}/{_CC_MAX_PER_HOUR} this hour",
+        f"Rate limit: {_cc_rate_count(str(update.effective_chat.id))}/{_CC_MAX_PER_HOUR} this hour",
     ]
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
@@ -1478,8 +1521,8 @@ def send_morning_report() -> None:
                 if m:
                     next_step = m.group(1).strip()[:80]
                 break
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("%s: %s", __name__, _exc)
 
     spc_line = "\n   • ".join(spc_alerts) if spc_alerts else "none"
     msg = (

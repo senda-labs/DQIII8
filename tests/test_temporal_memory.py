@@ -244,6 +244,172 @@ def test_vector_store_init_and_upsert():
     assert results[0]["distance"] < 0.01  # near-zero distance to itself
 
 
+# ── Test 7-9: hybrid_search ───────────────────────────────────────────────────
+
+# Redirect hybrid_search DB path to temp DB before importing
+sys.path.insert(0, str(Path(__file__).parent.parent / "bin" / "agents"))
+import hybrid_search as hs
+
+hs.DB_PATH = _TMP_PATH
+
+
+def _apply_fts5(conn: sqlite3.Connection) -> None:
+    """Create FTS5 tables in temp DB (not in schema_temporal.sql — loaded at runtime)."""
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+            source, text, domain, agent_name,
+            content='vector_chunks', content_rowid='id'
+        )
+    """)
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(
+            entity, predicate, value, domain,
+            content='facts', content_rowid='id'
+        )
+    """)
+    conn.commit()
+
+
+def test_hybrid_search_vector_only():
+    """hybrid_search works when facts and relations tables are empty."""
+    import vector_store as vs_mod
+
+    vs_mod.DB_PATH = _TMP_PATH
+
+    conn = sqlite3.connect(str(_TMP_PATH))
+    _apply_fts5(conn)
+    conn.close()
+
+    # Insert a vector_chunks row + fake embedding
+    conn = sqlite3.connect(str(_TMP_PATH))
+    cur = conn.execute(
+        "INSERT INTO vector_chunks (source, chunk_id, agent_name, domain, text) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("test_hybrid.md", 0, "", "test", "Kelly criterion optimal bet sizing"),
+    )
+    row_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    # Must call init_vec_table first (uses temp DB via vs_mod.DB_PATH)
+    vs_mod.init_vec_table()
+
+    fake_emb = [0.0] * 768
+    fake_emb[0] = 1.0
+    vs_mod.upsert_vector(row_id, fake_emb)
+
+    # Populate FTS5 trigger (FTS5 content tables need explicit sync)
+    conn = sqlite3.connect(str(_TMP_PATH))
+    conn.execute(
+        "INSERT INTO chunks_fts(rowid, source, text, domain, agent_name) VALUES (?,?,?,?,?)",
+        (row_id, "test_hybrid.md", "Kelly criterion optimal bet sizing", "test", ""),
+    )
+    conn.commit()
+    conn.close()
+
+    results, method = hs.hybrid_search(
+        "Kelly criterion",
+        top_k=3,
+        domain="test",
+    )
+    # Even with empty relations/facts, should return at least the vector result
+    assert len(results) >= 1
+    assert method in ("vector_only", "hybrid", "keyword_only")
+    assert all("text" in r for r in results)
+    assert all("source" in r for r in results)
+    assert all("search_method" in r for r in results)
+
+
+def test_hybrid_search_keyword():
+    """search_by_keywords finds FTS5 matches; returns search_method='keyword'."""
+    conn = sqlite3.connect(str(_TMP_PATH))
+    _apply_fts5(conn)
+
+    cur = conn.execute(
+        "INSERT INTO vector_chunks (source, chunk_id, agent_name, domain, text) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("kelly.md", 0, "", "finance", "Kelly criterion is an optimal betting formula"),
+    )
+    row_id = cur.lastrowid
+    conn.execute(
+        "INSERT INTO chunks_fts(rowid, source, text, domain, agent_name) VALUES (?,?,?,?,?)",
+        (
+            row_id,
+            "kelly.md",
+            "Kelly criterion is an optimal betting formula",
+            "finance",
+            "",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    results = hs.search_by_keywords("betting formula", top_k=5, domain="finance")
+    assert len(results) >= 1
+    assert all(r["search_method"] == "keyword" for r in results)
+    assert any(
+        "kelly" in r["source"].lower() or "kelly" in r["text"].lower() for r in results
+    )
+
+
+def test_rrf_merge():
+    """reciprocal_rank_fusion merges two lists correctly."""
+    list_a = [
+        {
+            "text": "alpha",
+            "source": "a",
+            "domain": "d",
+            "score": 0.9,
+            "search_method": "vector",
+        },
+        {
+            "text": "beta",
+            "source": "b",
+            "domain": "d",
+            "score": 0.7,
+            "search_method": "vector",
+        },
+    ]
+    list_b = [
+        {
+            "text": "beta",
+            "source": "b",
+            "domain": "d",
+            "score": 0.8,
+            "search_method": "keyword",
+        },
+        {
+            "text": "gamma",
+            "source": "c",
+            "domain": "d",
+            "score": 0.6,
+            "search_method": "keyword",
+        },
+    ]
+
+    merged = hs.reciprocal_rank_fusion([(list_a, 1.0), (list_b, 0.7)], k=60)
+
+    # "beta" appears in both lists — must have higher rrf_score than "gamma"
+    texts = [r["text"] for r in merged]
+    assert "alpha" in texts
+    assert "beta" in texts
+    assert "gamma" in texts
+
+    beta_score = next(r["rrf_score"] for r in merged if r["text"] == "beta")
+    gamma_score = next(r["rrf_score"] for r in merged if r["text"] == "gamma")
+    assert (
+        beta_score > gamma_score
+    ), "beta (appears in both lists) should rank above gamma"
+
+    # Dedup: beta must appear exactly once
+    assert texts.count("beta") == 1
+
+    # search_method should be merged for beta
+    beta_entry = next(r for r in merged if r["text"] == "beta")
+    assert "vector" in beta_entry["search_method"]
+    assert "keyword" in beta_entry["search_method"]
+
+
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 
 

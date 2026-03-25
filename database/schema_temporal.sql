@@ -86,3 +86,18 @@ CREATE TABLE IF NOT EXISTS vector_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_vc_agent  ON vector_chunks (agent_name);
 CREATE INDEX IF NOT EXISTS idx_vc_domain ON vector_chunks (domain);
+
+-- ── FTS5 Full-Text Search (Bloque 9 Fase 2) ──────────────────────────────────
+-- chunks_fts: keyword search over knowledge chunks (populated by vector_store.migrate_from_json)
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+    source, text, domain, agent_name,
+    content='vector_chunks',
+    content_rowid='id'
+);
+
+-- facts_fts: keyword search over temporal facts (populated as facts accumulate in Fase 4)
+CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(
+    entity, predicate, value, domain,
+    content='facts',
+    content_rowid='id'
+);

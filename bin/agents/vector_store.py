@@ -230,6 +230,15 @@ def migrate_from_json(verbose: bool = True) -> dict:
                         )
                         row_id = cur.lastrowid
                         new_chunks += 1
+                        # Sync new row into FTS5 index (if table exists)
+                        try:
+                            conn.execute(
+                                "INSERT INTO chunks_fts(rowid, source, text, domain, agent_name) "
+                                "VALUES (?,?,?,?,?)",
+                                (row_id, source, text, domain or "", agent_name),
+                            )
+                        except sqlite3.OperationalError:
+                            pass  # chunks_fts may not exist yet on fresh DB
                     except sqlite3.IntegrityError:
                         # Constraint still fires (e.g. concurrent insert); skip safely
                         continue

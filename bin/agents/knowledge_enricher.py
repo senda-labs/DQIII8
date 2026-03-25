@@ -33,7 +33,14 @@ from embeddings import get_embedding, cosine_similarity
 _embed = get_embedding
 _cosine = cosine_similarity
 
-# ── Vector-store integration ──────────────────────────────────────────────────
+# ── Hybrid + vector-store integration ────────────────────────────────────────
+
+try:
+    from hybrid_search import hybrid_search as _hybrid_search
+
+    _HYBRID_AVAILABLE = True
+except Exception:
+    _HYBRID_AVAILABLE = False
 
 try:
     from vector_store import search_vectors as _vs_search
@@ -44,40 +51,63 @@ except Exception:
     _VS_AVAILABLE = False
 
 
-def _search_via_vector_store(
+def _search_knowledge(
     prompt: str,
     domain: str,
     top_k: int,
     min_similarity: float,
 ) -> tuple[list[tuple[float, dict]], str] | tuple[None, None]:
     """
-    KNN search via sqlite-vec.
-    Returns ([(sim, entry), ...], "vector_store") on success,
-    or (None, None) if unavailable or no results above threshold.
+    Unified knowledge search with fallback chain:
+      hybrid (vector+keyword+graph) → vector_only → json_fallback (caller handles).
+    Returns ([(sim, entry), ...], method) or (None, None) on full failure.
     """
-    if not _VS_AVAILABLE:
-        return None, None
-    try:
-        emb = _vs_embed(prompt)
-        if emb is None:
-            return None, None
-        # Over-fetch so downstream min_similarity filter has enough candidates
-        raw = _vs_search(emb, top_k=top_k * 3, domain=domain)
-        if not raw:
-            return None, None
-        # vec0 cosine distance: 0 = identical, 2 = opposite → sim = 1 - distance
-        scored = []
-        for r in raw:
-            sim = max(0.0, 1.0 - float(r.get("distance", 1.0)))
-            if sim >= min_similarity:
-                scored.append((sim, r))
-        if not scored:
-            return None, None
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return scored, "vector_store"
-    except Exception as exc:
-        log.warning("vector_store search failed, will use json fallback: %s", exc)
-        return None, None
+    # ── Hybrid (vector + FTS5 keyword + graph RRF) ────────────────────────────
+    if _HYBRID_AVAILABLE:
+        try:
+            results, method = _hybrid_search(prompt, top_k=top_k * 3, domain=domain)
+            if results:
+                # RRF scores are in ~[0.001, 0.02] range — not comparable to cosine
+                # similarity thresholds. Trust RRF ranking; only drop zero-score rows.
+                scored = [
+                    (float(r.get("rrf_score", r.get("score", 0.0))), r)
+                    for r in results
+                    if float(r.get("rrf_score", r.get("score", 0.0))) > 0.0
+                ]
+                if scored:
+                    log.debug(
+                        "[enricher] path=%s domain=%s chunks=%d",
+                        method,
+                        domain,
+                        len(scored),
+                    )
+                    return scored, method
+        except Exception as exc:
+            log.warning("[enricher] hybrid_search failed, falling back: %s", exc)
+
+    # ── Vector-only fallback ──────────────────────────────────────────────────
+    if _VS_AVAILABLE:
+        try:
+            emb = _vs_embed(prompt)
+            if emb is not None:
+                raw = _vs_search(emb, top_k=top_k * 3, domain=domain)
+                scored = []
+                for r in raw:
+                    sim = max(0.0, 1.0 - float(r.get("distance", 1.0)))
+                    if sim >= min_similarity:
+                        scored.append((sim, r))
+                if scored:
+                    scored.sort(key=lambda x: x[0], reverse=True)
+                    log.debug(
+                        "[enricher] path=vector_only domain=%s chunks=%d",
+                        domain,
+                        len(scored),
+                    )
+                    return scored, "vector_only"
+        except Exception as exc:
+            log.warning("[enricher] vector_store fallback failed: %s", exc)
+
+    return None, None
 
 
 # ── Core enrichment function ─────────────────────────────────────────────────
@@ -96,14 +126,9 @@ def enrich_with_knowledge(
     Returns: (enriched_prompt, chunks_used)
     If enrichment fails for any reason, returns (original_prompt, 0).
     """
-    # ── Try vector_store (KNN) first ─────────────────────────────────────────
-    scored_vs, path = _search_via_vector_store(
-        prompt, domain, max_chunks, min_similarity
-    )
+    # ── Try hybrid search first ───────────────────────────────────────────────
+    scored_vs, path = _search_knowledge(prompt, domain, max_chunks, min_similarity)
     if scored_vs is not None:
-        log.debug(
-            "[enricher] path=vector_store domain=%s chunks=%d", domain, len(scored_vs)
-        )
         top = scored_vs[:max_chunks]
 
         context_parts = []
@@ -215,16 +240,10 @@ def get_relevant_chunks(
 
     Returns empty list if index missing or no matches above threshold.
     """
-    # ── Try vector_store (KNN) first ─────────────────────────────────────────
-    # Over-fetch pool for task-relevance re-ranking when intent+entity provided
+    # ── Try hybrid search first ───────────────────────────────────────────────
     pool_k = top_k * 2 if (intent or entity) else top_k
-    scored_vs, vs_path = _search_via_vector_store(
-        prompt, domain, pool_k, min_similarity
-    )
+    scored_vs, vs_path = _search_knowledge(prompt, domain, pool_k, min_similarity)
     if scored_vs is not None:
-        log.debug(
-            "[enricher] path=vector_store domain=%s pool=%d", domain, len(scored_vs)
-        )
         scored = scored_vs
     else:
         # ── Fallback: JSON cosine ─────────────────────────────────────────────

@@ -1,5 +1,11 @@
-# DQIII8 — FULL SYSTEM CHECKPOINT
-**Fecha:** 2026-03-25 | **Generado:** 21:30 UTC | **Modelo:** claude-sonnet-4-6
+# DQIII8 — FULL SYSTEM CHECKPOINT v2
+**Fecha:** 2026-03-25 | **v1:** 21:30 UTC | **v2:** 22:15 UTC | **Modelo:** claude-sonnet-4-6
+
+> **v2 — Correcciones aplicadas:** default agent investigado, vector chunks por dominio añadidos,
+> vec0 clarificado, dashboard port verificado (OK), Bloques 7/10 reclasificados,
+> sqlite MCP legacy eliminado, 3 orphans archivados, 3 agent knowledge bases indexadas,
+> 27 chunk_key_facts generados (TPD Groq agotado — 1282 pendientes mañana),
+> ROADMAP_TO_10.md creado (10 gaps, ~31h a 10/10).
 
 ---
 
@@ -533,10 +539,15 @@
 
 ### Vector distribution en DB (vector_chunks)
 
-```
-SELECT domain, COUNT(*) FROM vector_chunks GROUP BY domain:
-(datos no disponibles por segmento — todos en pool de 1309)
-```
+| Dominio | Chunks |
+|---------|--------|
+| social_sciences | 522 |
+| natural_sciences | 307 |
+| formal_sciences | 218 |
+| applied_sciences | 154 |
+| (sin dominio) | 55 |
+| humanities_arts | 53 |
+| **TOTAL** | **1,309** |
 
 ### Agent knowledge
 
@@ -548,10 +559,11 @@ SELECT domain, COUNT(*) FROM vector_chunks GROUP BY domain:
 
 ### sqlite-vec (Bloque 9)
 
-- **Estado:** `vec0` virtual table falla (`no such module: vec0`) — biblioteca no cargable en algunos contextos
-- **Workaround activo:** vector_store.py usa cosine similarity manual sobre vector_chunks table
-- **KNN latencia:** ~5.3ms para 1309 chunks
-- **Rows:** vec_knowledge_rowids=1309, vec_knowledge_vector_chunks00=2 (inconsistencia)
+- **Estado:** `vec0` virtual table falla en CLI sqlite3 — la extensión no está cargada en el binario del sistema.
+  `vec0` **sí funciona** cuando vector_store.py carga la extensión explícitamente via `conn.load_extension()`.
+- **Workaround activo:** vector_store.py carga sqlite-vec en Python → KNN completamente funcional.
+- **KNN latencia:** ~5.3ms para 1309 chunks (sqlite-vec + extensión cargada).
+- **Rows:** vec_knowledge_rowids=1309, vec_knowledge_vector_chunks00=2 (inconsistencia — virtual table auxiliar, no afecta KNN).
 
 ### FTS5
 
@@ -765,7 +777,15 @@ SELECT domain, COUNT(*) FROM vector_chunks GROUP BY domain:
 | benchmark-ollama | 50 | 100% |
 | 4 sesiones anónimas | ~179 | 95-100% |
 
-**[!] "default" tiene 79% success** — investigar qué acciones fallan.
+**[!] "default" tiene 79% success — INVESTIGADO:**
+- Tool único: `openrouter_wrapper` (751 de 756 acciones).
+- Causa: el agente "default" es el wrapper genérico cuando no hay agente identificado.
+  Registra cada intento de provider por separado — incluyendo fallos de providers secundarios
+  antes de que el fallback tenga éxito. Patrón típico: 3 fallos (stepfun, groq, llm7)
+  seguidos de 1 éxito = 25% success registrado aunque el resultado final sea correcto.
+- **Conclusión:** no es un bug funcional sino un artefacto de logging. El sistema sí responde,
+  pero log_action() registra cada provider attempt como una acción independiente.
+- **Fix recomendado:** registrar solo el intento final (success/fail del batch), no cada provider.
 
 ### Benchmark multimodel (parcial — 74 resultados)
 
@@ -836,13 +856,13 @@ Score estable ~84-85/100.
 | Área | Score /10 | Top Issue |
 |------|-----------|-----------|
 | Infraestructura | 9/10 | Swap en uso (1GB) — normal con 7.8GB |
-| Seguridad | 9.5/10 | Dashboard port expuesto? Verificar |
+| Seguridad | 9.5/10 | Dashboard en 127.0.0.1:8080 (OK, no expuesto) |
 | Pipeline core | 8/10 | DQ uplift negativo — enricher v2 perjudica |
 | Knowledge base | 7/10 | Agent knowledge sin indexar, chunk_key_facts vacía |
-| Monitoreo | 8/10 | "default" 79% success sin investigar |
+| Monitoreo | 8.5/10 | "default" 79% = artefacto de logging (investigado — no bug real) |
 | Benchmark | 5/10 | 74 resultados sin scoring, uplift negativo |
 | Proyectos externos | 6/10 | 51+ archivos sin commitear en 3 repos |
-| DB integridad | 9/10 | vec0 module falla, GEMINI_KEY duplicada |
+| DB integridad | 9/10 | vec0 OK via Python (falla solo en CLI sqlite3), GEMINI_KEY duplicada |
 | Agentes | 7/10 | 19/27 sin uso, agent knowledge sin indexar |
 | Scripts | 8/10 | 4 orphans reales a resolver |
 
@@ -910,12 +930,12 @@ Tier A: claude-sonnet-4-6 — finanzas, arquitectura, orquestación
 
 | Bloque | Descripción | Estado |
 |--------|-------------|--------|
-| Bloque 7 | Feedback loops + Watchdog (health, routing, weekly) | COMPLETO |
+| Bloque 7 | UI/web — Stitch preparado, dashboard activo localhost:8080 (127.0.0.1 OK) | EN PROGRESO |
 | Bloque 8 | Benchmark DQ — 20 gold standards, benchmark_dq.py | COMPLETO (361 resultados) |
 | Bloque 8b | Benchmark multimodel — GitHub Models, deepseek, groq | EN PROGRESO (74/600 resultados) |
 | Bloque 9 | Temporal memory + vector_store + hybrid_search + fact_extractor + instinct_evolver | COMPLETO código — datos mínimos (6 facts) |
 | Bloque 9b | Enricher v3 (structured JSON, key_facts_generator) | COMPLETO código — chunk_key_facts pendiente |
-| Bloque 10 | Seguridad (red-team 95, AgentShield 85, fail2ban, SSH) | COMPLETO |
+| Bloque 10 | Knowledge passport entre proyectos — compartir knowledge entre dqiii8 y my-projects/ | NO INICIADO — requiere diseño |
 
 ---
 
@@ -954,7 +974,7 @@ cd /root/dqiii8/my-projects/content-automation && git add -u && git commit -m "c
 
 # 9. Limpiar duplicados
 # Eliminar GEMINI_API_KEY duplicada en .env
-# Verificar si dashboard expuesto (netstat -tlnp | grep jarvis o grep port dashboard.py)
+# Dashboard: VERIFICADO OK — 127.0.0.1:8080 (solo localhost, no expuesto públicamente)
 # Considerar archivar benchmark_knowledge.py + energy_tracker.py
 
 # 10. Commit final del checkpoint
@@ -1029,4 +1049,25 @@ f7ca148 feat: adversarial security system — red-team + blue-team + iterative h
 **Total commits hoy:** 52 commits
 
 ---
-*Checkpoint generado automáticamente — 2026-03-25 21:30 UTC — claude-sonnet-4-6*
+
+## 14. ROADMAP TO 10/10
+
+Sistema actual: **8/10**. Ver detalle completo en `docs/ROADMAP_TO_10.md`.
+
+| Gap | Impacto | Esfuerzo | Prioridad |
+|-----|---------|---------|-----------|
+| F6. Feedback loop cerrado (rating Telegram→routing_feedback) | Alto | 3h | 1 |
+| F4. Tests 200+ (coverage ~5% → 60%+) | Alto | 8h | 2 |
+| F2. Misroute rate tracking (tier_used vs tier_optimal) | Medio | 2h | 3 |
+| F5. /stats Telegram dashboard desde móvil | Medio | 2h | 4 |
+| F1. ML Router RF entrenar con 9972 filas routing_feedback | Alto | 4h | 5 |
+| F3. Cost tracking real (instrumentar llamadas LLM) | Medio | 2h | 6 |
+| F9. Agent skill contracts (input/output schema) | Medio | 3h | 7 |
+| F10. Re-benchmark cron trimestral | Bajo | 0.5h | 8 |
+| F8. ADR documentation (10 decisiones clave) | Bajo | 2h | 9 |
+| F7. jarvis rename completo | Bajo | 4h | 10 |
+
+Ruta rápida 8→9/10: F6 + F2 + F5 = ~7h. Total a 10/10: ~31h.
+
+---
+*Checkpoint v1 — 2026-03-25 21:30 UTC | v2 — 2026-03-25 22:15 UTC — claude-sonnet-4-6*

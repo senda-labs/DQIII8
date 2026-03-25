@@ -410,6 +410,93 @@ def test_rrf_merge():
     assert "keyword" in beta_entry["search_method"]
 
 
+# ── Test 10-12: relevance scoring + fact extraction ───────────────────────────
+
+import temporal_memory as tm_mod
+
+tm_mod.DB_PATH = _TMP_PATH
+
+import fact_extractor as fe
+
+
+def test_compute_relevance_recency():
+    """A freshly-created fact scores higher on recency than a 30-day-old fact."""
+    ep = tm.add_episode("sess-rel", "agent", "", "test")
+
+    # Fact created now — recency = exp(0) = 1.0
+    f_new = tm.add_fact(
+        "python", "latestver", "3.12", domain="test", source_episode_id=ep
+    )
+
+    # Simulate an old fact by manually setting valid_from 30 days ago
+    conn = sqlite3.connect(str(_TMP_PATH))
+    f_old_id = conn.execute(
+        "INSERT INTO facts (entity, predicate, value, domain, valid_from, confidence) "
+        "VALUES (?, ?, ?, ?, datetime('now', '-30 days'), ?)",
+        ("python", "oldver", "3.10", "test", 1.0),
+    ).lastrowid
+    conn.commit()
+    conn.close()
+
+    score_new = tm.compute_relevance(f_new, "fact")
+    score_old = tm.compute_relevance(f_old_id, "fact")
+
+    assert (
+        0.0 < score_old < score_new <= 1.0
+    ), f"Expected score_old ({score_old:.4f}) < score_new ({score_new:.4f})"
+
+
+def test_compute_relevance_contradiction():
+    """Superseded fact (valid_until set) scores 10x lower than current fact."""
+    ep = tm.add_episode("sess-contra", "agent", "", "test")
+
+    # Add v1 then v2 — v1 gets superseded (valid_until set, contradiction=0.1)
+    f1 = tm.add_fact("tool", "version", "1.0", domain="test", source_episode_id=ep)
+    f2 = tm.add_fact("tool", "version", "2.0", domain="test", source_episode_id=ep)
+
+    score_superseded = tm.compute_relevance(f1, "fact")
+    score_current = tm.compute_relevance(f2, "fact")
+
+    # superseded gets contradiction=0.1, current gets 1.0 → 10x difference
+    assert (
+        score_superseded < score_current
+    ), f"Superseded ({score_superseded:.4f}) should be < current ({score_current:.4f})"
+    # The ratio should be ~10x (contradiction factor)
+    assert score_current / score_superseded > 5.0
+
+
+def test_fact_extractor_parse():
+    """_parse_triples correctly parses LLM JSON responses including code-fenced output."""
+    # Bare JSON array
+    raw1 = '[{"entity": "Python", "predicate": "version", "value": "3.12"}]'
+    triples = fe._parse_triples(raw1)
+    assert len(triples) == 1
+    assert triples[0] == {"entity": "Python", "predicate": "version", "value": "3.12"}
+
+    # Code-fenced JSON (typical LLM output)
+    raw2 = '```json\n[{"entity": "WACC", "predicate": "formula", "value": "Ke*E/V+Kd*D/V*(1-T)"}]\n```'
+    triples2 = fe._parse_triples(raw2)
+    assert len(triples2) == 1
+    assert triples2[0]["entity"] == "WACC"
+
+    # Preamble before JSON (LLM adds explanation text)
+    raw3 = 'Here are the facts:\n[{"entity": "Kelly", "predicate": "maximizes", "value": "growth"}]'
+    triples3 = fe._parse_triples(raw3)
+    assert len(triples3) == 1
+
+    # Malformed JSON → empty list
+    assert fe._parse_triples("not json at all") == []
+
+    # Empty array → empty list
+    assert fe._parse_triples("[]") == []
+
+    # Hard cap at 5 triples
+    many = json.dumps(
+        [{"entity": f"e{i}", "predicate": "p", "value": "v"} for i in range(10)]
+    )
+    assert len(fe._parse_triples(many)) == 5
+
+
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 
 

@@ -448,7 +448,7 @@ def _build_prompt_tier_b(
     parts.append(original)
     prompt = "\n\n".join(parts)
     # CoT injection: for formula/derivation queries not caught by intent pattern
-    if _needs_cot(original) and "step" not in prompt.lower():
+    if _needs_cot(original) and "step" not in original.lower():
         prompt += "\n\nThink step by step. Show your reasoning before giving the final answer."
     return prompt
 
@@ -728,11 +728,15 @@ def amplify(
     # Phase 4
     _log("phase 4: knowledge retrieval")
     if chunks is not None:
-        # Chunks pre-retrieved from original prompt externally — normalize to list[str]
+        # Chunks pre-retrieved from original prompt externally — preserve list[dict] with scores
         if chunks and isinstance(chunks[0], dict):
-            chunks = [c["text"] for c in chunks if c.get("text")]
+            chunks = [
+                c for c in chunks if c.get("text")
+            ]  # keep dicts, just filter empties
         else:
-            chunks = [str(c) for c in chunks if c]
+            chunks = [
+                {"text": str(c), "score": 0.5} for c in chunks if c
+            ]  # wrap strings as dicts
         _log(f"  {len(chunks)} chunks provided externally")
     elif routing:
         try:
@@ -773,19 +777,18 @@ def amplify(
     _log("phase 6: tier selection")
     tier = _select_tier(intent, domains, decomp)
 
-    # Phase 4.6: Confidence gate — block chunks that would add noise
+    # Post-tier chunk gate — block chunks that would add noise
     # Tier C always enriches (Rule 1 in gate). Tier B/A filtered by threshold + specificity.
     if chunks and tier > 1:
         try:
             from confidence_gate import should_enrich
 
             top_domain = domains[0]["domain"] if domains else "unknown"
-            # Normalize to list[dict] if chunks arrived as list[str]
-            gate_chunks = (
-                [{"text": c, "score": 0.5} for c in chunks]
-                if chunks and isinstance(chunks[0], str)
-                else chunks
-            )
+            # Normalize to list[dict] — chunks may be list[str] from _retrieve_knowledge
+            gate_chunks = [
+                c if isinstance(c, dict) else {"text": str(c), "score": 0.5}
+                for c in chunks
+            ]
             if not should_enrich("", top_domain, gate_chunks, tier):
                 _log(f"  gate: blocked {len(chunks)} chunks for Tier {tier}")
                 chunks = []

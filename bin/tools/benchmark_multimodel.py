@@ -50,6 +50,7 @@ MODELS: dict[str, dict] = {
         "provider": "ollama",
         "strip_think": False,
         "domains": ["applied_sciences"],
+        "dq_modes": [False],  # DQ ON times out on CPU (enriched prompt too long)
     },
     # Groq (30 req/min)
     "llama-3.3-70b-versatile": {
@@ -96,7 +97,7 @@ RUNS_PER_PROVIDER: dict[str, int] = {
     "github": 3,
     "openrouter": 5,
     "groq": 5,
-    "ollama": 5,
+    "ollama": 3,
 }
 
 _last_call_time: dict[str, float] = {}
@@ -490,8 +491,9 @@ def cmd_run(model_filter: str | None, task_filter: str | None) -> None:
                 continue
             provider = cfg["provider"]
             n_runs = RUNS_PER_PROVIDER.get(provider, 3)
+            dq_modes = cfg.get("dq_modes", [False, True])
             for run in range(1, n_runs + 1):
-                for dq in (False, True):
+                for dq in dq_modes:
                     run_model_on_task(task, model, dq, run, conn)
         print()
 

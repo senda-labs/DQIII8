@@ -311,7 +311,7 @@ def call_sonnet(prompt: str) -> str | None:
             cwd=str(DQIII8_ROOT),
         )
         output = result.stdout.strip()
-        if output and len(output) > 20 and "error" not in output.lower()[:50]:
+        if output and len(output) > 20:
             return output[:3000]
     except Exception:
         pass
@@ -597,8 +597,8 @@ def run_benchmark() -> None:
             "tasks": len(TASKS),
             "queries_per_task": 5,
             "models": ["groq_llama-3.3-70b"],
-            "gold_standard": "claude-sonnet-4-20250514 (when available)",
-            "silver_standard": "gemini-2.5-flash (always available)",
+            "gold_standard": "sonnet-4.6",
+            "silver_standard": "gemini-2.5-flash",
         },
         "tasks": [],
     }

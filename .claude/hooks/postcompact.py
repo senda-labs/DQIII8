@@ -35,7 +35,9 @@ except Exception:
     pass
 
 # ── Active project ───────────────────────────────────────────────────
-project = pre_state.get("project") or os.environ.get("JARVIS_PROJECT", "") or "jarvis-core"
+project = (
+    pre_state.get("project") or os.environ.get("JARVIS_PROJECT", "") or "jarvis-core"
+)
 
 # ── Active model ─────────────────────────────────────────────────────
 model = os.environ.get("JARVIS_MODEL", "claude-sonnet-4-6")
@@ -55,7 +57,8 @@ try:
     if DB.exists():
         conn = sqlite3.connect(str(DB), timeout=2)
         row = conn.execute(
-            "SELECT timestamp, overall_score FROM audit_reports " "ORDER BY timestamp DESC LIMIT 1"
+            "SELECT timestamp, overall_score FROM audit_reports "
+            "ORDER BY timestamp DESC LIMIT 1"
         ).fetchone()
         conn.close()
         if row:
@@ -81,6 +84,19 @@ except Exception:
 actions_before = pre_state.get("actions_count", "?")
 session_id = pre_state.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))
 
+# ── Compact hint heuristic ────────────────────────────────────────────
+compact_hint = ""
+try:
+    n = int(actions_before)
+    if n > 100:
+        compact_hint = (
+            f"\n⚠️  COMPACT: Sesión muy larga ({n} acciones) — /compact recomendado"
+        )
+    elif n > 50:
+        compact_hint = f"\n[COMPACT] Sesión larga ({n} acciones) — considerar /compact"
+except (ValueError, TypeError):
+    pass
+
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DQIII8 — PostCompact {datetime.now().strftime('%H:%M')}
 Context compacted — state restored
@@ -88,7 +104,7 @@ Model  : {model}
 Project: {project}
 Next   : {next_step}
 Audit  : {audit_info}
-Session actions: {actions_before}
+Session actions: {actions_before}{compact_hint}
 
 LAST LESSONS:
 {chr(10).join(lessons) if lessons else '  (none recorded)'}

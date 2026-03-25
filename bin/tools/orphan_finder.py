@@ -2,7 +2,7 @@
 """orphan_finder.py — Report which scripts in bin/ are referenced by nothing.
 
 Checks: crontab, CLAUDE.md, .claude/agents/, .claude/skills/, bin/ imports,
-        .claude/settings.json
+        .claude/settings.json, bin/**/*.sh (j.sh, nightly.sh, etc.)
 """
 
 import subprocess
@@ -28,12 +28,23 @@ def _crontab() -> str:
         return ""
 
 
+def _shell_scripts() -> str:
+    """Concatenate all *.sh files under bin/ and scripts/ (if present)."""
+    text = ""
+    for pattern in ["bin/**/*.sh", "scripts/**/*.sh"]:
+        for f in ROOT.glob(pattern):
+            if "archive" not in f.parts and "venv" not in f.parts:
+                text += _text(f) + "\n"
+    return text
+
+
 def _collect_corpus() -> dict[str, str]:
     """Return named text blobs to search against."""
     corpus: dict[str, str] = {
         "cron": _crontab(),
         "claude.md": _text(ROOT / "CLAUDE.md"),
         "settings": _text(ROOT / ".claude" / "settings.json"),
+        "shell": _shell_scripts(),
     }
     agents_text = ""
     for f in (ROOT / ".claude" / "agents").glob("*.md"):
@@ -62,7 +73,7 @@ def main() -> None:
         if "__pycache__" not in f.parts and "venv" not in f.parts
     )
 
-    keys = ["cron", "claude.md", "agents", "skills", "bin", "settings"]
+    keys = ["cron", "claude.md", "agents", "skills", "bin", "shell", "settings"]
     col_w = 9
 
     header = f"{'Script':<55} " + " ".join(f"{k:>{col_w}}" for k in keys) + "  VERDICT"

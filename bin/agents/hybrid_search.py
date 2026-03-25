@@ -94,6 +94,8 @@ def search_by_embedding(
             sim = max(0.0, 1.0 - float(r.get("distance", 1.0)))
             results.append(
                 {
+                    "id": r.get("id"),
+                    "item_type": "chunk",
                     "text": r.get("text", ""),
                     "source": r.get("source", ""),
                     "domain": r.get("domain", domain or ""),
@@ -155,6 +157,8 @@ def search_by_keywords(
                 score = max(0.0, min(1.0, 1.0 / (1.0 - float(r["bm25_score"]))))
                 results.append(
                     {
+                        "id": r["id"],
+                        "item_type": "chunk",
                         "text": r["text"],
                         "source": r["source"],
                         "domain": r["domain"] or "",
@@ -190,6 +194,8 @@ def search_by_keywords(
                 text = f"{r['entity']} {r['predicate']} {r['value']}"
                 results.append(
                     {
+                        "id": r["id"],
+                        "item_type": "fact",
                         "text": text,
                         "source": f"fact:{r['entity']}:{r['predicate']}",
                         "domain": r["domain"] or "",
@@ -384,23 +390,61 @@ def hybrid_search(
         return [], "empty"
 
     if len(ranked_lists) == 1:
-        # Single source — no need for RRF, just return directly
         src = sources_used[0]
         method = f"{src}_only"
-        results = ranked_lists[0][0][:top_k]
-        log.debug("[hybrid] %s: %d results", method, len(results))
-        return results, method
+        candidates = ranked_lists[0][0][:top_k]
+        log.debug("[hybrid] %s: %d results", method, len(candidates))
+    else:
+        candidates = reciprocal_rank_fusion(ranked_lists, k=60)
+        method = "hybrid"
+        log.debug(
+            "[hybrid] hybrid (%s): %d merged → %d",
+            "+".join(sources_used),
+            len(candidates),
+            min(top_k, len(candidates)),
+        )
 
-    # Multi-source RRF merge
-    merged = reciprocal_rank_fusion(ranked_lists, k=60)
-    method = "hybrid"
-    log.debug(
-        "[hybrid] hybrid (%s): %d merged → %d",
-        "+".join(sources_used),
-        len(merged),
-        min(top_k, len(merged)),
-    )
-    return merged[:top_k], method
+    # ── Relevance re-ranking (Fase 3) ─────────────────────────────────────────
+    candidates = _apply_relevance(candidates[:top_k], query)
+    return candidates, method
+
+
+def _apply_relevance(results: list[dict], query: str) -> list[dict]:
+    """
+    Post-RRF relevance scoring: final_score = rrf_score * (0.5 + 0.5 * relevance).
+    Also logs access for each result via temporal_memory.log_access.
+    No-ops gracefully if temporal_memory is unavailable.
+    """
+    try:
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        from temporal_memory import compute_relevance, log_access
+    except Exception:
+        return results  # relevance module unavailable — return as-is
+
+    rescored = []
+    for r in results:
+        item_id = r.get("id")
+        item_type = r.get("item_type", "chunk")
+        base = float(r.get("rrf_score", r.get("score", 0.0)))
+
+        if item_id is not None:
+            try:
+                rel = compute_relevance(item_id, item_type)
+                r["relevance"] = round(rel, 4)
+                r["final_score"] = round(base * (0.5 + 0.5 * rel), 6)
+                log_access(item_id, item_type, query_text=query)
+            except Exception:
+                r["final_score"] = base
+        else:
+            r["final_score"] = base
+
+        rescored.append(r)
+
+    rescored.sort(key=lambda x: x["final_score"], reverse=True)
+    log.debug("[hybrid] relevance applied to %d results", len(rescored))
+    return rescored
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

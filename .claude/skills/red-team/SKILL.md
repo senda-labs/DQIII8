@@ -31,9 +31,39 @@ scanners miss. Think like an attacker, not a checker.
 
 ## Attack Phases
 
+### Phase 0: External Attack Surface
+
+Start here — simulate an external attacker with no inside knowledge:
+
+1. **Port scan** — discover exposed services:
+   ```bash
+   for port in 22 80 443 3000 5000 8000 8080 8443 9000; do
+     result=$(curl -s --connect-timeout 2 -o /dev/null -w "%{http_code}" http://localhost:$port 2>/dev/null)
+     [ "$result" != "000" ] && echo "  port $port → HTTP $result"
+   done
+   ss -tlnp | grep LISTEN
+   ```
+2. **Auth endpoints** — probe without credentials:
+   ```bash
+   for path in / /api /api/health /api/admin /admin /metrics /debug; do
+     code=$(curl -s --connect-timeout 2 -o /dev/null -w "%{http_code}" http://localhost:8000$path 2>/dev/null)
+     echo "  $path → $code"
+   done
+   ```
+3. **CORS test** — check for misconfigured cross-origin policy:
+   ```bash
+   curl -s -H "Origin: https://evil.com" -I http://localhost:8000/ 2>/dev/null | grep -i "access-control"
+   ```
+4. **fail2ban** — verify brute-force protection:
+   ```bash
+   fail2ban-client status 2>/dev/null || echo "fail2ban not running — SSH brute-force unprotected"
+   fail2ban-client status sshd 2>/dev/null | grep -E "banned|failed"
+   ```
+5. **SSL/TLS** — check cipher weaknesses if HTTPS is exposed.
+
 ### Phase 1: Reconnaissance
 
-Map the attack surface:
+Map the internal attack surface:
 
 ```bash
 # Find all entry points (web routes, API endpoints, CLI args)
@@ -45,7 +75,7 @@ grep -rn "auth\|token\|session\|cookie\|password\|jwt\|oauth" --include="*.py" .
 # Find file operations (path traversal candidates)
 grep -rn "open(\|Path(\|os.path\|shutil" --include="*.py" .
 # Map MCP servers and their permissions
-cat ~/.claude.json 2>/dev/null | python3 -c "import json,sys; [print(f'MCP: {k} → {v.get(\"command\",\"?\")}') for k,v in json.load(sys.stdin).get('mcpServers',{}).items()]"
+cat ~/.claude.json 2>/dev/null | python3 -c "import json,sys; [print(f'MCP: {k}') for k in json.load(sys.stdin).get('mcpServers',{}).keys()]"
 ```
 
 ### Phase 2: Vibe Coding Pattern Attacks
@@ -94,9 +124,9 @@ AI-generated code has specific weaknesses:
    ```bash
    ss -tlnp 2>/dev/null | grep LISTEN
    ```
-2. **File permissions**: Check .env, database, keys
+2. **File permissions**: Check sensitive files
    ```bash
-   find . -name "*.env" -o -name "*.pem" -o -name "*.key" -o -name "*.db" | xargs ls -la 2>/dev/null
+   find . -name "*.env" -o -name "*.pem" -o -name "*.key" -o -name "*.db" | xargs stat -c '%a %n' 2>/dev/null
    ```
 3. **Dependency attacks**: Check for known vulnerable packages
    ```bash
@@ -108,35 +138,7 @@ AI-generated code has specific weaknesses:
    git log --diff-filter=D --name-only --pretty=format: | grep -i "env\|key\|secret\|token" | head -10
    ```
 
-### Phase 6: External Attack Simulation
-
-Test the VPS as an external attacker would:
-
-1. **Port scan** — discover exposed services:
-   ```bash
-   for port in 22 80 443 3000 5000 8000 8080 8443 9000; do
-     curl -s --connect-timeout 2 http://localhost:$port -o /dev/null -w "%{http_code}" 2>/dev/null && echo " → port $port open" || true
-   done
-   ss -tlnp | grep LISTEN
-   ```
-2. **Auth endpoints** — test exposed HTTP endpoints without credentials:
-   ```bash
-   # Check for unauthenticated API endpoints
-   curl -s http://localhost:8000/api/health 2>/dev/null | head -5
-   curl -s http://localhost:8000/api/admin 2>/dev/null | head -5
-   ```
-3. **CORS test** — probe for misconfigured cross-origin policies:
-   ```bash
-   curl -s -H "Origin: https://evil.com" -I http://localhost:8000/ 2>/dev/null | grep -i "access-control"
-   ```
-4. **fail2ban** — verify brute-force protection is active:
-   ```bash
-   fail2ban-client status 2>/dev/null || echo "fail2ban not running"
-   fail2ban-client status sshd 2>/dev/null | head -10
-   ```
-5. **SSL/TLS** — check certificate and cipher weaknesses if HTTPS exposed.
-
-### Phase 7: Chained Attack Scenarios
+### Phase 6: Chained Attack Scenarios
 
 Think multi-step attacks:
 - "I found an unauthenticated endpoint → it reads a file → the file path is user-controlled → path traversal → read .env → get API keys → access paid services"
@@ -145,30 +147,35 @@ Think multi-step attacks:
 
 ## Pre-Report Verification Protocol
 
-Before classifying any finding, run this verification checklist:
+Before classifying ANY finding, run this checklist. Unverified findings are noise.
 
-1. **Execute the PoC** — actually run the proof-of-concept and confirm it works. If it doesn't reproduce, it's not a real finding.
-2. **Check file context** — if a file has permissions 600 and is not tracked in git, classify as INFO, not CRITICAL. It may be intentionally private.
-3. **Check git log for recent fixes** — if the issue was fixed within the last 7 days, classify as ALREADY_FIXED:
+1. **Execute the PoC** — run it and confirm it works. No reproduction = not a finding.
+2. **Check real permissions** — use `stat` not `ls`:
    ```bash
-   git log --since="7 days ago" --oneline --all | grep -i "fix\|security\|patch\|sanitize\|validate"
+   stat -c '%a %U %G %n' <file>
    ```
-4. **Check security_findings for duplicates** — avoid reporting known issues:
+   If permissions are 600 and file is not git-tracked → INFO, not CRITICAL.
+3. **Check git log for recent fixes** (last 7 days):
+   ```bash
+   git log --since="7 days ago" --oneline --all | grep -i "fix\|security\|patch\|sanitize\|validate\|block"
+   ```
+   If a recent commit addresses the issue → ALREADY_FIXED.
+4. **Check security_findings DB for duplicates**:
    ```bash
    python3 -c "
-   import sqlite3, json
+   import sqlite3
    conn = sqlite3.connect('database/dqiii8.db')
    rows = conn.execute('SELECT title, status FROM security_findings ORDER BY created_at DESC LIMIT 20').fetchall()
    [print(r) for r in rows]
    " 2>/dev/null || echo "(no security_findings table)"
    ```
-5. **Classify each finding before reporting**:
+5. **Classify each finding**:
    - `REAL` — reproduced, no recent fix, genuinely exploitable
-   - `MITIGATED` — real vulnerability but defense-in-depth reduces impact
-   - `FALSE_POSITIVE` — code pattern looks dangerous but context makes it safe
+   - `MITIGATED` — real but defense-in-depth reduces impact
+   - `FALSE_POSITIVE` — pattern looks dangerous but context makes it safe
    - `ALREADY_FIXED` — recent commit addresses it
 
-**Only report REAL and MITIGATED findings.** FALSE_POSITIVE and ALREADY_FIXED go in an appendix.
+**Only report REAL and MITIGATED in the main report.** The rest go in CHECKED & SECURE.
 
 ## Output Format
 
@@ -178,10 +185,19 @@ Generate: `tasks/audit/red-team-{date}.md`
 # Red Team Report — {date}
 Target: {project path}
 Duration: {time spent}
-Attacker skill level simulated: {intermediate/advanced/expert}
+Attacker skill level simulated: intermediate/advanced/expert
+Security Score: {100 - (CRITICAL×25 + HIGH×10 + MEDIUM×3 + LOW×1)}/100
 
 ## Executive Summary
 {1-2 sentences: overall security posture}
+
+## EXTERNAL ATTACK SURFACE
+### Exposed Ports
+{port scan results}
+### Unauthenticated Endpoints
+{auth probe results}
+### CORS / fail2ban
+{results}
 
 ## Kill Chains Found
 ### Kill Chain 1: {name}
@@ -191,23 +207,27 @@ Step 3: {action} → {COMPROMISED: what was accessed}
 Severity: CRITICAL/HIGH/MEDIUM
 Proof: {exact command or payload that demonstrates the vulnerability}
 
-## Individual Findings
+## INTERNAL FINDINGS (REAL and MITIGATED only)
 ### [RT-001] {title}
 - Category: {OWASP category}
 - Severity: CRITICAL/HIGH/MEDIUM/LOW
+- Status: REAL/MITIGATED
 - File: {path}:{line}
-- Proof: {command/payload}
+- Proof: {command/payload — confirmed working}
 - Impact: {what an attacker gains}
-- Vibe-coding pattern: {yes/no — is this a known AI-generated pattern?}
+- Vibe-coding pattern: yes/no
 
-## Vibe Coding Score
-{Percentage of findings that are attributable to AI-generated code patterns}
+## CHECKED & SECURE
+| Finding | Classification | Reason |
+|---------|---------------|--------|
+| {title} | FALSE_POSITIVE | {why it's safe} |
+| {title} | ALREADY_FIXED | {commit that fixed it} |
 
 ## Statistics
-Total findings: {N}
+Score: {score}/100
+Total checked: {N} | REAL: {N} | MITIGATED: {N} | FALSE_POSITIVE: {N} | ALREADY_FIXED: {N}
 Critical: {N} | High: {N} | Medium: {N} | Low: {N}
-Kill chains: {N}
-Vibe-coding patterns: {N}/{total} ({percentage}%)
+Kill chains: {N} | Vibe-coding patterns: {N}/{total} ({percentage}%)
 ```
 
 ## Rules
@@ -217,3 +237,4 @@ Vibe-coding patterns: {N}/{total} ({percentage}%)
 - NEVER exfiltrate real credentials — only prove they are accessible
 - Document EVERY finding with a reproducible proof
 - If you find a kill chain, document the FULL chain, not just individual links
+- FALSE_POSITIVE and ALREADY_FIXED must go in CHECKED & SECURE, not the main findings

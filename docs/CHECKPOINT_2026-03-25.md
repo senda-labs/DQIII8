@@ -217,9 +217,9 @@
 | `bin/tools/gemini_export.py` | [!] Invocado vía `/gemini_export` Telegram — documentar en rules |
 | `bin/tools/github_researcher.py` | [!] Invocado vía `/github_research` Telegram — documentar |
 | `bin/tools/orphan_finder.py` | OK — herramienta de diagnóstico, huérfano esperado |
-| `bin/monitoring/benchmark_knowledge.py` | [!] Sin cron, sin referencias — posible candidato a archive |
-| `bin/monitoring/energy_tracker.py` | [-] Sin referencias externas — verificar si cron lo llama |
-| `bin/core/ollama_wrapper.py` | [-] Huérfano — reemplazado por openrouter_wrapper? Verificar |
+| `bin/archive/benchmark_knowledge.py` | [OK] Archivado en Bloque B (2026-03-25) — era orphan sin referencias |
+| `bin/archive/energy_tracker.py` | [OK] Archivado en Bloque B (2026-03-25) — era orphan sin cron activo |
+| `bin/archive/ollama_wrapper.py` | [OK] Archivado en Bloque B (2026-03-25) — reemplazado por openrouter_wrapper |
 | `bin/archive/jarvis_architect.py` | OK — en archive, no ejecutar |
 
 ### Scripts activos por módulo
@@ -324,10 +324,10 @@
 | biology-specialist | groq/llama-3.3-70b | B | Biología | 0 |
 | chemistry-specialist | groq/llama-3.3-70b | B | Química | 0 |
 | code-reviewer | groq/llama-3.3-70b (free) | B | Review código | 0 |
-| content-automator | ollama/qwen2.5-coder:7b | C | Contenido video | 2 md, 0 indexed |
+| content-automator | ollama/qwen2.5-coder:7b | C | Contenido video | 2 md, **14 indexed** |
 | data-specialist | groq/llama-3.3-70b | B | Datos | 0 |
 | economics-specialist | groq/llama-3.3-70b | B | Economía | 0 |
-| finance-specialist | claude-sonnet-4-6 | A | WACC/DCF | 3 md, 0 indexed |
+| finance-specialist | claude-sonnet-4-6 | A | WACC/DCF | 3 md, **22 indexed** |
 | git-specialist | ollama/qwen2.5-coder:7b | C | Git/branches | 0 |
 | history-specialist | groq/llama-3.3-70b | B | Historia | 0 |
 | language-specialist | groq/llama-3.3-70b | B | Lingüística | 0 |
@@ -339,7 +339,7 @@
 | orchestrator | claude-sonnet-4-6 | A | Multi-agente | 0 |
 | philosophy-specialist | groq/llama-3.3-70b | B | Filosofía | 0 |
 | physics-specialist | groq/llama-3.3-70b | B | Física | 0 |
-| python-specialist | ollama/qwen2.5-coder:7b | C | Python/código | 2 md, 0 indexed |
+| python-specialist | ollama/qwen2.5-coder:7b | C | Python/código | 2 md, **19 indexed** |
 | research-analyst | groq/llama-3.3-70b | B | Investigación | 0 |
 | software-specialist | groq/llama-3.3-70b | B | Software/arch | 0 |
 | stats-specialist | groq/llama-3.3-70b | B | Estadística | 0 |
@@ -504,12 +504,11 @@
 |----------|---------|---------|
 | filesystem | npx @modelcontextprotocol/server-filesystem /root/jarvis | Acceso FS a /root/jarvis |
 | fetch | python -m mcp_server_fetch | HTTP fetch |
-| sqlite | python /root/jarvis/bin/sqlite_mcp.py (jarvis_metrics.db) | DB legacy via /root/jarvis |
 | github | npx @modelcontextprotocol/server-github | GitHub API |
-| dqiii8-db | python3 bin/tools/sqlite_mcp.py | **dqiii8.db nativo** (nuevo hoy) |
+| dqiii8-db | python3 bin/tools/sqlite_mcp.py | **dqiii8.db nativo** |
 | context7 | npx @upstash/context7-mcp | Documentación de librerías |
 
-**Problema:** `sqlite` MCP apunta a `/root/jarvis/bin/sqlite_mcp.py` (path legacy), mientras `dqiii8-db` apunta a `/root/dqiii8/bin/tools/sqlite_mcp.py`. Ambos tocan la misma DB (jarvis_metrics.db). Redundancia — limpiar.
+**Bloque B aplicado:** entrada `sqlite` legacy (`/root/jarvis/bin/sqlite_mcp.py`) eliminada de `.mcp.json` y `settings.local.json`. Queda solo `dqiii8-db` como MCP de base de datos.
 
 ### Coherencia CLAUDE.md
 
@@ -747,9 +746,9 @@
 
 ### Problemas detectados
 
-- **[-] auto-report:** 17 archivos sin commitear — riesgo de pérdida
-- **[-] automatic-nutrition:** 29 archivos sin commitear — crítico
-- **[-] content-automation:** 5 archivos sin commitear
+- **[OK] auto-report:** commiteado en Bloque B (2026-03-25) — `8eeb7f2 chore: session state`
+- **[OK] automatic-nutrition:** commiteado en Bloque B (2026-03-25) — `278c837 chore: session state`
+- **[OK] content-automation:** commiteado en Bloque B (2026-03-25) — `e055eca chore: session state`
 - **[-] hult-finance, sentiment-jobsearch:** sin git — ningún historial
 
 ---

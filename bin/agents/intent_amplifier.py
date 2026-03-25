@@ -432,14 +432,33 @@ def _build_prompt_tier_c(
 
 
 def _build_prompt_tier_b(
-    original: str, decomp: dict, domains: list, chunks: list, routing: dict
+    original: str,
+    decomp: dict,
+    domains: list,
+    chunks: list,
+    routing: dict,
+    subdomain: str = "",
 ) -> str:
-    """Tier B (70B cloud): reference block + concise task.
+    """Tier B (70B cloud): role assignment + reference block + CoT for formula queries.
 
-    Adds CoT suffix when the query requires multi-step reasoning (formula derivation,
-    proofs, step-by-step calculations) even if the intent pattern matched 'explain'.
+    Role assignment uses subdomain for precision:
+      - "You are an expert in corporate finance." (not "social sciences")
+      - Only injected when subdomain differs from broad parent domain name
+      - Only injected when chunks are present (no-chunk path returns original unchanged)
     """
+    _BROAD_DOMAINS = frozenset(
+        {
+            "formal_sciences",
+            "natural_sciences",
+            "social_sciences",
+            "humanities_arts",
+            "applied_sciences",
+        }
+    )
     parts = []
+    if subdomain and subdomain not in _BROAD_DOMAINS and chunks:
+        role_label = subdomain.replace("_", " ")
+        parts.append(f"You are an expert in {role_label}.")
     if chunks:
         knowledge_block = "\n---\n".join(
             c["text"] if isinstance(c, dict) else str(c) for c in chunks
@@ -476,6 +495,7 @@ def _build_amplified_prompt(
     chunks: list,
     routing: dict = None,
     tier: int = None,
+    subdomain: str = "",
 ) -> tuple[str, int]:
     """
     Constructs the amplified prompt, dispatching to a tier-specific builder
@@ -509,7 +529,7 @@ def _build_amplified_prompt(
         return amplified, len(effective_chunks)
     if tier == 2:
         amplified = _build_prompt_tier_b(
-            original, decomp, domains, effective_chunks, routing
+            original, decomp, domains, effective_chunks, routing, subdomain=subdomain
         )
         if intent_suffix:
             amplified += intent_suffix
@@ -795,10 +815,26 @@ def amplify(
         except ImportError:
             pass  # gate unavailable — proceed without filtering
 
+    # Subdomain for role assignment in Tier B prompt
+    _top_domain = domains[0]["domain"] if domains else "applied_sciences"
+    try:
+        from subdomain_classifier import classify_subdomain as _cs
+
+        _subdomain = _cs(prompt, _top_domain)
+    except ImportError:
+        _subdomain = _top_domain
+
     # Phase 5
     _log("phase 5: build prompt")
     amplified, chunks_injected = _build_amplified_prompt(
-        prompt, decomp, intent, domains, chunks, routing, tier=tier
+        prompt,
+        decomp,
+        intent,
+        domains,
+        chunks,
+        routing,
+        tier=tier,
+        subdomain=_subdomain,
     )
 
     elapsed_ms = int((time.time() - t0) * 1000)
@@ -819,6 +855,7 @@ def amplify(
         "tier": tier,
         "tier_label": TIER_LABELS[tier],
         "chunks_used": chunks_injected,  # post-filter: actual injected count
+        "subdomain": _subdomain,
         "routing": routing,
     }
 

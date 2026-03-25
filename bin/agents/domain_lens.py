@@ -22,6 +22,13 @@ for _d in [DQIII8_ROOT / "bin" / "core", DQIII8_ROOT / "bin" / "agents"]:
 from domain_classifier import classify_domain
 from knowledge_enricher import enrich_with_knowledge
 
+try:
+    from subdomain_classifier import classify_subdomain as _classify_subdomain
+except ImportError:
+
+    def _classify_subdomain(prompt: str, domain: str) -> str:
+        return domain
+
 
 # Domain behaviour templates — style guidance injected into every system prompt
 DOMAIN_STYLES: dict[str, str] = {
@@ -83,7 +90,11 @@ def get_domain_lens(prompt: str, domain: str | None = None) -> dict:
 
     style = DOMAIN_STYLES.get(domain, DOMAIN_STYLES["applied_sciences"])
 
-    system_prompt = f"You are an expert in {domain.replace('_', ' ')}.\n\n"
+    subdomain = _classify_subdomain(prompt, domain)
+    role_label = (
+        subdomain.replace("_", " ") if subdomain != domain else domain.replace("_", " ")
+    )
+    system_prompt = f"You are an expert in {role_label}.\n\n"
     system_prompt += f"{style}\n\n"
     if knowledge_context:
         system_prompt += (
@@ -95,6 +106,7 @@ def get_domain_lens(prompt: str, domain: str | None = None) -> dict:
     return {
         "system_prompt": system_prompt,
         "domain": domain,
+        "subdomain": subdomain,
         "chunks_used": chunks_used,
         "style": style,
     }

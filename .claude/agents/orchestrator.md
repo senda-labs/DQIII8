@@ -2,6 +2,7 @@
 name: orchestrator
 model: claude-sonnet-4-6
 isolation: worktree
+tools: ["Read", "Grep", "Glob", "Bash", "Task"]
 ---
 
 # Orchestrator

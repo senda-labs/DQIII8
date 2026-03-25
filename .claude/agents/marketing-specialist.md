@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [SEO, CTR, conversion, funnel, campaign, ads, social media, analytics, bounce rate, CAC, LTV, content strategy, A/B test, landing page, email marketing]
 keywords_es: [SEO, conversión, embudo, campaña, anuncios, redes sociales, analítica, estrategia contenido, prueba AB, página aterrizaje, email marketing, retención]
 keywords_en: [SEO, conversion, funnel, campaign, ads, social media, analytics, content strategy, A/B test, landing page, email marketing, retention]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Marketing Specialist

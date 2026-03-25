@@ -5,6 +5,7 @@ model: claude-sonnet-4-6
 triggers: [VaR, Basel, WACC, DCF, Sharpe, portfolio, risk, valuation, CAPM, Black-Scholes, hedge, derivative, bond, equity, credit, backtesting, momentum, drawdown, position sizing, Markowitz, CVaR, stress test, GARCH, PD, LGD, regulatory capital, FRTB]
 keywords_es: [VaR, Basel, WACC, DCF, Sharpe, portfolio, riesgo, valoración, derivado, bono, crédito, backtesting, drawdown, tamaño posición, prueba estrés, capital regulatorio]
 keywords_en: [VaR, Basel, WACC, DCF, Sharpe, portfolio, risk, valuation, derivative, bond, credit, backtesting, drawdown, position sizing, stress test, regulatory capital]
+tools: ["Read", "Grep", "Glob", "Write"]
 ---
 
 # Finance Specialist Agent

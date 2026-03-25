@@ -1,6 +1,7 @@
 ---
 name: auditor
 model: claude-sonnet-4-6
+tools: ["Read", "Grep", "Glob", "Bash"]
 ---
 
 # Auditor Agent

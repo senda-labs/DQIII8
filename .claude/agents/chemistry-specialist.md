@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [pKa, acid, base, reaction, organic, buffer, solubility, equilibrium, pH, molecule, catalyst, titration, redox]
 keywords_es: [pKa, ácido, base, reacción, orgánica, buffer, solubilidad, equilibrio, pH, molécula, catalizador, titulación]
 keywords_en: [pKa, acid, base, reaction, organic, buffer, solubility, equilibrium, pH, molecule, catalyst, titration, redox]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Chemistry Specialist

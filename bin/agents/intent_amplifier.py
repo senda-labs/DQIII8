@@ -376,6 +376,41 @@ INTENT_SUFFIXES: dict[str, str] = {
 }
 
 
+# ── CoT detection ─────────────────────────────────────────────────────────────
+
+_COT_SIGNALS = frozenset(
+    [
+        "derive",
+        "derivation",
+        "prove",
+        "proof",
+        "step by step",
+        "step-by-step",
+        "show your work",
+        "how is",
+        "why does",
+        "explain how",
+        "walk me through",
+        "formula",
+        "calculate",
+        "computation",
+        "algorithm for",
+        "converge",
+    ]
+)
+
+
+def _needs_cot(prompt: str) -> bool:
+    """True if the prompt requires multi-step reasoning (derivation, proof, formula).
+
+    Used to inject CoT instruction for Tier B even when intent pattern is 'explain'
+    (e.g. "derive Black-Scholes" detects as 'explain', not 'calculate').
+    Does NOT apply to Tier A — frontier models reason natively.
+    """
+    p = prompt.lower()
+    return any(sig in p for sig in _COT_SIGNALS)
+
+
 # ── Tier-specific prompt builders ────────────────────────────────────────────
 
 
@@ -399,7 +434,11 @@ def _build_prompt_tier_c(
 def _build_prompt_tier_b(
     original: str, decomp: dict, domains: list, chunks: list, routing: dict
 ) -> str:
-    """Tier B (70B cloud): reference block + concise task — model reasons well on its own."""
+    """Tier B (70B cloud): reference block + concise task.
+
+    Adds CoT suffix when the query requires multi-step reasoning (formula derivation,
+    proofs, step-by-step calculations) even if the intent pattern matched 'explain'.
+    """
     parts = []
     if chunks:
         knowledge_block = "\n---\n".join(
@@ -407,7 +446,11 @@ def _build_prompt_tier_b(
         )
         parts.append(f"<reference>\n{knowledge_block}\n</reference>")
     parts.append(original)
-    return "\n\n".join(parts)
+    prompt = "\n\n".join(parts)
+    # CoT injection: for formula/derivation queries not caught by intent pattern
+    if _needs_cot(original) and "step" not in prompt.lower():
+        prompt += "\n\nThink step by step. Show your reasoning before giving the final answer."
+    return prompt
 
 
 def _build_prompt_tier_a(original: str, chunks: list) -> str:
@@ -729,6 +772,25 @@ def amplify(
     # Phase 6 (moved before Phase 5 so tier is available for prompt construction)
     _log("phase 6: tier selection")
     tier = _select_tier(intent, domains, decomp)
+
+    # Phase 4.6: Confidence gate — block chunks that would add noise
+    # Tier C always enriches (Rule 1 in gate). Tier B/A filtered by threshold + specificity.
+    if chunks and tier > 1:
+        try:
+            from confidence_gate import should_enrich
+
+            top_domain = domains[0]["domain"] if domains else "unknown"
+            # Normalize to list[dict] if chunks arrived as list[str]
+            gate_chunks = (
+                [{"text": c, "score": 0.5} for c in chunks]
+                if chunks and isinstance(chunks[0], str)
+                else chunks
+            )
+            if not should_enrich("", top_domain, gate_chunks, tier):
+                _log(f"  gate: blocked {len(chunks)} chunks for Tier {tier}")
+                chunks = []
+        except ImportError:
+            pass  # gate unavailable — proceed without filtering
 
     # Phase 5
     _log("phase 5: build prompt")

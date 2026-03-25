@@ -506,3 +506,52 @@ def test_confidence_gate_tier_b_floor_raised():
         )
         is False
     ), "Tier B floor raised to 0.30 — score=0.22 must be rejected"
+
+
+def test_gate_integrated_blocks_low_sim_chunks_tier_a():
+    """Gate must be called in amplify() — Tier A with low-sim chunks returns chunks_used=0."""
+    low_sim_specific = [
+        {
+            "text": "mRNA encapsulation efficiency: 85.3%. LNP diameter: 80-100nm. Zeta: -5mV",
+            "score": 0.38,
+            "source": "biology",
+            "task_relevance": 0.38,
+        }
+    ]
+    # Force Tier A by using finance niche
+    result = amplify(
+        "calculate WACC for Tesla assuming 10% cost of equity",
+        domain="social_sciences",
+        chunks=low_sim_specific,
+    )
+    # Gate should block these chunks (score=0.38 < 0.55 for Tier A)
+    assert result["chunks_used"] == 0, (
+        f"Tier A gate must block chunks with score=0.38 < 0.55. "
+        f"chunks_used={result['chunks_used']}, tier={result['tier']}"
+    )
+
+
+def test_needs_cot_detects_formula_queries():
+    """_needs_cot must return True for formula/derivation queries."""
+    from intent_amplifier import _needs_cot
+
+    assert _needs_cot("derive the Black-Scholes formula") is True
+    assert _needs_cot("prove convergence of Newton-Raphson") is True
+    assert _needs_cot("step by step explanation of WACC") is True
+    assert _needs_cot("what is machine learning") is False
+    assert _needs_cot("compare React and Vue") is False
+
+
+def test_cot_applied_to_tier_b_formula():
+    """Tier B amplified prompt includes CoT instruction for formula queries."""
+    result = amplify(
+        "derive the Black-Scholes pricing formula",
+        domain="formal_sciences",
+        chunks=[],
+    )
+    assert result["tier"] in (1, 2), f"expected Tier C or B, got {result['tier']}"
+    amp = result["amplified"].lower()
+    assert "step" in amp, (
+        f"CoT instruction must be present for formula query in Tier B/C. "
+        f"Got: {result['amplified'][:200]}"
+    )

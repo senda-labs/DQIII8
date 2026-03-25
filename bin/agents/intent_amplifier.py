@@ -420,7 +420,12 @@ def _needs_cot(prompt: str) -> bool:
 
 
 def _build_prompt_tier_c(
-    original: str, decomp: dict, domains: list, chunks: list, routing: dict
+    original: str,
+    decomp: dict,
+    domains: list,
+    chunks: list,
+    routing: dict,
+    context_block: str = "",
 ) -> str:
     """Tier C (local ≤13B): compact XML — 1 truncated chunk, CoT inside <task>.
 
@@ -428,7 +433,9 @@ def _build_prompt_tier_c(
     cause 180s timeouts. No <instructions> tag — CoT inline keeps it tight.
     """
     parts = []
-    if chunks:
+    if context_block:
+        parts.append(f"<context>\n{context_block}\n</context>")
+    elif chunks:
         raw = chunks[0]["text"] if isinstance(chunks[0], dict) else str(chunks[0])
         truncated = raw[:200]
         parts.append(f"<context>\n{truncated}\n</context>")
@@ -443,6 +450,7 @@ def _build_prompt_tier_b(
     chunks: list,
     routing: dict,
     subdomain: str = "",
+    context_block: str = "",
 ) -> str:
     """Tier B (70B cloud): role assignment + reference block + CoT for formula queries.
 
@@ -464,7 +472,9 @@ def _build_prompt_tier_b(
     if subdomain and subdomain not in _BROAD_DOMAINS and chunks:
         role_label = subdomain.replace("_", " ")
         parts.append(f"You are an expert in {role_label}.")
-    if chunks:
+    if context_block:
+        parts.append(f"<reference>\n{context_block}\n</reference>")
+    elif chunks:
         knowledge_block = "\n---\n".join(
             c["text"] if isinstance(c, dict) else str(c) for c in chunks
         )
@@ -477,8 +487,10 @@ def _build_prompt_tier_b(
     return prompt
 
 
-def _build_prompt_tier_a(original: str, chunks: list) -> str:
+def _build_prompt_tier_a(original: str, chunks: list, context_block: str = "") -> str:
     """Tier A (frontier): inject only specific data, no scaffolding or CoT."""
+    if context_block:
+        return f"{context_block}\n\n---\n\n{original}"
     if not chunks:
         return original
     knowledge_block = "\n---\n".join(
@@ -501,6 +513,7 @@ def _build_amplified_prompt(
     routing: dict = None,
     tier: int = None,
     subdomain: str = "",
+    domain: str = "",
 ) -> tuple[str, int]:
     """
     Constructs the amplified prompt, dispatching to a tier-specific builder
@@ -519,9 +532,27 @@ def _build_amplified_prompt(
     intent_action = decomp.get("action", "explain") if decomp else "explain"
     intent_suffix = INTENT_SUFFIXES.get(intent_action, "")
 
+    # Build structured context block (Enricher v3) — model-adaptive format
+    _tier_map = {1: "small", 2: "medium", 3: "large"}
+    _model_tier = _tier_map.get(tier, "medium") if tier is not None else "medium"
+    _domain = domain or (domains[0]["domain"] if domains else "")
+    _ctx_block = ""
+    if effective_chunks and _domain:
+        try:
+            from knowledge_enricher import build_structured_context as _bsc  # type: ignore
+
+            _ctx_block, _ = _bsc(effective_chunks, _model_tier, _domain)
+        except Exception:
+            pass  # fall through to raw text path
+
     if tier == 1:
         amplified = _build_prompt_tier_c(
-            original, decomp, domains, effective_chunks, routing
+            original,
+            decomp,
+            domains,
+            effective_chunks,
+            routing,
+            context_block=_ctx_block,
         )
         if intent_suffix:
             # Replace generic CoT with intent-specific instruction to avoid duplication.
@@ -534,14 +565,23 @@ def _build_amplified_prompt(
         return amplified, len(effective_chunks)
     if tier == 2:
         amplified = _build_prompt_tier_b(
-            original, decomp, domains, effective_chunks, routing, subdomain=subdomain
+            original,
+            decomp,
+            domains,
+            effective_chunks,
+            routing,
+            subdomain=subdomain,
+            context_block=_ctx_block,
         )
         if intent_suffix:
             amplified += intent_suffix
         return amplified, len(effective_chunks)
     if tier == 3:
         # Tier A: frontier models don't need structural instructions
-        return _build_prompt_tier_a(original, effective_chunks), len(effective_chunks)
+        return (
+            _build_prompt_tier_a(original, effective_chunks, context_block=_ctx_block),
+            len(effective_chunks),
+        )
 
     # Default: original [CONTEXT]/[KNOWLEDGE]/[REQUEST] format (tier=None or unknown)
     chunks = effective_chunks
@@ -842,6 +882,7 @@ def amplify(
         routing,
         tier=tier,
         subdomain=_subdomain,
+        domain=_top_domain,
     )
 
     elapsed_ms = int((time.time() - t0) * 1000)

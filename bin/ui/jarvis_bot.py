@@ -38,7 +38,7 @@ REFERENCE_IMAGE_PATH = JARVIS / "tasks" / "reference_image.jpg"
 # ── Configuration ──────────────────────────────────────────────────────────────
 load_dotenv(JARVIS / ".env")
 BOT_TOKEN = os.getenv("DQIII8_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")
-ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")  # empty = no restriction
+ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")  # empty = deny all (fail-closed)
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -99,7 +99,7 @@ def _check_credentials() -> tuple[bool, str]:
 # ── Utilidades base ─────────────────────────────────────────────────────────────
 def authorized(update: Update) -> bool:
     if not ALLOWED_CHAT_ID:
-        return True
+        return False  # fail-closed: no chat ID configured → deny all
     return str(update.effective_chat.id) == ALLOWED_CHAT_ID
 
 

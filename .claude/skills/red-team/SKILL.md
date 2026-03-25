@@ -108,12 +108,67 @@ AI-generated code has specific weaknesses:
    git log --diff-filter=D --name-only --pretty=format: | grep -i "env\|key\|secret\|token" | head -10
    ```
 
-### Phase 6: Chained Attack Scenarios
+### Phase 6: External Attack Simulation
+
+Test the VPS as an external attacker would:
+
+1. **Port scan** — discover exposed services:
+   ```bash
+   for port in 22 80 443 3000 5000 8000 8080 8443 9000; do
+     curl -s --connect-timeout 2 http://localhost:$port -o /dev/null -w "%{http_code}" 2>/dev/null && echo " → port $port open" || true
+   done
+   ss -tlnp | grep LISTEN
+   ```
+2. **Auth endpoints** — test exposed HTTP endpoints without credentials:
+   ```bash
+   # Check for unauthenticated API endpoints
+   curl -s http://localhost:8000/api/health 2>/dev/null | head -5
+   curl -s http://localhost:8000/api/admin 2>/dev/null | head -5
+   ```
+3. **CORS test** — probe for misconfigured cross-origin policies:
+   ```bash
+   curl -s -H "Origin: https://evil.com" -I http://localhost:8000/ 2>/dev/null | grep -i "access-control"
+   ```
+4. **fail2ban** — verify brute-force protection is active:
+   ```bash
+   fail2ban-client status 2>/dev/null || echo "fail2ban not running"
+   fail2ban-client status sshd 2>/dev/null | head -10
+   ```
+5. **SSL/TLS** — check certificate and cipher weaknesses if HTTPS exposed.
+
+### Phase 7: Chained Attack Scenarios
 
 Think multi-step attacks:
 - "I found an unauthenticated endpoint → it reads a file → the file path is user-controlled → path traversal → read .env → get API keys → access paid services"
 - "I found a SQL injection → dump the database → get admin password hash → crack it → admin access"
 - "I found a MCP server with write access → inject malicious content → next session executes it"
+
+## Pre-Report Verification Protocol
+
+Before classifying any finding, run this verification checklist:
+
+1. **Execute the PoC** — actually run the proof-of-concept and confirm it works. If it doesn't reproduce, it's not a real finding.
+2. **Check file context** — if a file has permissions 600 and is not tracked in git, classify as INFO, not CRITICAL. It may be intentionally private.
+3. **Check git log for recent fixes** — if the issue was fixed within the last 7 days, classify as ALREADY_FIXED:
+   ```bash
+   git log --since="7 days ago" --oneline --all | grep -i "fix\|security\|patch\|sanitize\|validate"
+   ```
+4. **Check security_findings for duplicates** — avoid reporting known issues:
+   ```bash
+   python3 -c "
+   import sqlite3, json
+   conn = sqlite3.connect('database/dqiii8.db')
+   rows = conn.execute('SELECT title, status FROM security_findings ORDER BY created_at DESC LIMIT 20').fetchall()
+   [print(r) for r in rows]
+   " 2>/dev/null || echo "(no security_findings table)"
+   ```
+5. **Classify each finding before reporting**:
+   - `REAL` — reproduced, no recent fix, genuinely exploitable
+   - `MITIGATED` — real vulnerability but defense-in-depth reduces impact
+   - `FALSE_POSITIVE` — code pattern looks dangerous but context makes it safe
+   - `ALREADY_FIXED` — recent commit addresses it
+
+**Only report REAL and MITIGATED findings.** FALSE_POSITIVE and ALREADY_FIXED go in an appendix.
 
 ## Output Format
 

@@ -558,3 +558,49 @@ def test_cot_applied_to_tier_b_formula():
         f"CoT instruction must be present for formula query in Tier B/C. "
         f"Got: {result['amplified'][:200]}"
     )
+
+
+def test_subdomain_classification_finance():
+    """WACC-related queries map to 'corporate_finance' subdomain."""
+    from subdomain_classifier import classify_subdomain
+
+    sd = classify_subdomain("calculate WACC for Tesla", "social_sciences")
+    assert sd == "corporate_finance", f"WACC must map to corporate_finance, got {sd!r}"
+
+
+def test_subdomain_classification_algorithms():
+    """Big-O and complexity queries map to 'algorithms' subdomain."""
+    from subdomain_classifier import classify_subdomain
+
+    sd = classify_subdomain(
+        "what is the time complexity of merge sort", "formal_sciences"
+    )
+    assert sd == "algorithms", f"Big-O must map to algorithms, got {sd!r}"
+
+
+def test_subdomain_classification_ai_ml():
+    """RAG/LLM queries map to 'ai_ml' subdomain."""
+    from subdomain_classifier import classify_subdomain
+
+    sd = classify_subdomain(
+        "explain RAG architecture and retrieval", "applied_sciences"
+    )
+    assert sd == "ai_ml", f"RAG must map to ai_ml, got {sd!r}"
+
+
+def test_subdomain_classification_fallback():
+    """Unknown queries fall back to domain name."""
+    from subdomain_classifier import classify_subdomain
+
+    sd = classify_subdomain("something completely unrelated xyz", "formal_sciences")
+    assert (
+        sd == "formal_sciences"
+    ), f"Unknown query must fall back to domain, got {sd!r}"
+
+
+def test_subdomain_classification_philosophy():
+    """Stoic/Epicurean queries map to 'philosophy' subdomain."""
+    from subdomain_classifier import classify_subdomain
+
+    sd = classify_subdomain("compare Stoic and Epicurean ethics", "humanities_arts")
+    assert sd == "philosophy", f"Stoic/Epicurean must map to philosophy, got {sd!r}"

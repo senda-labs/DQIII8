@@ -684,7 +684,15 @@ def main() -> None:
     parser.add_argument(
         "prompt", nargs="?", default=None, help="Prompt (o stdin si no se pasa)"
     )
+    parser.add_argument(
+        "--no-enrich",
+        action="store_true",
+        help="Skip DQ enrichment pipeline (benchmark DQ OFF mode)",
+    )
     args = parser.parse_args()
+
+    # Also honour env-var form (used by benchmark subprocess calls)
+    _skip_enrich = args.no_enrich or os.environ.get("DQ_SKIP_ENRICHER", "") == "1"
 
     if args.list:
         print_routing_table()
@@ -737,7 +745,12 @@ def main() -> None:
         _dc_path = Path(__file__).parent.parent / "agents" / "domain_classifier.py"
         _ke_path = Path(__file__).parent.parent / "agents" / "knowledge_enricher.py"
         _ia_path = Path(__file__).parent.parent / "agents" / "intent_amplifier.py"
-        if _dc_path.exists() and _ke_path.exists() and _ia_path.exists():
+        if (
+            (not _skip_enrich)
+            and _dc_path.exists()
+            and _ke_path.exists()
+            and _ia_path.exists()
+        ):
             import importlib.util as _ilu
 
             _spec = _ilu.spec_from_file_location("domain_classifier", _dc_path)

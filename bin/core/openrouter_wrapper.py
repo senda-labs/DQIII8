@@ -56,6 +56,15 @@ PROVIDERS = {
         "api_key_env": None,
         "headers_extra": {},
     },
+    # GitHub Models — manual tier (pending benchmark vs groq/llama)
+    # 5 confirmed models: gpt-4o-mini, deepseek-r1, deepseek-v3-0324, llama-3.3-70b-instruct, codestral-2501
+    # Rate limits: 20k req / 2M tokens. Short model IDs (no publisher prefix).
+    # Direct wrapper: bin/core/github_models_wrapper.py --model <id> "<prompt>"
+    "github": {
+        "base_url": "https://models.inference.ai.azure.com/v1",
+        "api_key_env": "GITHUB_TOKEN",
+        "headers_extra": {},
+    },
 }
 
 # Allowlist derived from PROVIDERS — only these hosts are ever called

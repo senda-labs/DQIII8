@@ -151,6 +151,7 @@ def _call_api(
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; DQIII8-benchmark/1.0)",
     }
     if extra_headers:
         headers.update(extra_headers)

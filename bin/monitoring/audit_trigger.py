@@ -223,7 +223,18 @@ def main() -> None:
     print(json.dumps(result, indent=2))
     if result.get("trigger"):
         print(f"\n[SPC] AUDIT TRIGGERED — {result['reason']}", file=sys.stderr)
-        sys.exit(1)  # exit 1 = trigger active (callers can branch on this)
+        import subprocess as _sp
+        _sp.run(
+            ["python3", str(DQIII8_ROOT / "bin" / "monitoring" / "auditor_local.py")],
+            check=False,
+        )
+        try:
+            sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
+            from notify import send_telegram
+            send_telegram(f"[SPC] AUDIT TRIGGERED\n{result['reason']}")
+        except Exception:
+            pass
+        sys.exit(1)
     sys.exit(0)
 
 

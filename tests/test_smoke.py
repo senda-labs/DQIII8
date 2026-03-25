@@ -529,6 +529,9 @@ def test_gate_integrated_blocks_low_sim_chunks_tier_a():
         f"Tier A gate must block chunks with score=0.38 < 0.55. "
         f"chunks_used={result['chunks_used']}, tier={result['tier']}"
     )
+    assert (
+        result["amplified"] == "calculate WACC for Tesla assuming 10% cost of equity"
+    ), "When gate blocks all chunks, amplified must equal original prompt"
 
 
 def test_needs_cot_detects_formula_queries():

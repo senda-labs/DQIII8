@@ -470,10 +470,17 @@ def run_model_on_task(
     print(f"OK ({response_time_ms}ms, {len(answer)} chars)")
 
 
-def cmd_run(model_filter: str | None, task_filter: str | None) -> None:
+def cmd_run(model_filter: list[str] | None, task_filter: str | None) -> None:
     conn = db_connect()
     tasks = load_tasks(conn, task_filter)
-    models = [model_filter] if model_filter else list(MODELS.keys())
+    if model_filter:
+        unknown = [m for m in model_filter if m not in MODELS]
+        if unknown:
+            print(f"ERROR: unknown model(s): {unknown}", file=sys.stderr)
+            sys.exit(1)
+        models = model_filter
+    else:
+        models = list(MODELS.keys())
 
     total_runs = sum(RUNS_PER_PROVIDER.get(MODELS[m]["provider"], 3) for m in models)
     print(
@@ -601,7 +608,7 @@ def score_one(row: dict, conn: sqlite3.Connection) -> None:
     print(f"OK — {scores_str}")
 
 
-def cmd_score(model_filter: str | None, task_filter: str | None) -> None:
+def cmd_score(model_filter: list[str] | None, task_filter: str | None) -> None:
     conn = db_connect()
     sql = (
         "SELECT task_id, model, dq_enabled, run_number, answer "
@@ -610,8 +617,9 @@ def cmd_score(model_filter: str | None, task_filter: str | None) -> None:
     )
     params: list = []
     if model_filter:
-        sql += " AND model=?"
-        params.append(model_filter)
+        placeholders = ",".join("?" * len(model_filter))
+        sql += f" AND model IN ({placeholders})"
+        params.extend(model_filter)
     if task_filter:
         sql += " AND task_id=?"
         params.append(task_filter)
@@ -628,7 +636,7 @@ def cmd_score(model_filter: str | None, task_filter: str | None) -> None:
 # ── Report ───────────────────────────────────────────────────────────────────
 
 
-def cmd_report(model_filter: str | None) -> None:
+def cmd_report(model_filter: list[str] | None) -> None:
     conn = db_connect()
     sql = """
         SELECT model, dq_enabled,
@@ -643,8 +651,9 @@ def cmd_report(model_filter: str | None) -> None:
     """
     params: list = [NOW_RUN]
     if model_filter:
-        sql += " AND model=?"
-        params.append(model_filter)
+        placeholders = ",".join("?" * len(model_filter))
+        sql += f" AND model IN ({placeholders})"
+        params.extend(model_filter)
     sql += " GROUP BY model, dq_enabled ORDER BY avg_score DESC NULLS LAST"
 
     rows = conn.execute(sql, params).fetchall()
@@ -685,7 +694,9 @@ def main() -> None:
         "--score", action="store_true", help="Fase 2: judge answers with dual judges"
     )
     group.add_argument("--report", action="store_true", help="Print results table")
-    parser.add_argument("--model", default=None, help="Filter to one model")
+    parser.add_argument(
+        "--model", default=None, nargs="+", help="Filter to one or more models"
+    )
     parser.add_argument(
         "--task", default=None, help="Filter to one task_id (e.g. FS01)"
     )

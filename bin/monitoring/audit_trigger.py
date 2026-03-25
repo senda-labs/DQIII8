@@ -89,13 +89,14 @@ def check_t1(conn: sqlite3.Connection, session_id: str) -> dict:
 
 
 def check_t2(conn: sqlite3.Connection, session_id: str) -> dict:
-    threshold = 3
+    # Count errors in last 2h (independent of session_id — avoids cli accumulation)
+    threshold = 25
     row = conn.execute(
-        "SELECT COUNT(*) FROM error_log WHERE session_id=?", (session_id,)
+        "SELECT COUNT(*) FROM error_log WHERE timestamp >= datetime('now', '-2 hours')",
     ).fetchone()
     count = row[0] if row else 0
     triggered = count >= threshold
-    reason = f"T2 — {count} error_log entries in current session (threshold={threshold})"
+    reason = f"T2 — {count} error_log entries in last 2h (threshold={threshold})"
     _log(conn, session_id, "T2", triggered, reason, "HIGH", count, threshold)
     if triggered:
         return {"trigger": True, "reason": reason, "priority": "HIGH"}

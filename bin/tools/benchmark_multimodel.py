@@ -65,6 +65,24 @@ GITHUB_ENDPOINT = "https://models.inference.ai.azure.com/chat/completions"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 
+# ── Rate limits (seconds between consecutive calls per provider) ─────────────
+RATE_LIMITS: dict[str, float] = {
+    "github": 60.0,  # 1 req/min free tier
+    "openrouter": 4.0,  # ~15 req/min Gemini free tier
+    "groq": 2.0,  # 30 req/min
+    "ollama": 0.0,  # local, no limit
+}
+
+# ── Runs per provider (statistical reliability vs. time budget) ──────────────
+RUNS_PER_PROVIDER: dict[str, int] = {
+    "github": 3,
+    "openrouter": 5,
+    "groq": 5,
+    "ollama": 5,
+}
+
+_last_call_time: dict[str, float] = {}
+
 
 # ── Utilities ────────────────────────────────────────────────────────────────
 
@@ -79,6 +97,19 @@ def _get_env(key: str) -> str:
                     val = line.split("=", 1)[1].strip().strip('"').strip("'")
                     break
     return val
+
+
+def _throttle(provider: str) -> None:
+    """Sleep if needed to respect RATE_LIMITS[provider], then record call time."""
+    wait = RATE_LIMITS.get(provider, 0.0)
+    if wait <= 0:
+        return
+    elapsed = time.monotonic() - _last_call_time.get(provider, 0.0)
+    if elapsed < wait:
+        sleep_for = wait - elapsed
+        log.info("Rate limit [%s]: sleeping %.1fs", provider, sleep_for)
+        time.sleep(sleep_for)
+    _last_call_time[provider] = time.monotonic()
 
 
 def strip_think(text: str) -> str:
@@ -130,6 +161,7 @@ def call_github_model(
     if not token:
         log.error("GITHUB_TOKEN not set")
         return None
+    _throttle("github")
     return _call_api(GITHUB_ENDPOINT, token, model_id, messages, max_tokens)
 
 
@@ -140,6 +172,7 @@ def call_openrouter(
     if not token:
         log.warning("OPENROUTER_API_KEY not set — skipping silver judge")
         return None
+    _throttle("openrouter")
     return _call_api(
         OPENROUTER_ENDPOINT,
         token,
@@ -155,6 +188,7 @@ def call_groq(model_id: str, messages: list[dict], max_tokens: int = 800) -> str
     if not token:
         log.warning("GROQ_API_KEY not set — skipping bronze judge")
         return None
+    _throttle("groq")
     return _call_api(GROQ_ENDPOINT, token, model_id, messages, max_tokens)
 
 
@@ -204,17 +238,36 @@ def save_answer(
     run: int,
     answer_text: str,
     response_time_ms: int,
+    enriched_prompt: str | None = None,
+    chunks_injected: str | None = None,
+    chunk_scores: str | None = None,
 ) -> None:
     provider = MODELS[model]["provider"]
     conn.execute(
         """INSERT INTO benchmark_multimodel_results
-           (task_id, domain, model, provider, dq_enabled, run_number, answer, response_time_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           (task_id, domain, model, provider, dq_enabled, run_number, answer, response_time_ms,
+            enriched_prompt, chunks_injected, chunk_scores)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(task_id, model, dq_enabled, run_number) DO UPDATE SET
              answer=excluded.answer,
              response_time_ms=excluded.response_time_ms,
+             enriched_prompt=excluded.enriched_prompt,
+             chunks_injected=excluded.chunks_injected,
+             chunk_scores=excluded.chunk_scores,
              silver_score=NULL, bronze_score=NULL, avg_score=NULL""",
-        (task_id, domain, model, provider, dq, run, answer_text, response_time_ms),
+        (
+            task_id,
+            domain,
+            model,
+            provider,
+            dq,
+            run,
+            answer_text,
+            response_time_ms,
+            enriched_prompt,
+            chunks_injected,
+            chunk_scores,
+        ),
     )
     conn.commit()
 
@@ -267,22 +320,65 @@ ANSWER_SYSTEM = (
     "Be specific — include formulas, mechanisms, or step-by-step reasoning as appropriate."
 )
 
+_AGENTS_PATH = str(ROOT / "bin" / "agents")
+
+
+def _try_enrich(
+    prompt: str, domain: str
+) -> tuple[str, str | None, str | None, str | None]:
+    """Call domain_lens enricher for dq=1 mode.
+
+    Returns (system_prompt, enriched_prompt, chunks_json, scores_json).
+    Falls back to DQ_SYSTEM_PROMPT on any error.
+    """
+    try:
+        if _AGENTS_PATH not in sys.path:
+            sys.path.insert(0, _AGENTS_PATH)
+        from domain_lens import get_domain_lens  # type: ignore
+        from knowledge_enricher import get_relevant_chunks  # type: ignore
+
+        lens = get_domain_lens(prompt, domain)
+        chunks = get_relevant_chunks(prompt, domain)
+
+        chunks_json = json.dumps(
+            [
+                {"source": c.get("source", ""), "text": c.get("text", "")[:300]}
+                for c in chunks
+            ]
+        )
+        scores_json = json.dumps([round(c.get("score", 0.0), 4) for c in chunks])
+        enriched = f"[domain={domain} chunks={len(chunks)}] {prompt}"
+        return lens["system_prompt"], enriched, chunks_json, scores_json
+    except Exception as exc:
+        log.debug("Enrichment unavailable: %s", exc)
+        return DQ_SYSTEM_PROMPT, None, None, None
+
 
 def run_model_on_task(
-    task: dict, model: str, dq_enabled: bool, conn: sqlite3.Connection
+    task: dict, model: str, dq_enabled: bool, run: int, conn: sqlite3.Connection
 ) -> None:
     dq = 1 if dq_enabled else 0
-    if already_done(conn, task["task_id"], model, dq, NOW_RUN):
-        print(f"  [skip] {task['task_id']} {model} dq={dq} already done")
+    if already_done(conn, task["task_id"], model, dq, run):
+        print(f"  [skip] {task['task_id']} {model} dq={dq} run={run} already done")
         return
 
-    system = DQ_SYSTEM_PROMPT if dq_enabled else ANSWER_SYSTEM
+    enriched_prompt: str | None = None
+    chunks_injected: str | None = None
+    chunk_scores: str | None = None
+
+    if dq_enabled:
+        system, enriched_prompt, chunks_injected, chunk_scores = _try_enrich(
+            task["prompt"], task["domain"]
+        )
+    else:
+        system = ANSWER_SYSTEM
+
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": task["prompt"]},
     ]
 
-    print(f"  {task['task_id']} | {model} | dq={dq} ... ", end="", flush=True)
+    print(f"  {task['task_id']} | {model} | dq={dq} run={run} ... ", end="", flush=True)
     t0 = time.monotonic()
     answer = call_github_model(model, messages, max_tokens=1200)
     response_time_ms = int((time.monotonic() - t0) * 1000)
@@ -301,9 +397,12 @@ def run_model_on_task(
         task["domain"],
         model,
         dq,
-        NOW_RUN,
+        run,
         answer,
         response_time_ms,
+        enriched_prompt,
+        chunks_injected,
+        chunk_scores,
     )
     print(f"OK ({response_time_ms}ms, {len(answer)} chars)")
 
@@ -313,14 +412,19 @@ def cmd_run(model_filter: str | None, task_filter: str | None) -> None:
     tasks = load_tasks(conn, task_filter)
     models = [model_filter] if model_filter else list(MODELS.keys())
 
+    total_runs = sum(RUNS_PER_PROVIDER.get(MODELS[m]["provider"], 3) for m in models)
     print(
-        f"\n=== Fase 1: Collecting answers — {len(tasks)} tasks × {len(models)} models × 2 DQ modes ===\n"
+        f"\n=== Fase 1: Collecting answers — {len(tasks)} tasks × {len(models)} models "
+        f"× 2 DQ modes × up to {total_runs // len(models)} runs/model ===\n"
     )
     for task in tasks:
         print(f"[{task['task_id']}] {task['domain']}: {task['prompt'][:60]}...")
         for model in models:
-            for dq in (False, True):
-                run_model_on_task(task, model, dq, conn)
+            provider = MODELS[model]["provider"]
+            n_runs = RUNS_PER_PROVIDER.get(provider, 3)
+            for run in range(1, n_runs + 1):
+                for dq in (False, True):
+                    run_model_on_task(task, model, dq, run, conn)
         print()
 
     conn.close()

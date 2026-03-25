@@ -341,6 +341,152 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
         pass  # fail-open, never block enrichment
 
 
+# ── Structured context builder (Enricher v3) ─────────────────────────────────
+
+
+def _chunk_hash(text: str) -> str:
+    """SHA256 of first 200 chars — matches key_facts_generator cache key."""
+    import hashlib
+
+    return hashlib.sha256(text[:200].encode("utf-8")).hexdigest()
+
+
+def _load_cached_facts(hashes: list[str]) -> dict[str, list[str]]:
+    """Return {chunk_hash: [fact, ...]} for hashes present in chunk_key_facts."""
+    if not hashes:
+        return {}
+    db_path = DQIII8_ROOT / "database" / "dqiii8.db"
+    if not db_path.exists():
+        return {}
+    try:
+        import json as _json
+
+        conn = sqlite3.connect(str(db_path), timeout=2)
+        placeholders = ",".join("?" * len(hashes))
+        rows = conn.execute(
+            f"SELECT chunk_hash, key_facts FROM chunk_key_facts WHERE chunk_hash IN ({placeholders})",
+            hashes,
+        ).fetchall()
+        conn.close()
+        return {row[0]: _json.loads(row[1]) for row in rows}
+    except Exception:
+        return {}
+
+
+def build_structured_context(
+    chunks: list[dict],
+    model_tier: str,
+    domain: str,
+    max_chars: int = 1200,
+) -> tuple[str, str]:
+    """Build a model-adaptive context block from retrieved knowledge chunks.
+
+    Args:
+        chunks:     Output of get_relevant_chunks() — list of {text, score, source, ...}
+        model_tier: "small" (ollama) | "medium" (groq/github) | "large" (anthropic)
+        domain:     Knowledge domain label for the header
+        max_chars:  Hard cap on total context characters
+
+    Returns:
+        (context_block, method) where method is one of:
+          "toon"            — Token-Optimized Object Notation (small models)
+          "json_simple"     — Flat JSON facts array (medium models)
+          "json_full"       — Rich JSON with facts + excerpt (large models)
+          "text_fallback"   — Plain text excerpt when no cached facts available
+    """
+    if not chunks:
+        return "", "empty"
+
+    import json as _json
+
+    # Resolve cached key facts for all chunks
+    hashes = [_chunk_hash(c["text"]) for c in chunks]
+    facts_map = _load_cached_facts(hashes)
+
+    domain_label = domain.replace("_", " ").title()
+
+    # ── small (ollama) — TOON ─────────────────────────────────────────────────
+    if model_tier == "small":
+        lines: list[str] = []
+        chars_used = 0
+        for c, h in zip(chunks, hashes):
+            facts = facts_map.get(h)
+            if facts:
+                for f in facts:
+                    line = f"- {f}"
+                    if chars_used + len(line) > max_chars:
+                        break
+                    lines.append(line)
+                    chars_used += len(line) + 1
+            else:
+                # Fallback: excerpt
+                excerpt = c["text"][:120].strip()
+                line = f"- {excerpt}"
+                if chars_used + len(line) > max_chars:
+                    break
+                lines.append(line)
+                chars_used += len(line) + 1
+        if not lines:
+            return "", "empty"
+        block = f"CONTEXT [{domain_label}]:\n" + "\n".join(lines) + "\n"
+        return block, "toon"
+
+    # ── medium (groq / github) — flat JSON facts ──────────────────────────────
+    if model_tier == "medium":
+        all_facts: list[str] = []
+        for c, h in zip(chunks, hashes):
+            facts = facts_map.get(h)
+            if facts:
+                all_facts.extend(facts)
+            else:
+                all_facts.append(c["text"][:100].strip())
+        payload = {"domain": domain_label, "facts": all_facts}
+        block = _json.dumps(payload, ensure_ascii=False)
+        if len(block) > max_chars:
+            # Truncate facts list until it fits
+            while len(block) > max_chars and payload["facts"]:
+                payload["facts"].pop()
+            block = _json.dumps(payload, ensure_ascii=False)
+        if not payload["facts"]:
+            return "", "empty"
+        return block, "json_simple"
+
+    # ── large (anthropic) — rich JSON with facts + excerpt ────────────────────
+    chunk_entries = []
+    chars_used = 0
+    for c, h in zip(chunks, hashes):
+        facts = facts_map.get(h)
+        excerpt = c["text"][:200].strip()
+        entry: dict = {
+            "source": c.get("source", ""),
+            "score": round(c.get("score", 0.0), 3),
+        }
+        if facts:
+            entry["facts"] = facts
+        else:
+            entry["excerpt"] = excerpt
+        chunk_entries.append(entry)
+        chars_used += len(_json.dumps(entry))
+        if chars_used > max_chars:
+            break
+
+    if not chunk_entries:
+        return "", "empty"
+
+    payload = {"domain": domain_label, "chunks": chunk_entries}
+    block = _json.dumps(payload, ensure_ascii=False, indent=None)
+    if len(block) > max_chars:
+        # Drop trailing chunks until fits
+        while len(block) > max_chars and payload["chunks"]:
+            payload["chunks"].pop()
+        block = _json.dumps(payload, ensure_ascii=False, indent=None)
+
+    if not payload["chunks"]:
+        return "", "empty"
+
+    return block, "json_full"
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 

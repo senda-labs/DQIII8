@@ -145,7 +145,6 @@ Envía cualquier prompt a Claude Code directamente desde Telegram:
 | `bin/tools/orphan_finder.py` | Detecta scripts sin referencias | `python3 bin/tools/orphan_finder.py` |
 | `bin/core/validate_env.py` | Verifica .env keys al startup | Llamado por `bin/j.sh` |
 
-> `bin/core/rate_limiter.py` — documentado pero sin uso activo. Candidato a eliminar.
 
 ---
 

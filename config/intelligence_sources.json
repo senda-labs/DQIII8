@@ -1,0 +1,85 @@
+{
+  "sources": [
+    {
+      "name": "anthropic-blog",
+      "url": "https://www.anthropic.com/news",
+      "type": "web",
+      "tier": 1,
+      "frequency": "6h",
+      "domain": "applied_sciences",
+      "keywords": ["claude", "sonnet", "opus", "haiku", "api", "safety", "model"]
+    },
+    {
+      "name": "anthropic-docs-changelog",
+      "url": "https://docs.anthropic.com/en/docs/about-claude/models",
+      "type": "web",
+      "tier": 1,
+      "frequency": "6h",
+      "domain": "applied_sciences",
+      "keywords": ["api", "model", "pricing", "deprecation", "breaking"]
+    },
+    {
+      "name": "claude-code-docs",
+      "url": "https://code.claude.com/docs/en/changelog",
+      "type": "web",
+      "tier": 1,
+      "frequency": "daily",
+      "domain": "applied_sciences",
+      "keywords": ["skill", "command", "mcp", "plugin", "hook", "agent"]
+    },
+    {
+      "name": "openai-blog",
+      "url": "https://openai.com/blog",
+      "type": "web",
+      "tier": 2,
+      "frequency": "daily",
+      "domain": "applied_sciences",
+      "keywords": ["gpt", "codex", "api", "model", "o1", "o3"]
+    },
+    {
+      "name": "google-ai-blog",
+      "url": "https://blog.google/technology/ai/",
+      "type": "web",
+      "tier": 2,
+      "frequency": "daily",
+      "domain": "applied_sciences",
+      "keywords": ["gemini", "stitch", "antigravity", "vertex", "mcp"]
+    },
+    {
+      "name": "ollama-releases",
+      "url": "https://github.com/ollama/ollama/releases",
+      "type": "github_releases",
+      "tier": 2,
+      "frequency": "daily",
+      "domain": "applied_sciences",
+      "keywords": ["release", "model", "performance"]
+    },
+    {
+      "name": "groq-blog",
+      "url": "https://groq.com/blog/",
+      "type": "web",
+      "tier": 2,
+      "frequency": "weekly",
+      "domain": "applied_sciences",
+      "keywords": ["model", "api", "pricing", "free"]
+    },
+    {
+      "name": "huggingface-blog",
+      "url": "https://huggingface.co/blog",
+      "type": "web",
+      "tier": 3,
+      "frequency": "weekly",
+      "domain": "applied_sciences",
+      "keywords": ["model", "benchmark", "open-source", "embedding"]
+    },
+    {
+      "name": "mcp-protocol",
+      "url": "https://modelcontextprotocol.io",
+      "type": "web",
+      "tier": 4,
+      "frequency": "weekly",
+      "domain": "applied_sciences",
+      "keywords": ["protocol", "server", "transport", "specification"]
+    }
+  ]
+}

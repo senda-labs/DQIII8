@@ -325,8 +325,8 @@ async def lifespan(app: FastAPI):
     token = get_or_create_dashboard_token()
     if REQUIRE_AUTH:
         print(f"\n  DQ Dashboard running on http://{HOST}:{PORT}")
-        print(f"  Auth token: {token}")
-        print(f"  Access: http://{HOST}:{PORT}?token={token}\n")
+        print(f"  Auth token: {token[:8]}...{token[-4:]}")
+        print(f"  Access: http://{HOST}:{PORT}?token=<see token file>\n")
     else:
         print(f"\n  DQ Dashboard running on http://{HOST}:{PORT}")
         print(f"  Localhost mode — no auth required\n")
@@ -552,11 +552,21 @@ async def route_preview(request: Request, auth: bool = Depends(check_auth)):
 @app.post("/api/task/execute")
 async def execute_task(request: Request, auth: bool = Depends(check_auth)):
     """Execute a prompt through the openrouter_wrapper pipeline."""
+    import re
+    import shlex
+
     body = await request.json()
     user_input = body.get("input", "")
 
     if not user_input:
         raise HTTPException(400, "input field required")
+
+    # Block shell metacharacters that could enable command injection
+    if re.search(r"[`$;|&><]", user_input):
+        raise HTTPException(400, "Input contains unsafe characters")
+
+    # shlex.quote ensures the input is treated as a single safe argument
+    sanitized = shlex.quote(user_input)
 
     try:
         result = subprocess.run(
@@ -564,7 +574,7 @@ async def execute_task(request: Request, auth: bool = Depends(check_auth)):
                 "python3",
                 str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
                 "run",
-                user_input,
+                sanitized,
             ],
             capture_output=True,
             text=True,

@@ -1113,9 +1113,7 @@ def _cc_rate_count(chat_id: str) -> int:
 _CC_BLACKLIST = frozenset(
     {
         # Destructive file operations
-        "rm -rf",
-        "rm -r",
-        "rm -f",
+        "rm",
         "rmdir",
         "shred",
         "> /dev/",
@@ -1138,8 +1136,7 @@ _CC_BLACKLIST = frozenset(
         "cat /root",
         # Exfiltration
         "wget",
-        "curl http",
-        "curl https",
+        "curl",
         # Permission escalation
         "chmod",
         "chown",
@@ -1148,9 +1145,16 @@ _CC_BLACKLIST = frozenset(
         "eval(",
         "exec(",
         "__import__",
-        # Shell injection vectors
+        "subprocess",
+        "python3 -c",
+        # Shell injection vectors — operators and substitution
+        "&&",
+        "||",
+        ";",
+        "|",
         "`",
         "$(",
+        "${",
         # Delete keyword (catches "delete from", "delete table", etc.)
         "delete",
     }
@@ -1180,7 +1184,14 @@ def _cc_rate_ok(chat_id: str) -> bool:
 
 
 def _cc_blacklisted(prompt: str) -> str | None:
-    """Returns the matched blacklist term if dangerous, else None."""
+    """Returns the matched blacklist term if dangerous, else None.
+
+    Checks (in order):
+    1. Newline injection (multiline prompt smuggling)
+    2. Shell operators and code execution patterns (case-insensitive)
+    """
+    if "\n" in prompt or "\r" in prompt:
+        return "newline"
     lower = prompt.lower()
     for term in _CC_BLACKLIST:
         if term in lower:

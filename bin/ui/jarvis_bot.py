@@ -1110,55 +1110,38 @@ def _cc_rate_count(chat_id: str) -> int:
         return 0
 
 
-_CC_BLACKLIST = frozenset(
+# Layer 2: shell operators (exact substring match)
+_CC_SHELL_OPS: frozenset[str] = frozenset({"&&", "||", ";", "|", "`", "$(", "${", ">"})
+
+# Layer 3: keyword blacklist (case-insensitive)
+_CC_KEYWORDS: frozenset[str] = frozenset(
     {
-        # Destructive file operations
         "rm",
-        "rmdir",
-        "shred",
-        "> /dev/",
-        # Git destructive
-        "force-push",
-        "--force",
-        "-f origin",
-        # Database destructive
-        "drop table",
-        "drop database",
-        "truncate",
-        # Windows destructive
-        "format c",
-        # Credential / secret access
-        ".env",
-        "credentials",
-        "token",
-        "cat /etc",
-        "cat .env",
-        "cat /root",
-        # Exfiltration
-        "wget",
-        "curl",
-        # Permission escalation
+        "cat /",
         "chmod",
         "chown",
         "sudo",
-        # Code execution / injection
+        "wget",
+        "curl",
         "eval(",
         "exec(",
         "__import__",
         "subprocess",
         "python3 -c",
-        # Shell injection vectors — operators and substitution
-        "&&",
-        "||",
-        ";",
-        "|",
-        "`",
-        "$(",
-        "${",
-        # Delete keyword (catches "delete from", "delete table", etc.)
-        "delete",
+        ".env",
+        "/etc/",
+        "/root/",
+        "passwd",
+        "shadow",
+        "drop table",
+        "delete from",
+        "git push",
+        "ssh",
     }
 )
+
+# Layer 4: max prompt length
+_CC_MAX_LENGTH = 500
 
 
 def _cc_rate_ok(chat_id: str) -> bool:
@@ -1183,19 +1166,25 @@ def _cc_rate_ok(chat_id: str) -> bool:
         return True  # Fail-open: DB errors don't block legitimate usage
 
 
-def _cc_blacklisted(prompt: str) -> str | None:
-    """Returns the matched blacklist term if dangerous, else None.
+def _cc_sanitize(prompt: str) -> str:
+    """Layer 1: strip control chars and normalize whitespace."""
+    import re
 
-    Checks (in order):
-    1. Newline injection (multiline prompt smuggling)
-    2. Shell operators and code execution patterns (case-insensitive)
-    """
-    if "\n" in prompt or "\r" in prompt:
-        return "newline"
+    cleaned = prompt.replace("\n", " ").replace("\r", " ").replace("\x00", "")
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _cc_check(prompt: str) -> str | None:
+    """Layers 2-4: return reason string if prompt should be rejected, else None."""
+    for op in _CC_SHELL_OPS:
+        if op in prompt:
+            return f"shell operator '{op}'"
     lower = prompt.lower()
-    for term in _CC_BLACKLIST:
-        if term in lower:
-            return term
+    for kw in _CC_KEYWORDS:
+        if kw in lower:
+            return f"keyword '{kw}'"
+    if len(prompt) > _CC_MAX_LENGTH:
+        return f"too long ({len(prompt)}>{_CC_MAX_LENGTH})"
     return None
 
 
@@ -1297,9 +1286,10 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "Usage: /cc <prompt>\nExample: /cc explain bin/director.py"
         )
         return
-    blocked = _cc_blacklisted(prompt)
-    if blocked:
-        await update.message.reply_text(f"Blocked: prompt contains '{blocked}'.")
+    prompt = _cc_sanitize(prompt)  # Layer 1: sanitize
+    reason = _cc_check(prompt)  # Layers 2-4: check
+    if reason:
+        await update.message.reply_text(f"⛔ Blocked: {reason}")
         _log_cc_command("/cc", prompt, None, False, 0)
         return
     if not _cc_rate_ok(chat_id):

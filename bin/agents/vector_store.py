@@ -51,13 +51,15 @@ def _conn() -> sqlite3.Connection:
 
 
 def init_vec_table() -> None:
-    """Create the vec0 virtual table if it doesn't exist."""
+    """Create the vec0 virtual table if it doesn't exist.
+    Uses cosine distance so similarity = 1 - distance (regardless of embedding magnitude).
+    """
     with _conn() as conn:
         conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS {VEC_TABLE}
             USING vec0(
                 chunk_id INTEGER PRIMARY KEY,
-                embedding FLOAT[{EMBEDDING_DIM}]
+                embedding FLOAT[{EMBEDDING_DIM}] distance_metric=cosine
             )
             """)
 
@@ -212,20 +214,25 @@ def migrate_from_json(verbose: bool = True) -> dict:
             # Upsert metadata row
             with _conn() as conn:
                 existing = conn.execute(
-                    "SELECT id FROM vector_chunks WHERE source=? AND chunk_id=? AND agent_name=?",
-                    (source, chunk_id, agent_name),
+                    "SELECT id FROM vector_chunks "
+                    "WHERE source=? AND chunk_id=? AND agent_name=? AND domain=?",
+                    (source, chunk_id, agent_name, domain),
                 ).fetchone()
 
                 if existing:
                     row_id = existing["id"]
                 else:
-                    cur = conn.execute(
-                        "INSERT INTO vector_chunks "
-                        "(source, chunk_id, agent_name, domain, text) VALUES (?,?,?,?,?)",
-                        (source, chunk_id, agent_name, domain, text),
-                    )
-                    row_id = cur.lastrowid
-                    new_chunks += 1
+                    try:
+                        cur = conn.execute(
+                            "INSERT INTO vector_chunks "
+                            "(source, chunk_id, agent_name, domain, text) VALUES (?,?,?,?,?)",
+                            (source, chunk_id, agent_name, domain, text),
+                        )
+                        row_id = cur.lastrowid
+                        new_chunks += 1
+                    except sqlite3.IntegrityError:
+                        # Constraint still fires (e.g. concurrent insert); skip safely
+                        continue
 
             # Upsert vector
             upsert_vector(row_id, embedding)
@@ -255,21 +262,11 @@ def migrate_from_json(verbose: bool = True) -> dict:
 def _embed_query(text: str) -> list[float] | None:
     """
     Try to embed query text using available model.
-    Falls back to None if no embedder is available (caller should use text search).
+    Order: Ollama nomic-embed-text first (matches migration embeddings),
+    then sentence-transformers as fallback.
+    Returns None if no embedder is available (caller should use text search).
     """
-    # Try sentence-transformers if available
-    try:
-        from sentence_transformers import SentenceTransformer
-
-        _model_cache = getattr(_embed_query, "_model", None)
-        if _model_cache is None:
-            _embed_query._model = SentenceTransformer("all-MiniLM-L12-v2")
-        emb = _embed_query._model.encode(text, normalize_embeddings=True)
-        return emb.tolist()
-    except ImportError:
-        pass
-
-    # Try ollama nomic-embed-text if available
+    # Try ollama nomic-embed-text first — matches the embeddings stored during migration
     try:
         import urllib.request
 
@@ -280,9 +277,23 @@ def _embed_query(text: str) -> list[float] | None:
             headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-            return data.get("embedding")
+            result = json.loads(resp.read())
+            emb = result.get("embedding")
+            if emb and len(emb) == EMBEDDING_DIM:
+                return emb
     except Exception:
+        pass
+
+    # Fallback: sentence-transformers (all-MiniLM-L12-v2, also 768-dim)
+    try:
+        from sentence_transformers import SentenceTransformer
+
+        _model_cache = getattr(_embed_query, "_model", None)
+        if _model_cache is None:
+            _embed_query._model = SentenceTransformer("all-MiniLM-L12-v2")
+        emb = _embed_query._model.encode(text, normalize_embeddings=True)
+        return emb.tolist()
+    except ImportError:
         pass
 
     return None

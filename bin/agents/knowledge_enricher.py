@@ -19,8 +19,12 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import logging
+
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
+
+log = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent))
 from embeddings import get_embedding, cosine_similarity
@@ -28,6 +32,52 @@ from embeddings import get_embedding, cosine_similarity
 # Aliases used by existing code
 _embed = get_embedding
 _cosine = cosine_similarity
+
+# ── Vector-store integration ──────────────────────────────────────────────────
+
+try:
+    from vector_store import search_vectors as _vs_search
+    from vector_store import _embed_query as _vs_embed
+
+    _VS_AVAILABLE = True
+except Exception:
+    _VS_AVAILABLE = False
+
+
+def _search_via_vector_store(
+    prompt: str,
+    domain: str,
+    top_k: int,
+    min_similarity: float,
+) -> tuple[list[tuple[float, dict]], str] | tuple[None, None]:
+    """
+    KNN search via sqlite-vec.
+    Returns ([(sim, entry), ...], "vector_store") on success,
+    or (None, None) if unavailable or no results above threshold.
+    """
+    if not _VS_AVAILABLE:
+        return None, None
+    try:
+        emb = _vs_embed(prompt)
+        if emb is None:
+            return None, None
+        # Over-fetch so downstream min_similarity filter has enough candidates
+        raw = _vs_search(emb, top_k=top_k * 3, domain=domain)
+        if not raw:
+            return None, None
+        # vec0 cosine distance: 0 = identical, 2 = opposite → sim = 1 - distance
+        scored = []
+        for r in raw:
+            sim = max(0.0, 1.0 - float(r.get("distance", 1.0)))
+            if sim >= min_similarity:
+                scored.append((sim, r))
+        if not scored:
+            return None, None
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return scored, "vector_store"
+    except Exception as exc:
+        log.warning("vector_store search failed, will use json fallback: %s", exc)
+        return None, None
 
 
 # ── Core enrichment function ─────────────────────────────────────────────────
@@ -46,6 +96,44 @@ def enrich_with_knowledge(
     Returns: (enriched_prompt, chunks_used)
     If enrichment fails for any reason, returns (original_prompt, 0).
     """
+    # ── Try vector_store (KNN) first ─────────────────────────────────────────
+    scored_vs, path = _search_via_vector_store(
+        prompt, domain, max_chunks, min_similarity
+    )
+    if scored_vs is not None:
+        log.debug(
+            "[enricher] path=vector_store domain=%s chunks=%d", domain, len(scored_vs)
+        )
+        top = scored_vs[:max_chunks]
+
+        context_parts = []
+        total_chars = 0
+        max_chars = max_tokens * 4
+
+        for _, entry in top:
+            text = entry.get("text", "").strip()
+            if not text:
+                continue
+            remaining = max_chars - total_chars
+            if remaining <= 0:
+                break
+            if len(text) > remaining:
+                text = text[:remaining]
+            context_parts.append(text)
+            total_chars += len(text)
+
+        if context_parts:
+            context_block = "\n\n---\n\n".join(context_parts)
+            enriched = (
+                f"[DOMAIN CONTEXT — {domain.replace('_', ' ').title()}]\n\n"
+                f"{context_block}\n\n"
+                f"---\n\n"
+                f"[USER PROMPT]\n\n{prompt}"
+            )
+            return enriched, len(top)
+
+    # ── Fallback: JSON cosine ─────────────────────────────────────────────────
+    log.debug("[enricher] path=json_fallback domain=%s", domain)
     index_path = KNOWLEDGE_ROOT / domain / "index.json"
     if not index_path.exists():
         return prompt, 0
@@ -60,7 +148,6 @@ def enrich_with_knowledge(
 
     query_vec = _embed(prompt)
     if query_vec is None:
-        # Fallback: keyword match (no embeddings)
         return prompt, 0
 
     # Score each chunk
@@ -128,35 +215,49 @@ def get_relevant_chunks(
 
     Returns empty list if index missing or no matches above threshold.
     """
-    index_path = KNOWLEDGE_ROOT / domain / "index.json"
-    if not index_path.exists():
-        return []
+    # ── Try vector_store (KNN) first ─────────────────────────────────────────
+    # Over-fetch pool for task-relevance re-ranking when intent+entity provided
+    pool_k = top_k * 2 if (intent or entity) else top_k
+    scored_vs, vs_path = _search_via_vector_store(
+        prompt, domain, pool_k, min_similarity
+    )
+    if scored_vs is not None:
+        log.debug(
+            "[enricher] path=vector_store domain=%s pool=%d", domain, len(scored_vs)
+        )
+        scored = scored_vs
+    else:
+        # ── Fallback: JSON cosine ─────────────────────────────────────────────
+        log.debug("[enricher] path=json_fallback domain=%s", domain)
+        index_path = KNOWLEDGE_ROOT / domain / "index.json"
+        if not index_path.exists():
+            return []
 
-    try:
-        index: list[dict] = json.loads(index_path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
+        try:
+            index: list[dict] = json.loads(index_path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
 
-    if not index:
-        return []
+        if not index:
+            return []
 
-    query_vec = _embed(prompt)
-    if query_vec is None:
-        return []
+        query_vec = _embed(prompt)
+        if query_vec is None:
+            return []
 
-    scored = []
-    for entry in index:
-        vec = entry.get("embedding")
-        if not vec:
-            continue
-        sim = _cosine(query_vec, vec)
-        if sim >= min_similarity:
-            scored.append((sim, entry))
+        scored = []
+        for entry in index:
+            vec = entry.get("embedding")
+            if not vec:
+                continue
+            sim = _cosine(query_vec, vec)
+            if sim >= min_similarity:
+                scored.append((sim, entry))
 
-    if not scored:
-        return []
+        if not scored:
+            return []
 
-    scored.sort(key=lambda x: x[0], reverse=True)
+        scored.sort(key=lambda x: x[0], reverse=True)
 
     # ── Task-relevance re-ranking ─────────────────────────────────────────────
     # When intent+entity are provided, re-rank the broader candidate pool by

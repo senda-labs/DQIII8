@@ -430,3 +430,61 @@ def test_amplifier_overhead_chars():
             f"{domain} Tier {expected_tier}: overhead {overhead} chars out of [{min_oh},{max_oh}]. "
             f"amp={len(result['amplified'])}, orig={len(prompt)}"
         )
+
+
+def test_confidence_gate_tier_a_skips_low_similarity():
+    """Tier A skips enrichment when max score < 0.55, even with specific data."""
+    from confidence_gate import should_enrich
+
+    specific_but_low_sim = [
+        {
+            "text": "mRNA yield: 12.4 mg/L at pH 7.2. Lipid nanoparticle encapsulation: 85%",
+            "score": 0.38,
+        },
+    ]
+    assert (
+        should_enrich(
+            "how do mRNA vaccines work", "natural_sciences", specific_but_low_sim, 3
+        )
+        is False
+    ), "Tier A must require score >= 0.55 — low similarity injects noise into frontier models"
+
+
+def test_confidence_gate_tier_a_allows_high_similarity():
+    """Tier A allows enrichment when score >= 0.55 and data is specific."""
+    from confidence_gate import should_enrich
+
+    relevant_specific = [
+        {
+            "text": "Kelly Criterion: f* = (bp - q) / b. Example: p=0.6, b=2 → f*=0.4 (40% bankroll)",
+            "score": 0.72,
+        },
+    ]
+    assert (
+        should_enrich(
+            "explain the Kelly Criterion formula",
+            "formal_sciences",
+            relevant_specific,
+            3,
+        )
+        is True
+    ), "Tier A must allow enrichment when score >= 0.55 and data is specific"
+
+
+def test_confidence_gate_tier_b_floor_raised():
+    """Tier B rejects chunks with max_score < 0.30 regardless of specificity."""
+    from confidence_gate import should_enrich
+
+    borderline_chunks = [
+        {
+            "text": "GDP grew 2.1% in 2024. Inflation rate: 3.2%. Fed rate: 5.25%",
+            "score": 0.22,
+        },
+    ]
+    # score=0.22 < 0.30 floor → False, even though has_specific_data=True
+    assert (
+        should_enrich(
+            "explain fiscal multiplier", "social_sciences", borderline_chunks, 2
+        )
+        is False
+    ), "Tier B floor raised to 0.30 — score=0.22 must be rejected"

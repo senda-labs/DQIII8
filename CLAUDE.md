@@ -1,159 +1,67 @@
 # DQIII8 — Master Context
+> Índice maestro. Reglas en `.claude/rules/`. Agentes en `.claude/agents/`.
 
-> Índice maestro para Claude Code. Lee esto antes de actuar.
-> Reglas completas en `.claude/rules/`. Agentes en `.claude/agents/`.
-
-## Identidad del proyecto
-
-**DQIII8** es un sistema de IA autónomo que corre en VPS. Gestiona pipelines de vídeo/contenido, knowledge bases, benchmarks y operaciones Git. El desarrollador supervises it remotely via Telegram..
-
----
-
-## PROHIBICIONES ABSOLUTAS (máxima prioridad)
-
+## PROHIBICIONES ABSOLUTAS
 - **NUNCA** escribir en `.env`, secrets ni credenciales.
 - **NUNCA** modificar `.claude/settings.json` o `database/schema_v2.sql` sin petición explícita.
 - **NUNCA** borrar datos de `dqiii8.db`.
 - **NUNCA** force-push, rebase main ni borrar branches sin confirmación.
-- **NUNCA** cargar skills de `skills-registry/cache/` sin revisar su estado en `INDEX.md`.
+- **NUNCA** cargar skills de `skills-registry/cache/` sin revisar `INDEX.md`.
 - **NUNCA** superar 3 ficheros modificados sin entrar en plan mode primero.
 - **NUNCA** seguir empujando cuando algo falla. STOP → re-plan → preguntar.
 
----
-
-## Rutas clave
-
-| Recurso | Ruta |
-|---------|------|
-| Base de datos | `database/dqiii8.db` |
-| Agentes Claude Code | `.claude/agents/*.md` |
-| Reglas detalladas | `.claude/rules/` |
-| Hooks | `.claude/hooks/` |
-| Wrapper multi-provider | `bin/core/openrouter_wrapper.py` |
-| Wrapper Ollama | `bin/core/ollama_wrapper.py` |
-| Notificaciones Telegram | `bin/core/notify.py` |
-| Indexer knowledge | `bin/agents/knowledge_indexer.py` |
-| Search knowledge | `bin/agents/knowledge_search.py` |
-| Benchmark | `bin/monitoring/benchmark_knowledge.py` |
-| Domain lens engine | `bin/agents/domain_lens.py` |
-| Intent amplifier | `bin/agents/intent_amplifier.py` |
-| Director v3 | `bin/director.py` |
-| Smoke tests | `tests/test_smoke.py` |
-
----
-
-## Model Routing — 3 Tiers
-
+## Model Routing
 | Tier | Provider | Modelo | Cuándo |
 |------|----------|--------|--------|
-| C (local) | Ollama | `qwen2.5-coder:7b` | código, refactor, debug, git |
-| B (cloud free) | Groq | `llama-3.3-70b-versatile` | review, análisis, investigación |
-| A (paid) | Anthropic | `claude-sonnet-4-6` | finanzas, arquitectura, orquestación |
-
-**Regla:** usar el tier más barato que resuelva la tarea.
-
-Clasificar con: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
-
----
+| C | Ollama | `qwen2.5-coder:7b` | código, refactor, debug, git |
+| B | Groq | `llama-3.3-70b-versatile` | review, análisis, investigación |
+| A | Anthropic | `claude-sonnet-4-6` | finanzas, arquitectura, orquestación |
+Regla: tier más barato. Clasificar: `python3 bin/core/openrouter_wrapper.py classify "<prompt>"`
 
 ## Delegación de agentes
-
-| Agente | Modelo | Cuándo delegar |
-|--------|--------|----------------|
-| `python-specialist` | qwen2.5-coder:7b | Código Python, tracebacks, refactor |
-| `git-specialist` | qwen2.5-coder:7b | Commits, branches, PRs, merge |
+| Agente | Modelo | Trigger |
+|--------|--------|---------|
+| `python-specialist` | qwen2.5-coder:7b | código Python, tracebacks, refactor |
+| `git-specialist` | qwen2.5-coder:7b | commits, branches, PRs, merge |
 | `web-specialist` | qwen2.5-coder:7b | HTML/CSS/JS, scraping |
-| `algo-specialist` | qwen2.5-coder:7b | Algoritmos, estructuras de datos |
-| `code-reviewer` | llama-3.3-70b | Review de código |
-| `math-specialist` | llama-3.3-70b | Matemáticas, estadística |
+| `algo-specialist` | qwen2.5-coder:7b | algoritmos, estructuras de datos |
+| `code-reviewer` | llama-3.3-70b | review de código |
+| `math-specialist` | llama-3.3-70b | matemáticas, estadística |
 | `finance-specialist` | claude-sonnet | WACC, DCF, análisis financiero |
 | `auditor` | claude-sonnet | `/audit`, métricas del sistema |
 | `orchestrator` | claude-sonnet | `/mobilize`, tareas multi-agente (3+ dominios) |
-
-> Los agentes especializados de dominio (biology, chemistry, history, etc.) usan `llama-3.3-70b` vía Groq.
-
-**Invocar via wrapper** (Tier C/B, no consume Sonnet):
-```bash
-python3 bin/core/openrouter_wrapper.py --agent python-specialist "<tarea>"
-```
-
-**Domain specialists** usan `domain_lens.py` para enrichment automático — el system prompt se genera dinámicamente con knowledge chunks del índice.
-**Core agents** usan el MD completo como system prompt (sin domain lens).
-
----
+Invocar: `python3 bin/core/openrouter_wrapper.py --agent <agent> "<tarea>"`
 
 ## Autonomía (VPS mode)
-
 - Planes ≤5 pasos sin acciones destructivas → ejecutar sin preguntar.
-- Acciones destructivas o intención ambigua → notificar por Telegram y esperar.
+- Acciones destructivas o ambiguas → Telegram + esperar confirmación.
 - Bug report → fix inmediato. Ver logs, resolver, verificar. Sin tutorías.
-- Fix requiere >3 ficheros o toca arquitectura → entrar en plan mode primero.
+- Fix >3 ficheros o arquitectura → plan mode primero.
 
----
+## Workflow
+1. **Plan** — plan mode para ≥3 pasos. Spec → tasks/todo.md.
+2. **Execute** — salir cuando queden ≤3 pasos concretos.
+3. **Verify** — nunca marcar done sin prueba. Tests. Diff contra main.
+4. **Record** — actualizar tasks/todo.md. Resumir en cada paso.
+5. **Learn** — tras corrección → tasks/lessons.md: `[DATE] [KEYWORD] causa → fix`
+6. **Re-plan** — si diverge, STOP. Re-planificar inmediatamente.
 
-## Knowledge System
+## Session Lifecycle
+- **On start:** modelo activo + proyecto + worktrees + últimas 10 lecciones + audit score.
+- **On stop:** lessons.md → projects/[project].md → DB summary → auto-commit → audit si 7d+.
 
-Agentes con knowledge base: `finance-analyst`, `python-specialist`.
+## File Map
+| Recurso | Ruta |
+|---------|------|
+| Base de datos | `database/dqiii8.db` |
+| Agentes / Hooks | `.claude/agents/*.md` / `.claude/hooks/` |
+| Wrapper multi-provider | `bin/core/openrouter_wrapper.py` |
+| Director v3 / Telegram | `bin/director.py` / `bin/core/notify.py` |
+| Knowledge | `bin/agents/knowledge_indexer.py` · `knowledge_search.py` |
+| Benchmark | `bin/tools/benchmark_dq.py` |
+| Smoke tests | `tests/test_smoke.py` |
 
-```bash
-# Buscar en knowledge de un agente
-python3 bin/agents/knowledge_search.py --agent python-specialist "async patterns"
-
-# Re-indexar tras añadir/modificar docs
-python3 bin/agents/knowledge_indexer.py --agent python-specialist
-```
-
-Knowledge dirs: `.claude/agents/{agent}/knowledge/*.md` + `index.json`
-
----
-
-## Notificaciones Telegram
-
-```python
-from bin.core.notify import send_telegram
-send_telegram("mensaje")
-```
-
-O desde CLI: `python3 bin/core/notify.py "mensaje"`
-
----
-
-## Claude Code desde Telegram — /cc
-
-Envía cualquier prompt a Claude Code directamente desde Telegram:
-
-```
-/cc <prompt>             — Ejecuta prompt en Claude Code (sonnet-4-6, timeout 300s)
-/cc_status               — Auth, versión, último uso, uptime, rate limit
-/auth_status             — Detalles del fichero ~/.claude/.credentials.json
-/auth_test               — Prueba mínima de autenticación
-```
-
-**Seguridad:** solo `TELEGRAM_CHAT_ID`, rate limit 10/hora, blacklist de comandos peligrosos.
-**Auth:** OAuth via `~/.claude/.credentials.json` — `CLAUDE_CODE_OAUTH_TOKEN` se elimina del entorno antes de cada llamada para evitar conflictos.
-**Implementado en:** `bin/ui/telegram_bot.py` (rename from `jarvis_bot.py` in your installation)
-
----
-
-## CLI Tools (invocación directa)
-
-| Script | Uso | Trigger |
-|--------|-----|---------|
-| `bin/tools/gemini_export.py` | Exporta módulo para review Gemini | `/gemini_export [module]` |
-| `bin/tools/gemini_review.py` | Registra feedback Gemini en DB | Post-review |
-| `bin/tools/github_researcher.py` | Busca repos GitHub relevantes | `/github_research [topic]` |
-| `bin/tools/orphan_finder.py` | Detecta scripts sin referencias | `python3 bin/tools/orphan_finder.py` |
-| `bin/core/validate_env.py` | Verifica .env keys al startup | Llamado por `bin/j.sh` |
-
-
----
-
-## Reglas detalladas (leer si el contexto lo requiere)
-
-- `.claude/rules/common/coding-style.md` — inmutabilidad, organización ficheros
-- `.claude/rules/common/git-workflow.md` — commits convencionales, PRs
-- `.claude/rules/common/security.md` — checklist antes de commit
-- `.claude/rules/common/testing.md` — TDD, 80% coverage mínimo
-- `.claude/rules/dqiii8-python.md` — Black, pathlib, asyncio
-- `.claude/rules/dqiii8-context-window.md` — zonas verde/amarillo/naranja/rojo
-- `.claude/rules/dqiii8-prohibitions.md` — prohibiciones completas
+## Reglas en `.claude/rules/`
+- `common/`: coding-style, git-workflow, security, testing
+- `dqiii8-python.md`, `dqiii8-context-window.md`, `dqiii8-prohibitions.md`
+- `dqiii8-telegram.md`, `dqiii8-knowledge.md`, `dqiii8-cli-tools.md`

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""DQIII8 Benchmark — Gold Standard vs Vanilla vs Enriched.
+"""DQIII8 Benchmark — Dual Gold Standard vs Vanilla vs Enriched.
 
 Measures:
-1. Gold Standard Gap: distance from Sonnet 4.6
+1. Gold Standard Gap: distance from Sonnet 4.6 (gold) or Gemini 2.5 Flash (silver)
 2. Hallucination Index: variance in vanilla model across 5 runs
 3. DQ Enricher Value: improvement with pipeline ON vs OFF
 
 20 tasks x 5 queries x 2 modes (ON/OFF) x 1 model = 200 LLM calls
-Plus 20 Sonnet calls (gold standard)
+Plus 20 Gemini calls (silver standard, always available)
+Plus up to 20 Sonnet calls (gold standard, only in Claude Code session)
 Plus evaluation calls
 """
 
@@ -269,24 +270,52 @@ def call_model(prompt: str, use_dq: bool = False, agent: str = "default") -> str
         return f"[ERROR: {exc}]"
 
 
-def call_sonnet(prompt: str) -> str:
-    """Call Sonnet 4.6 via Claude Code CLI (uses Pro subscription)."""
+def call_gemini(prompt: str) -> str:
+    """Call Gemini 2.5 Flash as silver standard (free, always available)."""
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        return "[NO_GEMINI_KEY]"
+    try:
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"gemini-2.5-flash:generateContent?key={api_key}"
+        )
+        data = json.dumps(
+            {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": 2000},
+            }
+        ).encode()
+        req = urllib.request.Request(
+            url, data=data, headers={"Content-Type": "application/json"}
+        )
+        response = urllib.request.urlopen(req, timeout=90)
+        result = json.loads(response.read())
+        return result["candidates"][0]["content"]["parts"][0]["text"][:3000]
+    except Exception as e:
+        print(f"  [SILVER] Gemini error: {e}")
+        return "[GEMINI_ERROR]"
+
+
+def call_sonnet(prompt: str) -> str | None:
+    """Call Sonnet 4.6 as gold standard (only works within Claude Code session).
+
+    Returns None if not available — do not fallback, caller decides.
+    """
     try:
         result = subprocess.run(
-            ["claude", "-p", prompt, "--model", "claude-sonnet-4-20250514"],
+            ["claude", "-p", prompt],
             capture_output=True,
             text=True,
             timeout=120,
             cwd=str(DQIII8_ROOT),
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()[:3000]
-        return f"[SONNET_ERROR: {result.stderr[:200]}]"
-    except subprocess.TimeoutExpired:
-        return "[SONNET_TIMEOUT]"
-    except Exception as exc:
-        log.warning("call_sonnet: %s", exc)
-        return f"[SONNET_ERROR: {exc}]"
+        output = result.stdout.strip()
+        if output and len(output) > 20 and "error" not in output.lower()[:50]:
+            return output[:3000]
+    except Exception:
+        pass
+    return None
 
 
 def evaluate(gold: str, response: str, task: dict, mode: str) -> dict:
@@ -347,13 +376,17 @@ def generate_and_send_report(results: dict, report_path: Path) -> None:
     """Generate markdown report and send via Telegram."""
     timestamp = results["metadata"]["timestamp"]
 
+    sonnet_available = results["metadata"].get("sonnet_available_tasks", "?")
+    n_tasks = len(results["tasks"])
+
     lines = [
         f"# DQ Benchmark Report — {timestamp}",
         "",
         "## Configuracion",
-        f"- Tareas: {len(results['tasks'])}",
+        f"- Tareas: {n_tasks}",
         "- Queries por tarea: 5",
-        "- Gold Standard: Sonnet 4.6",
+        "- Silver Standard: Gemini 2.5 Flash",
+        f"- Gold Standard: Sonnet 4.6 (available: {sonnet_available}/{n_tasks} tasks)",
         "- Modelos evaluados: Groq llama-3.3-70b",
         "",
         "## Resultados por Tarea",
@@ -412,7 +445,6 @@ def generate_and_send_report(results: dict, report_path: Path) -> None:
     global_off = sum(total_off) / len(total_off) if total_off else 0.0
     global_on = sum(total_on) / len(total_on) if total_on else 0.0
     global_delta = global_on - global_off
-    n_tasks = len(results["tasks"])
 
     lines.extend(
         [
@@ -565,7 +597,8 @@ def run_benchmark() -> None:
             "tasks": len(TASKS),
             "queries_per_task": 5,
             "models": ["groq_llama-3.3-70b"],
-            "gold_standard": "claude-sonnet-4-20250514",
+            "gold_standard": "claude-sonnet-4-20250514 (when available)",
+            "silver_standard": "gemini-2.5-flash (always available)",
         },
         "tasks": [],
     }
@@ -581,17 +614,30 @@ def run_benchmark() -> None:
             "id": task["id"],
             "domain": task["domain"],
             "prompt": task["prompt"],
-            "gold_standard": "",
+            "silver_standard": "",
+            "gold_standard": None,
             "runs": [],
         }
 
-        # Step 1: Gold Standard from Sonnet
+        # Step 1: Silver standard — Gemini 2.5 Flash (always available)
+        print("  [SILVER] Calling Gemini 2.5 Flash...")
+        silver = call_gemini(task["prompt"])
+        task_result["silver_standard"] = silver[:2000]
+        print(f"  [SILVER] {len(silver)} chars")
+        time.sleep(4)  # Gemini free tier: ~15 RPM
+
+        # Step 2: Gold standard — Sonnet 4.6 (only in Claude Code session)
         print("  [GOLD] Calling Sonnet 4.6...")
         gold = call_sonnet(task["prompt"])
-        task_result["gold_standard"] = gold[:2000]
-        if "[ERROR" in gold or "[NO_API" in gold:
-            task_result["gold_standard_fallback"] = True
-        print(f"  [GOLD] {len(gold)} chars")
+        if gold:
+            task_result["gold_standard"] = gold[:2000]
+            print(f"  [GOLD] {len(gold)} chars")
+        else:
+            task_result["gold_standard"] = None
+            print("  [GOLD] Not available (no active Claude Code session)")
+
+        # Use best available standard for evaluation
+        reference = gold if gold else silver
 
         # Step 2: 5 runs per mode
         for run_idx in range(5):
@@ -601,13 +647,13 @@ def run_benchmark() -> None:
             # DQ OFF
             print("  [groq] DQ OFF...", end=" ", flush=True)
             resp_off = call_model(task["prompt"], use_dq=False)
-            score_off = evaluate(gold, resp_off, task, "groq_dq_off")
+            score_off = evaluate(reference, resp_off, task, "groq_dq_off")
             print(f"Score: {score_off.get('total', '?')}/50")
 
             # DQ ON
             print("  [groq] DQ ON...", end=" ", flush=True)
             resp_on = call_model(task["prompt"], use_dq=True)
-            score_on = evaluate(gold, resp_on, task, "groq_dq_on")
+            score_on = evaluate(reference, resp_on, task, "groq_dq_on")
             print(f"Score: {score_on.get('total', '?')}/50")
 
             update_enricher_feedback(task, score_on)
@@ -629,12 +675,16 @@ def run_benchmark() -> None:
             time.sleep(2)
             task_result["runs"].append(run_result)
 
+        task_result["sonnet_available"] = gold is not None
         results["tasks"].append(task_result)
 
         # Save intermediate results
         with open(report_path, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, default=str)
         print(f"\n  [SAVED] {report_path}")
+
+    sonnet_count = sum(1 for t in results["tasks"] if t.get("sonnet_available"))
+    results["metadata"]["sonnet_available_tasks"] = sonnet_count
 
     print_summary(results)
 

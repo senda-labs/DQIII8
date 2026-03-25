@@ -4,7 +4,11 @@
 Collects news, updates, and papers from configured sources.
 Classifies relevance using Groq ($0).
 Generates daily digest for Telegram.
-Auto-generates knowledge chunks for HIGH relevance items.
+
+Fetch methods:
+    rss          — feedparser (primary, free, instant)
+    reddit_json  — Reddit JSON API (free, no auth)
+    web_firecrawl — Firecrawl API (500 free credits, requires FIRECRAWL_API_KEY)
 
 Usage:
     python3 bin/tools/intelligence_collector.py --collect --tier 1
@@ -18,14 +22,20 @@ import json
 import os
 import sqlite3
 import subprocess
-import hashlib
+import urllib.request
 from datetime import datetime
 from pathlib import Path
+
+import feedparser
 
 DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
 DB_PATH = DQIII8_ROOT / "database" / "jarvis_metrics.db"
 SOURCES_PATH = DQIII8_ROOT / "config" / "intelligence_sources.json"
-KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
+
+
+# ---------------------------------------------------------------------------
+# Config & DB
+# ---------------------------------------------------------------------------
 
 
 def load_sources(tiers=None):
@@ -44,27 +54,117 @@ def get_db():
     return conn
 
 
-def fetch_web_content(url):
-    """Fetch web content using curl."""
+# ---------------------------------------------------------------------------
+# Fetch methods
+# ---------------------------------------------------------------------------
+
+
+def fetch_rss(url, max_items=10):
+    """Fetch and parse RSS/Atom feed via feedparser."""
     try:
-        result = subprocess.run(
-            ["curl", "-sL", "--max-time", "30", url],
-            capture_output=True,
-            text=True,
-            timeout=35,
+        feed = feedparser.parse(url)
+        items = []
+        for entry in feed.entries[:max_items]:
+            items.append(
+                {
+                    "title": entry.get("title", ""),
+                    "url": entry.get("link", ""),
+                    "summary": entry.get("summary", entry.get("description", ""))[:500],
+                    "published": entry.get("published", ""),
+                }
+            )
+        return items
+    except Exception as e:
+        print(f"  RSS error: {e}")
+        return []
+
+
+def fetch_reddit_json(url, max_items=10):
+    """Fetch Reddit hot posts as JSON (score > 50 filter)."""
+    try:
+        # Ensure .json suffix and limit param
+        json_url = url.rstrip("/")
+        if not json_url.endswith(".json"):
+            json_url += ".json"
+        json_url += "?limit=25"
+        req = urllib.request.Request(json_url, headers={"User-Agent": "DQIII8/1.0"})
+        response = urllib.request.urlopen(req, timeout=15)
+        data = json.loads(response.read())
+        items = []
+        for post in data.get("data", {}).get("children", [])[:max_items]:
+            d = post.get("data", {})
+            if d.get("score", 0) > 50:
+                items.append(
+                    {
+                        "title": d.get("title", ""),
+                        "url": f"https://reddit.com{d.get('permalink', '')}",
+                        "summary": d.get("selftext", "")[:500],
+                        "score": d.get("score", 0),
+                    }
+                )
+        return items
+    except Exception as e:
+        print(f"  Reddit error: {e}")
+        return []
+
+
+def fetch_firecrawl(url):
+    """Scrape web page via Firecrawl REST API (requires FIRECRAWL_API_KEY)."""
+    api_key = os.environ.get("FIRECRAWL_API_KEY", "")
+    if not api_key:
+        print("  Firecrawl: no API key, skipping")
+        return ""
+    try:
+        req_url = "https://api.firecrawl.dev/v1/scrape"
+        data = json.dumps({"url": url, "formats": ["markdown"]}).encode()
+        req = urllib.request.Request(
+            req_url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
         )
-        if result.returncode == 0:
-            return result.stdout[:10000]
-    except Exception:
-        pass
-    return ""
+        response = urllib.request.urlopen(req, timeout=30)
+        result = json.loads(response.read())
+        return result.get("data", {}).get("markdown", "")[:5000]
+    except Exception as e:
+        print(f"  Firecrawl error: {e}")
+        return ""
+
+
+def scrape_source(source):
+    """Fetch items using the best method for this source type."""
+    source_type = source.get("type", "rss")
+
+    if source_type == "rss":
+        return fetch_rss(source["rss"])
+
+    if source_type == "reddit_json":
+        return fetch_reddit_json(source["rss"])
+
+    if source_type == "web_firecrawl":
+        content = fetch_firecrawl(source["url"])
+        if content:
+            return extract_items_from_content(content, source)
+        return []
+
+    # Fallback: try RSS key, then give up
+    if source.get("rss"):
+        return fetch_rss(source["rss"])
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Classification (Groq — $0)
+# ---------------------------------------------------------------------------
 
 
 def extract_items_from_content(content, source):
-    """Use Groq to extract news items from raw content."""
+    """Use Groq to extract news items from raw markdown/HTML content."""
     prompt = (
         f"Extract the 5 most recent news items from this content.\n"
-        f"Source: {source['name']} ({source['url']})\n"
+        f"Source: {source['name']} ({source.get('url', '')})\n"
         f"Keywords to look for: {', '.join(source.get('keywords', []))}\n\n"
         f"Content (first 3000 chars):\n{content[:3000]}\n\n"
         f"Respond ONLY with JSON array, no text before or after:\n"
@@ -91,12 +191,24 @@ def extract_items_from_content(content, source):
         if start >= 0 and end > start:
             return json.loads(text[start:end])
     except Exception as e:
-        print(f"  Error extracting from {source['name']}: {e}")
+        print(f"  LLM extract error: {e}")
     return []
 
 
+def keyword_filter(items, keywords):
+    """Fast keyword pre-filter before LLM classification (saves Groq calls)."""
+    if not keywords:
+        return items
+    filtered = []
+    for item in items:
+        text = f"{item.get('title', '')} {item.get('summary', '')}".lower()
+        if any(kw.lower() in text for kw in keywords):
+            filtered.append(item)
+    return filtered
+
+
 def classify_item(item, source):
-    """Classify relevance for DQ using Groq ($0)."""
+    """Classify relevance using Groq (Tier B — free)."""
     prompt = (
         "Classify this AI news item for DQIII8 (AI orchestration system that routes "
         "prompts to cheapest capable model).\n"
@@ -132,8 +244,13 @@ def classify_item(item, source):
     return {"relevance": "LOW", "action": "monitor", "affects": "none"}
 
 
+# ---------------------------------------------------------------------------
+# Storage
+# ---------------------------------------------------------------------------
+
+
 def store_item(item, source, classification):
-    """Store classified item in DB, skip duplicates by title."""
+    """Store classified item in DB, skip duplicates by exact title."""
     conn = get_db()
     try:
         existing = conn.execute(
@@ -152,7 +269,7 @@ def store_item(item, source, classification):
             (
                 source["name"],
                 item.get("title", "Unknown"),
-                item.get("url", source["url"]),
+                item.get("url", source.get("url", "")),
                 item.get("summary", ""),
                 classification.get("relevance", "LOW"),
                 classification.get("action", "monitor"),
@@ -168,33 +285,43 @@ def store_item(item, source, classification):
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Main commands
+# ---------------------------------------------------------------------------
+
+
 def collect(tiers="1"):
     """Collect from all sources of specified tiers."""
     sources = load_sources(tiers)
     print(f"[INTEL] Collecting from {len(sources)} sources (tiers: {tiers})")
 
-    total_items = 0
+    total_new = 0
     for source in sources:
-        print(f"  [{source['name']}] Fetching...")
-        content = fetch_web_content(source["url"])
-        if not content:
-            print(f"  [{source['name']}] No content retrieved")
+        print(f"  [{source['name']}]", end=" ", flush=True)
+
+        items = scrape_source(source)
+        if not items:
+            print("no items")
             continue
 
-        items = extract_items_from_content(content, source)
+        keywords = source.get("keywords", [])
+        items = keyword_filter(items, keywords)
+        print(f"{len(items)} relevant", end=" ", flush=True)
+
+        stored_count = 0
         for item in items[:5]:
             classification = classify_item(item, source)
-            stored = store_item(item, source, classification)
-            if stored:
-                total_items += 1
-                relevance = classification.get("relevance", "?")
-                print(f"    {relevance}: {item.get('title', '?')[:60]}")
+            if store_item(item, source, classification):
+                total_new += 1
+                stored_count += 1
 
-    print(f"[INTEL] Collected {total_items} new items")
+        print(f"-> {stored_count} stored")
+
+    print(f"[INTEL] Total new items: {total_new}")
 
 
 def generate_digest():
-    """Generate daily digest and send via Telegram."""
+    """Generate daily digest and optionally send via Telegram."""
     conn = get_db()
     today = datetime.now().strftime("%Y-%m-%d")
 
@@ -246,17 +373,14 @@ def generate_digest():
     digest = "\n".join(lines)
     print(digest)
 
-    # Send via Telegram
     try:
         bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
         if bot_token and chat_id:
-            import urllib.request
-
-            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            tg_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
             data = json.dumps({"chat_id": chat_id, "text": digest[:4000]}).encode()
             req = urllib.request.Request(
-                url, data=data, headers={"Content-Type": "application/json"}
+                tg_url, data=data, headers={"Content-Type": "application/json"}
             )
             urllib.request.urlopen(req, timeout=10)
             print("[INTEL] Digest sent to Telegram")
@@ -295,8 +419,13 @@ def show_status():
     conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
 def _load_env():
-    """Source .env for API keys."""
+    """Load .env file into os.environ (setdefault — won't overwrite existing)."""
     env_path = DQIII8_ROOT / ".env"
     if env_path.exists():
         for line in env_path.read_text(encoding="utf-8").splitlines():

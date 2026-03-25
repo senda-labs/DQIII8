@@ -23,7 +23,6 @@ _SUBDOMAINS: dict[str, dict[str, list[str]]] = {
     "formal_sciences": {
         "quantitative_finance": [
             "kelly criterion",
-            "kelly",
             "black-scholes",
             "black scholes",
             "options pricing",
@@ -189,6 +188,9 @@ _SUBDOMAINS: dict[str, dict[str, list[str]]] = {
             "competitive strategy",
             "moat",
         ],
+        # distributed_systems lives here because the parent domain_classifier routes
+        # "CAP theorem", "consensus", etc. to social_sciences by default (no AS keyword match).
+        # Role: "expert in distributed_systems" is more accurate than "expert in social_sciences".
         "distributed_systems": [
             "cap theorem",
             "consistency",
@@ -363,6 +365,7 @@ def classify_subdomain(prompt: str, domain: str) -> str:
                     hits += 1
         scores[subdomain] = hits
 
+    # Tie: first subdomain with max score wins (Python dict insertion order)
     best = max(scores, key=lambda k: scores[k])
     if scores[best] == 0:
         return domain  # fallback: no keyword matched

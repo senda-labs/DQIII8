@@ -2,13 +2,23 @@
   "sources": [
     {
       "name": "anthropic-blog",
-      "rss": "https://www.anthropic.com/rss.xml",
+      "rss": "https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_claude.xml",
       "url": "https://www.anthropic.com/news",
       "type": "rss",
       "tier": 1,
       "frequency": "6h",
       "domain": "applied_sciences",
-      "keywords": ["claude", "sonnet", "opus", "haiku", "api", "safety", "model", "mcp"]
+      "keywords": [
+        "claude",
+        "sonnet",
+        "opus",
+        "haiku",
+        "api",
+        "safety",
+        "model",
+        "mcp"
+      ],
+      "note": "Generated RSS from Olshansk repo"
     },
     {
       "name": "anthropic-changelog",
@@ -17,17 +27,33 @@
       "tier": 1,
       "frequency": "6h",
       "domain": "applied_sciences",
-      "keywords": ["claude code", "skill", "command", "mcp", "plugin", "hook"]
+      "keywords": [
+        "claude code",
+        "skill",
+        "command",
+        "mcp",
+        "plugin",
+        "hook"
+      ]
     },
     {
       "name": "openai-blog",
-      "rss": "https://openai.com/blog/rss/",
+      "rss": "https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_openai_research.xml",
       "url": "https://openai.com/blog",
       "type": "rss",
       "tier": 1,
       "frequency": "daily",
       "domain": "applied_sciences",
-      "keywords": ["gpt", "codex", "api", "model", "o1", "o3", "agent"]
+      "keywords": [
+        "gpt",
+        "codex",
+        "api",
+        "model",
+        "o1",
+        "o3",
+        "agent"
+      ],
+      "note": "Generated RSS from Olshansk repo"
     },
     {
       "name": "openai-research",
@@ -36,7 +62,12 @@
       "tier": 2,
       "frequency": "daily",
       "domain": "applied_sciences",
-      "keywords": ["research", "paper", "safety", "alignment"]
+      "keywords": [
+        "research",
+        "paper",
+        "safety",
+        "alignment"
+      ]
     },
     {
       "name": "google-ai-blog",
@@ -46,7 +77,14 @@
       "tier": 1,
       "frequency": "daily",
       "domain": "applied_sciences",
-      "keywords": ["gemini", "stitch", "antigravity", "vertex", "mcp", "ai studio"]
+      "keywords": [
+        "gemini",
+        "stitch",
+        "antigravity",
+        "vertex",
+        "mcp",
+        "ai studio"
+      ]
     },
     {
       "name": "google-research",
@@ -55,7 +93,12 @@
       "tier": 2,
       "frequency": "daily",
       "domain": "applied_sciences",
-      "keywords": ["transformer", "llm", "efficiency", "training"]
+      "keywords": [
+        "transformer",
+        "llm",
+        "efficiency",
+        "training"
+      ]
     },
     {
       "name": "huggingface-blog",
@@ -64,7 +107,13 @@
       "tier": 2,
       "frequency": "weekly",
       "domain": "applied_sciences",
-      "keywords": ["model", "benchmark", "open-source", "embedding", "transformers"]
+      "keywords": [
+        "model",
+        "benchmark",
+        "open-source",
+        "embedding",
+        "transformers"
+      ]
     },
     {
       "name": "ollama-releases",
@@ -73,7 +122,12 @@
       "tier": 2,
       "frequency": "daily",
       "domain": "applied_sciences",
-      "keywords": ["release", "model", "performance", "support"]
+      "keywords": [
+        "release",
+        "model",
+        "performance",
+        "support"
+      ]
     },
     {
       "name": "venturebeat-ai",
@@ -82,7 +136,12 @@
       "tier": 3,
       "frequency": "daily",
       "domain": "applied_sciences",
-      "keywords": ["funding", "startup", "enterprise", "deployment"]
+      "keywords": [
+        "funding",
+        "startup",
+        "enterprise",
+        "deployment"
+      ]
     },
     {
       "name": "the-batch-deeplearning",
@@ -91,7 +150,12 @@
       "tier": 3,
       "frequency": "weekly",
       "domain": "applied_sciences",
-      "keywords": ["research", "tutorial", "trend", "paper"]
+      "keywords": [
+        "research",
+        "tutorial",
+        "trend",
+        "paper"
+      ]
     },
     {
       "name": "reddit-localllama",
@@ -100,7 +164,14 @@
       "tier": 3,
       "frequency": "daily",
       "domain": "applied_sciences",
-      "keywords": ["benchmark", "model", "ollama", "vllm", "quantization", "gguf"]
+      "keywords": [
+        "benchmark",
+        "model",
+        "ollama",
+        "vllm",
+        "quantization",
+        "gguf"
+      ]
     },
     {
       "name": "github-trending-ai",
@@ -109,7 +180,13 @@
       "tier": 4,
       "frequency": "weekly",
       "domain": "applied_sciences",
-      "keywords": ["llm", "agent", "mcp", "rag", "embedding"]
+      "keywords": [
+        "llm",
+        "agent",
+        "mcp",
+        "rag",
+        "embedding"
+      ]
     },
     {
       "name": "arxiv-cs-ai",
@@ -118,7 +195,14 @@
       "tier": 4,
       "frequency": "daily",
       "domain": "formal_sciences",
-      "keywords": ["routing", "multi-model", "rag", "confidence", "calibration", "agent"]
+      "keywords": [
+        "routing",
+        "multi-model",
+        "rag",
+        "confidence",
+        "calibration",
+        "agent"
+      ]
     },
     {
       "name": "mcp-awesome-updates",
@@ -127,7 +211,13 @@
       "tier": 4,
       "frequency": "weekly",
       "domain": "applied_sciences",
-      "keywords": ["skill", "mcp", "plugin", "hook", "agent"]
+      "keywords": [
+        "skill",
+        "mcp",
+        "plugin",
+        "hook",
+        "agent"
+      ]
     }
   ]
 }

@@ -471,6 +471,24 @@ def test_confidence_gate_tier_a_allows_high_similarity():
     ), "Tier A must allow enrichment when score >= 0.55 and data is specific"
 
 
+def test_confidence_gate_tier_a_skips_generic_even_if_high_score():
+    """Tier A skips enrichment when chunks are generic definitions, even with high score."""
+    from confidence_gate import should_enrich
+
+    high_score_generic = [
+        {
+            "text": "The Kelly Criterion is defined as a method for determining optimal bet sizing",
+            "score": 0.68,
+        },
+    ]
+    assert (
+        should_enrich(
+            "explain the Kelly Criterion", "formal_sciences", high_score_generic, 3
+        )
+        is False
+    ), "Tier A must require specific/numerical data — generic definitions must be rejected even with high similarity"
+
+
 def test_confidence_gate_tier_b_floor_raised():
     """Tier B rejects chunks with max_score < 0.30 regardless of specificity."""
     from confidence_gate import should_enrich

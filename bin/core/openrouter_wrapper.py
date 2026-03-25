@@ -625,10 +625,11 @@ def classify_prompt(prompt: str) -> None:
 
 
 def _enforce_sensitive_permissions() -> None:
-    """Ensure sensitive files have owner-only permissions (600) at startup."""
+    """Ensure sensitive files and dirs have owner-only permissions at startup."""
     import stat
 
     root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+    # Sensitive files → 600
     for rel in (".env", "database/jarvis_metrics.db", "database/dqiii8.db"):
         path = root / rel
         if path.exists():
@@ -638,6 +639,15 @@ def _enforce_sensitive_permissions() -> None:
                     os.chmod(str(path), stat.S_IRUSR | stat.S_IWUSR)
                 except OSError as _exc:
                     log.warning("chmod %s failed: %s", path, _exc)
+    # Database directory → 700 (owner only)
+    db_dir = root / "database"
+    if db_dir.exists():
+        current_dir = db_dir.stat().st_mode & 0o777
+        if current_dir != 0o700:
+            try:
+                os.chmod(str(db_dir), 0o700)
+            except OSError as _exc:
+                log.warning("chmod database/ failed: %s", _exc)
 
 
 def main() -> None:

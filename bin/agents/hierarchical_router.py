@@ -37,6 +37,8 @@ for _d in [_DQIII8_ROOT / 'bin' / s for s in ['', 'core', 'agents', 'monitoring'
 from embeddings import cosine_similarity, get_embedding
 from db import get_db
 
+import logging
+log = logging.getLogger(__name__)
 JARVIS = Path(os.environ.get("DQIII8_ROOT", str(_DQIII8_ROOT)))
 KNOWLEDGE_DIR = JARVIS / "knowledge"
 
@@ -228,8 +230,8 @@ def load_centroids() -> dict:
                 if blob:
                     n = len(blob) // 4
                     centroids[name] = list(struct.unpack(f"{n}f", blob))
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning('%s: %s', __name__, _exc)
     return centroids
 
 

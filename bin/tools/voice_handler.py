@@ -18,6 +18,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import logging
+log = logging.getLogger(__name__)
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 
 # ── STT: Groq Whisper ─────────────────────────────────────────────────────────
@@ -114,8 +116,8 @@ def _detect_tts_engine() -> str:
         if result.returncode == 0:
             _TTS_ENGINE = "espeak"
             return _TTS_ENGINE
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning('%s: %s', __name__, _exc)
 
     _TTS_ENGINE = "none"
     return _TTS_ENGINE

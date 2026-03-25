@@ -40,6 +40,9 @@ except ImportError:
 from dashboard_security import get_or_create_dashboard_token, verify_token
 from db import get_db
 
+import logging
+
+log = logging.getLogger(__name__)
 # ── Config ────────────────────────────────────────────────────────────────
 HOST = os.environ.get("DQIII8_DASHBOARD_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DQIII8_DASHBOARD_PORT", "8080"))
@@ -75,7 +78,7 @@ def detect_claude_oauth() -> dict:
                         "plan": "Pro/Team",
                     }
             except Exception:
-                pass
+                pass  # Fail-open: failure must not break pipeline
 
     # 2) Check CLI is installed
     try:
@@ -119,8 +122,8 @@ def detect_claude_oauth() -> dict:
                 "plan": "Pro/Team",
                 "version": version_str,
             }
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("%s: %s", __name__, _exc)
 
     return {
         "available": False,
@@ -247,13 +250,15 @@ ALLOWED_EXTENSIONS = {
     ".csv",
     ".xlsx",
     ".xls",
-    ".py",
-    ".js",
     ".png",
     ".jpg",
     ".jpeg",
     ".webp",
     ".gif",
+    ".svg",
+    ".docx",
+    ".pptx",
+    # Removed: .py, .js, .ts, .html (executable content — use CLI for scripts)
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -288,8 +293,8 @@ def _extract_text(path: Path, suffix: str) -> str:
                 for page in reader.pages[:20]:
                     text.append(page.extract_text() or "")
             return "\n".join(text)[:8000]
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning("%s: %s", __name__, _exc)
         return "[PDF — text extraction unavailable; install pdftotext or PyPDF2]"
     if suffix in (".xlsx", ".xls"):
         try:
@@ -790,8 +795,8 @@ def _persist_chat(session_id: str, user_msg: str, assistant_msg: str) -> None:
         )
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("%s: %s", __name__, _exc)
 
 
 @app.get("/api/chat/history")

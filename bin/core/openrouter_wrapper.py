@@ -22,6 +22,9 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
+import logging
+
+log = logging.getLogger(__name__)
 # ── Provider configuration ──────────────────────────────────────────────────
 
 PROVIDERS = {
@@ -528,7 +531,7 @@ def log_to_db(
                 pass  # fail-open, never block the pipeline
         conn.close()
     except Exception:
-        pass
+        pass  # Fail-open: failure must not break pipeline
 
 
 def _log_escalation(
@@ -552,8 +555,8 @@ def _log_escalation(
         )
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("%s: %s", __name__, _exc)
 
 
 def print_routing_table() -> None:
@@ -612,8 +615,8 @@ def classify_prompt(prompt: str) -> None:
             _domain, _score, _method = _dc.classify_domain(prompt)
             if _method != "default":
                 domain_suffix = f" domain={_domain}"
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("%s: %s", __name__, _exc)
 
     print(f"tier={tier} provider={provider} model={model} route={route}{domain_suffix}")
 
@@ -621,10 +624,30 @@ def classify_prompt(prompt: str) -> None:
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 
+def _enforce_sensitive_permissions() -> None:
+    """Ensure sensitive files have owner-only permissions (600) at startup."""
+    import stat
+
+    root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+    for rel in (".env", "database/jarvis_metrics.db", "database/dqiii8.db"):
+        path = root / rel
+        if path.exists():
+            current = path.stat().st_mode & 0o777
+            if current not in (0o600, 0o640):
+                try:
+                    os.chmod(str(path), stat.S_IRUSR | stat.S_IWUSR)
+                except OSError as _exc:
+                    log.warning("chmod %s failed: %s", path, _exc)
+
+
 def main() -> None:
+    _enforce_sensitive_permissions()
+
     # Subcommand: classify <prompt>
     if len(sys.argv) >= 2 and sys.argv[1] == "classify":
         raw = " ".join(sys.argv[2:]).strip()
+        # Sanitize shell metacharacters from CLI input (Fix RT-010)
+        raw = raw.replace("`", "").replace("$(", "(").replace("${", "{")
         if not raw and not sys.stdin.isatty():
             raw = sys.stdin.read().strip()
         if not raw:
@@ -786,8 +809,8 @@ def main() -> None:
                         f"intent={_ia_result['intent']} tier={_ia_result['tier']}",
                         file=sys.stderr,
                     )
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("%s: %s", __name__, _exc)
 
     # Domain agent selector — keyword match selects specialist system prompt when
     # no explicit agent was requested (0ms LLM latency, pure string matching).

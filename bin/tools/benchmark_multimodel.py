@@ -33,13 +33,30 @@ ROOT = Path(__file__).parent.parent.parent
 DB = ROOT / "database" / "dqiii8.db"
 NOW_RUN = 1  # bump to re-run a fresh batch
 
-# ── Models under test (GitHub Models endpoint) ──────────────────────────────
+# ── Models under test ────────────────────────────────────────────────────────
 MODELS: dict[str, dict] = {
-    "deepseek-v3-0324": {"provider": "github", "strip_think": False},
-    "deepseek-r1": {"provider": "github", "strip_think": True},
-    "llama-3.3-70b-instruct": {"provider": "github", "strip_think": False},
-    "codestral-2501": {"provider": "github", "strip_think": False},
-    "gpt-4o-mini": {"provider": "github", "strip_think": False},
+    # GitHub Models (free tier, 60s rate limit)
+    "deepseek-v3-0324": {"provider": "github", "strip_think": False, "domains": None},
+    "deepseek-r1": {"provider": "github", "strip_think": True, "domains": None},
+    "llama-3.3-70b-instruct": {
+        "provider": "github",
+        "strip_think": False,
+        "domains": None,
+    },
+    "codestral-2501": {"provider": "github", "strip_think": False, "domains": None},
+    "gpt-4o-mini": {"provider": "github", "strip_think": False, "domains": None},
+    # Ollama local — restricted to applied_sciences (CPU-only VPS, timeouts recorded as data)
+    "qwen2.5-coder:7b": {
+        "provider": "ollama",
+        "strip_think": False,
+        "domains": ["applied_sciences"],
+    },
+    # Groq (30 req/min)
+    "llama-3.3-70b-versatile": {
+        "provider": "groq",
+        "strip_think": False,
+        "domains": None,
+    },
 }
 
 # ── Judges ───────────────────────────────────────────────────────────────────
@@ -64,6 +81,7 @@ DQ_SYSTEM_PROMPT = (
 GITHUB_ENDPOINT = "https://models.inference.ai.azure.com/chat/completions"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+OLLAMA_ENDPOINT = "http://localhost:11434/v1/chat/completions"
 
 # ── Rate limits (seconds between consecutive calls per provider) ─────────────
 RATE_LIMITS: dict[str, float] = {
@@ -190,6 +208,28 @@ def call_groq(model_id: str, messages: list[dict], max_tokens: int = 800) -> str
         return None
     _throttle("groq")
     return _call_api(GROQ_ENDPOINT, token, model_id, messages, max_tokens)
+
+
+def call_ollama(
+    model_id: str, messages: list[dict], max_tokens: int = 1200
+) -> str | None:
+    _throttle("ollama")
+    return _call_api(
+        OLLAMA_ENDPOINT, "ollama", model_id, messages, max_tokens, timeout=120
+    )
+
+
+def _call_model(model: str, messages: list[dict], max_tokens: int = 1200) -> str | None:
+    """Route to the correct provider caller based on MODELS config."""
+    provider = MODELS[model]["provider"]
+    if provider == "github":
+        return call_github_model(model, messages, max_tokens)
+    if provider == "ollama":
+        return call_ollama(model, messages, max_tokens)
+    if provider == "groq":
+        return call_groq(model, messages, max_tokens)
+    log.error("Unknown provider %r for model %r", provider, model)
+    return None
 
 
 # ── DB helpers ───────────────────────────────────────────────────────────────
@@ -380,11 +420,32 @@ def run_model_on_task(
 
     print(f"  {task['task_id']} | {model} | dq={dq} run={run} ... ", end="", flush=True)
     t0 = time.monotonic()
-    answer = call_github_model(model, messages, max_tokens=1200)
+    answer = _call_model(model, messages, max_tokens=1200)
     response_time_ms = int((time.monotonic() - t0) * 1000)
 
     if answer is None:
-        print(f"FAILED ({response_time_ms}ms)")
+        error_label = "TIMEOUT" if response_time_ms >= 119000 else "FAILED"
+        print(f"{error_label} ({response_time_ms}ms) — saving to DB")
+        provider = MODELS[model]["provider"]
+        conn.execute(
+            """INSERT INTO benchmark_multimodel_results
+               (task_id, domain, model, provider, dq_enabled, run_number,
+                response_time_ms, error)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(task_id, model, dq_enabled, run_number) DO UPDATE SET
+                 error=excluded.error, response_time_ms=excluded.response_time_ms""",
+            (
+                task["task_id"],
+                task["domain"],
+                model,
+                provider,
+                dq,
+                run,
+                response_time_ms,
+                error_label,
+            ),
+        )
+        conn.commit()
         return
 
     cfg = MODELS[model]
@@ -420,7 +481,14 @@ def cmd_run(model_filter: str | None, task_filter: str | None) -> None:
     for task in tasks:
         print(f"[{task['task_id']}] {task['domain']}: {task['prompt'][:60]}...")
         for model in models:
-            provider = MODELS[model]["provider"]
+            cfg = MODELS[model]
+            allowed = cfg.get("domains")
+            if allowed and task["domain"] not in allowed:
+                print(
+                    f"  SKIP {task['task_id']} | {model} — domain {task['domain']} not in {allowed}"
+                )
+                continue
+            provider = cfg["provider"]
             n_runs = RUNS_PER_PROVIDER.get(provider, 3)
             for run in range(1, n_runs + 1):
                 for dq in (False, True):

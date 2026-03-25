@@ -462,9 +462,9 @@ def cmd_report(model_filter: str | None) -> None:
                ROUND(AVG(silver_score), 2) as avg_silver,
                ROUND(AVG(bronze_score), 2) as avg_bronze,
                ROUND(AVG(CAST(keyword_hits AS REAL) / NULLIF(keyword_total, 0)), 3) as kw_rate,
-               ROUND(AVG(latency_ms), 0) as avg_ms
+               ROUND(AVG(response_time_ms), 0) as avg_ms
         FROM benchmark_multimodel_results
-        WHERE scored=1 AND run_number=?
+        WHERE silver_score IS NOT NULL AND run_number=?
     """
     params: list = [NOW_RUN]
     if model_filter:

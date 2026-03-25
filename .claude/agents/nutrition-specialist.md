@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [nutrition, calorie, macro, protein, vitamin, mineral, diet, meal plan, BMR, TDEE, supplement, RDA, micronutrient, deficiency]
 keywords_es: [nutrición, caloría, macro, proteína, vitamina, mineral, dieta, plan comida, suplemento, IDR, micronutriente, déficit]
 keywords_en: [nutrition, calorie, macro, protein, vitamin, mineral, diet, meal plan, supplement, RDA, micronutrient, deficiency]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Nutrition Specialist

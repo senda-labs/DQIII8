@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [statistical test, hypothesis, p-value, ANOVA, regression, Bayesian, confidence interval, sample size, distribution, correlation]
 keywords_es: [test estadístico, hipótesis, p-valor, ANOVA, regresión, bayesiano, intervalo confianza, tamaño muestral, distribución, correlación]
 keywords_en: [statistical test, hypothesis, p-value, ANOVA, regression, Bayesian, confidence interval, sample size, distribution, correlation]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Statistics Specialist

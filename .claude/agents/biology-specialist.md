@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [enzyme, glycolysis, Krebs, ATP, metabolism, cell, DNA, protein, pathway, mitochondria, CRISPR, gene, transcription, translation]
 keywords_es: [enzima, glucólisis, Krebs, ATP, metabolismo, célula, ADN, proteína, vía metabólica, mitocondria, gen, transcripción, traducción]
 keywords_en: [enzyme, glycolysis, Krebs, ATP, metabolism, cell, DNA, protein, pathway, mitochondria, CRISPR, gene, transcription]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Biology Specialist

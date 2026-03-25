@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [prompt engineering, RAG, fine-tuning, chain of thought, few-shot, agent, LLM, embedding, vector, evaluation, BLEU, ROUGE, attention, transformer, inference]
 keywords_es: [prompt engineering, RAG, fine-tuning, cadena pensamiento, agente, LLM, embedding, vector, evaluación, atención, transformer, inferencia]
 keywords_en: [prompt engineering, RAG, fine-tuning, chain of thought, few-shot, agent, LLM, embedding, vector, evaluation, BLEU, ROUGE, attention, transformer]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # AI/ML Specialist

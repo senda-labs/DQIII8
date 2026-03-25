@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [translate, translation, false friend, rhetoric, register, formal, linguistics, calque, adaptation, localization, tone, style, paraphrase]
 keywords_es: [traducir, traducción, false friend, retórica, registro, formal, lingüística, calco, adaptación, localización, tono, estilo, paráfrasis]
 keywords_en: [translate, translation, false friend, rhetoric, register, formal, linguistics, calque, adaptation, localization, tone, style, paraphrase]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Language Specialist

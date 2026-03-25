@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [design pattern, SOLID, architecture, microservices, monolith, CI/CD, Docker, 12-factor, clean code, refactor, DDD, hexagonal, event-driven, CQRS]
 keywords_es: [patrón diseño, SOLID, arquitectura, microservicios, monolito, CI/CD, Docker, código limpio, refactorizar, DDD, hexagonal, eventos]
 keywords_en: [design pattern, SOLID, architecture, microservices, monolith, CI/CD, Docker, 12-factor, clean code, refactor, DDD, hexagonal, event-driven]
+tools: ["Read", "Grep", "Glob", "Write", "Edit", "Bash"]
 ---
 
 # Software Specialist

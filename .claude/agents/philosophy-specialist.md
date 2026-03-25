@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [ethics, fallacy, argument, moral, dilemma, Kant, utilitarian, Rawls, virtue, epistemology, ontology, logic, philosophy, deontology, consequentialism]
 keywords_es: [ética, falacia, argumento, moral, dilema, Kant, utilitarismo, virtud, epistemología, ontología, deontología, consecuencialismo, filosofía]
 keywords_en: [ethics, fallacy, argument, moral, dilemma, Kant, utilitarian, Rawls, virtue, epistemology, ontology, deontology, consequentialism, philosophy]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Philosophy Specialist

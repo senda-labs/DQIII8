@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [constant, force, energy, quantum, electromagnetic, thermodynamics, relativity, wavelength, photon, momentum, entropy, Planck]
 keywords_es: [constante, fuerza, energía, cuántica, electromagnético, termodinámica, relatividad, fotón, momento, entropía]
 keywords_en: [constant, force, energy, quantum, electromagnetic, thermodynamics, relativity, photon, momentum, entropy, Planck]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Physics Specialist

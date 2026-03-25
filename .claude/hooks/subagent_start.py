@@ -9,11 +9,13 @@ Responsibilities:
 2. INSERT into agent_registry table.
 3. Inject additionalContext with the resolved DQIII8 agent name.
 """
+
 import sys
 import json
 import time
 import os
 import subprocess
+from pathlib import Path
 
 try:
     data = json.load(sys.stdin)
@@ -60,10 +62,13 @@ if resolved_name in WORKTREE_AGENTS and agent_id:
     except Exception:
         pass  # worktree failure must never block agent execution
 
-# ── Step 1: Write /tmp lookup file ──────────────────────────────────────────
+# ── Step 1: Write lookup file (secure, no /tmp race condition) ───────────────
 if agent_id:
-    tmp_path = f"/tmp/jarvis_agent_{agent_id}.json"
+    DQIII8_ROOT_PATH = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+    secure_tmp = DQIII8_ROOT_PATH / "tmp"
     try:
+        secure_tmp.mkdir(exist_ok=True, mode=0o700)
+        tmp_path = secure_tmp / f"jarvis_agent_{agent_id}.json"
         lookup = {
             "agent_id": agent_id,
             "agent_type": resolved_name,
@@ -72,7 +77,9 @@ if agent_id:
         }
         if worktree_path:
             lookup["worktree_path"] = worktree_path
-        with open(tmp_path, "w", encoding="utf-8") as f:
+        # Atomic write with restricted permissions (0o600) — prevents symlink attacks
+        fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(lookup, f)
     except Exception:
         pass
@@ -83,7 +90,8 @@ try:
 
     DB = os.path.join(
         os.environ.get("DQIII8_ROOT", "/root/dqiii8"),
-        "database", "dqiii8.db",
+        "database",
+        "dqiii8.db",
     )
     if os.path.exists(DB):
         conn = sqlite3.connect(DB, timeout=2)

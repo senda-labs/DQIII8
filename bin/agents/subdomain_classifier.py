@@ -193,8 +193,6 @@ _SUBDOMAINS: dict[str, dict[str, list[str]]] = {
         # Role: "expert in distributed_systems" is more accurate than "expert in social_sciences".
         "distributed_systems": [
             "cap theorem",
-            "consistency",
-            "availability",
             "partition tolerance",
             "consensus",
             "raft",
@@ -202,7 +200,6 @@ _SUBDOMAINS: dict[str, dict[str, list[str]]] = {
             "eventual consistency",
             "distributed",
             "fault tolerance",
-            "replication",
         ],
         "marketing": [
             "seo",

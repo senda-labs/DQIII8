@@ -1,5 +1,5 @@
 """
-Intent Amplifier v1
+Intent Amplifier v2
 ===================
 6-phase pipeline that enriches a raw user prompt with domain knowledge,
 intent pattern analysis, and morphological decomposition before it reaches
@@ -12,6 +12,11 @@ Phases:
   4. Knowledge retrieval — pull top-k chunks from domain index
   5. Prompt construction — build amplified prompt
   6. Tier selection — route to cheapest tier that can handle the task
+
+New in v2 (2026-03-25):
+  - Confidence gate (Phase 4.6): blocks irrelevant chunks before prompt construction
+  - CoT detection: formula/derivation queries get step-by-step instruction in Tier B
+  - Subdomain classification: role assignment uses specific subdomain labels
 
 Usage:
     from intent_amplifier import amplify
@@ -391,7 +396,7 @@ _COT_SIGNALS = frozenset(
         "why does",
         "explain how",
         "walk me through",
-        "formula",
+        " formula",
         "calculate",
         "computation",
         "algorithm for",
@@ -689,16 +694,18 @@ def amplify(
 
     Returns:
         {
-          'original':  str,
-          'amplified': str,
-          'action':    str,
-          'entity':    str,
-          'niche':     str,
-          'intent':    str,
-          'domains':   list[dict],
-          'tier':      int,
+          'original':   str,
+          'amplified':  str,
+          'action':     str,
+          'entity':     str,
+          'niche':      str,
+          'intent':     str,
+          'domains':    list[dict],
+          'tier':       int,
           'tier_label': str,
           'chunks_used': int,
+          'subdomain':  str,   # specific subdomain used for role assignment
+          'routing':    dict | None,  # hierarchical routing result (None if not used)
         }
     """
     t0 = time.time()

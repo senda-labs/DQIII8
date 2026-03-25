@@ -12,9 +12,12 @@ Public API:
     search_facts(query_text, top_k, domain, as_of)         → list[dict]  (text LIKE)
     add_relation(subject, predicate, object, domain, source_episode_id) → relation_id
     invalidate_fact(fact_id, reason_fact_id)
+    compute_relevance(item_id, item_type, query_time)      → float
+    log_access(item_id, item_type, query_text, session_id)
 """
 
 import json
+import math
 import os
 import sqlite3
 from datetime import datetime, timezone
@@ -304,6 +307,128 @@ def query_relations(
     with _conn() as conn:
         rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
+
+
+# ── Relevance scoring ────────────────────────────────────────────────────────
+
+
+def compute_relevance(
+    item_id: int,
+    item_type: str = "fact",
+    query_time: str | None = None,
+) -> float:
+    """
+    Compute a relevance score ∈ [0, 1] for a fact or knowledge chunk.
+
+    Formula: (recency * 0.4 + frequency * 0.3 + confidence * 0.3) * contradiction
+
+    Components:
+      recency      exp(-0.03 * age_days)           — decays over ~33 days
+      frequency    min(1.0, access_count / 10)     — from fact_access_log
+      confidence   fact.confidence or 1.0 (chunks)
+      contradiction
+        - facts:  0.1 if superseded (valid_until IS NOT NULL), 1.0 if current
+        - chunks: always 1.0
+
+    item_type: "fact" | "chunk"
+    query_time: ISO string for age calculation (defaults to now)
+    """
+    now_dt = (
+        datetime.fromisoformat(query_time) if query_time else datetime.now(timezone.utc)
+    )
+
+    with _conn() as conn:
+        if item_type == "fact":
+            row = conn.execute(
+                "SELECT valid_from, valid_until, confidence, entity, predicate, domain "
+                "FROM facts WHERE id = ?",
+                (item_id,),
+            ).fetchone()
+            if row is None:
+                return 0.0
+
+            # Recency
+            try:
+                ts = datetime.fromisoformat(str(row["valid_from"]).replace(" ", "T"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age_days = max(
+                    0.0,
+                    (now_dt.replace(tzinfo=timezone.utc) - ts).total_seconds() / 86400,
+                )
+            except Exception:
+                age_days = 0.0
+            recency = math.exp(-0.03 * age_days)
+
+            # Confidence
+            confidence = float(row["confidence"] or 1.0)
+
+            # Contradiction: 0.1 if superseded, 1.0 if still valid
+            contradiction = 0.1 if row["valid_until"] is not None else 1.0
+
+            # Frequency: count accesses from fact_access_log
+            access_count = conn.execute(
+                "SELECT COUNT(*) FROM fact_access_log WHERE fact_id = ?",
+                (item_id,),
+            ).fetchone()[0]
+            frequency = min(1.0, access_count / 10.0)
+
+        else:  # chunk
+            row = conn.execute(
+                "SELECT indexed_at FROM vector_chunks WHERE id = ?",
+                (item_id,),
+            ).fetchone()
+            if row is None:
+                return 0.0
+
+            # Recency
+            try:
+                ts = datetime.fromisoformat(str(row["indexed_at"]).replace(" ", "T"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age_days = max(
+                    0.0,
+                    (now_dt.replace(tzinfo=timezone.utc) - ts).total_seconds() / 86400,
+                )
+            except Exception:
+                age_days = 0.0
+            recency = math.exp(-0.03 * age_days)
+
+            confidence = 1.0
+            contradiction = 1.0  # curated knowledge — no supersession concept
+
+            # Frequency: count chunk accesses stored with access_type='chunk_search'
+            access_count = conn.execute(
+                "SELECT COUNT(*) FROM fact_access_log "
+                "WHERE fact_id = ? AND access_type = 'chunk_search'",
+                (item_id,),
+            ).fetchone()[0]
+            frequency = min(1.0, access_count / 10.0)
+
+    return (recency * 0.4 + frequency * 0.3 + confidence * 0.3) * contradiction
+
+
+def log_access(
+    item_id: int,
+    item_type: str = "fact",
+    query_text: str = "",
+    session_id: str | None = None,
+) -> None:
+    """
+    Log an access to a fact or knowledge chunk in fact_access_log.
+    item_type: "fact" (access_type='fact_search') | "chunk" (access_type='chunk_search')
+    FK enforcement is off by default in SQLite — chunk IDs are stored safely in fact_id.
+    """
+    access_type = "fact_search" if item_type == "fact" else "chunk_search"
+    try:
+        with _conn() as conn:
+            conn.execute(
+                "INSERT INTO fact_access_log "
+                "(fact_id, session_id, query_text, access_type) VALUES (?, ?, ?, ?)",
+                (item_id, session_id, query_text or None, access_type),
+            )
+    except Exception:
+        pass  # access logging is non-critical — never block callers
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

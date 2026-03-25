@@ -1079,21 +1079,47 @@ _CC_RATE: dict[str, list[float]] = {}
 _CC_MAX_PER_HOUR = 10
 _CC_BLACKLIST = frozenset(
     {
+        # Destructive file operations
         "rm -rf",
         "rm -r",
-        "drop table",
-        "drop database",
+        "rm -f",
+        "rmdir",
+        "shred",
+        "> /dev/",
+        # Git destructive
         "force-push",
         "--force",
         "-f origin",
-        "format c",
-        "> /dev/",
+        # Database destructive
+        "drop table",
+        "drop database",
         "truncate",
-        "shred",
-        "delete",
+        # Windows destructive
+        "format c",
+        # Credential / secret access
         ".env",
         "credentials",
         "token",
+        "cat /etc",
+        "cat .env",
+        "cat /root",
+        # Exfiltration
+        "wget",
+        "curl http",
+        "curl https",
+        # Permission escalation
+        "chmod",
+        "chown",
+        "sudo",
+        # Code execution / injection
+        "eval(",
+        "exec(",
+        "__import__",
+        # Shell injection vectors
+        "`",
+        "$(",
+        # Delete keyword (catches "delete from", "delete table", etc.)
+        "delete",
     }
 )
 

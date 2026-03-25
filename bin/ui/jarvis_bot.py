@@ -958,6 +958,9 @@ async def cmd_research_status(
 
 async def cmd_sandbox_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Runs sandbox_tester.py --process-queue in background."""
+    if not authorized(update):
+        await update.message.reply_text("Unauthorized.")
+        return
     await update.message.reply_text("[DQIII8] Launching sandbox tester...")
     result = subprocess.run(
         [sys.executable, str(JARVIS / "bin" / "sandbox_tester.py"), "--process-queue"],
@@ -972,6 +975,9 @@ async def cmd_sandbox_run(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def _handle_integrar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Marks a research item as INTEGRADO. Usage: /integrar_<id>"""
+    if not authorized(update):
+        await update.message.reply_text("Unauthorized.")
+        return
     text = update.message.text or ""
     m = re.match(r"/integrar[_\s]+(\d+)", text)
     if not m:
@@ -987,6 +993,9 @@ async def _handle_integrar(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def _handle_rechazar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Marks a research item as RECHAZADO. Usage: /rechazar_<id>"""
+    if not authorized(update):
+        await update.message.reply_text("Unauthorized.")
+        return
     text = update.message.text or ""
     m = re.match(r"/rechazar[_\s]+(\d+)", text)
     if not m:
@@ -1004,6 +1013,9 @@ async def _handle_rechazar(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def _handle_aprobar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Approves a Sleep Mode permission request. Usage: /aprobar_<id>"""
+    if not authorized(update):
+        await update.message.reply_text("Unauthorized.")
+        return
     text = update.message.text or ""
     m = re.match(r"/aprobar[_\s]+([0-9a-f]+)", text)
     if not m:
@@ -1019,6 +1031,9 @@ async def _handle_aprobar(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def _handle_denegar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Denies a Sleep Mode permission request. Usage: /denegar_<id>"""
+    if not authorized(update):
+        await update.message.reply_text("Unauthorized.")
+        return
     text = update.message.text or ""
     m = re.match(r"/denegar[_\s]+([0-9a-f]+)", text)
     if not m:
@@ -1163,7 +1178,7 @@ def _cc_rate_ok(chat_id: str) -> bool:
         return True
     except Exception as _exc:
         log.warning("_cc_rate_ok DB error: %s", _exc)
-        return True  # Fail-open: DB errors don't block legitimate usage
+        return False  # Fail-closed: DB errors block /cc to prevent unlimited API usage
 
 
 def _cc_sanitize(prompt: str) -> str:

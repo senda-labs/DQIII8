@@ -4,11 +4,16 @@ DQIII8 — SQLite MCP wrapper
 Expone dqiii8.db como MCP server stdio para Claude Code.
 Uso: python sqlite_mcp.py [ruta_a_db]
 """
+
 import sys, json, sqlite3, os
 from pathlib import Path
 
-DB_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else \
-          Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "database" / "dqiii8.db"
+DB_PATH = (
+    Path(sys.argv[1])
+    if len(sys.argv) > 1
+    else Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "database" / "dqiii8.db"
+)
+
 
 def respond(id_, result=None, error=None):
     out = {"jsonrpc": "2.0", "id": id_}
@@ -18,47 +23,84 @@ def respond(id_, result=None, error=None):
         out["result"] = result
     print(json.dumps(out), flush=True)
 
+
 def handle(req):
     method = req.get("method", "")
     params = req.get("params", {})
-    id_    = req.get("id")
+    id_ = req.get("id")
 
     if method == "initialize":
-        respond(id_, {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {}},
-            "serverInfo": {"name": "dqiii8-sqlite", "version": "1.0"}
-        })
+        respond(
+            id_,
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "dqiii8-sqlite", "version": "1.0"},
+            },
+        )
 
     elif method == "tools/list":
-        respond(id_, {"tools": [
-            {"name": "query",
-             "description": "Execute a read-only SQL query on dqiii8.db",
-             "inputSchema": {
-                 "type": "object",
-                 "properties": {"sql": {"type": "string"}},
-                 "required": ["sql"]
-             }},
-            {"name": "execute",
-             "description": "Execute a write SQL statement (INSERT/UPDATE)",
-             "inputSchema": {
-                 "type": "object",
-                 "properties": {"sql": {"type": "string"},
-                                "params": {"type": "array"}},
-                 "required": ["sql"]
-             }}
-        ]})
+        respond(
+            id_,
+            {
+                "tools": [
+                    {
+                        "name": "query",
+                        "description": "Execute a read-only SQL query on dqiii8.db",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {"sql": {"type": "string"}},
+                            "required": ["sql"],
+                        },
+                    },
+                    {
+                        "name": "execute",
+                        "description": "Execute a write SQL statement (INSERT/UPDATE)",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "sql": {"type": "string"},
+                                "params": {"type": "array"},
+                            },
+                            "required": ["sql"],
+                        },
+                    },
+                ]
+            },
+        )
 
     elif method == "tools/call":
-        tool   = params.get("name")
-        args   = params.get("arguments", {})
-        sql    = args.get("sql", "")
-        p      = args.get("params", [])
+        tool = params.get("name")
+        args = params.get("arguments", {})
+        sql = args.get("sql", "")
+        p = args.get("params", [])
+
+        # Validate SQL before execution
+        sql_stripped = sql.strip()
+        sql_upper = sql_stripped.upper()
+
+        # Length limit
+        if len(sql_stripped) > 1000:
+            respond(id_, error="SQL too long (max 1000 chars).")
+            return
+
+        # No multi-statement (prevents UNION-chained writes or stacked queries)
+        if ";" in sql_stripped.rstrip(";"):
+            respond(id_, error="Multi-statement SQL not allowed.")
+            return
 
         # Block destructive operations
-        sql_upper = sql.strip().upper()
-        if any(sql_upper.startswith(w) for w in ("DROP","DELETE","TRUNCATE","ALTER")):
-            respond(id_, error="Destructive SQL blocked. Use SELECT, INSERT, UPDATE only.")
+        if any(
+            sql_upper.startswith(w) for w in ("DROP", "DELETE", "TRUNCATE", "ALTER")
+        ):
+            respond(
+                id_, error="Destructive SQL blocked. Use SELECT, INSERT, UPDATE only."
+            )
+            return
+
+        # query tool: SELECT only
+        if tool == "query" and not sql_upper.startswith("SELECT"):
+            respond(id_, error="query tool only accepts SELECT statements.")
             return
 
         try:
@@ -67,11 +109,21 @@ def handle(req):
             if tool == "query":
                 rows = conn.execute(sql, p).fetchall()
                 data = [dict(r) for r in rows]
-                respond(id_, {"content": [{"type":"text","text":json.dumps(data,indent=2)}]})
+                respond(
+                    id_,
+                    {"content": [{"type": "text", "text": json.dumps(data, indent=2)}]},
+                )
             elif tool == "execute":
                 cur = conn.execute(sql, p)
                 conn.commit()
-                respond(id_, {"content": [{"type":"text","text":f"Rows affected: {cur.rowcount}"}]})
+                respond(
+                    id_,
+                    {
+                        "content": [
+                            {"type": "text", "text": f"Rows affected: {cur.rowcount}"}
+                        ]
+                    },
+                )
             conn.close()
         except Exception as e:
             respond(id_, error=str(e))
@@ -81,6 +133,7 @@ def handle(req):
 
     else:
         respond(id_, error=f"Method not found: {method}")
+
 
 # ── Main loop ───────────────────────────────────────────────────────
 for line in sys.stdin:
@@ -93,5 +146,13 @@ for line in sys.stdin:
     except json.JSONDecodeError:
         pass
     except Exception as e:
-        print(json.dumps({"jsonrpc":"2.0","id":None,
-                          "error":{"code":-32700,"message":str(e)}}), flush=True)
+        print(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": str(e)},
+                }
+            ),
+            flush=True,
+        )

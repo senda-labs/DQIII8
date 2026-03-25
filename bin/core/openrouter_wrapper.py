@@ -364,7 +364,8 @@ def load_agent_system_prompt(agent_name: str, prompt: str = "") -> str:
                         file=sys.stderr,
                     )
                     return result["system_prompt"]
-        except Exception:
+        except Exception as _exc:
+            log.warning("system_prompt extraction failed: %s", _exc)
             pass  # fall through to MD body on any error
 
     return body.strip()
@@ -527,10 +528,12 @@ def log_to_db(
                     ),
                 )
                 conn.commit()
-            except Exception:
+            except Exception as _exc:
+                log.warning("DB log write failed (action_id=%s): %s", None, _exc)
                 pass  # fail-open, never block the pipeline
         conn.close()
-    except Exception:
+    except Exception as _exc:
+        log.warning("DB logging block failed: %s", _exc)
         pass  # Fail-open: failure must not break pipeline
 
 
@@ -731,7 +734,8 @@ def main() -> None:
         else:
             _wm = None
             _session_id = None
-    except Exception:
+    except Exception as _exc:
+        log.warning("working_memory load failed: %s", _exc)
         _wm = None
         _session_id = None
 
@@ -812,7 +816,8 @@ def main() -> None:
                                 file=sys.stderr,
                             )
                             _chunks = []
-                except Exception:
+                except Exception as _exc:
+                    log.warning("confidence gate failed: %s", _exc)
                     pass  # gate failure → keep chunks (fail open)
 
                 # Step 3: amplify ORIGINAL prompt with pre-fetched domain + chunks
@@ -860,7 +865,8 @@ def main() -> None:
                         f"(domain={_routing_domain})",
                         file=sys.stderr,
                     )
-        except Exception:
+        except Exception as _exc:
+            log.warning("selector/enricher failed: %s", _exc)
             pass  # selector failure → continue with default system prompt
 
     # Resolver proveedor y modelo
@@ -924,7 +930,8 @@ def main() -> None:
             _session_ctx = _wm.get_session_context(_session_id, max_exchanges=3)
             if _session_ctx:
                 prompt = _session_ctx[:2000] + "\n\n" + prompt
-        except Exception:
+        except Exception as _exc:
+            log.warning("working_memory session context failed: %s", _exc)
             pass  # fail-open
 
     # Intentar cada proveedor en orden
@@ -957,7 +964,8 @@ def main() -> None:
                     _wm.save_exchange(
                         _session_id, _original_prompt, text[:300], _enriched_domain
                     )
-                except Exception:
+                except Exception as _exc:
+                    log.warning("working_memory save_exchange failed: %s", _exc)
                     pass  # fail-open
             sys.exit(0)
 
@@ -1010,7 +1018,8 @@ def get_recommendation(task_type: str) -> tuple[str, float, int]:
             (task_type,),
         ).fetchall()
         conn.close()
-    except Exception:
+    except Exception as _exc:
+        log.warning("routing_feedback query failed: %s", _exc)
         rows = []
 
     if rows:

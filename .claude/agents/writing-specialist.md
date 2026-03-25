@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [story, chapter, novel, screenplay, narrative, character, plot, scene, dialogue, fiction, non-fiction, copywriting, draft, prose, worldbuilding]
 keywords_es: [historia, capítulo, novela, guión, narrativa, personaje, trama, escena, diálogo, ficción, no ficción, redacción, borrador, prosa, construcción mundo]
 keywords_en: [story, chapter, novel, screenplay, narrative, character, plot, scene, dialogue, fiction, non-fiction, copywriting, draft, prose, worldbuilding]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Writing Specialist

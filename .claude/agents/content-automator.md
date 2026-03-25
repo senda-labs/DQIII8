@@ -1,6 +1,7 @@
 ---
 name: content-automator
 model: ollama:qwen2.5-coder:7b
+tools: ["Read", "Grep", "Glob", "Write", "Edit", "Bash"]
 ---
 
 # Agent: content-automator

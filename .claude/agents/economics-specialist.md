@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [GDP, inflation, Phillips, IS-LM, multiplier, monetary policy, fiscal, interest rate, exchange rate, Taylor rule, macro, microeconomics, elasticity, game theory, welfare]
 keywords_es: [PIB, inflación, Phillips, IS-LM, multiplicador, política monetaria, fiscal, tipo interés, tipo cambio, macro, microeconomía, elasticidad, teoría juegos, bienestar]
 keywords_en: [GDP, inflation, Phillips, IS-LM, multiplier, monetary policy, fiscal, interest rate, exchange rate, Taylor rule, macro, elasticity, game theory, welfare]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Economics Specialist

@@ -1,6 +1,7 @@
 ---
 name: git-specialist
 model: ollama:qwen2.5-coder:7b
+tools: ["Read", "Grep", "Glob", "Bash"]
 ---
 
 # Git Specialist

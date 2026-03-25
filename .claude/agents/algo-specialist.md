@@ -5,6 +5,7 @@ model: ollama/qwen2.5-coder:7b
 triggers: [complexity, Big-O, algorithm, data structure, sorting, graph, dynamic programming, NP, amortized, hash, tree, heap]
 keywords_es: [complejidad, Big-O, algoritmo, estructura datos, ordenación, grafo, programación dinámica, árbol, cola prioridad]
 keywords_en: [complexity, Big-O, algorithm, data structure, sorting, graph, dynamic programming, NP, amortized, hash, tree]
+tools: ["Read", "Grep", "Glob", "Write", "Edit", "Bash"]
 ---
 
 # Algorithm Specialist

@@ -1,6 +1,7 @@
 ---
 name: research-analyst
 model: groq/llama-3.3-70b-versatile
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Research Analyst

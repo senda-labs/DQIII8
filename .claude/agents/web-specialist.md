@@ -5,6 +5,7 @@ model: ollama/qwen2.5-coder:7b
 triggers: [HTTP, REST, API, GraphQL, JWT, OAuth, WebSocket, status code, endpoint, CORS, CSP, frontend, backend, React, TypeScript, CSS, HTML]
 keywords_es: [HTTP, REST, API, GraphQL, JWT, OAuth, WebSocket, código estado, endpoint, frontend, backend, React, TypeScript, CSS, HTML]
 keywords_en: [HTTP, REST, API, GraphQL, JWT, OAuth, WebSocket, status code, endpoint, CORS, CSP, frontend, backend, React, TypeScript]
+tools: ["Read", "Grep", "Glob", "Write", "Edit", "Bash"]
 ---
 
 # Web Specialist

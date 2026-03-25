@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [convergence, Newton, numerical, derivative, integral, matrix, eigenvalue, optimization, calculus, algebra, proof, theorem]
 keywords_es: [convergencia, derivada, integral, matriz, optimización, cálculo, álgebra, teorema, demostración]
 keywords_en: [convergence, derivative, integral, matrix, optimization, calculus, algebra, theorem, proof]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Math Specialist Agent

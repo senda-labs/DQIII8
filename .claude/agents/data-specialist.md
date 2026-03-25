@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [SQL, window function, CTE, index, normalization, query, database, ETL, pipeline, PostgreSQL, schema, partitioning, pandas, dbt, data warehouse]
 keywords_es: [SQL, window function, CTE, índice, normalización, consulta, base datos, pipeline, esquema, particionamiento, almacén datos]
 keywords_en: [SQL, window function, CTE, index, normalization, query, database, ETL, pipeline, PostgreSQL, schema, partitioning, data warehouse]
+tools: ["Read", "Grep", "Glob", "Write", "Edit", "Bash"]
 ---
 
 # Data Specialist

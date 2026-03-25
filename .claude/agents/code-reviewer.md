@@ -2,6 +2,7 @@
 name: code-reviewer
 model: openrouter/openai/gpt-oss-120b:free
 isolation: worktree
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Code Reviewer

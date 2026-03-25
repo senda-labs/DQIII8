@@ -5,6 +5,7 @@ model: groq/llama-3.3-70b-versatile
 triggers: [formal proof, set theory, computability, Turing, Gödel, propositional, predicate, inference, axiom, decidability]
 keywords_es: [prueba formal, teoría conjuntos, computabilidad, Turing, proposicional, predicado, inferencia, axioma, decidibilidad]
 keywords_en: [formal proof, set theory, computability, Turing, propositional, predicate, inference, axiom, decidability]
+tools: ["Read", "Grep", "Glob"]
 ---
 
 # Logic Specialist

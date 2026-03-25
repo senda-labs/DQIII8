@@ -604,3 +604,27 @@ def test_subdomain_classification_philosophy():
 
     sd = classify_subdomain("compare Stoic and Epicurean ethics", "humanities_arts")
     assert sd == "philosophy", f"Stoic/Epicurean must map to philosophy, got {sd!r}"
+
+
+def test_domain_lens_uses_subdomain_for_wacc():
+    """domain_lens system prompt must reference 'corporate finance' for WACC queries."""
+    from domain_lens import get_domain_lens
+
+    result = get_domain_lens("calculate WACC for Tesla", domain="social_sciences")
+    sp = result["system_prompt"].lower()
+    assert "corporate finance" in sp, (
+        f"system_prompt should reference subdomain 'corporate finance' for WACC. "
+        f"Got: {result['system_prompt'][:300]}"
+    )
+
+
+def test_domain_lens_uses_subdomain_for_algorithms():
+    """domain_lens system prompt must reference 'algorithms' for complexity queries."""
+    from domain_lens import get_domain_lens
+
+    result = get_domain_lens("time complexity of merge sort", domain="formal_sciences")
+    sp = result["system_prompt"].lower()
+    assert "algorithm" in sp, (
+        f"system_prompt should reference subdomain 'algorithms'. "
+        f"Got: {result['system_prompt'][:300]}"
+    )

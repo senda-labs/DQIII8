@@ -84,6 +84,15 @@ OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 OLLAMA_ENDPOINT = "http://localhost:11434/v1/chat/completions"
 
+# ── Provider → model_tier (for build_structured_context) ─────────────────────
+PROVIDER_TIER: dict[str, str] = {
+    "ollama": "small",
+    "groq": "medium",
+    "github": "medium",
+    "anthropic": "large",
+    "openrouter": "medium",
+}
+
 # ── Rate limits (seconds between consecutive calls per provider) ─────────────
 RATE_LIMITS: dict[str, float] = {
     "github": 60.0,  # 1 req/min free tier
@@ -366,7 +375,7 @@ _AGENTS_PATH = str(ROOT / "bin" / "agents")
 
 
 def _try_enrich(
-    prompt: str, domain: str
+    prompt: str, domain: str, model_tier: str = "medium"
 ) -> tuple[str, str | None, str | None, str | None]:
     """Call domain_lens enricher for dq=1 mode.
 
@@ -377,7 +386,7 @@ def _try_enrich(
         if _AGENTS_PATH not in sys.path:
             sys.path.insert(0, _AGENTS_PATH)
         from domain_lens import get_domain_lens  # type: ignore
-        from knowledge_enricher import get_relevant_chunks  # type: ignore
+        from knowledge_enricher import build_structured_context, get_relevant_chunks  # type: ignore
 
         lens = get_domain_lens(prompt, domain)
         chunks = get_relevant_chunks(prompt, domain)
@@ -389,7 +398,19 @@ def _try_enrich(
             ]
         )
         scores_json = json.dumps([round(c.get("score", 0.0), 4) for c in chunks])
-        enriched = f"[domain={domain} chunks={len(chunks)}] {prompt}"
+
+        context_block, ctx_method = build_structured_context(chunks, model_tier, domain)
+        if context_block:
+            enriched = f"{context_block}\n\n[QUESTION]\n{prompt}"
+        else:
+            enriched = f"[domain={domain} chunks={len(chunks)}] {prompt}"
+
+        log.debug(
+            "_try_enrich: tier=%s ctx_method=%s chunks=%d",
+            model_tier,
+            ctx_method,
+            len(chunks),
+        )
         return lens["system_prompt"], enriched, chunks_json, scores_json
     except Exception as exc:
         log.debug("Enrichment unavailable: %s", exc)
@@ -408,9 +429,12 @@ def run_model_on_task(
     chunks_injected: str | None = None
     chunk_scores: str | None = None
 
+    provider = MODELS[model]["provider"]
+    model_tier = PROVIDER_TIER.get(provider, "medium")
+
     if dq_enabled:
         system, enriched_prompt, chunks_injected, chunk_scores = _try_enrich(
-            task["prompt"], task["domain"]
+            task["prompt"], task["domain"], model_tier=model_tier
         )
     else:
         system = ANSWER_SYSTEM

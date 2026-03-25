@@ -27,8 +27,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Similarity threshold for Tier A (frontier) — only inject highly relevant specific data
 _TIER_A_SIM_THRESHOLD = 0.55
-# Minimum similarity floor for Tier B (cloud 70B)
-_TIER_B_FLOOR = 0.30
+# Minimum similarity floor — universal floor applied before tier-specific rules (Rule 3)
+_MIN_SIM_FLOOR = 0.30
 
 
 def should_enrich(
@@ -44,7 +44,9 @@ def should_enrich(
     prompt  : original user prompt (unused in logic, kept for future hooks)
     domain  : classified domain (e.g. 'social_sciences')
     chunks  : list[dict] from get_relevant_chunks() — each has 'text' and 'score'
-    tier    : 1=Tier C (local), 2=Tier B (cloud free), 3=Tier A (paid)
+    tier    : 1=Tier C (local) — always enriches
+              2=Tier B (cloud free) — enriches only if chunks have specific/numerical data
+              3=Tier A (paid) — enriches only if score≥0.55 AND chunks have specific data
     """
     # Rule 1: Tier C always benefits from enrichment (small local model needs context)
     if tier == 1:
@@ -56,7 +58,7 @@ def should_enrich(
 
     # Rule 3: all chunks below relevance floor
     max_score = max(c.get("score", 0.0) for c in chunks)
-    if max_score < _TIER_B_FLOOR:
+    if max_score < _MIN_SIM_FLOOR:
         return False
 
     # Rule 4: Tier B — only enrich when at least one chunk has specific/numerical data

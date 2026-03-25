@@ -49,7 +49,7 @@ def save_exchange(
         )
         conn.commit()
     except Exception:
-        pass
+        pass  # Fail-open: failure must not break pipeline
     finally:
         conn.close()
 

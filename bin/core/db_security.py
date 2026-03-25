@@ -7,6 +7,8 @@ import stat
 import subprocess
 from pathlib import Path
 
+import logging
+log = logging.getLogger(__name__)
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = JARVIS / "database" / "dqiii8.db"
 
@@ -58,8 +60,8 @@ def verify_no_secrets_in_repo():
                     issues.append(
                         f"ALERT: {f} contains potential secret matching {pattern[:20]}..."
                     )
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning('%s: %s', __name__, _exc)
 
     if issues:
         print("  SECRETS FOUND IN TRACKED FILES:")

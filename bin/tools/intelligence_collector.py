@@ -28,6 +28,8 @@ from pathlib import Path
 
 import feedparser
 
+import logging
+log = logging.getLogger(__name__)
 DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
 DB_PATH = DQIII8_ROOT / "database" / "jarvis_metrics.db"
 SOURCES_PATH = DQIII8_ROOT / "config" / "intelligence_sources.json"
@@ -239,8 +241,8 @@ def classify_item(item, source):
         end = text.rfind("}") + 1
         if start >= 0 and end > start:
             return json.loads(text[start:end])
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning('%s: %s', __name__, _exc)
     return {"relevance": "LOW", "action": "monitor", "affects": "none"}
 
 

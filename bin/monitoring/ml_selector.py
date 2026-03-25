@@ -11,6 +11,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import logging
+log = logging.getLogger(__name__)
 DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
 DB_PATH = DQIII8_ROOT / "database" / "jarvis_metrics.db"
 MODEL_PATH = DQIII8_ROOT / "models" / "tier_predictor.pkl"
@@ -54,8 +56,8 @@ def predict_tier(prompt: str) -> int:
                 model = pickle.load(f)
             features = extract_features(prompt)
             return int(model.predict([features])[0])
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning('%s: %s', __name__, _exc)
 
     prompt_lower = prompt.lower()
 

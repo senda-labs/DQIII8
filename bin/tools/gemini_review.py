@@ -13,6 +13,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import logging
+log = logging.getLogger(__name__)
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = JARVIS / "database" / "dqiii8.db"
 REPORTS_DIR = JARVIS / "database" / "audit_reports"
@@ -60,8 +62,8 @@ def get_unreviewed_files() -> list[Path]:
             for (raw,) in rows:
                 if raw and raw.startswith("["):
                     reviewed.update(json.loads(raw))
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning('%s: %s', __name__, _exc)
 
     # .py files modified in git (staged + unstaged + untracked)
     result = subprocess.run(

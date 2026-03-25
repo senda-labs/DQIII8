@@ -33,9 +33,15 @@ import sys
 from pathlib import Path
 
 JARVIS = Path(__file__).resolve().parent.parent.parent
-for _d in [JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]]:
+for _d in [
+    JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]
+]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
+
+import logging
+
+log = logging.getLogger(__name__)
 
 from paper_harvester import (
     KNOWLEDGE,
@@ -43,7 +49,6 @@ from paper_harvester import (
     search_semantic_scholar,
     summarize_paper_to_knowledge,
 )
-
 
 # ── Core functions ────────────────────────────────────────────────────────────
 
@@ -110,8 +115,7 @@ def verify_claim(claim: str, domain: str) -> dict:
         "claim": claim,
         "status": status,
         "sources": [
-            {"title": p["title"], "url": p.get("source", "")}
-            for p in supporting
+            {"title": p["title"], "url": p.get("source", "")} for p in supporting
         ],
         "confidence": confidence,
     }
@@ -162,8 +166,8 @@ def measure_impact(domain: str, before_chunks: int) -> dict:
     for p in index_paths:
         try:
             after_chunks += len(json.loads(p.read_text(encoding="utf-8")))
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning("%s: %s", __name__, _exc)
 
     delta = after_chunks - before_chunks
     return {

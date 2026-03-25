@@ -270,33 +270,20 @@ def call_model(prompt: str, use_dq: bool = False, agent: str = "default") -> str
 
 
 def call_sonnet(prompt: str) -> str:
-    """Call Sonnet 4.6 directly via Anthropic API."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        log.warning("call_sonnet: no ANTHROPIC_API_KEY — falling back to Groq")
-        return call_model(prompt, use_dq=False, agent="groq")
-
-    url = "https://api.anthropic.com/v1/messages"
-    data = json.dumps(
-        {
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 2000,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-    ).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
-    )
+    """Call Sonnet 4.6 via Claude Code CLI (uses Pro subscription)."""
     try:
-        response = urllib.request.urlopen(req, timeout=60)
-        result = json.loads(response.read())
-        return result["content"][0]["text"][:3000]
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--model", "claude-sonnet-4-20250514"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(DQIII8_ROOT),
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()[:3000]
+        return f"[SONNET_ERROR: {result.stderr[:200]}]"
+    except subprocess.TimeoutExpired:
+        return "[SONNET_TIMEOUT]"
     except Exception as exc:
         log.warning("call_sonnet: %s", exc)
         return f"[SONNET_ERROR: {exc}]"
@@ -495,7 +482,9 @@ def generate_and_send_report(results: dict, report_path: Path) -> None:
     md_path.write_text(report_md, encoding="utf-8")
     print(f"[REPORT] Saved: {md_path}")
 
-    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    bot_token = os.environ.get(
+        "TELEGRAM_BOT_TOKEN", os.environ.get("DQIII8_BOT_TOKEN", "")
+    )
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
 
     if bot_token and chat_id:

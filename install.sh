@@ -28,7 +28,8 @@ if ! command -v python3 &>/dev/null; then
 fi
 PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 ok "Python $PY_VERSION"
-pip install -q -r "$DQIII8_ROOT/requirements.txt" && ok "Python deps installed"
+pip install -q --break-system-packages -r "$DQIII8_ROOT/requirements.txt" 2>/dev/null \
+    || pip install -q -r "$DQIII8_ROOT/requirements.txt" && ok "Python deps installed"
 pip install -q --break-system-packages sqlite-vec 2>/dev/null || pip install -q sqlite-vec 2>/dev/null && ok "sqlite-vec installed"
 _INSTALLED+=("Python deps")
 

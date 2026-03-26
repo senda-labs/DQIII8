@@ -93,14 +93,57 @@ else
     _INSTALLED+=("config/.env (from template)")
 fi
 
-# ── 5. Knowledge index ────────────────────────────────────────────────
-step "5/6 Knowledge indexing"
-if python3 "$DQIII8_ROOT/bin/agents/knowledge_indexer.py" --all 2>&1; then
-    ok "Knowledge base indexed"
-    _INSTALLED+=("Knowledge index")
+# ── 5. Schema + Knowledge index ───────────────────────────────────────
+step "5/6 Database schema + knowledge indexing"
+
+# 5a. Apply schemas (idempotent — all use CREATE TABLE IF NOT EXISTS)
+mkdir -p "$DQIII8_ROOT/database"
+sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema.sql" \
+    && ok "dqiii8.db: schema.sql applied" \
+    || warn "schema.sql had errors (likely already applied)"
+sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_temporal.sql" \
+    && ok "dqiii8.db: schema_temporal.sql applied" \
+    || warn "schema_temporal.sql had errors"
+sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null \
+    ; ok "dqiii8.db: schema_v2.sql applied (extra tables)"
+sqlite3 "$DQIII8_ROOT/database/jarvis_metrics.db" < "$DQIII8_ROOT/database/schema.sql" \
+    && ok "jarvis_metrics.db: schema.sql applied" \
+    || warn "schema.sql → jarvis_metrics.db had errors"
+_INSTALLED+=("Database schemas")
+
+# 5b. Domain classifier centroids (requires Ollama)
+if python3 "$DQIII8_ROOT/bin/agents/domain_classifier.py" --setup 2>&1; then
+    ok "Domain classifier centroids ready"
+    _INSTALLED+=("Domain centroids")
 else
-    warn "Knowledge indexing failed — check that Ollama is running (ollama serve)"
-    _MISSING+=("Knowledge index (run: python3 bin/agents/knowledge_indexer.py --all)")
+    warn "Domain centroids failed — keyword-only fallback active"
+    _MISSING+=("Domain centroids (run: python3 bin/agents/domain_classifier.py --setup)")
+fi
+
+# 5c. Knowledge indexing — one domain at a time (requires Ollama)
+INDEX_OK=1
+for DOMAIN in formal_sciences natural_sciences social_sciences humanities_arts applied_sciences; do
+    if python3 "$DQIII8_ROOT/bin/agents/knowledge_indexer.py" --domain "$DOMAIN" 2>&1; then
+        ok "  domain $DOMAIN indexed"
+    else
+        warn "  domain $DOMAIN indexing failed — check Ollama is running"
+        INDEX_OK=0
+    fi
+done
+
+# 5d. Migrate JSON index files → sqlite-vec (vector_chunks table)
+if python3 "$DQIII8_ROOT/bin/agents/vector_store.py" --migrate 2>&1; then
+    ok "sqlite-vec migration complete"
+    _INSTALLED+=("Vector store")
+else
+    warn "vector_store migration failed — hybrid search will be limited"
+    _MISSING+=("Vector store (run: python3 bin/agents/vector_store.py --migrate)")
+fi
+
+if [[ $INDEX_OK -eq 1 ]]; then
+    _INSTALLED+=("Knowledge index (all 5 domains)")
+else
+    _MISSING+=("Knowledge index (run per domain: python3 bin/agents/knowledge_indexer.py --domain <name>)")
 fi
 
 # ── 6. Smoke tests ────────────────────────────────────────────────────

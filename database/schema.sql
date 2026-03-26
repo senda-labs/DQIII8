@@ -294,6 +294,18 @@ CREATE TABLE IF NOT EXISTS domain_enrichment (
     updated_at  TEXT    DEFAULT (datetime('now'))
 );
 
+-- ── Working memory (session-level context) ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS session_memory (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT    NOT NULL,
+    role        TEXT    NOT NULL CHECK(role IN ('user', 'assistant')),
+    content     TEXT    NOT NULL,
+    domain      TEXT,
+    timestamp   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_memory_sid ON session_memory(session_id, timestamp);
+
 -- ── Learning metrics (per-session aggregate) ──────────────────────────────
 CREATE TABLE IF NOT EXISTS learning_metrics (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,

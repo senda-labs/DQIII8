@@ -31,7 +31,6 @@ from domain_classifier import classify_domain
 from knowledge_enricher import enrich_with_knowledge
 from intent_amplifier import amplify
 import openrouter_wrapper
-import ollama_wrapper
 from db import get_db, query
 from embeddings import get_embedding
 
@@ -54,7 +53,6 @@ def test_imports():
     assert callable(enrich_with_knowledge)
     assert callable(amplify)
     assert openrouter_wrapper is not None
-    assert ollama_wrapper is not None
     assert callable(get_db)
     assert callable(get_embedding)
 

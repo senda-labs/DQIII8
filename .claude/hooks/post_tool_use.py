@@ -24,7 +24,11 @@ if not agent:
     except Exception:
         agent = "claude-sonnet-4-6"
 # Infer from tool+path if agent looks like a UUID (17 hex chars starting with 'a')
-if len(agent) == 17 and agent[0] == "a" and all(c in "0123456789abcdef" for c in agent[1:]):
+if (
+    len(agent) == 17
+    and agent[0] == "a"
+    and all(c in "0123456789abcdef" for c in agent[1:])
+):
     _fp = inp.get("file_path", inp.get("command", ""))
     if tool in ("Edit", "Write", "MultiEdit") and _fp.endswith(".py"):
         agent = "python-specialist"
@@ -60,7 +64,11 @@ try:
         else:
             success = (
                 0
-                if (resp.get("type") == "error" or resp.get("is_error") or resp.get("error"))
+                if (
+                    resp.get("type") == "error"
+                    or resp.get("is_error")
+                    or resp.get("error")
+                )
                 else 1
             )
         error_msg = (resp.get("stderr") or resp.get("error") or "")[:500]
@@ -81,7 +89,9 @@ try:
         content = inp.get("new_content", inp.get("content", ""))
         bytes_wr = len(content.encode("utf-8", errors="replace")) if content else 0
         # When failing without stderr: log tool + generic reason for audit
-        stored_error = error_msg or (f"{tool} failed (no stderr)" if not success else None)
+        stored_error = error_msg or (
+            f"{tool} failed (no stderr)" if not success else None
+        )
 
         with _get_db(timeout=2) as conn:
             # Find the open action row first (to get its id for error_log FK)
@@ -100,7 +110,15 @@ try:
                     "SET end_time_ms=?, duration_ms=?-COALESCE(start_time_ms,?), "
                     "    success=?, error_message=?, bytes_written=? "
                     "WHERE id=?",
-                    (now_ms, now_ms, now_ms, success, stored_error, bytes_wr, _action_id),
+                    (
+                        now_ms,
+                        now_ms,
+                        now_ms,
+                        success,
+                        stored_error,
+                        bytes_wr,
+                        _action_id,
+                    ),
                 )
             else:
                 conn.execute(
@@ -113,8 +131,25 @@ try:
                         WHERE session_id=? AND tool_used=? AND end_time_ms IS NULL
                         ORDER BY id DESC LIMIT 1)
                 """,
-                    (now_ms, now_ms, now_ms, success, stored_error, bytes_wr, session, tool),
+                    (
+                        now_ms,
+                        now_ms,
+                        now_ms,
+                        success,
+                        stored_error,
+                        bytes_wr,
+                        session,
+                        tool,
+                    ),
                 )
+                # Recover action_id FK after fallback update so error_log links correctly
+                _refetch = conn.execute(
+                    "SELECT id FROM agent_actions "
+                    "WHERE session_id=? AND tool_used=? AND end_time_ms=? "
+                    "ORDER BY id DESC LIMIT 1",
+                    (session, tool, now_ms),
+                ).fetchone()
+                _action_id = _refetch[0] if _refetch else None
 
             if not success:
                 try:
@@ -132,7 +167,10 @@ try:
                         ),
                     )
                 except Exception as _el_err:
-                    print(f"[post_tool_use] error_log INSERT failed: {_el_err}", file=sys.stderr)
+                    print(
+                        f"[post_tool_use] error_log INSERT failed: {_el_err}",
+                        file=sys.stderr,
+                    )
 except Exception:
     pass  # logging fails silently
 
@@ -147,7 +185,9 @@ try:
     _ok = (
         (_exit_c == 0)
         if _exit_c is not None
-        else not (resp.get("type") == "error" or resp.get("is_error") or resp.get("error"))
+        else not (
+            resp.get("type") == "error" or resp.get("is_error") or resp.get("error")
+        )
     )
     _err = (resp.get("stderr") or resp.get("error") or "")[:200]
     _pend: dict = {}
@@ -160,7 +200,10 @@ try:
     _key = f"{agent}|{_fpath}" if _fpath else ""
     if _key:
         if not _ok:
-            _pend[_key] = {"error_type": f"{tool}Error", "error_msg": _err or f"{tool} failed"}
+            _pend[_key] = {
+                "error_type": f"{tool}Error",
+                "error_msg": _err or f"{tool} failed",
+            }
             with open(_PENDING, "w", encoding="utf-8") as _f:
                 json.dump(_pend, _f)
         elif _key in _pend:

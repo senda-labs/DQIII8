@@ -82,7 +82,6 @@ Moved to `bin/archive/` — preserved for reference or future phases.
 | `archive/agents/memory_manager.py` | Memory manager — replaced by memory_decay.py |
 | `archive/tools/handover.py` | **Phase 6B**: needed for stop.py → CLAUDE.md integration |
 | `archive/tools/reconcile_errors.py` | Error reconciler — one-off tool |
-| `archive/tools/setup_wizard.py` | Setup wizard — superseded by install.sh (planned) |
 | `archive/tools/sqlite_mcp.py` | SQLite MCP server — not currently used |
 | `archive/tools/verify_install.py` | **Phase 5**: base for install.sh (public repo) |
 | `archive/ui/interactive_chat.py` | Interactive CLI chat — replaced by jarvis_bot.py |

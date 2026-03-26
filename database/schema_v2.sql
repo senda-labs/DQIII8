@@ -921,3 +921,116 @@ SELECT
     COUNT(*) as samples
 FROM knowledge_benchmark_results
 GROUP BY model, dq_enabled, task_domain;
+
+-- ── Views added for complete fresh-install coverage ───────────────────────────
+
+CREATE VIEW IF NOT EXISTS autonomy_score AS
+SELECT
+    model_tier,
+    COUNT(*) AS total_objectives,
+    SUM(permission_approvals) AS total_approvals,
+    SUM(permission_denials) AS total_denials,
+    SUM(escalations_needed) AS total_escalations,
+    ROUND(100.0 * SUM(permission_approvals) /
+        NULLIF(SUM(permission_approvals) + SUM(permission_denials), 0), 1) AS approval_rate_pct,
+    ROUND(100.0 * SUM(CASE WHEN escalations_needed = 0 THEN 1 ELSE 0 END) / COUNT(*), 1) AS zero_escalation_pct
+FROM code_metrics
+GROUP BY model_tier
+ORDER BY zero_escalation_pct DESC;
+
+CREATE VIEW IF NOT EXISTS knowledge_benchmark_dq_uplift AS
+SELECT
+    b_on.model, b_on.task_domain,
+    ROUND(AVG(b_on.overall_score) - AVG(b_off.overall_score), 2) as score_uplift,
+    ROUND(AVG(b_off.tokens_total) - AVG(b_on.tokens_total), 0) as tokens_saved,
+    ROUND(AVG(b_off.messages_needed) - AVG(b_on.messages_needed), 1) as messages_saved,
+    ROUND(AVG(b_off.hallucination_count) - AVG(b_on.hallucination_count), 1) as hallucinations_reduced
+FROM knowledge_benchmark_results b_on
+JOIN knowledge_benchmark_results b_off
+    ON b_on.task_id = b_off.task_id AND b_on.model = b_off.model
+WHERE b_on.dq_enabled = 1 AND b_off.dq_enabled = 0
+GROUP BY b_on.model, b_on.task_domain;
+
+CREATE VIEW IF NOT EXISTS knowledge_benchmark_summary AS
+SELECT
+    config, model, dq_enabled, task_domain,
+    ROUND(AVG(overall_score), 2) as avg_score,
+    ROUND(AVG(tokens_total), 0) as avg_tokens,
+    ROUND(AVG(time_seconds), 1) as avg_time,
+    ROUND(AVG(messages_needed), 1) as avg_messages,
+    ROUND(AVG(cost_usd), 4) as avg_cost,
+    ROUND(AVG(hallucination_count), 1) as avg_hallucinations,
+    COUNT(*) as n_tasks
+FROM knowledge_benchmark_results
+GROUP BY config, model, dq_enabled, task_domain;
+
+CREATE VIEW IF NOT EXISTS revenue_by_channel AS
+SELECT platform, channel_name, COUNT(*) AS videos_published,
+    SUM(estimated_revenue) AS total_revenue,
+    ROUND(AVG(rpm),2) AS avg_rpm, SUM(views) AS total_views
+FROM video_metrics
+GROUP BY platform, channel_name
+ORDER BY total_revenue DESC;
+
+CREATE VIEW IF NOT EXISTS tier_comparison AS
+SELECT
+    model_tier, renderer,
+    COUNT(*) AS total_runs,
+    ROUND(AVG(lines_of_code), 0) AS avg_lines,
+    ROUND(AVG(cpu_seconds), 2) AS avg_cpu_s,
+    ROUND(AVG(memory_peak_mb), 1) AS avg_ram_mb,
+    ROUND(AVG(cpu_per_megapixel), 3) AS avg_cpu_per_mpx,
+    ROUND(AVG(ssim_score), 4) AS avg_ssim,
+    ROUND(AVG(speedup_vs_python), 2) AS avg_cpp_speedup,
+    SUM(uses_vectorization) AS vectorized_count,
+    SUM(passes_tests) AS tests_passed,
+    ROUND(100.0 * SUM(success) / COUNT(*), 1) AS success_rate_pct
+FROM code_metrics
+GROUP BY model_tier, renderer
+ORDER BY model_tier, renderer;
+
+CREATE VIEW IF NOT EXISTS tier_ranking AS
+SELECT
+    model_tier,
+    COUNT(DISTINCT renderer) AS renderers_completed,
+    ROUND(AVG(lines_of_code), 0) AS avg_lines_per_renderer,
+    ROUND(AVG(cpu_seconds), 2) AS avg_render_time_s,
+    ROUND(AVG(memory_peak_mb), 1) AS avg_memory_mb,
+    ROUND(AVG(ssim_score), 4) AS avg_visual_quality,
+    ROUND(AVG(speedup_vs_python), 2) AS avg_cpp_speedup,
+    ROUND(100.0 * SUM(success) / COUNT(*), 1) AS overall_success_pct,
+    ROUND(
+        (100.0 * SUM(success) / COUNT(*)) * 0.35 +
+        (100.0 - MIN(100, AVG(lines_of_code) / 2.0)) * 0.20 +
+        (100.0 - MIN(100, AVG(cpu_seconds) / 0.3)) * 0.20 +
+        (COALESCE(AVG(ssim_score), 0) * 100) * 0.25
+    , 1) AS composite_score
+FROM code_metrics
+GROUP BY model_tier
+ORDER BY composite_score DESC;
+
+CREATE VIEW IF NOT EXISTS top_performing_content AS
+SELECT mode_narrativo, renderer_used, platform, COUNT(*) AS total_videos,
+    ROUND(AVG(views_7d),0) AS avg_views_7d,
+    ROUND(AVG(retention_rate),2) AS avg_retention,
+    ROUND(AVG(ctr),3) AS avg_ctr,
+    ROUND(AVG(rpm),2) AS avg_rpm,
+    ROUND(AVG(performance_score),1) AS avg_score
+FROM video_metrics
+WHERE views > 0
+GROUP BY mode_narrativo, renderer_used, platform
+ORDER BY avg_score DESC;
+
+CREATE VIEW IF NOT EXISTS visual_convergence AS
+SELECT
+    project, model_tier, renderer,
+    COUNT(*) AS total_iterations,
+    MIN(ssim_score) AS worst_ssim,
+    MAX(ssim_score) AS best_ssim,
+    ROUND(MAX(ssim_score) - MIN(ssim_score), 4) AS ssim_improvement,
+    ssim_trend,
+    MIN(CASE WHEN ssim_score > 0.3 THEN iteration_number END) AS cycles_to_good_quality
+FROM code_metrics
+WHERE ssim_score IS NOT NULL
+GROUP BY project, model_tier, renderer
+ORDER BY best_ssim DESC;

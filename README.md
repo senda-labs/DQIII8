@@ -1,7 +1,7 @@
 <p align="center">
   <h1 align="center">DQIII8</h1>
   <p align="center">
-    <img alt="Tests" src="https://img.shields.io/badge/tests-91%20passing-brightgreen">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-smoke%20suite-brightgreen">
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg">
     <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue">
     <img alt="Platform" src="https://img.shields.io/badge/platform-Ubuntu%2022.04%2B-lightgrey">
@@ -38,6 +38,7 @@ prompt → classify domain → retrieve knowledge → restructure prompt → rou
 |------|----------|------|------|
 | C | Ollama (local) | $0 | Code, debug, git |
 | B | Groq / Together AI (free) | $0 | Research, analysis, writing |
+| B+ | GitHub Models | $0 | Fallback for Groq, long-context code (20K req/mo) |
 | A | Anthropic / OpenAI (paid) | ~$0.01–0.05 | Finance, architecture, multi-step |
 
 The system always picks the cheapest tier that can handle the task.
@@ -49,6 +50,7 @@ The system always picks the cheapest tier that can handle the task.
 - **Ollama** (local, no API key): `qwen2.5-coder:7b`, any Ollama-compatible model
 - **Groq** (free): `llama-3.3-70b-versatile`
 - **Together AI** (free tier): `Llama-3.3-70B-Instruct-Turbo`
+- **GitHub Models** (free, requires `GITHUB_TOKEN`): `deepseek-v3`, `codestral-2501`, `gpt-4o-mini`, `deepseek-r1`, `Llama-3.3-70B-Instruct`
 - **Anthropic**: `claude-sonnet-4-6`, `claude-opus-4-6`
 - **OpenAI**: `gpt-4o`, `gpt-4o-mini`
 - Any OpenAI-compatible endpoint via `OPENROUTER_API_KEY`
@@ -63,6 +65,7 @@ cp config/.env.example config/.env
 ```
 
 At minimum, add a `GROQ_API_KEY` (free at [console.groq.com](https://console.groq.com)) to enable Tier B.
+Add a `GITHUB_TOKEN` ([github.com/settings/tokens](https://github.com/settings/tokens), no scopes needed) to enable Tier B+ (GitHub Models: deepseek-v3, codestral, etc.) and increase GitHub API rate limits.
 Tier C (Ollama local) works with no keys at all.
 
 ---

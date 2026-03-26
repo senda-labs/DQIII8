@@ -167,6 +167,25 @@ else
     _SKIPPED+=("DQIII8_ROOT in ~/.bashrc")
 fi
 
+# ── CLI access — create 'dq' and 'j' commands globally ───────────────
+chmod +x "$DQIII8_ROOT/bin/j.sh"
+if [ ! -L /usr/local/bin/dq ]; then
+    ln -sf "$DQIII8_ROOT/bin/j.sh" /usr/local/bin/dq
+    ok "'dq' command linked to /usr/local/bin/dq"
+    _INSTALLED+=("dq command → /usr/local/bin/dq")
+else
+    ok "'dq' already linked"
+    _SKIPPED+=("dq command already linked")
+fi
+if [ ! -L /usr/local/bin/j ]; then
+    ln -sf "$DQIII8_ROOT/bin/j.sh" /usr/local/bin/j
+    ok "'j' command linked to /usr/local/bin/j"
+    _INSTALLED+=("j command → /usr/local/bin/j")
+else
+    ok "'j' already linked"
+    _SKIPPED+=("j command already linked")
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

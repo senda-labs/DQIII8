@@ -36,8 +36,16 @@ NOW_RUN = 1  # bump to re-run a fresh batch
 # ── Models under test ────────────────────────────────────────────────────────
 MODELS: dict[str, dict] = {
     # GitHub Models (free tier, 60s rate limit)
-    "deepseek-v3-0324": {"provider": "github", "strip_think": False, "domains": None},
-    "deepseek-r1": {"provider": "github", "strip_think": True, "domains": None},
+    "deepseek-v3-0324": {
+        "provider": "github",
+        "strip_think": False,
+        "domains": [],
+    },  # TPD exhausted — re-enable tomorrow
+    "deepseek-r1": {
+        "provider": "github",
+        "strip_think": True,
+        "domains": [],
+    },  # TPD exhausted — re-enable tomorrow
     "llama-3.3-70b-instruct": {
         "provider": "github",
         "strip_think": False,
@@ -49,7 +57,7 @@ MODELS: dict[str, dict] = {
     "qwen2.5-coder:7b": {
         "provider": "ollama",
         "strip_think": False,
-        "domains": ["applied_sciences"],
+        "domains": [],  # Temporarily skipped: CPU timeouts block Groq/GitHub runs
         "dq_modes": [False],  # DQ ON times out on CPU (enriched prompt too long)
     },
     # Groq (30 req/min)
@@ -103,9 +111,9 @@ RATE_LIMITS: dict[str, float] = {
 
 # ── Runs per provider (statistical reliability vs. time budget) ──────────────
 RUNS_PER_PROVIDER: dict[str, int] = {
-    "github": 3,
+    "github": 1,
     "openrouter": 5,
-    "groq": 5,
+    "groq": 1,
     "ollama": 3,
 }
 
@@ -218,7 +226,12 @@ def call_groq(model_id: str, messages: list[dict], max_tokens: int = 800) -> str
         log.warning("GROQ_API_KEY not set — skipping bronze judge")
         return None
     _throttle("groq")
-    return _call_api(GROQ_ENDPOINT, token, model_id, messages, max_tokens)
+    result = _call_api(GROQ_ENDPOINT, token, model_id, messages, max_tokens)
+    if result is None:
+        fallback = _get_env("GROQ_API_KEY_FALLBACK")
+        if fallback:
+            result = _call_api(GROQ_ENDPOINT, fallback, model_id, messages, max_tokens)
+    return result
 
 
 def call_ollama(
@@ -516,7 +529,7 @@ def cmd_run(model_filter: list[str] | None, task_filter: str | None) -> None:
         for model in models:
             cfg = MODELS[model]
             allowed = cfg.get("domains")
-            if allowed and task["domain"] not in allowed:
+            if allowed is not None and task["domain"] not in allowed:
                 print(
                     f"  SKIP {task['task_id']} | {model} — domain {task['domain']} not in {allowed}"
                 )

@@ -337,3 +337,139 @@ FROM objectives
 WHERE model_tier IS NOT NULL
 GROUP BY model_tier, project
 ORDER BY success_rate_pct DESC;
+
+-- ── Tables added for complete fresh-install coverage ──────────────────────────
+
+CREATE TABLE IF NOT EXISTS benchmark_gold_standards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL UNIQUE,
+    domain TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    keywords TEXT NOT NULL,
+    gold_answer TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT 'claude-sonnet-4-6',
+    generated_at TEXT NOT NULL,
+    token_count_estimate INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS benchmark_multimodel_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_number INTEGER NOT NULL DEFAULT 1,
+    task_id TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    model TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    dq_enabled INTEGER NOT NULL DEFAULT 0,
+    answer TEXT,
+    silver_score REAL,
+    bronze_score REAL,
+    avg_score REAL,
+    silver_judge_raw TEXT,
+    bronze_judge_raw TEXT,
+    keyword_hits INTEGER,
+    keyword_total INTEGER,
+    response_time_ms INTEGER,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    think_stripped INTEGER DEFAULT 0,
+    error TEXT,
+    evaluated_at TEXT,
+    enriched_prompt TEXT,
+    chunks_injected TEXT,
+    chunk_scores TEXT,
+    UNIQUE(task_id, model, dq_enabled, run_number)
+);
+
+CREATE TABLE IF NOT EXISTS cc_rate_limit (
+    chat_id TEXT NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    session_id TEXT PRIMARY KEY,
+    created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    role TEXT,
+    content TEXT,
+    created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS chunk_key_facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chunk_hash TEXT NOT NULL UNIQUE,
+    source TEXT NOT NULL,
+    domain TEXT,
+    key_facts TEXT NOT NULL,
+    fact_type TEXT,
+    generated_by TEXT DEFAULT 'llama-3.3-70b',
+    generated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_chunk_key_facts_domain ON chunk_key_facts(domain);
+
+CREATE TABLE IF NOT EXISTS intelligence_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    title TEXT NOT NULL,
+    url TEXT,
+    summary TEXT,
+    relevance TEXT CHECK(relevance IN ('HIGH','MEDIUM','LOW','IGNORE')),
+    action_type TEXT CHECK(action_type IN ('integrate','evaluate','monitor','ignore')),
+    affects TEXT,
+    processed INTEGER DEFAULT 0,
+    chunk_generated INTEGER DEFAULT 0,
+    notified INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_intel_relevance ON intelligence_items(relevance);
+CREATE INDEX IF NOT EXISTS idx_intel_created ON intelligence_items(created_at);
+
+CREATE TABLE IF NOT EXISTS knowledge_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chunk_source TEXT NOT NULL,
+    chunk_text_hash TEXT NOT NULL,
+    domain TEXT,
+    action_success INTEGER,
+    relevance_score REAL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    query TEXT,
+    feedback TEXT,
+    chunks_used INTEGER DEFAULT 0,
+    chunks_relevant INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_ku_source ON knowledge_usage(chunk_source, timestamp);
+
+CREATE TABLE IF NOT EXISTS routing_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_hash TEXT NOT NULL,
+    domain TEXT,
+    tier_used TEXT,
+    model_used TEXT,
+    success INTEGER,
+    duration_ms INTEGER,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_rf_domain ON routing_feedback(domain, tier_used);
+
+CREATE TABLE IF NOT EXISTS security_findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project TEXT NOT NULL,
+    finding_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    category TEXT,
+    severity TEXT CHECK(severity IN ('CRITICAL','HIGH','MEDIUM','LOW')),
+    file_path TEXT,
+    line_number INTEGER,
+    proof TEXT,
+    is_vibe_pattern INTEGER DEFAULT 0,
+    is_kill_chain INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'open' CHECK(status IN ('open','fixed','wontfix','false_positive')),
+    fixed_at DATETIME,
+    cycle_iteration INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_security_severity ON security_findings(severity);
+CREATE INDEX IF NOT EXISTS idx_security_project ON security_findings(project);

@@ -29,6 +29,7 @@ fi
 PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 ok "Python $PY_VERSION"
 pip install -q -r "$DQIII8_ROOT/requirements.txt" && ok "Python deps installed"
+pip install -q --break-system-packages sqlite-vec 2>/dev/null || pip install -q sqlite-vec 2>/dev/null && ok "sqlite-vec installed"
 _INSTALLED+=("Python deps")
 
 # ── 2. Ollama ─────────────────────────────────────────────────────────
@@ -110,6 +111,16 @@ if python3 -m pytest "$DQIII8_ROOT/tests/test_smoke.py" -q 2>&1; then
 else
     warn "Some smoke tests failed — check the output above"
     _MISSING+=("Smoke tests (run: python3 -m pytest tests/test_smoke.py -v)")
+fi
+
+# ── Persist DQIII8_ROOT ───────────────────────────────────────────────
+if ! grep -q "DQIII8_ROOT" ~/.bashrc 2>/dev/null; then
+    echo "export DQIII8_ROOT=$DQIII8_ROOT" >> ~/.bashrc
+    ok "DQIII8_ROOT added to ~/.bashrc"
+    _INSTALLED+=("DQIII8_ROOT in ~/.bashrc")
+else
+    ok "DQIII8_ROOT already in ~/.bashrc"
+    _SKIPPED+=("DQIII8_ROOT in ~/.bashrc")
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────

@@ -90,11 +90,11 @@ def test_intent_amplifier():
 
 
 def test_embeddings():
-    """get_embedding devuelve lista de 768 floats (nomic-embed-text)."""
+    """get_embedding devuelve lista de 1024 floats (bge-m3)."""
     result = get_embedding("test")
     assert result is not None, "get_embedding devolvió None — ¿Ollama corriendo?"
     assert isinstance(result, list), f"esperado list, got {type(result)}"
-    assert len(result) == 768, f"esperado 768 dims, got {len(result)}"
+    assert len(result) == 1024, f"esperado 1024 dims, got {len(result)}"
 
 
 def test_db_connection():

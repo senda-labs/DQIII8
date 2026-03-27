@@ -231,8 +231,8 @@ def test_vector_store_init_and_upsert():
     conn.commit()
     conn.close()
 
-    # Insert a fake 768-dim embedding (all zeros except first element)
-    fake_emb = [0.0] * 768
+    # Insert a fake 1024-dim embedding (all zeros except first element)
+    fake_emb = [0.0] * 1024
     fake_emb[0] = 1.0
     vs.upsert_vector(row_id, fake_emb)
 
@@ -294,7 +294,7 @@ def test_hybrid_search_vector_only():
     # Must call init_vec_table first (uses temp DB via vs_mod.DB_PATH)
     vs_mod.init_vec_table()
 
-    fake_emb = [0.0] * 768
+    fake_emb = [0.0] * 1024
     fake_emb[0] = 1.0
     vs_mod.upsert_vector(row_id, fake_emb)
 

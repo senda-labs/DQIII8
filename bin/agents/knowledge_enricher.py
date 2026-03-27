@@ -359,8 +359,8 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
 _DEMOTE_PENALTY = 0.70  # 30% score reduction for "demote" verdict
 
 
-def _load_health_verdicts() -> dict[str, str]:
-    """Load {chunk_hash → verdict} from chunk_health JOIN vector_chunks.
+def _load_health_verdicts() -> dict[str, dict]:
+    """Load {chunk_hash → {verdict, redundancy}} from chunk_health JOIN vector_chunks.
 
     Returns empty dict if chunk_health has no data (fail-open).
     Uses SHA256(text[:200]) as key — same as _chunk_hash().
@@ -371,14 +371,14 @@ def _load_health_verdicts() -> dict[str, str]:
     try:
         conn = sqlite3.connect(str(db_path), timeout=2)
         rows = conn.execute(
-            "SELECT vc.text, ch.verdict "
+            "SELECT vc.text, ch.verdict, ch.redundancy_score "
             "FROM chunk_health ch JOIN vector_chunks vc ON vc.id = ch.chunk_id"
         ).fetchall()
         conn.close()
-        result: dict[str, str] = {}
-        for text, verdict in rows:
+        result: dict[str, dict] = {}
+        for text, verdict, redundancy in rows:
             h = hashlib.sha256(text[:200].encode("utf-8")).hexdigest()
-            result[h] = verdict
+            result[h] = {"verdict": verdict, "redundancy": redundancy or 0.5}
         return result
     except Exception:
         return {}
@@ -406,7 +406,8 @@ def _filter_and_limit(chunks: list[dict], query: str = "") -> list[dict]:
         # ── Health verdict check ─────────────────────────────────────────
         text = c.get("text", "")
         ch = hashlib.sha256(text[:200].encode("utf-8")).hexdigest() if text else ""
-        verdict = health_map.get(ch, "keep")
+        health = health_map.get(ch, {})
+        verdict = health.get("verdict", "keep") if isinstance(health, dict) else health
 
         if verdict == "archive":
             archived += 1
@@ -423,12 +424,15 @@ def _filter_and_limit(chunks: list[dict], query: str = "") -> list[dict]:
 
         if tr >= _V4_COSINE_THRESHOLD:
             c["_v4_score"] = tr
+            c["_v4_verdict"] = verdict
             relevant.append(c)
         elif raw_score >= _V4_COSINE_THRESHOLD:
             c["_v4_score"] = raw_score
+            c["_v4_verdict"] = verdict
             relevant.append(c)
         elif 0 < raw_score < 0.1 and raw_score >= _V4_RRF_THRESHOLD:
             c["_v4_score"] = raw_score
+            c["_v4_verdict"] = verdict
             relevant.append(c)
 
     if not relevant:
@@ -442,12 +446,51 @@ def _filter_and_limit(chunks: list[dict], query: str = "") -> list[dict]:
     relevant.sort(key=lambda c: c.get("_v4_score", 0), reverse=True)
     top = relevant[:_V4_MAX_CHUNKS]
 
+    # ── Adaptive Retrieval Gate ──────────────────────────────────────────
+    # If ALL passing chunks are demoted, everything we have is redundant
+    if all(c.get("_v4_verdict") == "demote" for c in top):
+        log.info(
+            "Adaptive gate: all %d passing chunks are demoted — skipping",
+            len(top),
+        )
+        return []
+
+    # If no harvested chunks and high average redundancy, LLM already knows this
+    _harvested_prefixes = (
+        "arxiv:",
+        "openalex:",
+        "user:",
+        "pubmed:",
+        "s2:",
+        "hackernews:",
+    )
+    has_harvested = any(
+        any((c.get("source") or "").startswith(p) for p in _harvested_prefixes)
+        for c in top
+    )
+    if not has_harvested and health_map:
+        redundancies = []
+        for c in top:
+            text = c.get("text", "")
+            ch = hashlib.sha256(text[:200].encode("utf-8")).hexdigest() if text else ""
+            h = health_map.get(ch, {})
+            r = h.get("redundancy", 0.5) if isinstance(h, dict) else 0.5
+            redundancies.append(r)
+        avg_r = sum(redundancies) / max(len(redundancies), 1)
+        if avg_r > 0.60:
+            log.info(
+                "Adaptive gate: all legacy, avg_redundancy=%.2f > 0.60 — skipping",
+                avg_r,
+            )
+            return []
+
     log.info(
-        "Enricher v4: %d/%d chunks passed (max=%d, archived=%d)",
+        "Enricher v4: %d/%d chunks passed (max=%d, archived=%d, harvested=%s)",
         len(top),
         len(chunks),
         _V4_MAX_CHUNKS,
         archived,
+        has_harvested,
     )
     return top
 

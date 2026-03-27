@@ -26,6 +26,18 @@ KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
 
 log = logging.getLogger(__name__)
 
+# ── Enricher v4 config ───────────────────────────────────────────────────────
+# SIGIR'24 "The Power of Noise": 3-5 docs optimal, "related but not relevant"
+# docs are MORE harmful than irrelevant ones.
+_ENRICHER_VERSION = os.environ.get("DQ_ENRICHER_VERSION", "v4")
+
+# Thresholds per score type:
+# - task_relevance / cosine scores are in [0, 1] range
+# - RRF scores are in ~[0.001, 0.02] range — NOT comparable
+_V4_COSINE_THRESHOLD = 0.70  # for cosine / task_relevance scores
+_V4_RRF_THRESHOLD = 0.005  # for RRF scores (top results ~0.01-0.02)
+_V4_MAX_CHUNKS = 5  # SIGIR'24 optimal range: 3-5
+
 sys.path.insert(0, str(Path(__file__).parent))
 from embeddings import get_embedding, cosine_similarity
 
@@ -341,6 +353,82 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
         pass  # fail-open, never block enrichment
 
 
+# ── Enricher v4: Relevance Filter (SIGIR'24 "Power of Noise") ────────────────
+
+
+def _filter_and_limit(chunks: list[dict], query: str = "") -> list[dict]:
+    """Filter chunks by relevance score and limit count.
+
+    Handles two score regimes:
+    - task_relevance / cosine: [0, 1] range → threshold _V4_COSINE_THRESHOLD
+    - RRF scores: [0.001, 0.02] range → threshold _V4_RRF_THRESHOLD
+
+    Returns empty list if no chunk passes → caller should skip enrichment.
+    """
+    relevant: list[dict] = []
+    for c in chunks:
+        # Prefer task_relevance (cosine, normalized) over raw score (may be RRF)
+        tr = c.get("task_relevance", 0.0) or 0.0
+        raw_score = c.get("score", 0.0) or 0.0
+
+        if tr >= _V4_COSINE_THRESHOLD:
+            c["_v4_score"] = tr
+            relevant.append(c)
+        elif raw_score >= _V4_COSINE_THRESHOLD:
+            # Raw score is also in cosine range
+            c["_v4_score"] = raw_score
+            relevant.append(c)
+        elif 0 < raw_score < 0.1 and raw_score >= _V4_RRF_THRESHOLD:
+            # RRF range — score is valid but not comparable to cosine
+            c["_v4_score"] = raw_score
+            relevant.append(c)
+
+    if not relevant:
+        log.info(
+            "Enricher v4: 0/%d chunks above threshold — skipping enrichment",
+            len(chunks),
+        )
+        return []
+
+    relevant.sort(key=lambda c: c.get("_v4_score", 0), reverse=True)
+    top = relevant[:_V4_MAX_CHUNKS]
+
+    log.info(
+        "Enricher v4: %d/%d chunks passed (max=%d)",
+        len(top),
+        len(chunks),
+        _V4_MAX_CHUNKS,
+    )
+    return top
+
+
+def _compress_to_key_facts(chunks: list[dict]) -> str:
+    """Replace full chunk text with cached key_facts for minimal token usage.
+
+    Uses chunk_key_facts via SHA256(text[:200]) — same key as key_facts_generator.
+    Fallback: first 150 chars of chunk text.
+    """
+    hashes = [_chunk_hash(c.get("text", "")) for c in chunks]
+    facts_map = _load_cached_facts(hashes)
+
+    items: list[dict] = []
+    for c, h in zip(chunks, hashes):
+        facts = facts_map.get(h)
+        if facts:
+            fact_text = "; ".join(facts)
+        else:
+            fact_text = (c.get("text", "") or "")[:150]
+        items.append(
+            {
+                "d": (c.get("source", "") or c.get("domain", ""))[:30],
+                "f": fact_text,
+                "s": round(c.get("_v4_score", c.get("score", 0)), 3),
+            }
+        )
+
+    return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+
+
 # ── Structured context builder (Enricher v3) ─────────────────────────────────
 
 
@@ -397,6 +485,17 @@ def build_structured_context(
     if not chunks:
         return "", "empty"
 
+    # ── Enricher v4: filter + compress before tier-specific formatting ────────
+    if _ENRICHER_VERSION == "v4":
+        filtered = _filter_and_limit(chunks)
+        if not filtered:
+            return "", "v4_filtered_all"
+        compressed = _compress_to_key_facts(filtered)
+        domain_label = domain.replace("_", " ").title()
+        block = f"CONTEXT [{domain_label}]:\n{compressed}\n"
+        return block, "v4_compressed"
+
+    # ── Enricher v3: original tier-adaptive logic (unchanged) ─────────────────
     import json as _json
 
     # Resolve cached key facts for all chunks

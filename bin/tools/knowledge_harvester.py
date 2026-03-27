@@ -39,6 +39,13 @@ from typing import Any
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(DQIII8_ROOT / ".env")
+except ImportError:
+    pass  # dotenv not installed — env vars must be set externally
+
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "agents"))
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -310,11 +311,26 @@ def get_relevant_chunks(
             reranked.sort(key=lambda x: x[0], reverse=True)
             scored = reranked  # replace ordering with task-relevance ranking
 
+    # Build subdomain lookup from DB (one query, cached for this call)
+    _subdomain_map: dict[str, str] = {}
+    try:
+        _db = DQIII8_ROOT / "database" / "dqiii8.db"
+        _sconn = sqlite3.connect(str(_db), timeout=2)
+        _srows = _sconn.execute(
+            "SELECT source, subdomain FROM vector_chunks WHERE subdomain != ''"
+        ).fetchall()
+        _sconn.close()
+        _subdomain_map = {r[0]: r[1] for r in _srows}
+    except Exception:
+        pass
+
     top_chunks = [
         {
             "text": e.get("text", "").strip(),
             "score": round(sim, 4),
             "source": e.get("source", domain),
+            "domain": e.get("domain", domain),
+            "subdomain": _subdomain_map.get(e.get("source", ""), ""),
             "task_relevance": round(task_relevance_map.get(id(e), sim), 4),
         }
         for sim, e in scored[:top_k]
@@ -357,6 +373,85 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
 
 
 _DEMOTE_PENALTY = 0.70  # 30% score reduction for "demote" verdict
+_V4_COMPOSITE_THRESHOLD = (
+    0.40  # Composite score threshold (cosine×0.60 + subdomain×0.25 + keyword×0.15)
+)
+
+
+def _classify_query_subdomain(query: str, domain: str) -> str:
+    """Classify query into subdomain using keyword matching (zero latency)."""
+    try:
+        from subdomain_classifier import classify_subdomain
+
+        return classify_subdomain(query, domain)
+    except Exception:
+        return domain
+
+
+def _composite_rerank(
+    chunks: list[dict], query: str, query_subdomain: str
+) -> list[dict]:
+    """Rerank chunks using composite score: cosine × 0.60 + subdomain × 0.25 + keyword × 0.15.
+
+    Transforms tiny cosine separations (0.03 between WACC and LCSP) into
+    actionable separations (0.35+) by weighting subdomain match and keyword overlap.
+    """
+    # Extract meaningful query terms (4+ chars, no stopwords)
+    _stopwords = {
+        "como",
+        "para",
+        "quiero",
+        "hacer",
+        "puedo",
+        "ayuda",
+        "necesito",
+        "diseñar",
+        "construir",
+        "implementar",
+        "explicar",
+        "calcular",
+        "the",
+        "and",
+        "for",
+        "with",
+        "that",
+        "this",
+        "how",
+        "what",
+        "explain",
+        "describe",
+        "show",
+        "give",
+        "help",
+    }
+    query_terms = set(w.lower() for w in re.findall(r"\b\w{4,}\b", query)) - _stopwords
+
+    for c in chunks:
+        base = c.get("_v4_score", c.get("score", 0))
+
+        # Subdomain match: 1.0 exact, 0.3 same parent domain, 0.0 different
+        chunk_sub = c.get("subdomain", "")
+        if chunk_sub and chunk_sub == query_subdomain:
+            sub_score = 1.0
+        elif chunk_sub and chunk_sub == c.get("domain", ""):
+            # Chunk fell back to parent domain — weak match
+            sub_score = 0.3
+        else:
+            sub_score = 0.0
+
+        # Keyword overlap
+        if query_terms:
+            chunk_lower = (c.get("text", "") or "")[:1000].lower()
+            matches = sum(1 for t in query_terms if t in chunk_lower)
+            kw_score = matches / len(query_terms)
+        else:
+            kw_score = 0.0
+
+        c["_composite"] = round(base * 0.60 + sub_score * 0.25 + kw_score * 0.15, 4)
+        c["_subdomain_match"] = sub_score
+
+    chunks.sort(key=lambda c: c.get("_composite", 0), reverse=True)
+    return chunks
 
 
 def _load_health_verdicts() -> dict[str, dict]:
@@ -443,7 +538,28 @@ def _filter_and_limit(chunks: list[dict], query: str = "") -> list[dict]:
         )
         return []
 
-    relevant.sort(key=lambda c: c.get("_v4_score", 0), reverse=True)
+    # ── Composite reranking (subdomain + keyword) ─────────────────────
+    query_subdomain = (
+        _classify_query_subdomain(query, relevant[0].get("domain", "")) if query else ""
+    )
+    if query and query_subdomain:
+        relevant = _composite_rerank(relevant, query, query_subdomain)
+        # Only apply composite threshold for cosine-range scores.
+        # RRF scores (~0.01) produce low composites even for perfect matches.
+        is_rrf = all(c.get("_v4_score", 0) < 0.1 for c in relevant)
+        if not is_rrf:
+            relevant = [
+                c for c in relevant if c.get("_composite", 0) >= _V4_COMPOSITE_THRESHOLD
+            ]
+            if not relevant:
+                log.info(
+                    "Enricher v4: 0 chunks above composite threshold %.2f — skipping",
+                    _V4_COMPOSITE_THRESHOLD,
+                )
+                return []
+    else:
+        relevant.sort(key=lambda c: c.get("_v4_score", 0), reverse=True)
+
     top = relevant[:_V4_MAX_CHUNKS]
 
     # ── Adaptive Retrieval Gate ──────────────────────────────────────────
@@ -559,6 +675,7 @@ def build_structured_context(
     model_tier: str,
     domain: str,
     max_chars: int = 1200,
+    query: str = "",
 ) -> tuple[str, str]:
     """Build a model-adaptive context block from retrieved knowledge chunks.
 
@@ -580,7 +697,8 @@ def build_structured_context(
 
     # ── Enricher v4: filter + compress before tier-specific formatting ────────
     if _ENRICHER_VERSION == "v4":
-        filtered = _filter_and_limit(chunks)
+        _effective_query = query or (chunks[0].get("text", "")[:200] if chunks else "")
+        filtered = _filter_and_limit(chunks, query=_effective_query)
         if not filtered:
             return "", "v4_filtered_all"
         compressed = _compress_to_key_facts(filtered)

@@ -83,6 +83,7 @@ SOURCES: dict[str, dict] = {
 }
 
 SIGNIFICANCE_THRESHOLD = 0.5
+SIGNIFICANCE_THRESHOLD_QUERY = 0.15  # Lower bar for user-directed searches
 MAX_CHUNKS_PER_PAPER = 15
 CHUNK_MIN_CHARS = 200
 CHUNK_MAX_CHARS = 800
@@ -906,9 +907,43 @@ def harvest(
     all_items: list[FetchResult] = []
 
     if query:
-        # Direct query mode — use Semantic Scholar
+        # Direct query mode — Semantic Scholar + arXiv fallback
         print(f"[G0] Searching: '{query}'")
         all_items = _fetch_semantic_scholar(query, max_papers)
+        if not all_items:
+            # S2 often rate-limited — fall back to arXiv keyword search
+            try:
+                import arxiv as _arxiv
+
+                search = _arxiv.Search(
+                    query=query,
+                    max_results=max_papers * 2,
+                    sort_by=_arxiv.SortCriterion.Relevance,
+                )
+                client = _arxiv.Client()
+                for paper in client.results(search):
+                    pub = paper.published
+                    if pub.tzinfo is None:
+                        pub = pub.replace(tzinfo=timezone.utc)
+                    all_items.append(
+                        {
+                            "title": paper.title,
+                            "abstract": paper.summary or "",
+                            "url": paper.entry_id,
+                            "pdf_url": paper.pdf_url,
+                            "authors": [a.name for a in paper.authors[:5]],
+                            "date": pub.strftime("%Y-%m-%d"),
+                            "source": "arxiv",
+                            "source_id": f"arxiv:{paper.entry_id.split('/')[-1]}",
+                            "citations": 0,
+                            "venue": "arxiv-search",
+                            "_target_domain": target_domain or "",
+                        }
+                    )
+                all_items = all_items[:max_papers]
+            except Exception as exc:
+                log.warning("arXiv query fallback failed: %s", exc)
+
     else:
         # Domain-based harvesting
         domains_to_process = (
@@ -946,7 +981,8 @@ def harvest(
     if dry_run:
         for item in all_items[:10]:
             sig = significance_score(item)
-            mark = "+" if sig >= SIGNIFICANCE_THRESHOLD else "-"
+            _thr = SIGNIFICANCE_THRESHOLD_QUERY if query else SIGNIFICANCE_THRESHOLD
+            mark = "+" if sig >= _thr else "-"
             print(f"  {mark} [{sig:.2f}] {item['source']}: {item['title'][:60]}")
         print(
             f"\n[DRY RUN] Would process up to {min(len(all_items), max_papers)} papers"
@@ -970,7 +1006,8 @@ def harvest(
 
         # ── Gate 1: Significance ─────────────────────────────────────────
         sig = significance_score(item)
-        if sig < SIGNIFICANCE_THRESHOLD:
+        threshold = SIGNIFICANCE_THRESHOLD_QUERY if query else SIGNIFICANCE_THRESHOLD
+        if sig < threshold:
             _log_harvest(
                 conn,
                 item["source"],

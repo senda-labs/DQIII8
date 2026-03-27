@@ -29,7 +29,7 @@ import sqlite_vec
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
-EMBEDDING_DIM = 768  # nomic-embed-text / all-MiniLM-L12 family
+EMBEDDING_DIM = 1024  # bge-m3 multilingual (migrated from nomic-embed-text 768-dim)
 VEC_TABLE = "vec_knowledge"
 
 
@@ -271,15 +271,15 @@ def migrate_from_json(verbose: bool = True) -> dict:
 def _embed_query(text: str) -> list[float] | None:
     """
     Try to embed query text using available model.
-    Order: Ollama nomic-embed-text first (matches migration embeddings),
+    Order: Ollama bge-m3 first (1024-dim, multilingual),
     then sentence-transformers as fallback.
     Returns None if no embedder is available (caller should use text search).
     """
-    # Try ollama nomic-embed-text first — matches the embeddings stored during migration
+    # Try ollama bge-m3 first — matches the embeddings stored in vec_knowledge
     try:
         import urllib.request
 
-        payload = json.dumps({"model": "nomic-embed-text", "prompt": text}).encode()
+        payload = json.dumps({"model": "bge-m3", "prompt": text}).encode()
         req = urllib.request.Request(
             "http://localhost:11434/api/embeddings",
             data=payload,
@@ -293,7 +293,7 @@ def _embed_query(text: str) -> list[float] | None:
     except Exception:
         pass
 
-    # Fallback: sentence-transformers (all-MiniLM-L12-v2, also 768-dim)
+    # Fallback: sentence-transformers (all-MiniLM-L12-v2, 384-dim — dimension mismatch!)
     try:
         from sentence_transformers import SentenceTransformer
 

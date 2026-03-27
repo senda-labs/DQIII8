@@ -3,7 +3,7 @@
 DQIII8 — Knowledge Indexer
 
 Chunks agent knowledge documents (.md), generates embeddings via Ollama
-nomic-embed-text, and saves to .claude/agents/{agent}/knowledge/index.json.
+bge-m3 (1024-dim, multilingual), and saves to .claude/agents/{agent}/knowledge/index.json.
 
 Usage:
     python3 bin/knowledge_indexer.py --agent finance-analyst
@@ -24,7 +24,7 @@ DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 AGENTS_DIR = DQIII8_ROOT / ".claude" / "agents"
 KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
-EMBED_MODEL = "nomic-embed-text"
+EMBED_MODEL = "bge-m3"
 
 
 def chunk_document(filepath: Path, max_lines: int = 100) -> list[str]:
@@ -66,7 +66,7 @@ def chunk_document(filepath: Path, max_lines: int = 100) -> list[str]:
 
 def embed_chunk(text: str) -> list[float]:
     """
-    Generate a dense embedding vector via Ollama nomic-embed-text.
+    Generate a dense embedding vector via Ollama bge-m3.
     Raises requests.HTTPError on failure.
     """
     response = requests.post(
@@ -87,7 +87,9 @@ def index_agent_knowledge(agent_name: str) -> None:
     knowledge_dir = AGENTS_DIR / agent_name / "knowledge"
 
     if not knowledge_dir.exists():
-        print(f"[ERROR] Knowledge directory not found: {knowledge_dir}", file=sys.stderr)
+        print(
+            f"[ERROR] Knowledge directory not found: {knowledge_dir}", file=sys.stderr
+        )
         sys.exit(1)
 
     md_files = sorted(f for f in knowledge_dir.glob("*.md"))
@@ -120,9 +122,13 @@ def index_agent_knowledge(agent_name: str) -> None:
             print(f"    chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
 
     index_path = knowledge_dir / "index.json"
-    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    index_path.write_text(
+        json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     total_kb = index_path.stat().st_size / 1024
-    print(f"\n[OK] {agent_name}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)")
+    print(
+        f"\n[OK] {agent_name}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)"
+    )
 
 
 def index_domain_knowledge(domain: str) -> None:
@@ -172,16 +178,20 @@ def index_domain_knowledge(domain: str) -> None:
             print(f"    chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
 
     index_path = domain_dir / "index.json"
-    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    index_path.write_text(
+        json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     total_kb = index_path.stat().st_size / 1024
-    print(f"\n[OK] domain={domain}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)")
+    print(
+        f"\n[OK] domain={domain}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)"
+    )
 
 
 def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Index agent knowledge documents with nomic-embed-text"
+        description="Index agent knowledge documents with bge-m3"
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--agent", help="Agent name (e.g. finance-analyst)")

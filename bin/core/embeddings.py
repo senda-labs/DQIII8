@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Shared embedding functions for DQIII8.
-Uses nomic-embed-text via Ollama for all vector operations."""
+Uses bge-m3 via Ollama for all vector operations (1024-dim, multilingual)."""
+
 import math
 import struct
 
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/embeddings"
-MODEL = "nomic-embed-text"
+MODEL = "bge-m3"
 
 
 def get_embedding(text: str, timeout: int = 30) -> list[float] | None:
-    """Get embedding vector from nomic-embed-text via Ollama. Returns None on failure."""
+    """Get embedding vector from bge-m3 via Ollama. Returns None on failure."""
     try:
         resp = requests.post(
             OLLAMA_URL,

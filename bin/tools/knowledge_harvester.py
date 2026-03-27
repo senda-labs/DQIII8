@@ -95,7 +95,7 @@ MAX_CHUNKS_PER_PAPER = 15
 CHUNK_MIN_CHARS = 200
 CHUNK_MAX_CHARS = 800
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
-EMBED_MODEL = "nomic-embed-text"
+EMBED_MODEL = "bge-m3"
 
 # ── Harvest Log Table ────────────────────────────────────────────────────────
 
@@ -147,11 +147,11 @@ def _log_harvest(
     conn.commit()
 
 
-# ── Embeddings (reuse Ollama nomic-embed-text) ──────────────────────────────
+# ── Embeddings (reuse Ollama bge-m3) ────────────────────────────────────────
 
 
 def _get_embedding(text: str) -> list[float] | None:
-    """Get embedding via Ollama nomic-embed-text (768 dims)."""
+    """Get embedding via Ollama bge-m3 (1024 dims, multilingual)."""
     try:
         payload = json.dumps({"model": EMBED_MODEL, "prompt": text[:8000]}).encode(
             "utf-8"

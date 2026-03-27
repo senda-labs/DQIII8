@@ -32,7 +32,7 @@ from embeddings import (
     cosine_similarity,
 )
 
-EMBED_DIM = 768
+EMBED_DIM = 1024
 
 DOMAINS: dict[str, dict] = {
     "formal_sciences": {

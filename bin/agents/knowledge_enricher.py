@@ -107,7 +107,7 @@ _TERM_EXPANSIONS: dict[str, str] = {
 def _expand_query_for_retrieval(query: str) -> str:
     """Expand Spanish query with English technical terms for better KNN.
 
-    nomic-embed-text maps Spanish/English to partially separate spaces.
+    bge-m3 is multilingual but query expansion still helps with term matching.
     Chunks are mostly English technical. Appends English equivalents.
     Zero LLM calls, deterministic.
     """

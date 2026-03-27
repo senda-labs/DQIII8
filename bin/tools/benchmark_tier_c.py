@@ -80,13 +80,21 @@ QUERIES = [
 ]
 
 
-def ollama_generate(prompt: str, model: str = "qwen2.5-coder:7b") -> str:
-    data = json.dumps({"model": model, "prompt": prompt, "stream": False}).encode()
+def ollama_generate(prompt: str, model: str = "qwen2.5:3b") -> str:
+    """Use qwen2.5:3b for speed on CPU (~12s vs ~70s for 7b)."""
+    data = json.dumps(
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"num_predict": 512},
+        }
+    ).encode()
     req = urllib.request.Request(
         OLLAMA_URL, data=data, headers={"Content-Type": "application/json"}
     )
     try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             return json.loads(resp.read()).get("response", "")
     except Exception as e:
         return f"ERROR: {e}"
@@ -160,7 +168,7 @@ def score_response(response: str, keywords: list[str]) -> dict:
 
 def main() -> None:
     print(f"\n{'=' * 70}")
-    print("  BENCHMARK TIER C: qwen2.5-coder:7b — CON vs SIN contexto DQ")
+    print("  BENCHMARK TIER C: llama3 — CON vs SIN contexto DQ")
     print(f"  {len(QUERIES)} queries × 2 modes")
     print(f"{'=' * 70}")
 

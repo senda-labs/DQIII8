@@ -475,9 +475,17 @@ def _build_prompt_tier_b(
     if context_block:
         parts.append(f"<reference>\n{context_block}\n</reference>")
     elif chunks:
-        knowledge_block = "\n---\n".join(
-            c["text"] if isinstance(c, dict) else str(c) for c in chunks
-        )
+        # Budget: cap reference block to avoid blowing tier-B overhead limits
+        _TIER_B_REF_BUDGET = 2500
+        lines = []
+        total = 0
+        for c in chunks:
+            text = c["text"] if isinstance(c, dict) else str(c)
+            if total + len(text) > _TIER_B_REF_BUDGET and lines:
+                break
+            lines.append(text)
+            total += len(text)
+        knowledge_block = "\n---\n".join(lines)
         parts.append(f"<reference>\n{knowledge_block}\n</reference>")
     parts.append(original)
     prompt = "\n\n".join(parts)

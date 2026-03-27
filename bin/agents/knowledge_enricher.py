@@ -123,6 +123,83 @@ def _expand_query_for_retrieval(query: str) -> str:
     return query
 
 
+def _get_best_subdomains(
+    query_embedding: list[float], domain: str, top_n: int = 3
+) -> list[str]:
+    """Find the top-N subdomains whose centroids are closest to the query.
+
+    Mathematical basis: centroid C_S = mean(embeddings of chunks in subdomain S).
+    sim(Q, C_S) estimates how relevant subdomain S is to query Q.
+
+    Returns subdomain names sorted by similarity descending.
+    Falls back to [domain] if no centroids available.
+    """
+    import struct
+
+    db_path = DQIII8_ROOT / "database" / "dqiii8.db"
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=2)
+        rows = conn.execute(
+            "SELECT subdomain, centroid, chunk_count FROM subdomain_centroids"
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return [domain]
+
+    if not rows:
+        return [domain]
+
+    scored: list[tuple[float, str, int]] = []
+    for subdomain, centroid_blob, chunk_count in rows:
+        if chunk_count < 3:  # Skip tiny subdomains (unstable centroids)
+            continue
+
+        n_dims = len(centroid_blob) // 4
+        centroid = struct.unpack(f"{n_dims}f", centroid_blob)
+
+        # Cosine similarity
+        dot = sum(a * b for a, b in zip(query_embedding, centroid))
+        norm_q = sum(a * a for a in query_embedding) ** 0.5
+        norm_c = sum(a * a for a in centroid) ** 0.5
+        sim = dot / (norm_q * norm_c) if norm_q * norm_c > 0 else 0.0
+
+        scored.append((sim, subdomain, chunk_count))
+
+    scored.sort(reverse=True)
+
+    # The 5 parent domains are also used as subdomain fallbacks for unclassified
+    # chunks. When specific subdomains rank highly, exclude parent-domain entries
+    # to avoid leaking generic/unclassified chunks (e.g. tenders via social_sciences).
+    _parent_domains = {
+        "social_sciences",
+        "natural_sciences",
+        "applied_sciences",
+        "formal_sciences",
+        "humanities_arts",
+    }
+    candidates = scored[: top_n + 3]  # over-select to compensate for filtering
+    specific = [s for s in candidates if s[1] not in _parent_domains]
+    if len(specific) >= top_n:
+        best = [s[1] for s in specific[:top_n]]
+    elif specific:
+        # Pad with parent domains to reach top_n
+        best = [s[1] for s in specific]
+        for s in candidates:
+            if s[1] not in best and len(best) < top_n:
+                best.append(s[1])
+    else:
+        best = [s[1] for s in candidates[:top_n]]
+
+    log.debug(
+        "Centroid match: top-%d subdomains = %s (scores: %s)",
+        top_n,
+        best,
+        [f"{s[0]:.3f}" for s in scored[:top_n]],
+    )
+
+    return best if best else [domain]
+
+
 def _search_knowledge(
     prompt: str,
     domain: str,
@@ -315,8 +392,15 @@ def get_relevant_chunks(
     # ── Query expansion ES→EN for better KNN matching ──────────────────────
     search_prompt = _expand_query_for_retrieval(prompt)
 
-    # ── Try hybrid search first ───────────────────────────────────────────────
-    pool_k = top_k * 2 if (intent or entity) else top_k
+    # ── Centroid pre-filter: find best subdomains for this query ────────────
+    query_emb = _embed(search_prompt)
+    if query_emb is not None:
+        best_subdomains = _get_best_subdomains(query_emb, domain, top_n=3)
+    else:
+        best_subdomains = [domain]
+
+    # ── Try hybrid search first (over-fetch for post-filter) ──────────────
+    pool_k = top_k * 3  # over-fetch: centroid filter + task rerank need candidates
     scored_vs, vs_path = _search_knowledge(
         search_prompt, domain, pool_k, min_similarity
     )
@@ -337,8 +421,7 @@ def get_relevant_chunks(
         if not index:
             return []
 
-        query_vec = _embed(search_prompt)
-        if query_vec is None:
+        if query_emb is None:
             return []
 
         scored = []
@@ -346,7 +429,7 @@ def get_relevant_chunks(
             vec = entry.get("embedding")
             if not vec:
                 continue
-            sim = _cosine(query_vec, vec)
+            sim = _cosine(query_emb, vec)
             if sim >= min_similarity:
                 scored.append((sim, entry))
 
@@ -354,6 +437,45 @@ def get_relevant_chunks(
             return []
 
         scored.sort(key=lambda x: x[0], reverse=True)
+
+    # ── Centroid post-filter: keep chunks from best subdomains ─────────────
+    _sources = [e.get("source", "") for _, e in scored]
+    _sub_map: dict[str, str] = {}
+    if _sources:
+        try:
+            _db = DQIII8_ROOT / "database" / "dqiii8.db"
+            _sconn = sqlite3.connect(str(_db), timeout=2)
+            _placeholders = ",".join("?" * len(_sources))
+            _srows = _sconn.execute(
+                f"SELECT source, subdomain FROM vector_chunks "
+                f"WHERE source IN ({_placeholders}) AND subdomain != ''",
+                _sources,
+            ).fetchall()
+            _sconn.close()
+            _sub_map = {r[0]: r[1] for r in _srows}
+        except Exception:
+            pass
+
+    if _sub_map and best_subdomains != [domain]:
+        filtered_scored = [
+            (sim, e)
+            for sim, e in scored
+            if _sub_map.get(e.get("source", ""), "") in best_subdomains
+        ]
+        if filtered_scored:
+            log.debug(
+                "Centroid filter: %d -> %d chunks (subdomains=%s)",
+                len(scored),
+                len(filtered_scored),
+                best_subdomains,
+            )
+            scored = filtered_scored
+        else:
+            log.debug(
+                "Centroid filter: no chunks matched subdomains %s, keeping all %d",
+                best_subdomains,
+                len(scored),
+            )
 
     # ── Task-relevance re-ranking ─────────────────────────────────────────────
     # When intent+entity are provided, re-rank the broader candidate pool by
@@ -375,26 +497,13 @@ def get_relevant_chunks(
             reranked.sort(key=lambda x: x[0], reverse=True)
             scored = reranked  # replace ordering with task-relevance ranking
 
-    # Build subdomain lookup from DB (one query, cached for this call)
-    _subdomain_map: dict[str, str] = {}
-    try:
-        _db = DQIII8_ROOT / "database" / "dqiii8.db"
-        _sconn = sqlite3.connect(str(_db), timeout=2)
-        _srows = _sconn.execute(
-            "SELECT source, subdomain FROM vector_chunks WHERE subdomain != ''"
-        ).fetchall()
-        _sconn.close()
-        _subdomain_map = {r[0]: r[1] for r in _srows}
-    except Exception:
-        pass
-
     top_chunks = [
         {
             "text": e.get("text", "").strip(),
             "score": round(sim, 4),
             "source": e.get("source", domain),
             "domain": e.get("domain", domain),
-            "subdomain": _subdomain_map.get(e.get("source", ""), ""),
+            "subdomain": _sub_map.get(e.get("source", ""), ""),
             "task_relevance": round(task_relevance_map.get(id(e), sim), 4),
         }
         for sim, e in scored[:top_k]

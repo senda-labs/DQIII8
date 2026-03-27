@@ -812,7 +812,82 @@ def insert_chunks(
             log.warning("Insert failed for chunk %d: %s", chunk_idx, exc)
             continue
 
+    # ── Auto-update centroids for affected subdomains ────────────────────────
+    if inserted > 0:
+        affected_subs = set()
+        for chunk in chunks:
+            src = chunk.get("source", "")
+            row = conn.execute(
+                "SELECT subdomain FROM vector_chunks WHERE source = ? AND subdomain != ''",
+                (src,),
+            ).fetchone()
+            if row:
+                affected_subs.add((row[0], domain))
+        for sub, dom in affected_subs:
+            _update_subdomain_centroid(conn, sub, dom)
+
     return inserted
+
+
+def _update_subdomain_centroid(
+    conn: sqlite3.Connection, subdomain: str, domain: str
+) -> None:
+    """Recalculate centroid for a subdomain after chunks change.
+
+    Called automatically by insert_chunks after insertion.
+    The centroid converges to the true center as more chunks accumulate.
+    """
+    try:
+        _load_sqlite_vec(conn)
+        rows = conn.execute(
+            "SELECT vc.id FROM vector_chunks vc "
+            "WHERE vc.subdomain = ? AND vc.domain = ?",
+            (subdomain, domain),
+        ).fetchall()
+
+        if len(rows) < 3:
+            return  # Too few chunks for a stable centroid
+
+        chunk_ids = [r[0] for r in rows]
+        embeddings: list[list[float]] = []
+        for cid in chunk_ids:
+            blob_row = conn.execute(
+                "SELECT embedding FROM vec_knowledge WHERE chunk_id = ?", (cid,)
+            ).fetchone()
+            if blob_row and blob_row[0]:
+                n_dims = len(blob_row[0]) // 4
+                emb = list(struct.unpack(f"{n_dims}f", blob_row[0]))
+                embeddings.append(emb)
+
+        if not embeddings:
+            return
+
+        # Calculate mean (centroid)
+        n_dims = len(embeddings[0])
+        centroid = [0.0] * n_dims
+        for emb in embeddings:
+            for i in range(n_dims):
+                centroid[i] += emb[i]
+        for i in range(n_dims):
+            centroid[i] /= len(embeddings)
+
+        centroid_blob = struct.pack(f"{n_dims}f", *centroid)
+
+        conn.execute(
+            "INSERT OR REPLACE INTO subdomain_centroids "
+            "(subdomain, domain, centroid, chunk_count, updated_at) "
+            "VALUES (?, ?, ?, ?, datetime('now'))",
+            (subdomain, domain, centroid_blob, len(embeddings)),
+        )
+        conn.commit()
+        log.info(
+            "Updated centroid for %s: %d embeddings, %d dims",
+            subdomain,
+            len(embeddings),
+            n_dims,
+        )
+    except Exception as exc:
+        log.warning("Centroid update failed for %s: %s", subdomain, exc)
 
 
 def _generate_key_facts_for_chunks(

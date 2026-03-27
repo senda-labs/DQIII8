@@ -186,6 +186,24 @@ else
     _SKIPPED+=("j command already linked")
 fi
 
+# ── dqa — Claude Code autonomous mode ────────────────────────────────
+if command -v claude &>/dev/null; then
+    if [ ! -f /usr/local/bin/dqa ]; then
+        cat > /usr/local/bin/dqa << 'DQASCRIPT'
+#!/bin/bash
+cd "${DQIII8_ROOT:-$(dirname "$(readlink -f "$0")")/../}" && exec claude "$@"
+DQASCRIPT
+        chmod +x /usr/local/bin/dqa
+        ok "'dqa' command created at /usr/local/bin/dqa"
+        _INSTALLED+=("dqa command → /usr/local/bin/dqa")
+    else
+        ok "'dqa' already exists"
+        _SKIPPED+=("dqa command")
+    fi
+else
+    warn "'dqa' not created — Claude Code not installed"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -167,28 +167,7 @@ def _get_best_subdomains(
 
     scored.sort(reverse=True)
 
-    # The 5 parent domains are also used as subdomain fallbacks for unclassified
-    # chunks. When specific subdomains rank highly, exclude parent-domain entries
-    # to avoid leaking generic/unclassified chunks (e.g. tenders via social_sciences).
-    _parent_domains = {
-        "social_sciences",
-        "natural_sciences",
-        "applied_sciences",
-        "formal_sciences",
-        "humanities_arts",
-    }
-    candidates = scored[: top_n + 3]  # over-select to compensate for filtering
-    specific = [s for s in candidates if s[1] not in _parent_domains]
-    if len(specific) >= top_n:
-        best = [s[1] for s in specific[:top_n]]
-    elif specific:
-        # Pad with parent domains to reach top_n
-        best = [s[1] for s in specific]
-        for s in candidates:
-            if s[1] not in best and len(best) < top_n:
-                best.append(s[1])
-    else:
-        best = [s[1] for s in candidates[:top_n]]
+    best = [s[1] for s in scored[:top_n]]
 
     log.debug(
         "Centroid match: top-%d subdomains = %s (scores: %s)",
@@ -506,7 +485,7 @@ def get_relevant_chunks(
             "subdomain": _sub_map.get(e.get("source", ""), ""),
             "task_relevance": round(task_relevance_map.get(id(e), sim), 4),
         }
-        for sim, e in scored[:top_k]
+        for sim, e in scored[:pool_k]
         if e.get("text", "").strip()
         and e.get("source", "").split("/")[-1] not in ("IDENTITY.md", "README.md")
     ]

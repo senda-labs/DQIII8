@@ -347,17 +347,30 @@ def _fetch_semantic_scholar(query: str, max_results: int) -> list[FetchResult]:
 # ── Gate 1: Significance Scoring ─────────────────────────────────────────────
 
 
-def _recency_score(date_str: str) -> float:
+# Domain-adaptive recency windows (days for max score)
+_RECENCY_WINDOWS: dict[str, tuple[int, int, int]] = {
+    # (fresh_days, moderate_days, stale_days)
+    "applied_sciences": (14, 60, 180),
+    "formal_sciences": (30, 90, 365),
+    "social_sciences": (60, 180, 365),
+    "natural_sciences": (90, 180, 730),
+    "humanities_arts": (180, 365, 730),
+}
+_DEFAULT_WINDOW = (30, 90, 365)
+
+
+def _recency_score(date_str: str, domain: str = "") -> float:
+    fresh, moderate, stale = _RECENCY_WINDOWS.get(domain, _DEFAULT_WINDOW)
     try:
         pub = datetime.strptime(date_str[:10], "%Y-%m-%d")
         age = (datetime.now() - pub).days
     except Exception:
         return 0.1
-    if age <= 7:
+    if age <= fresh:
         return 0.3
-    if age <= 30:
+    if age <= moderate:
         return 0.2
-    if age <= 90:
+    if age <= stale:
         return 0.1
     return 0.05
 
@@ -412,8 +425,8 @@ def _impact_score(item: FetchResult) -> float:
     return 0.1 + venue_bonus
 
 
-def significance_score(item: FetchResult) -> float:
-    recency = _recency_score(item.get("date", ""))
+def significance_score(item: FetchResult, domain: str = "") -> float:
+    recency = _recency_score(item.get("date", ""), domain)
     novelty = _novelty_score(item.get("abstract", ""))
     impact = _impact_score(item)
     return round(recency + novelty + impact, 3)
@@ -987,7 +1000,9 @@ def harvest(
 
     if dry_run:
         for item in all_items[:10]:
-            sig = significance_score(item)
+            sig = significance_score(
+                item, item.get("_target_domain", target_domain or "")
+            )
             _thr = SIGNIFICANCE_THRESHOLD_QUERY if query else SIGNIFICANCE_THRESHOLD
             mark = "+" if sig >= _thr else "-"
             print(f"  {mark} [{sig:.2f}] {item['source']}: {item['title'][:60]}")
@@ -1012,7 +1027,7 @@ def harvest(
             continue
 
         # ── Gate 1: Significance ─────────────────────────────────────────
-        sig = significance_score(item)
+        sig = significance_score(item, item.get("_target_domain", target_domain or ""))
         threshold = SIGNIFICANCE_THRESHOLD_QUERY if query else SIGNIFICANCE_THRESHOLD
         if sig < threshold:
             _log_harvest(

@@ -525,9 +525,7 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
 
 
 _DEMOTE_PENALTY = 0.70  # 30% score reduction for "demote" verdict
-_V4_COMPOSITE_THRESHOLD = (
-    0.40  # Composite score threshold (cosine×0.60 + subdomain×0.25 + keyword×0.15)
-)
+_V4_COMPOSITE_THRESHOLD = 0.30  # Lowered from 0.40: cosine 0.55 alone yields 0.33; 0.40 filtered valid NLP chunks
 
 
 def _classify_query_subdomain(query: str, domain: str) -> str:

@@ -35,7 +35,7 @@ _ENRICHER_VERSION = os.environ.get("DQ_ENRICHER_VERSION", "v4")
 # Thresholds per score type:
 # - task_relevance / cosine scores are in [0, 1] range
 # - RRF scores are in ~[0.001, 0.02] range — NOT comparable
-_V4_COSINE_THRESHOLD = 0.70  # for cosine / task_relevance scores
+_V4_COSINE_THRESHOLD = 0.55  # lowered from 0.70: composite reranking handles quality
 _V4_RRF_THRESHOLD = 0.005  # for RRF scores (top results ~0.01-0.02)
 _V4_MAX_CHUNKS = 5  # SIGIR'24 optimal range: 3-5
 
@@ -62,6 +62,65 @@ try:
     _VS_AVAILABLE = True
 except Exception:
     _VS_AVAILABLE = False
+
+
+# ── Query Expansion ES→EN for KNN ───────────────────────────────────────────
+
+_TERM_EXPANSIONS: dict[str, str] = {
+    "valoración": "valuation",
+    "empresa": "company corporate",
+    "financiero": "financial",
+    "coste de capital": "cost of capital",
+    "flujo de caja": "cash flow",
+    "tasa de descuento": "discount rate",
+    "rentabilidad": "profitability return",
+    "inversión": "investment",
+    "deuda": "debt",
+    "patrimonio": "equity",
+    "balance": "balance sheet",
+    "aplicación": "application app",
+    "base de datos": "database",
+    "servidor": "server",
+    "seguridad": "security",
+    "rendimiento": "performance",
+    "concurrencia": "concurrency",
+    "patrón": "pattern",
+    "arquitectura": "architecture",
+    "despliegue": "deployment",
+    "nutrición": "nutrition",
+    "dieta": "diet",
+    "calorías": "calories",
+    "proteínas": "protein intake",
+    "macronutrientes": "macronutrients",
+    "plan alimenticio": "meal plan",
+    "célula": "cell",
+    "proteína": "protein",
+    "diseñar": "design",
+    "construir": "build",
+    "analizar": "analyze analysis",
+    "optimizar": "optimize optimization",
+    "métricas": "metrics KPI",
+    "sistema": "system",
+}
+
+
+def _expand_query_for_retrieval(query: str) -> str:
+    """Expand Spanish query with English technical terms for better KNN.
+
+    nomic-embed-text maps Spanish/English to partially separate spaces.
+    Chunks are mostly English technical. Appends English equivalents.
+    Zero LLM calls, deterministic.
+    """
+    query_lower = query.lower()
+    expansions: list[str] = []
+
+    for es_term, en_terms in _TERM_EXPANSIONS.items():
+        if es_term in query_lower:
+            expansions.append(en_terms)
+
+    if expansions:
+        return query + " " + " ".join(expansions)
+    return query
 
 
 def _search_knowledge(
@@ -253,9 +312,14 @@ def get_relevant_chunks(
 
     Returns empty list if index missing or no matches above threshold.
     """
+    # ── Query expansion ES→EN for better KNN matching ──────────────────────
+    search_prompt = _expand_query_for_retrieval(prompt)
+
     # ── Try hybrid search first ───────────────────────────────────────────────
     pool_k = top_k * 2 if (intent or entity) else top_k
-    scored_vs, vs_path = _search_knowledge(prompt, domain, pool_k, min_similarity)
+    scored_vs, vs_path = _search_knowledge(
+        search_prompt, domain, pool_k, min_similarity
+    )
     if scored_vs is not None:
         scored = scored_vs
     else:
@@ -273,7 +337,7 @@ def get_relevant_chunks(
         if not index:
             return []
 
-        query_vec = _embed(prompt)
+        query_vec = _embed(search_prompt)
         if query_vec is None:
             return []
 

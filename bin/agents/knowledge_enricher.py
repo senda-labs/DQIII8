@@ -356,37 +356,86 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
 # ── Enricher v4: Relevance Filter (SIGIR'24 "Power of Noise") ────────────────
 
 
+_DEMOTE_PENALTY = 0.70  # 30% score reduction for "demote" verdict
+
+
+def _load_health_verdicts() -> dict[str, str]:
+    """Load {chunk_hash → verdict} from chunk_health JOIN vector_chunks.
+
+    Returns empty dict if chunk_health has no data (fail-open).
+    Uses SHA256(text[:200]) as key — same as _chunk_hash().
+    """
+    db_path = DQIII8_ROOT / "database" / "dqiii8.db"
+    if not db_path.exists():
+        return {}
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=2)
+        rows = conn.execute(
+            "SELECT vc.text, ch.verdict "
+            "FROM chunk_health ch JOIN vector_chunks vc ON vc.id = ch.chunk_id"
+        ).fetchall()
+        conn.close()
+        result: dict[str, str] = {}
+        for text, verdict in rows:
+            h = hashlib.sha256(text[:200].encode("utf-8")).hexdigest()
+            result[h] = verdict
+        return result
+    except Exception:
+        return {}
+
+
 def _filter_and_limit(chunks: list[dict], query: str = "") -> list[dict]:
-    """Filter chunks by relevance score and limit count.
+    """Filter chunks by relevance score, health verdict, and limit count.
 
     Handles two score regimes:
     - task_relevance / cosine: [0, 1] range → threshold _V4_COSINE_THRESHOLD
     - RRF scores: [0.001, 0.02] range → threshold _V4_RRF_THRESHOLD
 
+    Health verdicts (from chunk_health):
+    - "archive" → excluded entirely
+    - "demote" → score penalized 30% before threshold check
+    - "keep" / unknown → no penalty
+
     Returns empty list if no chunk passes → caller should skip enrichment.
     """
+    health_map = _load_health_verdicts()
+    archived = 0
+
     relevant: list[dict] = []
     for c in chunks:
+        # ── Health verdict check ─────────────────────────────────────────
+        text = c.get("text", "")
+        ch = hashlib.sha256(text[:200].encode("utf-8")).hexdigest() if text else ""
+        verdict = health_map.get(ch, "keep")
+
+        if verdict == "archive":
+            archived += 1
+            continue
+
         # Prefer task_relevance (cosine, normalized) over raw score (may be RRF)
         tr = c.get("task_relevance", 0.0) or 0.0
         raw_score = c.get("score", 0.0) or 0.0
+
+        # ── Demote penalty: reduce score before threshold check ──────────
+        if verdict == "demote":
+            tr *= _DEMOTE_PENALTY
+            raw_score *= _DEMOTE_PENALTY
 
         if tr >= _V4_COSINE_THRESHOLD:
             c["_v4_score"] = tr
             relevant.append(c)
         elif raw_score >= _V4_COSINE_THRESHOLD:
-            # Raw score is also in cosine range
             c["_v4_score"] = raw_score
             relevant.append(c)
         elif 0 < raw_score < 0.1 and raw_score >= _V4_RRF_THRESHOLD:
-            # RRF range — score is valid but not comparable to cosine
             c["_v4_score"] = raw_score
             relevant.append(c)
 
     if not relevant:
         log.info(
-            "Enricher v4: 0/%d chunks above threshold — skipping enrichment",
+            "Enricher v4: 0/%d chunks above threshold (archived=%d) — skipping",
             len(chunks),
+            archived,
         )
         return []
 
@@ -394,10 +443,11 @@ def _filter_and_limit(chunks: list[dict], query: str = "") -> list[dict]:
     top = relevant[:_V4_MAX_CHUNKS]
 
     log.info(
-        "Enricher v4: %d/%d chunks passed (max=%d)",
+        "Enricher v4: %d/%d chunks passed (max=%d, archived=%d)",
         len(top),
         len(chunks),
         _V4_MAX_CHUNKS,
+        archived,
     )
     return top
 

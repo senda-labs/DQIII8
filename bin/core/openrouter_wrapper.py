@@ -708,6 +708,11 @@ def main() -> None:
         action="store_true",
         help="Skip DQ enrichment pipeline (benchmark DQ OFF mode)",
     )
+    parser.add_argument(
+        "--project",
+        default="",
+        help="Active project name for knowledge-scoped retrieval (B10)",
+    )
     args = parser.parse_args()
 
     # Also honour env-var form (used by benchmark subprocess calls)
@@ -800,8 +805,22 @@ def main() -> None:
                 _spec2 = _ilu.spec_from_file_location("knowledge_enricher", _ke_path)
                 _ke = _ilu.module_from_spec(_spec2)
                 _spec2.loader.exec_module(_ke)
+                # B10: detect active project from --project arg or CWD
+                _project = getattr(args, "project", "") or ""
+                if not _project:
+                    _cwd = str(getattr(args, "cwd", "") or "")
+                    _proj_root = Path(__file__).parent.parent.parent / "my-projects"
+                    if _proj_root.is_dir() and "my-projects/" in _cwd:
+                        for _pdir in _proj_root.iterdir():
+                            if _pdir.is_dir() and _pdir.name in _cwd:
+                                _project = _pdir.name
+                                break
                 _chunks = _ke.get_relevant_chunks(
-                    prompt, _domain, intent=_intent, entity=_entity
+                    prompt,
+                    _domain,
+                    intent=_intent,
+                    entity=_entity,
+                    project=_project,
                 )
 
                 # Step 2c: confidence gate — skip enrichment when chunks add no value.

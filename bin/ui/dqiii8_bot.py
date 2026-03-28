@@ -1317,8 +1317,7 @@ async def _run_cc_async(
 
     cmd = ["claude", "-p", "--model", model, "--output-format", "text", prompt]
     if system_prompt:
-        cmd.insert(3, "--system-prompt")
-        cmd.insert(4, system_prompt)
+        cmd = ["claude", "-p", "--model", model, "--system-prompt", system_prompt, "--output-format", "text", prompt]
 
     env = _load_env_dict()
     env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)

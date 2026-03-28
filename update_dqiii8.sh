@@ -41,7 +41,7 @@ exit(0 if dim == 1024 else 1)
     ok "Knowledge indexes already bge-m3 (1024d)"
 else
     echo "  Re-indexing knowledge (bge-m3)..."
-    python3 bin/agents/knowledge_indexer.py --all 2>/dev/null && ok "Re-indexed" || err "Re-index failed"
+    for d in applied_sciences formal_sciences natural_sciences social_sciences humanities_arts; do python3 bin/agents/knowledge_indexer.py --domain "$d"; done 2>/dev/null && ok "Re-indexed" || err "Re-index failed"
 fi
 
 # 5. Services

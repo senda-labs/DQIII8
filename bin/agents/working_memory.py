@@ -66,7 +66,7 @@ def get_session_context(session_id: str, max_exchanges: int = 3) -> str:
         rows = conn.execute(
             "SELECT role, content FROM session_memory "
             "WHERE session_id = ? "
-            "ORDER BY timestamp DESC LIMIT ?",
+            "ORDER BY created_at DESC LIMIT ?",
             (session_id, max_exchanges * 2),
         ).fetchall()
     except Exception:

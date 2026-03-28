@@ -27,6 +27,7 @@ from telegram.ext import (
 )
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))  # bin/
 from voice_handler import transcribe_audio, synthesize_speech
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -1306,7 +1307,6 @@ async def _run_cc_async(
 
     Safe: uses create_subprocess_exec (no shell). Prompt is internal.
     """
-    sys.path.insert(0, str(JARVIS / "bin"))
     from orchestrator import detect_phase, format_progress, parse_output
 
     cmd = ["claude", "-p", "--model", model, "--output-format", "text", prompt]
@@ -1388,7 +1388,6 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    sys.path.insert(0, str(JARVIS / "bin"))
     from orchestrator import build_context, detect_project
 
     project = detect_project(prompt)
@@ -1446,7 +1445,6 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Rate limit exceeded.")
         return
 
-    sys.path.insert(0, str(JARVIS / "bin"))
     from orchestrator import build_context, detect_project
 
     project = detect_project(goal)

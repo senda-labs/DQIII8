@@ -185,9 +185,9 @@ def _get_model_for_task(task_type: str) -> tuple[str, float]:
     Queries model_router.get_recommendation() for the given task_type.
     Returns (model_name, score). Falls back to defaults if import fails.
     """
-    bin_dir = str(DQIII8_ROOT / "bin")
-    if bin_dir not in sys.path:
-        sys.path.insert(0, bin_dir)
+    core_dir = str(DQIII8_ROOT / "bin" / "core")
+    if core_dir not in sys.path:
+        sys.path.insert(0, core_dir)
     try:
         from openrouter_wrapper import get_recommendation  # type: ignore
 

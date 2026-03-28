@@ -162,12 +162,8 @@ At minimum, add a `GROQ_API_KEY` (free) to enable Tier B. Tier C (Ollama local) 
 | `/auth_test` | Test authentication |
 | `/auth_update` | Refresh OAuth |
 | `/images [query]` | Generate images |
-| `/research_status` | Research progress |
-| `/integrar <id>` | Integrate research item |
-| `/rechazar <id>` | Reject research item |
 | `/voice on\|off` | Toggle TTS |
 | `/sandbox_run` | Run sandbox tester |
-| `/intl "COMPANY" URL` | Generate internationalization reports |
 
 </details>
 

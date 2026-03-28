@@ -227,3 +227,125 @@ def format_progress(project_name: str, phase: str, elapsed: float) -> str:
     m, s = divmod(int(elapsed), 60)
     t = f"{m}m {s}s" if m else f"{s}s"
     return f"[{project_name}] {phase} ({t})"
+
+
+# ── Tier classification for /cc ───────────────────────────────────────────────
+
+# Action verbs that require Claude Code tool use (file editing, execution)
+_ACTION_VERBS = frozenset(
+    {
+        "implementa",
+        "implement",
+        "crea",
+        "create",
+        "fix",
+        "arregla",
+        "refactor",
+        "añade",
+        "add",
+        "modifica",
+        "modify",
+        "actualiza",
+        "update",
+        "deploy",
+        "instala",
+        "install",
+        "ejecuta",
+        "run",
+        "genera",
+        "generate",
+        "escribe",
+        "write",
+        "borra",
+        "delete",
+        "mueve",
+        "move",
+        "renombra",
+        "rename",
+        "commit",
+        "push",
+    }
+)
+
+# Code keywords (from ml_selector.py)
+_CODE_KW = frozenset(
+    {
+        "python",
+        "function",
+        "class",
+        "error",
+        "traceback",
+        "refactor",
+        "debug",
+        "test",
+        "import",
+        "async",
+        "def ",
+        "git ",
+        "npm",
+        "pip",
+        "dockerfile",
+        "yaml",
+        "json",
+        "sql",
+        "bash",
+        "script",
+    }
+)
+
+# Complex keywords (from ml_selector.py)
+_COMPLEX_KW = frozenset(
+    {
+        "architecture",
+        "design system",
+        "multi-step",
+        "orchestrate",
+        "compare and contrast",
+        "analyze in depth",
+        "write a complete",
+        "full implementation",
+        "business plan",
+        "investment strategy",
+        "research paper",
+        "comprehensive report",
+        "arquitectura",
+        "microservicios",
+        "diseña sistema",
+    }
+)
+
+
+def classify_cc_tier(prompt: str) -> str:
+    """Classify a /cc prompt into tier B/A/S.
+
+    B = Groq (simple queries, $0)
+    A = Sonnet (code tasks, default)
+    S = Opus (architecture, deep analysis)
+    """
+    lower = prompt.lower()
+    words = set(lower.split())
+
+    # S-tier: complex keywords → Opus
+    if any(kw in lower for kw in _COMPLEX_KW):
+        return "S"
+
+    # A-tier: action verbs or code keywords → Sonnet
+    if words & _ACTION_VERBS:
+        return "A"
+    code_hits = 0
+    for kw in _CODE_KW:
+        if len(kw) <= 4:
+            if re.search(r"\b" + re.escape(kw) + r"\b", lower):
+                code_hits += 1
+        else:
+            if kw in lower:
+                code_hits += 1
+    if code_hits >= 1:
+        return "A"
+
+    # A-tier: long prompts (>200 chars) likely need reasoning
+    if len(prompt) > 200:
+        return "A"
+
+    # B-tier: short, simple, no action verbs, no code keywords → Groq
+    return "B"

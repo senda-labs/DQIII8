@@ -1317,7 +1317,17 @@ async def _run_cc_async(
 
     cmd = ["claude", "-p", "--model", model, "--output-format", "text", prompt]
     if system_prompt:
-        cmd = ["claude", "-p", "--model", model, "--system-prompt", system_prompt, "--output-format", "text", prompt]
+        cmd = [
+            "claude",
+            "-p",
+            "--model",
+            model,
+            "--system-prompt",
+            system_prompt,
+            "--output-format",
+            "text",
+            prompt,
+        ]
 
     env = _load_env_dict()
     env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
@@ -1367,6 +1377,36 @@ async def _run_cc_async(
 
     parsed = parse_output(full_output, cwd)
     return proc.returncode == 0, full_output, parsed["files"]
+
+
+async def _run_groq_direct(prompt: str, system_prompt: str = "") -> tuple[bool, str]:
+    """Call Groq directly via openrouter_wrapper. No Claude Code overhead.
+
+    For Tier B simple queries: status, listing, explanations.
+    Uses existing stream_response() from the DQ pipeline.
+    """
+    import importlib.util
+    import io
+
+    wrapper_path = JARVIS / "bin" / "core" / "openrouter_wrapper.py"
+    spec = importlib.util.spec_from_file_location("openrouter_wrapper", wrapper_path)
+    wrapper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wrapper)
+
+    def _call() -> tuple[bool, str]:
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            text, _tok_in, _tok_out, success = wrapper.stream_response(
+                "groq", "llama-3.3-70b-versatile", prompt, system_prompt
+            )
+            return bool(success), text
+        except Exception as exc:
+            return False, f"Groq error: {exc}"
+        finally:
+            sys.stdout = old_stdout
+
+    return await asyncio.get_event_loop().run_in_executor(None, _call)
 
 
 async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

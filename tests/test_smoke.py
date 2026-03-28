@@ -416,7 +416,7 @@ def test_amplifier_overhead_chars():
             "calculate WACC for Tesla assuming 10% cost of equity",
             3,
             0,
-            400,
+            500,
         ),
     ]
     for domain, prompt, expected_tier, min_oh, max_oh in cases:

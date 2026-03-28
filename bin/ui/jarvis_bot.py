@@ -664,7 +664,7 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             proc = await asyncio.create_subprocess_exec(
                 "python3",
-                str(JARVIS / "bin" / "orchestrator_loop.py"),
+                str(JARVIS / "bin" / "director.py"),
                 "--project",
                 project,
                 "--cycles",
@@ -963,7 +963,11 @@ async def cmd_sandbox_run(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     await update.message.reply_text("[DQIII8] Launching sandbox tester...")
     result = subprocess.run(
-        [sys.executable, str(JARVIS / "bin" / "sandbox_tester.py"), "--process-queue"],
+        [
+            sys.executable,
+            str(JARVIS / "bin" / "tools" / "sandbox_tester.py"),
+            "--process-queue",
+        ],
         capture_output=True,
         text=True,
         timeout=120,

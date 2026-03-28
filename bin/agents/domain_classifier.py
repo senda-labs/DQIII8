@@ -483,6 +483,16 @@ DOMAINS: dict[str, dict] = {
             "deep learning",
             "model training",
             "inference",
+            # NLP
+            "nlp",
+            "natural language processing",
+            "procesamiento de lenguaje",
+            "sentiment analysis",
+            "análisis de sentimiento",
+            "tokenization",
+            "named entity",
+            "text classification",
+            "word embedding",
             # SQL advanced
             "window function",
             "rolling average",

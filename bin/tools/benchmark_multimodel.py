@@ -385,6 +385,7 @@ ANSWER_SYSTEM = (
 )
 
 _AGENTS_PATH = str(ROOT / "bin" / "agents")
+_CORE_PATH = str(ROOT / "bin" / "core")
 
 
 def _try_enrich(
@@ -396,6 +397,8 @@ def _try_enrich(
     Falls back to DQ_SYSTEM_PROMPT on any error.
     """
     try:
+        if _CORE_PATH not in sys.path:
+            sys.path.insert(0, _CORE_PATH)
         if _AGENTS_PATH not in sys.path:
             sys.path.insert(0, _AGENTS_PATH)
         from domain_lens import get_domain_lens  # type: ignore

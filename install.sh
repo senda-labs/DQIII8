@@ -45,7 +45,7 @@ else
     _INSTALLED+=("Ollama")
 fi
 # Pull required models only if not already present
-for MODEL in qwen2.5-coder:7b nomic-embed-text; do
+for MODEL in qwen2.5-coder:7b bge-m3; do
     if ollama list 2>/dev/null | grep -q "^${MODEL}"; then
         ok "Model $MODEL already present"
         _SKIPPED+=("$MODEL")

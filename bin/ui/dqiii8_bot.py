@@ -1295,7 +1295,7 @@ def _run_claude(
 
 
 async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/cc <prompt> — Run a prompt through Claude Code and return the response."""
+    """/cc <prompt> — Run Claude Code with project detection + live progress."""
     if not authorized(update):
         return
     chat_id = str(update.effective_chat.id)
@@ -1306,10 +1306,10 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "Usage: /cc <prompt>\nExample: /cc explain bin/director.py"
         )
         return
-    prompt = _cc_sanitize(prompt)  # Layer 1: sanitize
-    reason = _cc_check(prompt)  # Layers 2-4: check
+    prompt = _cc_sanitize(prompt)
+    reason = _cc_check(prompt)
     if reason:
-        await update.message.reply_text(f"⛔ Blocked: {reason}")
+        await update.message.reply_text(f"Blocked: {reason}")
         _log_cc_command("/cc", prompt, None, False, 0)
         return
     if not _cc_rate_ok(chat_id):
@@ -1317,13 +1317,154 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"Rate limit: max {_CC_MAX_PER_HOUR} /cc commands per hour."
         )
         return
-    await update.message.reply_text("Running claude...")
-    _tg_session_id = f"tg_{chat_id}"
-    success, output = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: _run_claude(prompt, session_id=_tg_session_id)
+
+    from orchestrator import (
+        detect_project,
+        format_progress,
+        format_summary,
+        run_claude_streaming,
     )
+
+    # Detect project from prompt
+    cwd, project_context = detect_project(prompt)
+    project_label = cwd.name if cwd != JARVIS else "dqiii8"
+
+    # Send initial progress message (will be edited)
+    progress_msg = await update.message.reply_text(f"[{project_label}] Starting...")
+
+    # Progress callback: edit the same message
+    async def on_progress(phase: str, elapsed: float) -> None:
+        try:
+            text = f"[{project_label}] {format_progress(phase, elapsed)}"
+            await progress_msg.edit_text(text)
+        except Exception:
+            pass  # Telegram edit throttle — skip
+
+    # Build system prompt with project context
+    sys_prompt = None
+    if project_context:
+        sys_prompt = (
+            f"You are working in the {project_label} project.\n"
+            f"Project context:\n{project_context[:2000]}"
+        )
+
+    # Run async (no timeout — monitors until done)
+    t0 = time.time()
+    success, output, files = await run_claude_streaming(
+        prompt=prompt,
+        cwd=cwd,
+        system_prompt=sys_prompt,
+        on_progress=on_progress,
+    )
+    elapsed = time.time() - t0
+
+    # Update progress message to "done"
+    try:
+        await progress_msg.edit_text(
+            f"[{project_label}] {format_progress('', elapsed, done=True)}"
+        )
+    except Exception:
+        pass
+
     _log_cc_command("/cc", prompt, None, success, len(output))
+
+    # Send output text
     await send_chunks(update, output)
+
+    # Send detected files
+    for fpath in files[:5]:
+        try:
+            with open(fpath, "rb") as f:
+                await update.message.reply_document(
+                    document=f,
+                    filename=fpath.name,
+                    caption=fpath.name,
+                )
+        except Exception as exc:
+            log.warning("Failed to send file %s: %s", fpath, exc)
+
+
+async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/auto <goal> — Autonomous mode: Claude works with full permissions."""
+    if not authorized(update):
+        return
+    chat_id = str(update.effective_chat.id)
+    text = (update.message.text or "").strip()
+    goal = text[len("/auto") :].strip()
+    if not goal:
+        await update.message.reply_text(
+            "Usage: /auto <high-level goal>\n" "Claude works autonomously until done."
+        )
+        return
+    goal = _cc_sanitize(goal)
+    reason = _cc_check(goal)
+    if reason:
+        await update.message.reply_text(f"Blocked: {reason}")
+        return
+    if not _cc_rate_ok(chat_id):
+        await update.message.reply_text("Rate limit exceeded.")
+        return
+
+    from orchestrator import (
+        detect_project,
+        format_progress,
+        run_claude_streaming,
+    )
+
+    cwd, project_context = detect_project(goal)
+    project_label = cwd.name if cwd != JARVIS else "dqiii8"
+
+    progress_msg = await update.message.reply_text(
+        f"[{project_label}] Autonomous mode started..."
+    )
+
+    async def on_progress(phase: str, elapsed: float) -> None:
+        try:
+            text = f"[AUTO/{project_label}] {format_progress(phase, elapsed)}"
+            await progress_msg.edit_text(text)
+        except Exception:
+            pass
+
+    # Enhanced system prompt for autonomous mode
+    sys_parts = [
+        f"You are in AUTONOMOUS MODE for the {project_label} project.",
+        "Execute the goal completely without asking questions.",
+        "Commit and push changes when done.",
+        "Report what you did at the end.",
+    ]
+    if project_context:
+        sys_parts.append(f"\nProject context:\n{project_context[:2000]}")
+
+    sys_prompt = "\n".join(sys_parts)
+
+    t0 = time.time()
+    success, output, files = await run_claude_streaming(
+        prompt=goal,
+        cwd=cwd,
+        system_prompt=sys_prompt,
+        on_progress=on_progress,
+    )
+    elapsed = time.time() - t0
+
+    try:
+        status = "Done" if success else "Failed"
+        await progress_msg.edit_text(
+            f"[AUTO/{project_label}] {status} in {int(elapsed)}s"
+        )
+    except Exception:
+        pass
+
+    _log_cc_command("/auto", goal, None, success, len(output))
+    await send_chunks(update, output)
+
+    for fpath in files[:5]:
+        try:
+            with open(fpath, "rb") as f:
+                await update.message.reply_document(
+                    document=f, filename=fpath.name, caption=fpath.name
+                )
+        except Exception as exc:
+            log.warning("Failed to send file %s: %s", fpath, exc)
 
 
 async def cmd_cc_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1429,6 +1570,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("stop", cmd_stop_autonomous))
     APP.add_handler(CommandHandler("auth_update", cmd_auth_update))
     APP.add_handler(CommandHandler("cc", cmd_cc))
+    APP.add_handler(CommandHandler("auto", cmd_auto))
     APP.add_handler(CommandHandler("cc_status", cmd_cc_status))
     APP.add_handler(CommandHandler("auth_status", cmd_auth_status))
     APP.add_handler(CommandHandler("auth_test", cmd_auth_test))

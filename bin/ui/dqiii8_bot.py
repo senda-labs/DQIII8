@@ -1433,26 +1433,38 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    from orchestrator import build_context, detect_project
+    from orchestrator import build_context, classify_cc_tier, detect_project
 
     project = detect_project(prompt)
     label = project["name"]
-    progress_msg = await update.message.reply_text(f"[{label}] Starting...")
+    tier = classify_cc_tier(prompt)
+
+    tier_labels = {"B": "Groq", "A": "Sonnet", "S": "Opus"}
+    progress_msg = await update.message.reply_text(f"[{label}] {tier_labels[tier]}...")
 
     t0 = time.time()
-    success, output, files = await _run_cc_async(
-        prompt=prompt,
-        cwd=project["path"],
-        system_prompt=build_context(project, prompt),
-        progress_msg=progress_msg,
-        project_label=label,
-    )
+
+    if tier == "B":
+        ctx = build_context(project, prompt) or ""
+        success, output = await _run_groq_direct(prompt, system_prompt=ctx)
+        files = []
+    else:
+        model = "claude-opus-4-6" if tier == "S" else "claude-sonnet-4-6"
+        success, output, files = await _run_cc_async(
+            prompt=prompt,
+            cwd=project["path"],
+            system_prompt=build_context(project, prompt),
+            model=model,
+            progress_msg=progress_msg,
+            project_label=label,
+        )
+
     elapsed = time.time() - t0
 
     try:
         m, s = divmod(int(elapsed), 60)
-        done_text = f"[{label}] Done ({m}m {s}s)" if m else f"[{label}] Done ({s}s)"
-        await progress_msg.edit_text(done_text)
+        t_str = f"{m}m {s}s" if m else f"{s}s"
+        await progress_msg.edit_text(f"[{label}] {tier_labels[tier]} done ({t_str})")
     except Exception:
         pass
 

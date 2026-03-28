@@ -1,0 +1,229 @@
+"""DQ-enriched orchestrator for /cc and /auto Telegram commands.
+
+Uses domain_classifier centroids for project detection,
+reads PROJECT.md for context, and runs Claude Code as async subprocess
+with progressive Telegram feedback.
+
+Usage from bot:
+    from orchestrator import detect_project, build_context, parse_output
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import re
+import time
+import unicodedata
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+PROJECTS_DIR = DQIII8_ROOT / "my-projects"
+LESSONS_PATH = DQIII8_ROOT / "tasks" / "lessons.md"
+
+# ── Project detection via keyword centroids ───────────────────────────────────
+
+# Each project has keyword centroids (same principle as domain_classifier).
+# Scanned dynamically at import from PROJECT.md files.
+
+_PROJECT_KEYWORDS: dict[str, list[str]] = {}
+
+
+def _scan_projects() -> None:
+    """Build keyword index from my-projects/*/PROJECT.md files.
+
+    Extracts keywords from:
+    1. `Keywords:` field in PROJECT.md (highest signal, curated)
+    2. Project directory name parts
+    3. `Entry:` field
+    """
+    if _PROJECT_KEYWORDS:
+        return
+    if not PROJECTS_DIR.is_dir():
+        return
+    for d in sorted(PROJECTS_DIR.iterdir()):
+        if not d.is_dir() or d.name.startswith((".", "_")):
+            continue
+        pm = d / "PROJECT.md"
+        if not pm.exists():
+            continue
+        text = pm.read_text(encoding="utf-8")
+        text_lower = text.lower()
+
+        words: set[str] = set()
+
+        # 1. Curated keywords (most reliable) — normalize accents
+        kw_match = re.search(r"keywords?:\s*(.+)", text_lower)
+        if kw_match:
+            words.update(
+                _normalize(w.strip())
+                for w in kw_match.group(1).split(",")
+                if len(w.strip()) >= 3
+            )
+
+        # 2. Project name parts
+        words.update(p for p in d.name.split("-") if len(p) >= 3)
+
+        # 3. Entry field
+        entry_match = re.search(r"entry:\s*(.+)", text_lower)
+        if entry_match:
+            words.update(re.findall(r"[a-záéíóúñü]{4,}", entry_match.group(1)))
+
+        _PROJECT_KEYWORDS[d.name] = sorted(words)
+
+
+def _normalize(text: str) -> str:
+    """Strip accents for matching: diagnóstico → diagnostico."""
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+
+
+def detect_project(prompt: str) -> dict:
+    """Detect which project a prompt refers to using keyword centroids.
+
+    Returns dict with keys: name, path, project_md (content or None).
+    Falls back to DQIII8 root if no match.
+    """
+    _scan_projects()
+    prompt_lower = _normalize(prompt.lower())
+    prompt_words = set(re.findall(r"[a-z]{3,}", prompt_lower))
+
+    best_name: str | None = None
+    best_hits = 0
+
+    for project_name, keywords in _PROJECT_KEYWORDS.items():
+        norm_keywords = {_normalize(k) for k in keywords}
+        hits = len(prompt_words & norm_keywords)
+        # Also check substring matches for project name
+        if project_name.replace("-", " ") in prompt_lower:
+            hits += 5
+        if project_name.replace("-", "") in prompt_lower:
+            hits += 5
+        if hits > best_hits:
+            best_hits = hits
+            best_name = project_name
+
+    if best_name and best_hits >= 2:
+        project_path = PROJECTS_DIR / best_name
+        pm = project_path / "PROJECT.md"
+        content = pm.read_text(encoding="utf-8") if pm.exists() else None
+        log.info("Detected project: %s (%d keyword hits)", best_name, best_hits)
+        return {"name": best_name, "path": project_path, "project_md": content}
+
+    return {"name": "dqiii8", "path": DQIII8_ROOT, "project_md": None}
+
+
+def build_context(project: dict, prompt: str) -> str | None:
+    """Build enriched system prompt from project context + lessons.
+
+    Returns system prompt string, or None if no enrichment needed.
+    """
+    parts: list[str] = []
+
+    if project["project_md"]:
+        parts.append(f"PROJECT CONTEXT ({project['name']}):")
+        parts.append(project["project_md"][:2000])
+
+    # Last 20 lines of lessons.md
+    if LESSONS_PATH.exists():
+        lines = LESSONS_PATH.read_text(encoding="utf-8").strip().split("\n")
+        recent = lines[-20:] if len(lines) > 20 else lines
+        if recent:
+            parts.append("\nRECENT LESSONS:")
+            parts.append("\n".join(recent))
+
+    if not parts:
+        return None
+
+    return "\n".join(parts)
+
+
+def parse_output(raw: str, cwd: Path) -> dict:
+    """Parse Claude Code output to extract files, summary, and next steps.
+
+    Returns: {files: list[Path], summary: str, errors: list[str], next_steps: list[str]}
+    """
+    files: list[Path] = []
+    seen: set[str] = set()
+    errors: list[str] = []
+    next_steps: list[str] = []
+
+    # Detect file paths
+    for pattern in [
+        r"(?:Created|Wrote|Saved|Generated|Output)[:\s]+(.+\.(?:docx|pdf|png|xlsx|json|py|md))",
+        r"(data/outputs/[^\s]+\.(?:docx|pdf|png))",
+        r"(/[\w/\-_.]+\.(?:docx|pdf|png|xlsx))",
+    ]:
+        for m in re.finditer(pattern, raw, re.IGNORECASE):
+            path_str = m.group(1).strip().rstrip(".,;)")
+            p = Path(path_str) if Path(path_str).is_absolute() else cwd / path_str
+            if p.exists() and str(p) not in seen:
+                files.append(p)
+                seen.add(str(p))
+
+    # Detect errors
+    for line in raw.split("\n"):
+        if re.search(r"error|failed|exception|traceback", line, re.IGNORECASE):
+            errors.append(line.strip()[:200])
+
+    # Extract next steps (common patterns in Claude output)
+    in_next = False
+    for line in raw.split("\n"):
+        if re.search(r"next\s*steps?|todo|pending|remaining", line, re.IGNORECASE):
+            in_next = True
+            continue
+        if in_next and line.strip().startswith(("-", "*", "•", "1", "2", "3")):
+            next_steps.append(line.strip()[:150])
+        elif in_next and not line.strip():
+            in_next = False
+
+    # Summary: last 10 non-empty lines
+    lines = [l.strip() for l in raw.split("\n") if l.strip()]
+    summary = "\n".join(lines[-10:]) if lines else "(no output)"
+
+    return {
+        "files": files,
+        "summary": summary[:3000],
+        "errors": errors[:5],
+        "next_steps": next_steps[:5],
+    }
+
+
+# ── Phase detection for progress updates ──────────────────────────────────────
+
+
+def detect_phase(lines: list[str]) -> str:
+    """Detect current execution phase from recent output lines."""
+    recent = "\n".join(lines[-20:]).lower()
+
+    phases = [
+        ("quality", "Quality review"),
+        ("phase 5", "Quality review"),
+        ("docx", "DOCX assembly"),
+        ("phase 4", "DOCX assembly"),
+        ("phase 3", "Plan generation"),
+        ("plan", "Plan generation"),
+        ("phase 2", "Diagnostic"),
+        ("diagnostic", "Diagnostic"),
+        ("phase 1", "Research"),
+        ("research", "Research"),
+        ("crawl", "Research"),
+        ("commit", "Git"),
+        ("push", "Git"),
+        ("pytest", "Tests"),
+        ("test", "Tests"),
+    ]
+    for keyword, label in phases:
+        if keyword in recent:
+            return label
+
+    return "Working..."
+
+
+def format_progress(project_name: str, phase: str, elapsed: float) -> str:
+    """Format progress message for Telegram edit."""
+    m, s = divmod(int(elapsed), 60)
+    t = f"{m}m {s}s" if m else f"{s}s"
+    return f"[{project_name}] {phase} ({t})"

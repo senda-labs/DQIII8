@@ -383,39 +383,46 @@ except Exception:
 
 # ── 1. Close session in DB ────────────────────────────────────────
 try:
-    _bin = os.path.join(os.environ.get("DQIII8_ROOT", "/root/dqiii8"), "bin")
-    if _bin not in sys.path:
-        sys.path.insert(0, _bin)
+    _core = os.path.join(os.environ.get("DQIII8_ROOT", "/root/dqiii8"), "bin", "core")
+    if _core not in sys.path:
+        sys.path.insert(0, _core)
     from db import get_db as _get_db
 
     if DB.exists():
         with _get_db(timeout=5) as conn:
             row = conn.execute(
                 "SELECT COUNT(*), SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),"
-                " SUM(bytes_written), COUNT(DISTINCT file_path) "
-                "FROM agent_actions WHERE session_id=?",
+                " SUM(bytes_written), COUNT(DISTINCT file_path),"
+                " MIN(timestamp), SUM(COALESCE(duration_ms,0)),"
+                " SUM(COALESCE(tokens_used,0))"
+                " FROM agent_actions WHERE session_id=?",
                 (session,),
             ).fetchone()
             _proj = os.environ.get("JARVIS_PROJECT", "jarvis-core")
             _model = os.environ.get("JARVIS_MODEL", "claude-sonnet-4-6")
             _total_actions = row[0] or 0
+            _start_time = row[4] or NOW  # earliest action timestamp
+            _total_duration_ms = row[5] or 0
+            _total_tokens = row[6] or 0
             # Guard: skip ghost sessions (no tool calls = no meaningful data, avoids audit penalty)
             if _total_actions > 0:
                 conn.execute(
                     """
                     INSERT INTO sessions
                     (session_id,start_time,end_time,project,model_used,
-                     total_actions,total_errors,files_touched,bytes_written,lessons_added)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                     total_actions,total_errors,files_touched,bytes_written,
+                     lessons_added,total_duration_ms,total_tokens)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(session_id) DO UPDATE SET
                     end_time=excluded.end_time, project=excluded.project,
                     model_used=excluded.model_used, total_actions=excluded.total_actions,
                     total_errors=excluded.total_errors, files_touched=excluded.files_touched,
-                    bytes_written=excluded.bytes_written, lessons_added=excluded.lessons_added
+                    bytes_written=excluded.bytes_written, lessons_added=excluded.lessons_added,
+                    total_duration_ms=excluded.total_duration_ms, total_tokens=excluded.total_tokens
                 """,
                     (
                         session,
-                        NOW,
+                        _start_time,
                         NOW,
                         _proj,
                         _model,
@@ -424,6 +431,8 @@ try:
                         row[3] or 0,
                         row[2] or 0,
                         lessons_added,
+                        _total_duration_ms,
+                        _total_tokens,
                     ),
                 )
 except Exception:

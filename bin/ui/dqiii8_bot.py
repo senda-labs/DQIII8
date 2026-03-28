@@ -1202,8 +1202,14 @@ def _cc_check(prompt: str) -> str | None:
             return f"shell operator '{op}'"
     lower = prompt.lower()
     for kw in _CC_KEYWORDS:
-        if kw in lower:
-            return f"keyword '{kw}'"
+        if len(kw) <= 4:
+            # Short keywords: word boundary to avoid false positives
+            # ("rm" must not match "confirma", "formato", etc.)
+            if re.search(r"\b" + re.escape(kw) + r"\b", lower):
+                return f"keyword '{kw}'"
+        else:
+            if kw in lower:
+                return f"keyword '{kw}'"
     if len(prompt) > _CC_MAX_LENGTH:
         return f"too long ({len(prompt)}>{_CC_MAX_LENGTH})"
     return None

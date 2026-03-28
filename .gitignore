@@ -182,3 +182,16 @@ coverage/
 # Logs (generic)
 logs/
 .mcp.json
+
+# Sessions (private — never commit)
+sessions/
+
+# System flags
+.dqiii8_proposito
+.jarvis_proposito
+
+# Docs with internal info (premium-only)
+docs/CHECKPOINT_*.md
+docs/dqiii8_guide.html
+docs/ROADMAP_TO_10.md
+docs/PRO_CANDIDATES.md

@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import time
 import urllib.error
@@ -63,6 +64,13 @@ PROVIDERS = {
     "github": {
         "base_url": "https://models.inference.ai.azure.com/v1",
         "api_key_env": "GITHUB_TOKEN",
+        "headers_extra": {},
+    },
+    # Anthropic — uses ANTHROPIC_API_KEY if set, otherwise falls back to
+    # Claude Code CLI (`claude -p`) which uses OAuth credentials.
+    "anthropic": {
+        "base_url": "https://api.anthropic.com/v1",
+        "api_key_env": "ANTHROPIC_API_KEY",
         "headers_extra": {},
     },
 }
@@ -114,7 +122,7 @@ AGENT_ROUTING = {
     "finance-specialist": ("anthropic", "claude-sonnet-4-6"),
     "auditor": ("anthropic", "claude-sonnet-4-6"),
     "orchestrator": ("anthropic", "claude-sonnet-4-6"),
-    "default": ("openrouter", "stepfun/step-3.5-flash:free"),
+    "default": ("groq", "llama-3.3-70b-versatile"),
 }
 
 # Agents for which Tier C (Ollama/qwen) is always correct regardless of domain.
@@ -130,19 +138,22 @@ _TIER_C_AGENTS = frozenset(
 )
 
 # Fallback universal por proveedor (cuando el modelo primario falla)
+# Fallback models — llm7 removed (0% success rate over 40 calls in 7d audit)
 FALLBACK_MODELS = {
-    "openrouter": ("openrouter", "stepfun/step-3.5-flash:free"),
-    "groq": ("groq", "llama-3.3-70b-versatile"),
-    "llm7": ("llm7", "gpt-4o-mini"),
+    "openrouter": ("groq", "llama-3.3-70b-versatile"),
+    "groq": ("openrouter", "stepfun/step-3.5-flash:free"),
     "pollinations": ("pollinations", "openai"),
+    "anthropic": ("groq", "llama-3.3-70b-versatile"),
 }
 
 # Cadena de fallback por proveedor primario
+# Fallback chain — llm7 removed (0% success), anthropic added
 FALLBACK_CHAIN = {
-    "ollama": ["openrouter", "groq", "llm7", "pollinations"],
-    "openrouter": ["groq", "llm7", "pollinations"],
-    "groq": ["llm7", "pollinations"],
-    "llm7": ["pollinations"],
+    "ollama": ["groq", "openrouter", "github", "pollinations"],
+    "openrouter": ["groq", "github", "pollinations"],
+    "groq": ["openrouter", "github", "pollinations"],
+    "github": ["groq", "pollinations"],
+    "anthropic": ["groq", "openrouter", "pollinations"],
     "pollinations": [],
 }
 
@@ -418,6 +429,46 @@ def build_request(provider_name: str, model: str, prompt: str, system_prompt: st
     return url, headers, payload
 
 
+def _stream_via_claude_cli(
+    model: str, prompt: str, system_prompt: str = ""
+) -> tuple[str, int, int, bool]:
+    """Tier A fallback: call Claude Code CLI when ANTHROPIC_API_KEY is not set.
+
+    Uses OAuth via ~/.claude/.credentials.json (same as jarvis_bot /cc).
+    """
+    cmd = ["claude", "-p", prompt, "--output-format", "json", "--model", model]
+    if system_prompt:
+        cmd += ["--system-prompt", system_prompt]
+    env = {**os.environ}
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            encoding="utf-8",
+            env=env,
+        )
+        raw = result.stdout.strip()
+        text = raw
+        if raw.startswith("{"):
+            try:
+                data = json.loads(raw)
+                text = data.get("result") or data.get("content") or raw
+            except json.JSONDecodeError:
+                pass
+        if text:
+            print(text, flush=True)
+            tokens_in = len(prompt) // 4
+            tokens_out = len(text) // 4
+            return str(text).strip(), tokens_in, tokens_out, True
+        return "", 0, 0, False
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as exc:
+        log.warning("claude CLI failed: %s", exc)
+        return "", 0, 0, False
+
+
 def stream_response(
     provider_name: str, model: str, prompt: str, system_prompt: str = ""
 ) -> tuple[str, int, int, bool]:
@@ -426,6 +477,10 @@ def stream_response(
     Returns (full_text, tokens_input, tokens_output, success).
     Uses real API tokens if available; estimates by chars otherwise.
     """
+    # Anthropic without API key → delegate to Claude Code CLI (OAuth)
+    if provider_name == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+        return _stream_via_claude_cli(model, prompt, system_prompt)
+
     url, headers, payload = build_request(
         provider_name, model, sanitize_prompt(prompt), system_prompt
     )

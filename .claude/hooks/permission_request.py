@@ -17,7 +17,7 @@ Layer 3 — Telegram escalation (10-min timeout → deny):
     - Or when LLM supervisor says ESCALA
     - Timeout → automatic deny
 
-If JARVIS_MODE != "autonomous" → {"decision": "allow"} always (no interference)
+If DQIII8_MODE != "autonomous" → {"decision": "allow"} always (no interference)
 
 Input via stdin: {"tool_name": X, "tool_input": {...}, "session_id": Y, "request_id": Z}
 Output via stdout: {"decision": "allow"|"deny", "reason": "..."}
@@ -259,7 +259,7 @@ def _layer3_telegram_flow(
 ) -> None:
     """Common Layer 3 escalation flow: Telegram + 10min polling + deny on timeout."""
     perm_id = os.urandom(4).hex()
-    perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
+    perm_file = Path(f"/tmp/dqiii8_perm_{perm_id}.json")
     inp_summary = json.dumps(tool_input, ensure_ascii=False)[:200]
 
     msg = (
@@ -307,10 +307,10 @@ def main() -> None:
     session_id = data.get("session_id", "unknown")
     tool_input = data.get("tool_input", {})
 
-    jarvis_mode = os.environ.get("JARVIS_MODE", "").lower()
+    dqiii8_mode = os.environ.get("DQIII8_MODE", "").lower()
 
     # Non-autonomous → always allow
-    if jarvis_mode != "autonomous":
+    if dqiii8_mode != "autonomous":
         _allow()
         return
 

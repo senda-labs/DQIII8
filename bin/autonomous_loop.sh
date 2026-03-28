@@ -30,7 +30,7 @@ fi
 DQIII8_ROOT_PATH="${DQIII8_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 NOTIFY="python3 $DQIII8_ROOT_PATH/bin/core/notify.py"
 OBJECTIVE_FILE="$DQIII8_ROOT_PATH/tasks/current_objective.txt"
-WATCHDOG_PID_FILE="/tmp/jarvis_watchdog.pid"
+WATCHDOG_PID_FILE="/tmp/dqiii8_watchdog.pid"
 STOP_FLAG="$DQIII8_ROOT_PATH/tasks/.stop_flag"
 
 echo "DQIII8 Autonomous Mode — Supervisor: ACTIVE"
@@ -75,7 +75,7 @@ if [ -f "$STOP_FLAG" ]; then
     rm -f "$STOP_FLAG"
     exit 0
 fi
-rm -f /tmp/jarvis_autonomous_stop.flag
+rm -f /tmp/dqiii8_autonomous_stop.flag
 
 # Notify loop start
 $NOTIFY "[DQIII8] Loop iniciado — ${OBJECTIVE:0:80} (${MAX_HOURS}h / ${MAX_ITER} iter)" || true
@@ -112,7 +112,7 @@ while true; do
     $NOTIFY "[DQIII8] Ciclo $CYCLE/$MAX_ITER — ${OBJECTIVE:0:80}" || true
 
     # Run claude, tee output to terminal + temp file for error detection
-    ERR_FILE=$(mktemp /tmp/jarvis_err_XXXXXX.txt)
+    ERR_FILE=$(mktemp /tmp/dqiii8_err_XXXXXX.txt)
     EXIT_CODE=0
     REMAINING=$(( MAX_SECONDS - ELAPSED ))
 
@@ -129,7 +129,7 @@ while true; do
     # ── Auth failure ─────────────────────────────────────────────────────────
     if echo "$ERR_TEXT" | grep -qiE "401|unauthorized|credentials.*expired|auth.*fail|login.required|oauth"; then
         echo "Auth failure detected."
-        $NOTIFY "[DQIII8] Auth expirado. Ejecuta: claude /login en tmux jarvis" || true
+        $NOTIFY "[DQIII8] Auth expirado. Ejecuta: claude /login en tmux dqiii8" || true
 
         AUTH_RETRY=0
         while true; do

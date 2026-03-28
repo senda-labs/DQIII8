@@ -14,7 +14,7 @@ from pathlib import Path
 import logging
 log = logging.getLogger(__name__)
 DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
-DB_PATH = DQIII8_ROOT / "database" / "jarvis_metrics.db"
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
 MODEL_PATH = DQIII8_ROOT / "models" / "tier_predictor.pkl"
 
 CODE_KEYWORDS = {

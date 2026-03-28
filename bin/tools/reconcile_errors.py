@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
 from db import get_db, DB_PATH as DB
 
 DRY_RUN = "--dry-run" in sys.argv

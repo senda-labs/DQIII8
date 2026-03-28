@@ -356,6 +356,7 @@ def get_relevant_chunks(
     min_similarity: float = 0.25,
     intent: str = None,
     entity: str = None,
+    project: str = "",
 ) -> list[dict]:
     """Returns raw chunks without modifying the prompt.
 
@@ -364,6 +365,9 @@ def get_relevant_chunks(
     When intent+entity are provided, a second cosine pass re-ranks candidates by
     how well each chunk matches the task's specific action+entity — not just the
     broad topic. Uses stored index embeddings (no extra Ollama calls per chunk).
+
+    When project is set, chunks whose source starts with "user:{project}" get a
+    1.2x composite score boost so project-specific knowledge surfaces first.
     Overhead: 1 embedding of task_query (~290ms) over the broader retrieval pool.
 
     Returns empty list if index missing or no matches above threshold.
@@ -489,6 +493,14 @@ def get_relevant_chunks(
         if e.get("text", "").strip()
         and e.get("source", "").split("/")[-1] not in ("IDENTITY.md", "README.md")
     ]
+    # ── B10: project-scoped boost ─────────────────────────────────────────
+    if project:
+        _prefix = f"user:{project}"
+        for c in top_chunks:
+            if c.get("source", "").startswith(_prefix):
+                c["score"] = round(c["score"] * 1.2, 4)
+        top_chunks.sort(key=lambda c: c.get("score", 0), reverse=True)
+
     _log_chunk_usage(top_chunks, domain)
     return top_chunks
 
@@ -525,9 +537,7 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
 
 
 _DEMOTE_PENALTY = 0.70  # 30% score reduction for "demote" verdict
-_V4_COMPOSITE_THRESHOLD = (
-    0.40  # Composite score threshold (cosine×0.60 + subdomain×0.25 + keyword×0.15)
-)
+_V4_COMPOSITE_THRESHOLD = 0.30  # Lowered from 0.40: cosine 0.55 alone yields 0.33; 0.40 filtered valid NLP chunks
 
 
 def _classify_query_subdomain(query: str, domain: str) -> str:

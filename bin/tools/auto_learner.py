@@ -51,12 +51,12 @@ def lesson_exists(keyword: str, lessons_text: str) -> bool:
 
 
 def append_lesson(lesson: str) -> None:
-    """Append a lesson line to lessons.md under jarvis-core section."""
+    """Append a lesson line to lessons.md under dqiii8-core section."""
     if not LESSONS.exists():
         return
     content = LESSONS.read_text(encoding="utf-8")
-    # Find jarvis-core section and append there
-    marker = "## jarvis-core"
+    # Find dqiii8-core section and append there
+    marker = "## dqiii8-core"
     if marker in content:
         idx = content.index(marker) + len(marker)
         # Find end of section header line

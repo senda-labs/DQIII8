@@ -107,7 +107,7 @@ def _resolve_agent(data: dict) -> str:
         agent = data.get("agent_id", data.get("agent_name", ""))
     if not agent:
         try:
-            with open(f"/tmp/jarvis_agent_{session}.json", encoding="utf-8") as _f:
+            with open(f"/tmp/dqiii8_agent_{session}.json", encoding="utf-8") as _f:
                 agent = json.load(_f).get("agent_type", "")
         except Exception:
             pass

@@ -49,10 +49,10 @@ else
     python3 "$(dirname "$0")/core/validate_env.py" --quiet >/dev/null 2>&1 || true
 fi
 
-# Flag A/B: purpose active if .jarvis_proposito exists
-# Enable: touch /root/dqiii8/.jarvis_proposito
-# Disable: rm /root/dqiii8/.jarvis_proposito
-if [[ -f "$DQIII8_ROOT/.jarvis_proposito" ]]; then
+# Flag A/B: purpose active if .dqiii8_proposito exists
+# Enable: touch /root/dqiii8/.dqiii8_proposito
+# Disable: rm /root/dqiii8/.dqiii8_proposito
+if [[ -f "$DQIII8_ROOT/.dqiii8_proposito" ]]; then
     export JARVIS_PROPOSITO=1
 else
     export JARVIS_PROPOSITO=0

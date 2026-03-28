@@ -2,7 +2,7 @@
 """
 DQIII8 Hook — PreToolUse v5
 Thin wrapper: parse stdin → PermissionAnalyzer → handle result + metrics.
-All permission logic (budget, JARVIS_MODE, ALLOWED_DELETIONS…)
+All permission logic (budget, DQIII8_MODE, ALLOWED_DELETIONS…)
 lives exclusively in permission_analyzer.py.
 """
 
@@ -23,7 +23,7 @@ agent = data.get("agent_id", data.get("agent_name", ""))
 
 if not agent:
     try:
-        with open(f"/tmp/jarvis_agent_{session}.json", encoding="utf-8") as _f:
+        with open(f"/tmp/dqiii8_agent_{session}.json", encoding="utf-8") as _f:
             agent = json.load(_f).get("agent_type", "claude-sonnet-4-6")
     except Exception:
         agent = "claude-sonnet-4-6"
@@ -84,7 +84,7 @@ try:
     _DB = os.path.join(
         os.environ.get("DQIII8_ROOT", "/root/dqiii8"), "database", "dqiii8.db"
     )
-    _model = os.environ.get("JARVIS_MODEL", agent)
+    _model = os.environ.get("DQIII8_MODEL", agent)
     _tier = _model_tier(_model)
     if os.path.exists(_DB):
         _conn = sqlite3.connect(_DB, timeout=10)

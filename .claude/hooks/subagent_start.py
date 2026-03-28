@@ -5,7 +5,7 @@ Fires when Claude Code spawns a subagent via the Task tool.
 Payload fields: agent_id, agent_type, session_id, prompt (truncated).
 
 Responsibilities:
-1. Write /tmp/jarvis_agent_{agent_id}.json for pre_tool_use lookup.
+1. Write /tmp/dqiii8_agent_{agent_id}.json for pre_tool_use lookup.
 2. INSERT into agent_registry table.
 3. Inject additionalContext with the resolved DQIII8 agent name.
 """
@@ -49,7 +49,7 @@ worktree_path = ""
 
 if resolved_name in WORKTREE_AGENTS and agent_id:
     DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/dqiii8")
-    wt_dir = f"/tmp/jarvis-wt/{agent_id}"
+    wt_dir = f"/tmp/dqiii8-wt/{agent_id}"
     branch = f"wt-{agent_id[:8]}"
     try:
         subprocess.run(
@@ -68,7 +68,7 @@ if agent_id:
     secure_tmp = DQIII8_ROOT_PATH / "tmp"
     try:
         secure_tmp.mkdir(exist_ok=True, mode=0o700)
-        tmp_path = secure_tmp / f"jarvis_agent_{agent_id}.json"
+        tmp_path = secure_tmp / f"dqiii8_agent_{agent_id}.json"
         lookup = {
             "agent_id": agent_id,
             "agent_type": resolved_name,

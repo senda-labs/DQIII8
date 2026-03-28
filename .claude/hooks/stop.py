@@ -74,7 +74,7 @@ try:
     if lessons_added == 0:
         _fb2_start: datetime | None = None
         try:
-            _ts_file = Path("/tmp/jarvis_session_start.txt")
+            _ts_file = Path("/tmp/dqiii8_session_start.txt")
             if _ts_file.exists():
                 _fb2_start = datetime.fromisoformat(
                     _ts_file.read_text(encoding="utf-8").strip()
@@ -220,7 +220,7 @@ try:
                         _kw,
                         _pat,
                         "lessons.md",
-                        os.environ.get("JARVIS_PROJECT", "jarvis-core"),
+                        os.environ.get("DQIII8_PROJECT", "dqiii8-core"),
                         NOW,
                         NOW,
                     ),
@@ -303,7 +303,7 @@ try:
                     _ve = _vraw.rfind("]")
                     if _vs != -1 and _ve != -1:
                         _vfacts = _vjson.loads(_vraw[_vs : _ve + 1])
-                        _vproject = os.environ.get("JARVIS_PROJECT", "jarvis-core")
+                        _vproject = os.environ.get("DQIII8_PROJECT", "dqiii8-core")
                         _vic = _vsl3.connect(str(DB), timeout=5)
                         _vcnt = 0
                         for _vf in _vfacts[:5]:
@@ -398,8 +398,8 @@ try:
                 " FROM agent_actions WHERE session_id=?",
                 (session,),
             ).fetchone()
-            _proj = os.environ.get("JARVIS_PROJECT", "jarvis-core")
-            _model = os.environ.get("JARVIS_MODEL", "claude-sonnet-4-6")
+            _proj = os.environ.get("DQIII8_PROJECT", "dqiii8-core")
+            _model = os.environ.get("DQIII8_MODEL", "claude-sonnet-4-6")
             _total_actions = row[0] or 0
             _start_time = row[4] or NOW  # earliest action timestamp
             _total_duration_ms = row[5] or 0
@@ -565,7 +565,7 @@ try:
             ]
 
             # Determine active project
-            _project = os.environ.get("JARVIS_PROJECT", "jarvis-core")
+            _project = os.environ.get("DQIII8_PROJECT", "dqiii8-core")
 
             # Next step from project file
             _next = "Ver projects/{}.md".format(_project)

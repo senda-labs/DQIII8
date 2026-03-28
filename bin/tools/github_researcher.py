@@ -611,12 +611,12 @@ def generate_report(topic: str, repos_data: list, session_id: int) -> str:
             ev = r["eval"]
             # Infer what DQIII8 problem this solves
             matches = ev.get("stack_matches", [])
-            jarvis_gap = (
+            dqiii8_gap = (
                 "functionality related to " + ", ".join(matches[:3]) if matches else "pipeline"
             )
             lines += [
                 f"### {repo['name']} ({ev['score']}/10)",
-                f"**DQIII8 problem it solves:** {jarvis_gap}",
+                f"**DQIII8 problem it solves:** {dqiii8_gap}",
                 f"**Integration type:** {ev.get('integration_type','?')}",
                 f"**Install:** `pip install` from {repo['html_url']}",
                 f"**Estimated time:** {'1-2h' if ev['score'] >= 8.0 else '2-4h'}",

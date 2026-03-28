@@ -20,6 +20,7 @@ from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
+    ConversationHandler,
     ContextTypes,
     MessageHandler,
     filters,
@@ -1438,6 +1439,18 @@ def main() -> None:
     APP.add_handler(CommandHandler("voice", cmd_voice))
     APP.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     APP.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
+    # intl-reports ConversationHandler (must come BEFORE generic text handler)
+    try:
+        _intl_path = str(JARVIS / "my-projects" / "intl-reports" / "core")
+        if _intl_path not in sys.path:
+            sys.path.insert(0, _intl_path)
+        from telegram_flow import build_intl_handler
+
+        APP.add_handler(build_intl_handler(allowed_chat_id=ALLOWED_CHAT_ID))
+        log.info("/intl handler registered")
+    except Exception as _exc:
+        log.warning("Failed to load intl-reports handler: %s", _exc)
+
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     APP.add_handler(
         CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:")

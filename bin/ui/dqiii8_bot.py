@@ -1294,8 +1294,78 @@ def _run_claude(
         return False, f"Unexpected error: {exc}"
 
 
+async def _run_cc_async(
+    prompt: str,
+    cwd: Path,
+    system_prompt: str | None = None,
+    model: str = "claude-sonnet-4-6",
+    progress_msg=None,
+    project_label: str = "dqiii8",
+) -> tuple[bool, str, list]:
+    """Run claude -p as async subprocess with live Telegram progress edits.
+
+    Safe: uses create_subprocess_exec (no shell). Prompt is internal.
+    """
+    sys.path.insert(0, str(JARVIS / "bin"))
+    from orchestrator import detect_phase, format_progress, parse_output
+
+    cmd = ["claude", "-p", "--model", model, "--output-format", "text", prompt]
+    if system_prompt:
+        cmd.insert(3, "--system-prompt")
+        cmd.insert(4, system_prompt)
+
+    env = _load_env_dict()
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+
+    t0 = time.time()
+    output_lines: list[str] = []
+    last_update = t0
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(cwd),
+        env=env,
+    )
+
+    while True:
+        try:
+            line = await asyncio.wait_for(proc.stdout.readline(), timeout=600)
+        except asyncio.TimeoutError:
+            break
+        if not line:
+            break
+        output_lines.append(line.decode("utf-8", errors="replace").rstrip())
+
+        now = time.time()
+        if progress_msg and (now - last_update) >= 15:
+            phase = detect_phase(output_lines)
+            try:
+                await progress_msg.edit_text(
+                    format_progress(project_label, phase, now - t0)
+                )
+            except Exception:
+                pass
+            last_update = now
+
+    await proc.wait()
+    elapsed = time.time() - t0
+
+    stderr = ""
+    if proc.stderr:
+        stderr = (await proc.stderr.read()).decode("utf-8", errors="replace")
+
+    full_output = "\n".join(output_lines)
+    if not full_output.strip() and stderr:
+        full_output = stderr[:2000]
+
+    parsed = parse_output(full_output, cwd)
+    return proc.returncode == 0, full_output, parsed["files"]
+
+
 async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/cc <prompt> — Run Claude Code with project detection + live progress."""
+    """/cc <prompt> — Run Claude Code with DQ project detection + live progress."""
     if not authorized(update):
         return
     chat_id = str(update.effective_chat.id)
@@ -1318,67 +1388,38 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    from orchestrator import (
-        detect_project,
-        format_progress,
-        format_summary,
-        run_claude_streaming,
-    )
+    sys.path.insert(0, str(JARVIS / "bin"))
+    from orchestrator import build_context, detect_project
 
-    # Detect project from prompt
-    cwd, project_context = detect_project(prompt)
-    project_label = cwd.name if cwd != JARVIS else "dqiii8"
+    project = detect_project(prompt)
+    label = project["name"]
+    progress_msg = await update.message.reply_text(f"[{label}] Starting...")
 
-    # Send initial progress message (will be edited)
-    progress_msg = await update.message.reply_text(f"[{project_label}] Starting...")
-
-    # Progress callback: edit the same message
-    async def on_progress(phase: str, elapsed: float) -> None:
-        try:
-            text = f"[{project_label}] {format_progress(phase, elapsed)}"
-            await progress_msg.edit_text(text)
-        except Exception:
-            pass  # Telegram edit throttle — skip
-
-    # Build system prompt with project context
-    sys_prompt = None
-    if project_context:
-        sys_prompt = (
-            f"You are working in the {project_label} project.\n"
-            f"Project context:\n{project_context[:2000]}"
-        )
-
-    # Run async (no timeout — monitors until done)
     t0 = time.time()
-    success, output, files = await run_claude_streaming(
+    success, output, files = await _run_cc_async(
         prompt=prompt,
-        cwd=cwd,
-        system_prompt=sys_prompt,
-        on_progress=on_progress,
+        cwd=project["path"],
+        system_prompt=build_context(project, prompt),
+        progress_msg=progress_msg,
+        project_label=label,
     )
     elapsed = time.time() - t0
 
-    # Update progress message to "done"
     try:
-        await progress_msg.edit_text(
-            f"[{project_label}] {format_progress('', elapsed, done=True)}"
-        )
+        m, s = divmod(int(elapsed), 60)
+        done_text = f"[{label}] Done ({m}m {s}s)" if m else f"[{label}] Done ({s}s)"
+        await progress_msg.edit_text(done_text)
     except Exception:
         pass
 
     _log_cc_command("/cc", prompt, None, success, len(output))
-
-    # Send output text
     await send_chunks(update, output)
 
-    # Send detected files
     for fpath in files[:5]:
         try:
             with open(fpath, "rb") as f:
                 await update.message.reply_document(
-                    document=f,
-                    filename=fpath.name,
-                    caption=fpath.name,
+                    document=f, filename=fpath.name, caption=fpath.name
                 )
         except Exception as exc:
             log.warning("Failed to send file %s: %s", fpath, exc)
@@ -1393,7 +1434,7 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     goal = text[len("/auto") :].strip()
     if not goal:
         await update.message.reply_text(
-            "Usage: /auto <high-level goal>\n" "Claude works autonomously until done."
+            "Usage: /auto <goal>\nClaude works autonomously until done."
         )
         return
     goal = _cc_sanitize(goal)
@@ -1405,52 +1446,33 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Rate limit exceeded.")
         return
 
-    from orchestrator import (
-        detect_project,
-        format_progress,
-        run_claude_streaming,
+    sys.path.insert(0, str(JARVIS / "bin"))
+    from orchestrator import build_context, detect_project
+
+    project = detect_project(goal)
+    label = project["name"]
+    progress_msg = await update.message.reply_text(f"[AUTO/{label}] Starting...")
+
+    ctx = build_context(project, goal)
+    sys_prompt = (
+        f"AUTONOMOUS MODE for {label}.\n"
+        f"Execute completely. Commit and push when done. Report results.\n"
+        + (f"\n{ctx}" if ctx else "")
     )
-
-    cwd, project_context = detect_project(goal)
-    project_label = cwd.name if cwd != JARVIS else "dqiii8"
-
-    progress_msg = await update.message.reply_text(
-        f"[{project_label}] Autonomous mode started..."
-    )
-
-    async def on_progress(phase: str, elapsed: float) -> None:
-        try:
-            text = f"[AUTO/{project_label}] {format_progress(phase, elapsed)}"
-            await progress_msg.edit_text(text)
-        except Exception:
-            pass
-
-    # Enhanced system prompt for autonomous mode
-    sys_parts = [
-        f"You are in AUTONOMOUS MODE for the {project_label} project.",
-        "Execute the goal completely without asking questions.",
-        "Commit and push changes when done.",
-        "Report what you did at the end.",
-    ]
-    if project_context:
-        sys_parts.append(f"\nProject context:\n{project_context[:2000]}")
-
-    sys_prompt = "\n".join(sys_parts)
 
     t0 = time.time()
-    success, output, files = await run_claude_streaming(
+    success, output, files = await _run_cc_async(
         prompt=goal,
-        cwd=cwd,
+        cwd=project["path"],
         system_prompt=sys_prompt,
-        on_progress=on_progress,
+        progress_msg=progress_msg,
+        project_label=f"AUTO/{label}",
     )
     elapsed = time.time() - t0
 
     try:
         status = "Done" if success else "Failed"
-        await progress_msg.edit_text(
-            f"[AUTO/{project_label}] {status} in {int(elapsed)}s"
-        )
+        await progress_msg.edit_text(f"[AUTO/{label}] {status} in {int(elapsed)}s")
     except Exception:
         pass
 

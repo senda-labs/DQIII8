@@ -91,7 +91,7 @@ def get_session_id(source: str = None, chat_id: int = None) -> str:
         return f"tg_{chat_id}"
     if source == "autonomous":
         return f"auto_{datetime.now().strftime('%Y-%m-%d')}"
-    return os.environ.get("DQIII8_SESSION_ID", f"cc_{os.getpid()}")
+    return f"cc_{os.getpid()}"
 
 
 def cleanup_old_sessions(hours: int = 24) -> int:

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-JARVIS = Path("/root/jarvis")
+JARVIS = Path("/root/dqiii8")
 HOOKS = JARVIS / ".claude" / "hooks"
 
 

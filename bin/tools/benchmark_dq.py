@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
-DB_PATH = DQIII8_ROOT / "database" / "jarvis_metrics.db"
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
 WRAPPER = DQIII8_ROOT / "bin" / "core" / "openrouter_wrapper.py"
 RESULTS_DIR = DQIII8_ROOT / "tasks" / "benchmarks"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)

@@ -19,7 +19,7 @@ session = data.get("session_id", "unknown")
 agent = data.get("agent_id", data.get("agent_name", ""))
 if not agent:
     try:
-        with open(f"/tmp/jarvis_agent_{session}.json", encoding="utf-8") as _af:
+        with open(f"/tmp/dqiii8_agent_{session}.json", encoding="utf-8") as _af:
             agent = json.load(_af).get("agent_type", "claude-sonnet-4-6")
     except Exception:
         agent = "claude-sonnet-4-6"
@@ -179,7 +179,7 @@ except Exception:
 try:
     import sqlite3 as _ics
 
-    _PENDING = f"/tmp/jarvis_pending_{session[:8]}.json"
+    _PENDING = f"/tmp/dqiii8_pending_{session[:8]}.json"
     _fpath = inp.get("file_path", inp.get("path", ""))
     _exit_c = resp.get("exit_code")
     _ok = (
@@ -215,7 +215,7 @@ try:
             )
             if os.path.exists(_db_path):
                 _vc = _ics.connect(_db_path, timeout=2)
-                _proj = os.environ.get("JARVIS_PROJECT", "jarvis-core")
+                _proj = os.environ.get("DQIII8_PROJECT", "dqiii8-core")
                 _vc.execute(
                     "INSERT INTO vault_memory"
                     " (subject,predicate,object,project,confidence,entry_type,source,created_at,last_seen)"

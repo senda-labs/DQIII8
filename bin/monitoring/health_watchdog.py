@@ -25,7 +25,7 @@ DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "agents"))
 
-DB = DQIII8_ROOT / "database" / "jarvis_metrics.db"
+DB = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
 NOW = datetime.now(timezone.utc)
 QUIET = "--quiet" in sys.argv
 
@@ -44,7 +44,7 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 
 def check_services() -> None:
-    for svc in ["autoreporte", "jarvis-bot", "dq-dashboard", "ollama"]:
+    for svc in ["autoreporte", "dqiii8-bot", "dq-dashboard", "ollama"]:
         result = subprocess.run(
             ["systemctl", "is-active", svc], capture_output=True, text=True
         )
@@ -60,9 +60,9 @@ def check_crons() -> None:
     threshold = NOW - timedelta(hours=48)
     log_checks = {
         "nightly.sh": DQIII8_ROOT / "tasks" / "nightly-report.md",
-        "memory_decay": Path("/tmp/jarvis_decay.log"),
-        "sandbox_tester": Path("/tmp/jarvis_sandbox.log"),
-        "auto_researcher": Path("/tmp/jarvis_researcher.log"),
+        "memory_decay": Path("/tmp/dqiii8_decay.log"),
+        "sandbox_tester": Path("/tmp/dqiii8_sandbox.log"),
+        "auto_researcher": Path("/tmp/dqiii8_researcher.log"),
     }
     for name, log_path in log_checks.items():
         if not log_path.exists():

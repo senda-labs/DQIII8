@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
 
-DB = DQIII8_ROOT / "database" / "jarvis_metrics.db"
+DB = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
 REPORT_DIR = DQIII8_ROOT / "database" / "audit_reports"
 BASELINE_FILE = REPORT_DIR / "weekly_baseline.json"
 
@@ -121,7 +121,7 @@ def collect_routing_health(conn: sqlite3.Connection) -> list[dict]:
 
 def collect_service_status() -> dict[str, str]:
     status = {}
-    for svc in ["autoreporte", "jarvis-bot", "dq-dashboard", "ollama"]:
+    for svc in ["autoreporte", "dqiii8-bot", "dq-dashboard", "ollama"]:
         result = subprocess.run(
             ["systemctl", "is-active", svc], capture_output=True, text=True
         )

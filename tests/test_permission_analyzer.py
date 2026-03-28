@@ -75,14 +75,14 @@ def test_deny_drop_table():
 
 def test_deny_write_to_env():
     """Writing to .env should be denied."""
-    r = analyzer.evaluate("Write", {"file_path": "/root/jarvis/.env"})
+    r = analyzer.evaluate("Write", {"file_path": "/root/dqiii8/.env"})
     assert r["decision"] == "DENY"
     assert r["risk_level"] == "CRITICAL"
 
 
 def test_deny_edit_claude_md():
     """Editing CLAUDE.md should be denied."""
-    r = analyzer.evaluate("Edit", {"file_path": "/root/jarvis/CLAUDE.md"})
+    r = analyzer.evaluate("Edit", {"file_path": "/root/dqiii8/CLAUDE.md"})
     assert r["decision"] == "DENY"
 
 

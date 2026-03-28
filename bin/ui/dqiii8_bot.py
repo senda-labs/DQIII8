@@ -32,7 +32,7 @@ from voice_handler import transcribe_audio, synthesize_speech
 # ── Paths ──────────────────────────────────────────────────────────────────────
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = JARVIS / "database" / "dqiii8.db"
-LOG_FILE = JARVIS / "database" / "audit_reports" / "jarvis_bot.log"
+LOG_FILE = JARVIS / "database" / "audit_reports" / "dqiii8_bot.log"
 QUEUE_DIR = JARVIS / "objectives" / "queue"
 REFERENCE_IMAGE_PATH = JARVIS / "tasks" / "reference_image.jpg"
 
@@ -51,7 +51,7 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout),
     ],
 )
-log = logging.getLogger("jarvis_bot")
+log = logging.getLogger("dqiii8_bot")
 
 # ── Global app reference (set in main()) ───────────────────────────────────────
 APP: Application = None  # type: ignore[assignment]
@@ -675,7 +675,7 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=str(JARVIS),
-                env={**os.environ, "JARVIS_MODE": "autonomous"},
+                env={**os.environ, "DQIII8_MODE": "autonomous"},
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=7200)
             output = stdout.decode("utf-8", errors="replace") if stdout else ""
@@ -1027,7 +1027,7 @@ async def _handle_aprobar(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Usage: /aprobar_<id>")
         return
     perm_id = m.group(1)
-    perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
+    perm_file = Path(f"/tmp/dqiii8_perm_{perm_id}.json")
     perm_file.write_text(
         '{"decision":"allow","reason":"user approved"}', encoding="utf-8"
     )
@@ -1045,7 +1045,7 @@ async def _handle_denegar(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Usage: /denegar_<id>")
         return
     perm_id = m.group(1)
-    perm_file = Path(f"/tmp/jarvis_perm_{perm_id}.json")
+    perm_file = Path(f"/tmp/dqiii8_perm_{perm_id}.json")
     perm_file.write_text('{"decision":"deny","reason":"user denied"}', encoding="utf-8")
     await update.message.reply_text(f"[DQIII8] Permission {perm_id} DENIED.")
 
@@ -1466,7 +1466,7 @@ def main() -> None:
 def send_morning_report() -> None:
     """
     Builds and sends a morning status Telegram message.
-    Called via: python3 bin/jarvis_bot.py --morning-report
+    Called via: python3 bin/dqiii8_bot.py --morning-report
     """
     import urllib.request
     import urllib.parse

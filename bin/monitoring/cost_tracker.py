@@ -22,7 +22,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-DB = Path(__file__).resolve().parent.parent.parent / "database" / "jarvis_metrics.db"
+DB = Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8_metrics.db"
 OUT = (
     Path(__file__).resolve().parent.parent.parent
     / "tasks"

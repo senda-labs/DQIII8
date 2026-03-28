@@ -19,7 +19,7 @@ LESSONS = JARVIS / "tasks" / "lessons.md"
 FLAG = JARVIS / "tasks" / "audit_pending.flag"
 
 # ── Active project ─────────────────────────────────────────────────
-project = os.environ.get("JARVIS_PROJECT", "")
+project = os.environ.get("DQIII8_PROJECT", "")
 if not project:
     cwd = Path(data.get("cwd", "."))
     for part in cwd.parts:
@@ -27,11 +27,11 @@ if not project:
             project = part
             break
     if not project:
-        project = "jarvis-core"
+        project = "dqiii8-core"
 
 # Save session start time so stop.py Fallback 2 can scope to this session
 try:
-    Path("/tmp/jarvis_session_start.txt").write_text(datetime.now().isoformat(), encoding="utf-8")
+    Path("/tmp/dqiii8_session_start.txt").write_text(datetime.now().isoformat(), encoding="utf-8")
 except Exception:
     pass
 
@@ -157,12 +157,12 @@ try:
 except Exception:
     pass  # silent skip — do not block startup
 
-model = os.environ.get("JARVIS_MODEL", "qwen2.5-coder:7b (Ollama)")
+model = os.environ.get("DQIII8_MODEL", "qwen2.5-coder:7b (Ollama)")
 
 # ── Personality Mode ────────────────────────────────────────────────
 _mode = ""
 try:
-    _mode_file = Path("/tmp/jarvis_mode.txt")
+    _mode_file = Path("/tmp/dqiii8_mode.txt")
     if _mode_file.exists():
         _mode = _mode_file.read_text(encoding="utf-8").strip()
 except Exception:

@@ -9,4 +9,4 @@
 
 ## Relationship with common/development-workflow.md
 The ECC workflow (Research → Plan → TDD → Review → Commit) is compatible.
-DQIII8 adds: Telegram notification for critical decisions via jarvis_bot.
+DQIII8 adds: Telegram notification for critical decisions via dqiii8_bot.

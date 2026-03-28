@@ -40,10 +40,10 @@ Long-running services, scheduled jobs, and user-facing interfaces.
 | Script | Schedule / Trigger | Description |
 |--------|--------------------|-------------|
 | `nightly.sh` | cron 03:00 daily | Nightly maintenance — consolidation, indexing, smoke tests, git commit |
-| `ui/jarvis_bot.py` | cron 08:00 daily | Telegram bot — primary user interface |
+| `ui/dqiii8_bot.py` | cron 08:00 daily | Telegram bot — primary user interface |
 | `ui/dashboard.py` | on demand | Web dashboard |
 | `ui/dashboard_security.py` | imported by dashboard.py | Dashboard auth layer |
-| `ui/voice_handler.py` | imported by jarvis_bot.py | Voice message processing |
+| `ui/voice_handler.py` | imported by dqiii8_bot.py | Voice message processing |
 | `monitoring/analytics_collector.py` | cron 09:00 daily | Collects and stores usage analytics |
 | `monitoring/benchmark_knowledge.py` | on demand | Benchmarks knowledge retrieval quality |
 | `monitoring/telemetry.py` | called by nightly.sh | Opt-in telemetry sender |
@@ -84,4 +84,4 @@ Moved to `bin/archive/` — preserved for reference or future phases.
 | `archive/tools/reconcile_errors.py` | Error reconciler — one-off tool |
 | `archive/tools/sqlite_mcp.py` | SQLite MCP server — not currently used |
 | `archive/tools/verify_install.py` | **Phase 5**: base for install.sh (public repo) |
-| `archive/ui/interactive_chat.py` | Interactive CLI chat — replaced by jarvis_bot.py |
+| `archive/ui/interactive_chat.py` | Interactive CLI chat — replaced by dqiii8_bot.py |

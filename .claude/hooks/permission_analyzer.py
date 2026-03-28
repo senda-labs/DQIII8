@@ -19,7 +19,7 @@ from pathlib import Path
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 SESSION_ID = os.environ.get("CLAUDE_SESSION_ID", "unknown")
-JARVIS_MODE = os.environ.get("JARVIS_MODE", "supervised")
+DQIII8_MODE = os.environ.get("DQIII8_MODE", "supervised")
 
 # ── Risk constants ──────────────────────────────────────────────────────────
 BLOCKED_PATHS = [
@@ -214,7 +214,7 @@ class PermissionAnalyzer:
                     is_safe_deletion = any(safe in cmd for safe in ALLOWED_DELETIONS)
                     if is_safe_deletion:
                         break
-                    if JARVIS_MODE == "autonomous":
+                    if DQIII8_MODE == "autonomous":
                         return self._deny(
                             tool,
                             cmd,
@@ -234,7 +234,7 @@ class PermissionAnalyzer:
                         )
 
         # 5. Autonomous mode — auto-approve standard tools (after checks)
-        if JARVIS_MODE == "autonomous" and tool in AUTO_APPROVE_TOOLS:
+        if DQIII8_MODE == "autonomous" and tool in AUTO_APPROVE_TOOLS:
             return self._approve("autonomous_mode")
 
         return self._approve()

@@ -509,7 +509,7 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
     """Log returned chunks to knowledge_usage for quality tracking."""
     if not chunks:
         return
-    db_path = DQIII8_ROOT / "database" / "jarvis_metrics.db"
+    db_path = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
     if not db_path.exists():
         return
     try:

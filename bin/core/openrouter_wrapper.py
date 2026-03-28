@@ -38,7 +38,7 @@ PROVIDERS = {
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
         "headers_extra": {
-            "HTTP-Referer": "https://jarvis.local",
+            "HTTP-Referer": "https://dqiii8.local",
             "X-Title": "DQIII8",
         },
     },
@@ -354,8 +354,8 @@ def load_agent_system_prompt(agent_name: str, prompt: str = "") -> str:
     """
     if not agent_name or agent_name == "default":
         return ""
-    jarvis = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-    md_path = jarvis / ".claude" / "agents" / f"{agent_name}.md"
+    dqiii8_root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+    md_path = dqiii8_root / ".claude" / "agents" / f"{agent_name}.md"
     if not md_path.exists():
         return ""
     content = md_path.read_text(encoding="utf-8")
@@ -434,7 +434,7 @@ def _stream_via_claude_cli(
 ) -> tuple[str, int, int, bool]:
     """Tier A fallback: call Claude Code CLI when ANTHROPIC_API_KEY is not set.
 
-    Uses OAuth via ~/.claude/.credentials.json (same as jarvis_bot /cc).
+    Uses OAuth via ~/.claude/.credentials.json (same as dqiii8_bot /cc).
     """
     cmd = ["claude", "-p", prompt, "--output-format", "json", "--model", model]
     if system_prompt:
@@ -704,7 +704,7 @@ def _enforce_sensitive_permissions() -> None:
 
     root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
     # Sensitive files → 600
-    for rel in (".env", "database/jarvis_metrics.db", "database/dqiii8.db"):
+    for rel in (".env", "database/dqiii8_metrics.db", "database/dqiii8.db"):
         path = root / rel
         if path.exists():
             current = path.stat().st_mode & 0o777

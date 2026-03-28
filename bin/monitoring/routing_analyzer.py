@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB = DQIII8_ROOT / "database" / "jarvis_metrics.db"
+DB = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
 OUT = DQIII8_ROOT / "tasks" / "routing_recommendations.json"
 
 DAYS = 30

@@ -216,7 +216,7 @@ def call_openrouter(
         model_id,
         messages,
         max_tokens,
-        extra_headers={"HTTP-Referer": "https://jarvis.local", "X-Title": "DQIII8"},
+        extra_headers={"HTTP-Referer": "https://dqiii8.local", "X-Title": "DQIII8"},
     )
 
 

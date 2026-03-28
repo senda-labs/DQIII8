@@ -36,11 +36,11 @@ except Exception:
 
 # ── Active project ───────────────────────────────────────────────────
 project = (
-    pre_state.get("project") or os.environ.get("JARVIS_PROJECT", "") or "jarvis-core"
+    pre_state.get("project") or os.environ.get("DQIII8_PROJECT", "") or "dqiii8-core"
 )
 
 # ── Active model ─────────────────────────────────────────────────────
-model = os.environ.get("JARVIS_MODEL", "claude-sonnet-4-6")
+model = os.environ.get("DQIII8_MODEL", "claude-sonnet-4-6")
 
 # ── Last 3 lessons ───────────────────────────────────────────────────
 lessons: list[str] = []

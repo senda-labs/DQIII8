@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 DB_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "database" / "jarvis_metrics.db"
+    Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8_metrics.db"
 )
 
 

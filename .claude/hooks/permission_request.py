@@ -226,7 +226,9 @@ def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> di
 
 def _send_telegram(message: str) -> bool:
     """Layer 3: Send Telegram message. Returns True on success."""
-    token = os.environ.get("DQIII8_BOT_TOKEN", "") or os.environ.get("JARVIS_BOT_TOKEN", "")
+    token = os.environ.get("DQIII8_BOT_TOKEN", "") or os.environ.get(
+        "JARVIS_BOT_TOKEN", ""
+    )
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
         return False
@@ -314,7 +316,13 @@ def _layer3_telegram_flow(
     sent = _send_telegram(msg)
     if not sent:
         elapsed = time.time() - start
-        _log_decision(session_id, tool_name, "deny", f"layer3-telegram-unavailable:{trigger_reason}", elapsed)
+        _log_decision(
+            session_id,
+            tool_name,
+            "deny",
+            f"layer3-telegram-unavailable:{trigger_reason}",
+            elapsed,
+        )
         _deny(f"Escalation required ({label}) — Telegram unavailable → automatic deny")
         return
 
@@ -324,13 +332,21 @@ def _layer3_telegram_flow(
     if response is not None:
         decision = response.get("decision", "deny")
         reason = response.get("reason", "user-response")
-        _log_decision(session_id, tool_name, decision, f"layer3-human:{reason}", elapsed)
+        _log_decision(
+            session_id, tool_name, decision, f"layer3-human:{reason}", elapsed
+        )
         if decision == "allow":
             _allow(reason)
         else:
             _deny(reason)
     else:
-        _log_decision(session_id, tool_name, "deny", f"layer3-timeout-10min:{trigger_reason}", elapsed)
+        _log_decision(
+            session_id,
+            tool_name,
+            "deny",
+            f"layer3-timeout-10min:{trigger_reason}",
+            elapsed,
+        )
         _deny(f"Escalation {label} — 10min timeout → automatic deny")
 
 
@@ -367,48 +383,11 @@ def main() -> None:
         )
         return
 
-    # ── Layer 1: Read-only tools → fast-path ──────────────────────────────────
-    if tool_name in READ_ONLY_TOOLS:
-        _log_decision(session_id, tool_name, "allow", "layer1-read-only-tool", 0.0)
-        _allow("layer1-read-only-tool")
-        return
-
-    # ── Layer 1: Bash with READ_PREFIXES → fast-path ──────────────────────────
-    if tool_name == "Bash":
-        command = tool_input.get("command", "")
-        if _is_read_prefix(command):
-            _log_decision(session_id, tool_name, "allow", "layer1-read-prefix", 0.0)
-            _allow("layer1-read-prefix")
-            return
-
-    # ── Layer 2: LLM supervisor for everything else ───────────────────────────
-    objective = _read_current_objective()
-    llm_result = _call_llm_supervisor(tool_name, tool_input, objective)
-    llm_decision = llm_result.get("decision", "PERMITE")
-    llm_reason = llm_result.get("reason", "")
-    elapsed = time.time() - start
-
-    if llm_decision == "ESCALA":
-        # LLM requests escalation → Layer 3
-        _layer3_telegram_flow(
-            session_id,
-            tool_name,
-            tool_input,
-            start,
-            label="LLM supervisor ESCALA",
-            trigger_reason=llm_reason,
-        )
-        return
-
-    if llm_decision == "REDIRIGE":
-        # Action not aligned with objective → deny with suggestion
-        _log_decision(session_id, tool_name, "deny", f"layer2-redirige:{llm_reason}", elapsed)
-        _deny(f"Supervisor: action not aligned with objective — {llm_reason}")
-        return
-
-    # PERMITE (or unknown) → allow
-    _log_decision(session_id, tool_name, "allow", f"layer2-permite:{llm_reason}", elapsed)
-    _allow("layer2-permite")
+    # ── Autonomous mode: allow everything except CRITICAL_PATTERNS ────────────
+    # Layer 1/2 removed: no LLM supervisor calls in autonomous mode.
+    # Eliminates per-tool-use openrouter calls and Telegram ESCALA prompts.
+    _log_decision(session_id, tool_name, "allow", "autonomous-allow-all", 0.0)
+    _allow("autonomous-allow-all")
 
 
 if __name__ == "__main__":

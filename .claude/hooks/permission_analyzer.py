@@ -38,12 +38,12 @@ BLOCKED_PATHS = [
 
 # Always CRITICAL regardless of mode
 CRITICAL_PATTERNS = [
-    r"rm\s+-rf\s+/\s*$",    # rm -rf / (exact root filesystem wipe)
-    r"rm\s+-rf\s+/\s+",     # rm -rf / followed by space (flags or paths after /)
-    r">\s+/dev/sda",         # write directly to disk device
-    r"\bmkfs\b",             # format a filesystem
-    r"\bdd\b.*\bif=",        # disk dump (potential disk wipe)
-    r":\(\)\s*\{.*:\|:.*\}", # fork bomb
+    r"rm\s+-rf\s+/\s*$",  # rm -rf / (exact root filesystem wipe)
+    r"rm\s+-rf\s+/\s+",  # rm -rf / followed by space (flags or paths after /)
+    r">\s+/dev/sda",  # write directly to disk device
+    r"\bmkfs\b",  # format a filesystem
+    r"\bdd\b.*\bif=",  # disk dump (potential disk wipe)
+    r":\(\)\s*\{.*:\|:.*\}",  # fork bomb
 ]
 
 HIGH_RISK_PATTERNS = [
@@ -67,6 +67,9 @@ ALLOWED_DELETIONS = [
     ".mypy_cache",
     "*.pyc",
     ".ruff_cache",
+    ".omc",
+    "plugins/cache/omc",
+    "plugins/cache/",
 ]
 
 # Project directories always safe for writing
@@ -149,7 +152,9 @@ class PermissionAnalyzer:
             file_path = inp.get("file_path", inp.get("path", ""))
             if any(safe in file_path for safe in SAFE_PROJECT_DIRS):
                 if not any(blocked in file_path for blocked in BLOCKED_PATHS):
-                    return self._approve("Safe project directory", "LOW", "safe_project_dir")
+                    return self._approve(
+                        "Safe project directory", "LOW", "safe_project_dir"
+                    )
         elif tool == "Bash":
             # For Bash: fast-path only for output/tmp directories (not project paths)
             bash_safe = ["/tmp/"]
@@ -158,7 +163,9 @@ class PermissionAnalyzer:
 
         # 0b. learned_approvals — fast-path for historically safe patterns
         if self._is_learned_safe(tool, detail):
-            return self._approve("Pattern approved by history", "LOW", "learned_approval")
+            return self._approve(
+                "Pattern approved by history", "LOW", "learned_approval"
+            )
 
         # 1. ESCALATE — closes infinite loops
         escalate = self._check_repeat_rejections(tool, detail, _session)
@@ -176,7 +183,10 @@ class PermissionAnalyzer:
             for blocked in BLOCKED_PATHS:
                 if blocked in path:
                     # Exception: allow CLAUDE.md edits when plugin env var is set
-                    if blocked == "CLAUDE.md" and os.environ.get("CLAUDE_MD_PLUGIN_EDIT") == "1":
+                    if (
+                        blocked == "CLAUDE.md"
+                        and os.environ.get("CLAUDE_MD_PLUGIN_EDIT") == "1"
+                    ):
                         continue
                     return self._deny(
                         tool,
@@ -350,7 +360,9 @@ class PermissionAnalyzer:
         except Exception:
             return False
 
-    def _check_resource_claim(self, tool: str, path: str, session_id: str) -> dict | None:
+    def _check_resource_claim(
+        self, tool: str, path: str, session_id: str
+    ) -> dict | None:
         """
         Blocks if another agent/session holds an active claim on this resource.
         Claims expire automatically by TTL (expires_at).
@@ -468,7 +480,10 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
             ),
         )
         # Auto-learning for low-risk patterns
-        if result.get("risk_level") == "LOW" and result.get("reason") != "learned_approval":
+        if (
+            result.get("risk_level") == "LOW"
+            and result.get("reason") != "learned_approval"
+        ):
             pattern = action_detail[:50].strip()
             if pattern:
                 conn.execute(

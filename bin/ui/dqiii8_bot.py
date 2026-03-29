@@ -1216,17 +1216,28 @@ def _cc_check(prompt: str) -> str | None:
 
 
 def _log_cc_command(
-    command: str, prompt: str, agent: str | None, success: bool, response_len: int
+    command: str,
+    prompt: str,
+    agent: str | None,
+    success: bool,
+    response_len: int,
+    session_id: str = "",
 ) -> None:
     """Log /cc command usage to dqiii8.db."""
+    import time as _time
+
+    sid = session_id or f"tg_bot_{int(_time.time())}"
     try:
         conn = sqlite3.connect(DB)
         conn.execute(
-            "INSERT INTO agent_actions (agent_name, action_type, input_tokens, output_tokens, notes) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO agent_actions "
+            "(session_id, agent_name, tool_used, action_type, input_tokens, output_tokens, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
+                sid,
                 agent or "cc_direct",
                 command,
+                "telegram_command",
                 len(prompt),
                 response_len,
                 f"success={success}",
@@ -1443,6 +1454,8 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/cc <prompt> — Run Claude Code with DQ project detection + live progress."""
     if not authorized(update):
         return
+    if update.message is None:
+        return
     chat_id = str(update.effective_chat.id)
     text = (update.message.text or "").strip()
     prompt = text[len("/cc") :].strip()
@@ -1455,7 +1468,7 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     reason = _cc_check(prompt)
     if reason:
         await update.message.reply_text(f"Blocked: {reason}")
-        _log_cc_command("/cc", prompt, None, False, 0)
+        _log_cc_command("/cc", prompt, None, False, 0, f"tg_{chat_id}")
         return
     if not _cc_rate_ok(chat_id):
         await update.message.reply_text(
@@ -1535,7 +1548,7 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         pass
 
-    _log_cc_command("/cc", prompt, None, success, len(output))
+    _log_cc_command("/cc", prompt, None, success, len(output), f"tg_{chat_id}")
     await send_chunks(update, output)
 
     for fpath in files[:5]:
@@ -1551,6 +1564,8 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/auto <goal> — Autonomous mode: Claude works with full permissions."""
     if not authorized(update):
+        return
+    if update.message is None:
         return
     chat_id = str(update.effective_chat.id)
     text = (update.message.text or "").strip()
@@ -1598,7 +1613,7 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         pass
 
-    _log_cc_command("/auto", goal, None, success, len(output))
+    _log_cc_command("/auto", goal, None, success, len(output), f"tg_{chat_id}")
     await send_chunks(update, output)
 
     for fpath in files[:5]:
@@ -1683,7 +1698,14 @@ async def cmd_auth_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
     else:
         await update.message.reply_text(f"Auth test FAILED:\n{output}")
-    _log_cc_command("/auth_test", "reply with only: OK", None, success, len(output))
+    _log_cc_command(
+        "/auth_test",
+        "reply with only: OK",
+        None,
+        success,
+        len(output),
+        f"tg_{update.effective_chat.id}",
+    )
 
 
 # ── Main ────────────────────────────────────────────────────────────────────────

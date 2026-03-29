@@ -5,6 +5,10 @@ database/*.db
 database/*.db-wal
 database/*.db-shm
 
+# Benchmark results and incremental migrations (use schema_v2.sql for fresh installs)
+database/benchmarks/*.json
+database/migrations/*.sql
+
 # Config with real keys (example file IS committed, real file is NOT)
 config/.env
 

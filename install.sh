@@ -110,6 +110,10 @@ sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_v2.sql
 sqlite3 "$DQIII8_ROOT/database/jarvis_metrics.db" < "$DQIII8_ROOT/database/schema.sql" \
     && ok "jarvis_metrics.db: schema.sql applied" \
     || warn "schema.sql → jarvis_metrics.db had errors"
+# dqiii8_metrics.db — working memory + session_memory (required by smoke tests)
+sqlite3 "$DQIII8_ROOT/database/dqiii8_metrics.db" < "$DQIII8_ROOT/database/schema.sql" \
+    && ok "dqiii8_metrics.db: schema.sql applied" \
+    || warn "schema.sql → dqiii8_metrics.db had errors"
 _INSTALLED+=("Database schemas")
 
 # 5b. Domain classifier centroids (requires Ollama)

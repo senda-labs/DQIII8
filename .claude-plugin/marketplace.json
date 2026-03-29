@@ -1,0 +1,20 @@
+{
+  "name": "dqiii8",
+  "displayName": "DQIII8 — Domain-Quality AI Orchestration",
+  "owner": {
+    "name": "Senda Labs",
+    "url": "https://github.com/senda-labs"
+  },
+  "plugins": [
+    {
+      "name": "dqiii8",
+      "description": "Multi-tier AI orchestration with domain knowledge enrichment. Routes prompts through cheapest capable model (Ollama > Groq > Anthropic). 17 skills, 9 specialized agents, 12 lifecycle hooks. Knowledge base with bge-m3 embeddings.",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/senda-labs/DQIII8.git"
+      },
+      "homepage": "https://github.com/senda-labs/DQIII8",
+      "license": "MIT"
+    }
+  ]
+}

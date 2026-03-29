@@ -1,0 +1,9 @@
+{
+  "name": "dqiii8",
+  "version": "1.0.0",
+  "description": "Domain-Quality AI orchestration — multi-tier routing with knowledge enrichment",
+  "author": "Senda Labs",
+  "homepage": "https://github.com/senda-labs/DQIII8",
+  "supportedPlatforms": ["linux"],
+  "minClaudeCodeVersion": "2.1.80"
+}

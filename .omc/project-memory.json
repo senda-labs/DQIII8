@@ -295,6 +295,18 @@
       "accessCount": 1,
       "lastAccessed": 1774797960618,
       "type": "file"
+    },
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "accessCount": 1,
+      "lastAccessed": 1774798887589,
+      "type": "file"
+    },
+    {
+      "path": ".claude-plugin/plugin.json",
+      "accessCount": 1,
+      "lastAccessed": 1774798889457,
+      "type": "file"
     }
   ],
   "userDirectives": []

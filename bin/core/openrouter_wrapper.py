@@ -623,6 +623,24 @@ def log_to_db(
             except Exception as _exc:
                 log.warning("DB log write failed (action_id=%s): %s", action_id, _exc)
                 pass  # fail-open, never block the pipeline
+        # model_satisfaction — per-call technical outcome for routing feedback
+        try:
+            conn.execute(
+                "INSERT INTO model_satisfaction "
+                "(session_id, model_used, task_type, duration_ms, technical_success, tier_used) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    session_id,
+                    f"{provider}/{model}",
+                    domain or None,
+                    duration_ms,
+                    1 if success else 0,
+                    tier,
+                ),
+            )
+            conn.commit()
+        except Exception as _exc:
+            log.warning("model_satisfaction insert failed: %s", _exc)
         conn.close()
     except Exception as _exc:
         log.warning("DB logging block failed: %s", _exc)

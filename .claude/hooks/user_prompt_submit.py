@@ -148,6 +148,31 @@ def _relevant_lessons(keywords: list[str], max_lines: int = 3) -> list[str]:
     return matched
 
 
+def _log_skill_invocation(skill_name: str) -> None:
+    """UPSERT into skill_metrics when a /skill is invoked."""
+    if not DB.exists():
+        return
+    try:
+        conn = sqlite3.connect(str(DB), timeout=0.5)
+        ex = conn.execute(
+            "SELECT id FROM skill_metrics WHERE skill_name=?", (skill_name,)
+        ).fetchone()
+        if ex:
+            conn.execute(
+                "UPDATE skill_metrics SET times_loaded=times_loaded+1 WHERE skill_name=?",
+                (skill_name,),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO skill_metrics (skill_name, times_loaded) VALUES (?, 1)",
+                (skill_name,),
+            )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
 def _spc_alert() -> str:
     """Return last active SPC trigger reason or empty string."""
     if not DB.exists():
@@ -177,6 +202,11 @@ def main() -> None:
         sys.exit(0)
 
     word_count = len(prompt.split())
+
+    # ── Skill invocation logging ─────────────────────────────────────────────
+    skill_m = re.match(r"^/([a-zA-Z0-9_:/-]+)", prompt.strip())
+    if skill_m:
+        _log_skill_invocation(skill_m.group(1).lower())
 
     # ── Find active project ──────────────────────────────────────────────────
     project = _read_active_project()

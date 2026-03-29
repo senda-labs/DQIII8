@@ -711,7 +711,7 @@ def classify_domain(prompt: str) -> tuple[str, float, str]:
     # 4. Resolve conflicts
     if kw_domain and kw_hits >= 1:
         # Keyword has at least one hit — trust keyword if embedding isn't decisive
-        if emb_domain is None or emb_score < 0.5 or kw_domain == emb_domain:
+        if emb_domain is None or emb_score < 0.55 or kw_domain == emb_domain:
             return kw_domain, max(emb_score, 0.5), "keyword"
         # Embedding is strong but disagrees — keyword still wins if hits >= 3
         if kw_hits >= 3:

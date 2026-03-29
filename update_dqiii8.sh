@@ -21,7 +21,7 @@ git pull origin main && ok "Code updated" || err "Git pull failed"
 echo ""
 echo "▶ 2/10 Python dependencies"
 pip install -q --break-system-packages -U crawl4ai pdfplumber docxtpl scrapling \
-    2>/dev/null || pip install -q -U crawl4ai pdfplumber docxtpl scrapling
+    2>/dev/null || pip install -q --break-system-packages -U crawl4ai pdfplumber docxtpl scrapling
 ok "Python deps"
 
 # 3. DB schemas (both databases)

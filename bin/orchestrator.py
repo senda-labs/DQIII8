@@ -140,6 +140,22 @@ def build_context(project: dict, prompt: str) -> str | None:
     return "\n".join(parts)
 
 
+def prepare_project(project: dict) -> dict:
+    """Detect project + ensure Tier 3 plugins + build context.
+
+    Returns project dict with 'auto_installed_plugins' key added.
+    """
+    from plugin_manager import ensure_plugins, get_project_plugins
+
+    plugins_needed = get_project_plugins(project)
+    if plugins_needed:
+        installed = ensure_plugins(project)
+        project["auto_installed_plugins"] = installed
+    else:
+        project["auto_installed_plugins"] = []
+    return project
+
+
 def parse_output(raw: str, cwd: Path) -> dict:
     """Parse Claude Code output to extract files, summary, and next steps.
 

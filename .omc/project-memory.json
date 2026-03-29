@@ -247,6 +247,13 @@
       "keyFiles": []
     }
   },
-  "hotPaths": [],
+  "hotPaths": [
+    {
+      "path": ".claude/rules/claude-md-limit.md",
+      "accessCount": 1,
+      "lastAccessed": 1774797565731,
+      "type": "file"
+    }
+  ],
   "userDirectives": []
 }

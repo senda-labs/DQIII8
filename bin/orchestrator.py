@@ -506,7 +506,6 @@ _CRITICAL_KW = frozenset(
         "seguridad",
         "security",
         "secret",
-        "token",
         "credentials",
         "credenciales",
         "cve",
@@ -517,6 +516,11 @@ _CRITICAL_KW = frozenset(
         "hack",
     }
 )
+
+
+def _kw_in(kw: str, text: str) -> bool:
+    """Return True if keyword appears as whole word(s) in text."""
+    return bool(re.search(r"\b" + re.escape(kw) + r"\b", text))
 
 
 def classify_task_complexity(prompt: str) -> str:
@@ -536,30 +540,30 @@ def classify_task_complexity(prompt: str) -> str:
 
     # CRITICAL — check first (highest risk, must not be downgraded)
     for kw in _CRITICAL_KW:
-        if kw in lower:
+        if _kw_in(kw, lower):
             return "CRITICAL"
 
     # ARCHITECTURE — multi-file, system design
     if words & _ARCH_KW or len(prompt) > 500:
         return "ARCHITECTURE"
     for kw in _ARCH_KW:
-        if kw in lower:
+        if _kw_in(kw, lower):
             return "ARCHITECTURE"
 
-    # CODE_GEN — create / write / implement new code
-    for kw in _CODE_GEN_VERBS:
-        if kw in lower:
-            return "CODE_GEN"
+    # READ_ONLY — pure observation (check before CODE_GEN to avoid false positives)
+    for kw in _RO_VERBS:
+        if _kw_in(kw, lower):
+            return "READ_ONLY"
 
     # SIMPLE_WRITE — single file edits, tests, git commits
     for kw in _SIMPLE_WRITE_VERBS:
-        if kw in lower:
+        if _kw_in(kw, lower):
             return "SIMPLE_WRITE"
 
-    # READ_ONLY — pure observation
-    for kw in _RO_VERBS:
-        if kw in lower:
-            return "READ_ONLY"
+    # CODE_GEN — create / write / implement new code
+    for kw in _CODE_GEN_VERBS:
+        if _kw_in(kw, lower):
+            return "CODE_GEN"
 
     # Default: if short and no exec verbs → READ_ONLY (safe default for Haiku)
     if len(prompt) <= 150 and not (words & _EXEC_VERBS):

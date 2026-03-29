@@ -1,4 +1,4 @@
-CREATE TABLE agent_actions (
+CREATE TABLE IF NOT EXISTS agent_actions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
     session_id      TEXT    NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE agent_actions (
     skills_active   TEXT,               -- JSON array
     blocked_by_hook INTEGER DEFAULT 0
 , cost_eur REAL DEFAULT 0.0, model_tier INTEGER DEFAULT 0, tokens_input INTEGER DEFAULT 0, tokens_output INTEGER DEFAULT 0, estimated_cost_usd REAL DEFAULT 0.0, tier TEXT DEFAULT 'unknown', domain_enriched BOOLEAN DEFAULT 0, domain TEXT, knowledge_chunks_used INTEGER DEFAULT 0, energy_wh REAL DEFAULT 0, cpu_percent REAL DEFAULT 0, input_tokens INTEGER, output_tokens INTEGER, notes TEXT);
-CREATE TABLE error_log (
+CREATE TABLE IF NOT EXISTS error_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
     session_id      TEXT    NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE error_log (
     resolution_ms   INTEGER,
     lesson_added    INTEGER DEFAULT 0
 , action_id INTEGER REFERENCES agent_actions(id));
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     session_id          TEXT PRIMARY KEY,
     start_time          TEXT NOT NULL DEFAULT (datetime('now')),
     end_time            TEXT,
@@ -53,7 +53,7 @@ CREATE TABLE sessions (
     lessons_added       INTEGER DEFAULT 0,
     clear_contexts      INTEGER DEFAULT 0
 , compact_count INTEGER DEFAULT 0);
-CREATE TABLE skill_metrics (
+CREATE TABLE IF NOT EXISTS skill_metrics (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     skill_name      TEXT NOT NULL,
     timestamp       TEXT NOT NULL DEFAULT (datetime('now')),
@@ -69,7 +69,7 @@ CREATE TABLE skill_metrics (
     source_repo     TEXT,
     review_notes    TEXT
 );
-CREATE TABLE audit_reports (
+CREATE TABLE IF NOT EXISTS audit_reports (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp           TEXT NOT NULL DEFAULT (datetime('now')),
     period_start        TEXT,
@@ -85,12 +85,12 @@ CREATE TABLE audit_reports (
     recommendations     TEXT,           -- JSON array
     overall_score       REAL
 );
-CREATE INDEX idx_actions_agent   ON agent_actions(agent_name, timestamp);
-CREATE INDEX idx_actions_session ON agent_actions(session_id);
-CREATE INDEX idx_actions_success ON agent_actions(success, timestamp);
-CREATE INDEX idx_errors_session  ON error_log(session_id);
-CREATE INDEX idx_sessions_proj   ON sessions(project, start_time);
-CREATE VIEW agent_performance AS
+CREATE INDEX IF NOT EXISTS idx_actions_agent   ON agent_actions(agent_name, timestamp);
+CREATE INDEX IF NOT EXISTS idx_actions_session ON agent_actions(session_id);
+CREATE INDEX IF NOT EXISTS idx_actions_success ON agent_actions(success, timestamp);
+CREATE INDEX IF NOT EXISTS idx_errors_session  ON error_log(session_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_proj   ON sessions(project, start_time);
+CREATE VIEW IF NOT EXISTS agent_performance AS
 SELECT
     agent_name,
     COUNT(*)                                               AS total_actions,
@@ -103,7 +103,7 @@ FROM agent_actions
 GROUP BY agent_name
 ORDER BY success_rate_pct DESC
 /* agent_performance(agent_name,total_actions,success_rate_pct,avg_duration_ms,total_bytes_written,times_blocked,last_active) */;
-CREATE VIEW error_keywords_freq AS
+CREATE VIEW IF NOT EXISTS error_keywords_freq AS
 SELECT
     je.value                                               AS keyword,
     COUNT(*)                                               AS frequency,
@@ -116,15 +116,15 @@ WHERE e.keywords IS NOT NULL AND e.keywords != '[]'
 GROUP BY je.value
 ORDER BY frequency DESC
 /* error_keywords_freq(keyword,frequency,first_seen,last_seen,avg_resolution_secs,times_resolved) */;
-CREATE TABLE agent_registry (
+CREATE TABLE IF NOT EXISTS agent_registry (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id     TEXT NOT NULL,
     agent_type   TEXT NOT NULL,
     parent_session TEXT,
     start_time   TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX idx_registry_agent ON agent_registry(agent_id);
-CREATE TABLE jal_objectives (
+CREATE INDEX IF NOT EXISTS idx_registry_agent ON agent_registry(agent_id);
+CREATE TABLE IF NOT EXISTS jal_objectives (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     objective_id        TEXT UNIQUE NOT NULL,
     title               TEXT NOT NULL,
@@ -145,7 +145,7 @@ CREATE TABLE jal_objectives (
     lessons_count       INTEGER DEFAULT 0,
     tags                TEXT
 );
-CREATE TABLE jal_steps (
+CREATE TABLE IF NOT EXISTS jal_steps (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     objective_id    TEXT NOT NULL,
     attempt         INTEGER NOT NULL,
@@ -170,7 +170,7 @@ CREATE TABLE jal_steps (
     retry_count     INTEGER DEFAULT 0,
     UNIQUE(objective_id, attempt, step_number)
 );
-CREATE TABLE jal_scoring_snapshots (
+CREATE TABLE IF NOT EXISTS jal_scoring_snapshots (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     objective_id    TEXT NOT NULL,
     attempt         INTEGER NOT NULL,
@@ -192,7 +192,7 @@ CREATE TABLE jal_scoring_snapshots (
     breakdown_json  TEXT NOT NULL,
     gemini_raw      TEXT
 );
-CREATE TABLE jal_error_taxonomy (
+CREATE TABLE IF NOT EXISTS jal_error_taxonomy (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     objective_id    TEXT NOT NULL,
     attempt         INTEGER NOT NULL,
@@ -213,7 +213,7 @@ CREATE TABLE jal_error_taxonomy (
     seen_before     INTEGER DEFAULT 0,
     pattern_id      TEXT
 );
-CREATE TABLE jal_error_patterns (
+CREATE TABLE IF NOT EXISTS jal_error_patterns (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     pattern_id      TEXT UNIQUE NOT NULL,
     first_seen      TEXT DEFAULT (datetime('now')),
@@ -232,7 +232,7 @@ CREATE TABLE jal_error_patterns (
     prevention_effective INTEGER DEFAULT 0,
     status          TEXT DEFAULT 'active'
 );
-CREATE TABLE jal_conversations (
+CREATE TABLE IF NOT EXISTS jal_conversations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     objective_id    TEXT NOT NULL,
     message_at      TEXT DEFAULT (datetime('now')),
@@ -243,15 +243,15 @@ CREATE TABLE jal_conversations (
     action_result   TEXT,
     update_id       INTEGER
 );
-CREATE INDEX idx_steps_obj
+CREATE INDEX IF NOT EXISTS idx_steps_obj
     ON jal_steps(objective_id, attempt);
-CREATE INDEX idx_errors_category
+CREATE INDEX IF NOT EXISTS idx_errors_category
     ON jal_error_taxonomy(category, severity);
-CREATE INDEX idx_patterns_freq
+CREATE INDEX IF NOT EXISTS idx_patterns_freq
     ON jal_error_patterns(failure_rate DESC, frequency DESC);
-CREATE INDEX idx_snapshots_obj
+CREATE INDEX IF NOT EXISTS idx_snapshots_obj
     ON jal_scoring_snapshots(objective_id, attempt);
-CREATE VIEW v_claude_reliability AS
+CREATE VIEW IF NOT EXISTS v_claude_reliability AS
 SELECT
     o.type                              AS task_type,
     COUNT(DISTINCT o.objective_id)      AS total_objectives,
@@ -266,7 +266,7 @@ WHERE o.status IN ('completed', 'failed')
 GROUP BY o.type
 ORDER BY reliability_pct DESC
 /* v_claude_reliability(task_type,total_objectives,passed,avg_score_pct,avg_attempts_needed,avg_entropy,reliability_pct) */;
-CREATE VIEW v_error_ranking AS
+CREATE VIEW IF NOT EXISTS v_error_ranking AS
 SELECT
     p.pattern_id,
     p.category,
@@ -282,7 +282,7 @@ SELECT
 FROM jal_error_patterns p
 ORDER BY danger_index DESC
 /* v_error_ranking(pattern_id,category,frequency,failure_rate_pct,avg_severity,avg_propagation,prevention_rule,fix_rule,status,danger_index) */;
-CREATE VIEW v_convergence_history AS
+CREATE VIEW IF NOT EXISTS v_convergence_history AS
 SELECT
     s.objective_id,
     s.attempt,
@@ -296,16 +296,16 @@ SELECT
 FROM jal_scoring_snapshots s
 ORDER BY s.objective_id, s.attempt
 /* v_convergence_history(objective_id,attempt,score_pct,delta_pct,entropy,converges,convergence_est,has_blocker,steps_failed) */;
-CREATE TABLE video_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, collected_at TEXT NOT NULL, platform TEXT NOT NULL, channel_id TEXT, channel_name TEXT, video_id TEXT NOT NULL, video_title TEXT, published_at TEXT, duration_s INTEGER, views INTEGER DEFAULT 0, views_24h INTEGER DEFAULT 0, views_7d INTEGER DEFAULT 0, watch_time_hours REAL DEFAULT 0, avg_view_duration_s INTEGER DEFAULT 0, retention_rate REAL DEFAULT 0, likes INTEGER DEFAULT 0, comments INTEGER DEFAULT 0, shares INTEGER DEFAULT 0, ctr REAL DEFAULT 0, rpm REAL DEFAULT 0, estimated_revenue REAL DEFAULT 0, renderer_used TEXT, mode_narrativo TEXT, api_externa TEXT, coste_produccion REAL DEFAULT 0, performance_score REAL DEFAULT 0);
-CREATE TABLE channel_stats (id INTEGER PRIMARY KEY AUTOINCREMENT, collected_at TEXT NOT NULL, platform TEXT NOT NULL, channel_id TEXT NOT NULL, channel_name TEXT, subscribers INTEGER DEFAULT 0, total_views INTEGER DEFAULT 0, total_videos INTEGER DEFAULT 0, monthly_revenue REAL DEFAULT 0);
-CREATE TABLE platform_config (platform TEXT PRIMARY KEY, channel_id TEXT, channel_name TEXT, api_key_env TEXT, enabled INTEGER DEFAULT 1, last_collected TEXT, notes TEXT);
-CREATE INDEX idx_video_platform ON video_metrics(platform, published_at);
-CREATE INDEX idx_video_score ON video_metrics(performance_score DESC);
-CREATE VIEW top_performing_content AS SELECT mode_narrativo, renderer_used, platform, COUNT(*) AS total_videos, ROUND(AVG(views_7d),0) AS avg_views_7d, ROUND(AVG(retention_rate),2) AS avg_retention, ROUND(AVG(ctr),3) AS avg_ctr, ROUND(AVG(rpm),2) AS avg_rpm, ROUND(AVG(performance_score),1) AS avg_score FROM video_metrics WHERE views > 0 GROUP BY mode_narrativo, renderer_used, platform ORDER BY avg_score DESC
+CREATE TABLE IF NOT EXISTS video_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, collected_at TEXT NOT NULL, platform TEXT NOT NULL, channel_id TEXT, channel_name TEXT, video_id TEXT NOT NULL, video_title TEXT, published_at TEXT, duration_s INTEGER, views INTEGER DEFAULT 0, views_24h INTEGER DEFAULT 0, views_7d INTEGER DEFAULT 0, watch_time_hours REAL DEFAULT 0, avg_view_duration_s INTEGER DEFAULT 0, retention_rate REAL DEFAULT 0, likes INTEGER DEFAULT 0, comments INTEGER DEFAULT 0, shares INTEGER DEFAULT 0, ctr REAL DEFAULT 0, rpm REAL DEFAULT 0, estimated_revenue REAL DEFAULT 0, renderer_used TEXT, mode_narrativo TEXT, api_externa TEXT, coste_produccion REAL DEFAULT 0, performance_score REAL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS channel_stats (id INTEGER PRIMARY KEY AUTOINCREMENT, collected_at TEXT NOT NULL, platform TEXT NOT NULL, channel_id TEXT NOT NULL, channel_name TEXT, subscribers INTEGER DEFAULT 0, total_views INTEGER DEFAULT 0, total_videos INTEGER DEFAULT 0, monthly_revenue REAL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS platform_config (platform TEXT PRIMARY KEY, channel_id TEXT, channel_name TEXT, api_key_env TEXT, enabled INTEGER DEFAULT 1, last_collected TEXT, notes TEXT);
+CREATE INDEX IF NOT EXISTS idx_video_platform ON video_metrics(platform, published_at);
+CREATE INDEX IF NOT EXISTS idx_video_score ON video_metrics(performance_score DESC);
+CREATE VIEW IF NOT EXISTS top_performing_content AS SELECT mode_narrativo, renderer_used, platform, COUNT(*) AS total_videos, ROUND(AVG(views_7d),0) AS avg_views_7d, ROUND(AVG(retention_rate),2) AS avg_retention, ROUND(AVG(ctr),3) AS avg_ctr, ROUND(AVG(rpm),2) AS avg_rpm, ROUND(AVG(performance_score),1) AS avg_score FROM video_metrics WHERE views > 0 GROUP BY mode_narrativo, renderer_used, platform ORDER BY avg_score DESC
 /* top_performing_content(mode_narrativo,renderer_used,platform,total_videos,avg_views_7d,avg_retention,avg_ctr,avg_rpm,avg_score) */;
-CREATE VIEW revenue_by_channel AS SELECT platform, channel_name, COUNT(*) AS videos_published, SUM(estimated_revenue) AS total_revenue, ROUND(AVG(rpm),2) AS avg_rpm, SUM(views) AS total_views FROM video_metrics GROUP BY platform, channel_name ORDER BY total_revenue DESC
+CREATE VIEW IF NOT EXISTS revenue_by_channel AS SELECT platform, channel_name, COUNT(*) AS videos_published, SUM(estimated_revenue) AS total_revenue, ROUND(AVG(rpm),2) AS avg_rpm, SUM(views) AS total_views FROM video_metrics GROUP BY platform, channel_name ORDER BY total_revenue DESC
 /* revenue_by_channel(platform,channel_name,videos_published,total_revenue,avg_rpm,total_views) */;
-CREATE TABLE instincts (
+CREATE TABLE IF NOT EXISTS instincts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     keyword         TEXT NOT NULL,
     pattern         TEXT NOT NULL,
@@ -317,9 +317,9 @@ CREATE TABLE instincts (
     created_at      TEXT,
     last_applied    TEXT
 );
-CREATE INDEX idx_instincts_keyword ON instincts(keyword);
-CREATE INDEX idx_instincts_project ON instincts(project, confidence);
-CREATE TABLE permission_decisions (
+CREATE INDEX IF NOT EXISTS idx_instincts_keyword ON instincts(keyword);
+CREATE INDEX IF NOT EXISTS idx_instincts_project ON instincts(project, confidence);
+CREATE TABLE IF NOT EXISTS permission_decisions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
     session_id      TEXT    NOT NULL,
@@ -331,9 +331,9 @@ CREATE TABLE permission_decisions (
     rule_triggered  TEXT,
     suggested_fix   TEXT
 );
-CREATE INDEX idx_perm_session_tool
+CREATE INDEX IF NOT EXISTS idx_perm_session_tool
     ON permission_decisions(session_id, tool_name, decision, timestamp);
-CREATE TABLE objectives (
+CREATE TABLE IF NOT EXISTS objectives (
     id               TEXT PRIMARY KEY,   -- UUID corto (8 chars)
     project          TEXT NOT NULL,
     status           TEXT NOT NULL DEFAULT 'pending',
@@ -351,9 +351,9 @@ CREATE TABLE objectives (
     lessons_added    TEXT,               -- JSON array de lecciones nuevas
     error_message    TEXT
 , model_tier TEXT DEFAULT 'tier3', planner_quality TEXT DEFAULT NULL, ssim_score REAL DEFAULT NULL, ssim_quality TEXT DEFAULT NULL);
-CREATE INDEX idx_objectives_project_status
+CREATE INDEX IF NOT EXISTS idx_objectives_project_status
     ON objectives(project, status);
-CREATE TABLE learned_approvals (
+CREATE TABLE IF NOT EXISTS learned_approvals (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     project     TEXT NOT NULL DEFAULT '*',
     tool_name   TEXT NOT NULL,
@@ -364,9 +364,9 @@ CREATE TABLE learned_approvals (
     active      INTEGER DEFAULT 0,      -- 1 cuando times_seen >= 3
     UNIQUE(tool_name, pattern)
 );
-CREATE INDEX idx_learned_approvals_tool
+CREATE INDEX IF NOT EXISTS idx_learned_approvals_tool
     ON learned_approvals(tool_name, active);
-CREATE VIEW loop_effectiveness AS
+CREATE VIEW IF NOT EXISTS loop_effectiveness AS
 SELECT
     project,
     COUNT(*)                                                          AS total_cycles,
@@ -381,7 +381,7 @@ SELECT
 FROM objectives
 GROUP BY project
 /* loop_effectiveness(project,total_cycles,successful,failed,escalated,success_rate_pct,last_activity) */;
-CREATE VIEW benchmark_results AS
+CREATE VIEW IF NOT EXISTS benchmark_results AS
 SELECT
     model_tier,
     project,
@@ -407,7 +407,7 @@ WHERE model_tier IS NOT NULL
 GROUP BY model_tier, project
 ORDER BY success_rate_pct DESC
 /* benchmark_results(model_tier,project,total_objectives,completed,failed,blocked,success_rate_pct,avg_duration_s,planner_good,planner_partial,planner_poor,avg_ssim_score) */;
-CREATE TABLE code_metrics (
+CREATE TABLE IF NOT EXISTS code_metrics (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT DEFAULT (datetime('now')),
     project         TEXT NOT NULL,
@@ -447,11 +447,11 @@ CREATE TABLE code_metrics (
     success             INTEGER,    -- 1 si cumplió todos los criterios
     failure_reason      TEXT        -- por qué falló si success=0
 , prompt_length_tokens INTEGER, attempts_to_success INTEGER DEFAULT 1, first_attempt_success INTEGER DEFAULT 0, self_corrections INTEGER DEFAULT 0, syntax_errors INTEGER DEFAULT 0, import_errors INTEGER DEFAULT 0, constraint_violations INTEGER DEFAULT 0, ssim_delta_vs_prev REAL, color_palette_distance REAL, tokens_input INTEGER, tokens_output INTEGER, estimated_cost_usd REAL, wall_clock_seconds REAL, planning_seconds REAL, execution_seconds REAL, objective_clarity TEXT, iteration_number INTEGER, ssim_trend TEXT, best_ssim_so_far REAL, permission_denials INTEGER DEFAULT 0, permission_approvals INTEGER DEFAULT 0, escalations_needed INTEGER DEFAULT 0, prompt_version INTEGER DEFAULT 1, groq_model_used TEXT);
-CREATE INDEX idx_code_metrics_tier
+CREATE INDEX IF NOT EXISTS idx_code_metrics_tier
     ON code_metrics(model_tier, renderer);
-CREATE INDEX idx_code_metrics_project
+CREATE INDEX IF NOT EXISTS idx_code_metrics_project
     ON code_metrics(project, timestamp);
-CREATE VIEW tier_comparison AS
+CREATE VIEW IF NOT EXISTS tier_comparison AS
 SELECT
     model_tier,
     renderer,
@@ -469,7 +469,7 @@ FROM code_metrics
 GROUP BY model_tier, renderer
 ORDER BY model_tier, renderer
 /* tier_comparison(model_tier,renderer,total_runs,avg_lines,avg_cpu_s,avg_ram_mb,avg_cpu_per_mpx,avg_ssim,avg_cpp_speedup,vectorized_count,tests_passed,success_rate_pct) */;
-CREATE VIEW tier_ranking AS
+CREATE VIEW IF NOT EXISTS tier_ranking AS
 SELECT
     model_tier,
     COUNT(DISTINCT renderer)              AS renderers_completed,
@@ -493,7 +493,7 @@ FROM code_metrics
 GROUP BY model_tier
 ORDER BY composite_score DESC
 /* tier_ranking(model_tier,renderers_completed,avg_lines_per_renderer,avg_render_time_s,avg_memory_mb,avg_visual_quality,avg_cpp_speedup,overall_success_pct,composite_score) */;
-CREATE VIEW visual_convergence AS
+CREATE VIEW IF NOT EXISTS visual_convergence AS
 SELECT
     project,
     model_tier,
@@ -510,7 +510,7 @@ WHERE ssim_score IS NOT NULL
 GROUP BY project, model_tier, renderer
 ORDER BY best_ssim DESC
 /* visual_convergence(project,model_tier,renderer,total_iterations,worst_ssim,best_ssim,ssim_improvement,ssim_trend,cycles_to_good_quality) */;
-CREATE VIEW autonomy_score AS
+CREATE VIEW IF NOT EXISTS autonomy_score AS
 SELECT
     model_tier,
     COUNT(*) AS total_objectives,
@@ -529,7 +529,7 @@ FROM code_metrics
 GROUP BY model_tier
 ORDER BY zero_escalation_pct DESC
 /* autonomy_score(model_tier,total_objectives,total_approvals,total_denials,total_escalations,approval_rate_pct,zero_escalation_pct) */;
-CREATE TABLE loop_objectives (
+CREATE TABLE IF NOT EXISTS loop_objectives (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT DEFAULT (datetime('now')),
     project TEXT NOT NULL,
@@ -541,7 +541,7 @@ CREATE TABLE loop_objectives (
     attempts INTEGER DEFAULT 0,
     result TEXT
 );
-CREATE TABLE video_outputs (
+CREATE TABLE IF NOT EXISTS video_outputs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT DEFAULT (datetime('now')),
     topic TEXT,
@@ -557,7 +557,7 @@ CREATE TABLE video_outputs (
     approved INTEGER DEFAULT -1,
     notes TEXT
 );
-CREATE TABLE loop_errors (
+CREATE TABLE IF NOT EXISTS loop_errors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT DEFAULT (datetime('now')),
     objective_id TEXT,
@@ -568,7 +568,7 @@ CREATE TABLE loop_errors (
     resolved INTEGER DEFAULT 0,
     resolution TEXT
 );
-CREATE TABLE morning_report (
+CREATE TABLE IF NOT EXISTS morning_report (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT DEFAULT (datetime('now')),
     objectives_total INTEGER,
@@ -582,7 +582,7 @@ CREATE TABLE morning_report (
     report_text TEXT,
     sent_to_telegram INTEGER DEFAULT 0
 );
-CREATE TABLE gemini_audits (
+CREATE TABLE IF NOT EXISTS gemini_audits (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at       TEXT DEFAULT (datetime('now')),
     module           TEXT NOT NULL,
@@ -596,7 +596,7 @@ CREATE TABLE gemini_audits (
     applied_to_code  INTEGER DEFAULT 0,
     notes            TEXT
 );
-CREATE TABLE github_research (
+CREATE TABLE IF NOT EXISTS github_research (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at        TEXT DEFAULT (datetime('now')),
     search_topic      TEXT NOT NULL,
@@ -619,7 +619,7 @@ CREATE TABLE github_research (
     added_to_project  INTEGER DEFAULT 0,
     notes             TEXT
 );
-CREATE TABLE github_search_sessions (
+CREATE TABLE IF NOT EXISTS github_search_sessions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at   TEXT DEFAULT (datetime('now')),
     topic        TEXT NOT NULL,
@@ -631,7 +631,7 @@ CREATE TABLE github_search_sessions (
     report_path  TEXT,
     sent_telegram INTEGER DEFAULT 0
 );
-CREATE TABLE scene_scripts (
+CREATE TABLE IF NOT EXISTS scene_scripts (
                     id             INTEGER PRIMARY KEY AUTOINCREMENT,
                     created_at     TEXT    DEFAULT (datetime('now')),
                     topic          TEXT,
@@ -650,7 +650,7 @@ CREATE TABLE scene_scripts (
                     retention_pct  REAL    DEFAULT 0,
                     updated_at     TEXT
                 );
-CREATE TABLE research_cache (
+CREATE TABLE IF NOT EXISTS research_cache (
                     id               INTEGER PRIMARY KEY AUTOINCREMENT,
                     created_at       TEXT DEFAULT (datetime('now')),
                     topic            TEXT,
@@ -663,7 +663,7 @@ CREATE TABLE research_cache (
                     research_method  TEXT,
                     facts_count      INTEGER
                 );
-CREATE TABLE historical_events (
+CREATE TABLE IF NOT EXISTS historical_events (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     title               TEXT NOT NULL UNIQUE,
     category            TEXT,
@@ -682,16 +682,16 @@ CREATE TABLE historical_events (
     channel             TEXT,
     created_at          TEXT DEFAULT (datetime('now'))
 );
-CREATE INDEX idx_he_used ON historical_events(used, virality_score DESC);
-CREATE INDEX idx_he_category ON historical_events(category, used);
-CREATE TABLE sync_state (
+CREATE INDEX IF NOT EXISTS idx_he_used ON historical_events(used, virality_score DESC);
+CREATE INDEX IF NOT EXISTS idx_he_category ON historical_events(category, used);
+CREATE TABLE IF NOT EXISTS sync_state (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     source      TEXT NOT NULL UNIQUE,
     last_sync   TEXT,
     last_id     INTEGER DEFAULT 0,
     synced_rows INTEGER DEFAULT 0
 );
-CREATE TABLE vault_memory (
+CREATE TABLE IF NOT EXISTS vault_memory (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     subject     TEXT NOT NULL,
     predicate   TEXT NOT NULL,
@@ -704,9 +704,9 @@ CREATE TABLE vault_memory (
     last_seen   TEXT NOT NULL DEFAULT (datetime('now')), entry_type TEXT DEFAULT 'lesson' CHECK(entry_type IN ('adr','project_state','lesson','checkpoint')), decay_score REAL DEFAULT 1.0, last_accessed TEXT, access_count INTEGER DEFAULT 0, scope TEXT DEFAULT 'session', embedding BLOB, transferable INTEGER DEFAULT 0,
     UNIQUE(subject, predicate, object)
 );
-CREATE INDEX idx_vault_memory_project
+CREATE INDEX IF NOT EXISTS idx_vault_memory_project
     ON vault_memory(project, last_seen);
-CREATE TABLE resource_claims (
+CREATE TABLE IF NOT EXISTS resource_claims (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     resource    TEXT NOT NULL UNIQUE,      -- file path or logical resource name
     agent       TEXT NOT NULL,             -- agent_name that holds the claim
@@ -714,9 +714,9 @@ CREATE TABLE resource_claims (
     claimed_at  TEXT NOT NULL DEFAULT (datetime('now')),
     expires_at  TEXT NOT NULL              -- datetime('now', '+30 minutes') on insert
 );
-CREATE INDEX idx_resource_claims_expires
+CREATE INDEX IF NOT EXISTS idx_resource_claims_expires
     ON resource_claims(expires_at);
-CREATE TABLE model_satisfaction (
+CREATE TABLE IF NOT EXISTS model_satisfaction (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp           TEXT    NOT NULL DEFAULT (datetime('now')),
     session_id          TEXT    NOT NULL,
@@ -728,9 +728,9 @@ CREATE TABLE model_satisfaction (
     user_satisfaction   INTEGER,             -- 0=no 1=yes NULL=no response
     tier_used           TEXT                 -- tier1|tier2|tier3
 );
-CREATE INDEX idx_satisfaction_model_type
+CREATE INDEX IF NOT EXISTS idx_satisfaction_model_type
     ON model_satisfaction(model_used, task_type, user_satisfaction);
-CREATE TABLE spc_metrics (
+CREATE TABLE IF NOT EXISTS spc_metrics (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     checked_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     session_id  TEXT,
@@ -741,7 +741,7 @@ CREATE TABLE spc_metrics (
     value_num   REAL,
     threshold   REAL
 );
-CREATE TABLE vault_memory_archive (
+CREATE TABLE IF NOT EXISTS vault_memory_archive (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     subject TEXT NOT NULL,
     predicate TEXT NOT NULL,
@@ -754,7 +754,7 @@ CREATE TABLE vault_memory_archive (
     access_count INTEGER DEFAULT 0,
     archived_at TEXT DEFAULT (datetime('now'))
 );
-CREATE TABLE research_items (
+CREATE TABLE IF NOT EXISTS research_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT DEFAULT (datetime('now')),
     source TEXT NOT NULL,
@@ -766,7 +766,7 @@ CREATE TABLE research_items (
     test_result TEXT,
     session_id TEXT
 );
-CREATE TABLE learning_metrics (
+CREATE TABLE IF NOT EXISTS learning_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -774,7 +774,7 @@ CREATE TABLE learning_metrics (
     lessons_manual INTEGER DEFAULT 0,
     patterns_detected INTEGER DEFAULT 0
 );
-CREATE TABLE domain_enrichment (
+CREATE TABLE IF NOT EXISTS domain_enrichment (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT    NOT NULL UNIQUE,
             description TEXT    NOT NULL,
@@ -783,8 +783,8 @@ CREATE TABLE domain_enrichment (
             created_at  TEXT    DEFAULT (datetime('now')),
             updated_at  TEXT    DEFAULT (datetime('now'))
         );
-CREATE INDEX idx_domain_name ON domain_enrichment (name);
-CREATE TABLE memory_links (
+CREATE INDEX IF NOT EXISTS idx_domain_name ON domain_enrichment (name);
+CREATE TABLE IF NOT EXISTS memory_links (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             source_id   INTEGER NOT NULL REFERENCES vault_memory(id) ON DELETE CASCADE,
             target_id   INTEGER NOT NULL REFERENCES vault_memory(id) ON DELETE CASCADE,
@@ -793,10 +793,10 @@ CREATE TABLE memory_links (
             created_at  TEXT    DEFAULT (datetime('now')),
             UNIQUE(source_id, target_id, link_type)
         );
-CREATE INDEX idx_links_source ON memory_links (source_id);
-CREATE INDEX idx_links_target ON memory_links (target_id);
-CREATE INDEX idx_vault_scope ON vault_memory (scope);
-CREATE TABLE amplification_log (
+CREATE INDEX IF NOT EXISTS idx_links_source ON memory_links (source_id);
+CREATE INDEX IF NOT EXISTS idx_links_target ON memory_links (target_id);
+CREATE INDEX IF NOT EXISTS idx_vault_scope ON vault_memory (scope);
+CREATE TABLE IF NOT EXISTS amplification_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at      TEXT,
     original_prompt TEXT,
@@ -809,7 +809,7 @@ CREATE TABLE amplification_log (
     tier_selected   INTEGER,
     elapsed_ms      INTEGER
 , confidence REAL DEFAULT 0, knowledge_used INTEGER DEFAULT 0, subtask_count INTEGER DEFAULT 0, success INTEGER DEFAULT 1, routing_method TEXT DEFAULT 'single', active_centroids_count INTEGER DEFAULT 1, queued_centroids_count INTEGER DEFAULT 0, classification_ms REAL DEFAULT 0);
-CREATE TABLE knowledge_benchmark_results (
+CREATE TABLE IF NOT EXISTS knowledge_benchmark_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT DEFAULT (datetime('now')),
     task_id INTEGER NOT NULL,
@@ -836,7 +836,7 @@ CREATE TABLE knowledge_benchmark_results (
     judge_model TEXT,
     human_verified BOOLEAN DEFAULT 0
 );
-CREATE VIEW knowledge_benchmark_summary AS
+CREATE VIEW IF NOT EXISTS knowledge_benchmark_summary AS
 SELECT
     config, model, dq_enabled, task_domain,
     ROUND(AVG(overall_score), 2) as avg_score,
@@ -849,7 +849,7 @@ SELECT
 FROM knowledge_benchmark_results
 GROUP BY config, model, dq_enabled, task_domain
 /* knowledge_benchmark_summary(config,model,dq_enabled,task_domain,avg_score,avg_tokens,avg_time,avg_messages,avg_cost,avg_hallucinations,n_tasks) */;
-CREATE VIEW knowledge_benchmark_dq_uplift AS
+CREATE VIEW IF NOT EXISTS knowledge_benchmark_dq_uplift AS
 SELECT
     b_on.model, b_on.task_domain,
     ROUND(AVG(b_on.overall_score) - AVG(b_off.overall_score), 2) as score_uplift,
@@ -867,7 +867,7 @@ GROUP BY b_on.model, b_on.task_domain
 -- ANALYTICAL VIEWS  (read-only, no data stored)
 -- ─────────────────────────────────────────────────────────────────────────────
 
-CREATE VIEW IF NOT EXISTS v_cost_savings AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS v_cost_savings AS
 SELECT 
     date(timestamp) as day,
     CASE model_tier
@@ -886,7 +886,7 @@ FROM agent_actions
 WHERE timestamp >= date('now', '-30 days')
 GROUP BY day, tier;
 
-CREATE VIEW IF NOT EXISTS v_agent_performance AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS v_agent_performance AS
 SELECT
     agent_name,
     COUNT(*) as total_actions,
@@ -898,7 +898,7 @@ WHERE timestamp >= date('now', '-7 days')
 GROUP BY agent_name
 ORDER BY total_actions DESC;
 
-CREATE VIEW IF NOT EXISTS v_tier_distribution AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS v_tier_distribution AS
 SELECT
     date(timestamp) as day,
     CASE 
@@ -912,7 +912,7 @@ SELECT
 FROM agent_actions
 GROUP BY day, tier;
 
-CREATE VIEW IF NOT EXISTS v_dq_uplift AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS v_dq_uplift AS
 SELECT
     model,
     dq_enabled,
@@ -924,7 +924,7 @@ GROUP BY model, dq_enabled, task_domain;
 
 -- ── Views added for complete fresh-install coverage ───────────────────────────
 
-CREATE VIEW IF NOT EXISTS autonomy_score AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS autonomy_score AS
 SELECT
     model_tier,
     COUNT(*) AS total_objectives,
@@ -938,7 +938,7 @@ FROM code_metrics
 GROUP BY model_tier
 ORDER BY zero_escalation_pct DESC;
 
-CREATE VIEW IF NOT EXISTS knowledge_benchmark_dq_uplift AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS knowledge_benchmark_dq_uplift AS
 SELECT
     b_on.model, b_on.task_domain,
     ROUND(AVG(b_on.overall_score) - AVG(b_off.overall_score), 2) as score_uplift,
@@ -951,7 +951,7 @@ JOIN knowledge_benchmark_results b_off
 WHERE b_on.dq_enabled = 1 AND b_off.dq_enabled = 0
 GROUP BY b_on.model, b_on.task_domain;
 
-CREATE VIEW IF NOT EXISTS knowledge_benchmark_summary AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS knowledge_benchmark_summary AS
 SELECT
     config, model, dq_enabled, task_domain,
     ROUND(AVG(overall_score), 2) as avg_score,
@@ -964,7 +964,7 @@ SELECT
 FROM knowledge_benchmark_results
 GROUP BY config, model, dq_enabled, task_domain;
 
-CREATE VIEW IF NOT EXISTS revenue_by_channel AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS revenue_by_channel AS
 SELECT platform, channel_name, COUNT(*) AS videos_published,
     SUM(estimated_revenue) AS total_revenue,
     ROUND(AVG(rpm),2) AS avg_rpm, SUM(views) AS total_views
@@ -972,7 +972,7 @@ FROM video_metrics
 GROUP BY platform, channel_name
 ORDER BY total_revenue DESC;
 
-CREATE VIEW IF NOT EXISTS tier_comparison AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS tier_comparison AS
 SELECT
     model_tier, renderer,
     COUNT(*) AS total_runs,
@@ -989,7 +989,7 @@ FROM code_metrics
 GROUP BY model_tier, renderer
 ORDER BY model_tier, renderer;
 
-CREATE VIEW IF NOT EXISTS tier_ranking AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS tier_ranking AS
 SELECT
     model_tier,
     COUNT(DISTINCT renderer) AS renderers_completed,
@@ -1009,7 +1009,7 @@ FROM code_metrics
 GROUP BY model_tier
 ORDER BY composite_score DESC;
 
-CREATE VIEW IF NOT EXISTS top_performing_content AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS top_performing_content AS
 SELECT mode_narrativo, renderer_used, platform, COUNT(*) AS total_videos,
     ROUND(AVG(views_7d),0) AS avg_views_7d,
     ROUND(AVG(retention_rate),2) AS avg_retention,
@@ -1021,7 +1021,7 @@ WHERE views > 0
 GROUP BY mode_narrativo, renderer_used, platform
 ORDER BY avg_score DESC;
 
-CREATE VIEW IF NOT EXISTS visual_convergence AS
+CREATE VIEW IF NOT EXISTS IF NOT EXISTS visual_convergence AS
 SELECT
     project, model_tier, renderer,
     COUNT(*) AS total_iterations,

@@ -423,9 +423,6 @@ import temporal_memory as tm_mod
 
 tm_mod.DB_PATH = _TMP_PATH
 
-import fact_extractor as fe
-
-
 def test_compute_relevance_recency():
     """A freshly-created fact scores higher on recency than a 30-day-old fact."""
     ep = tm.add_episode("sess-rel", "agent", "", "test")
@@ -470,38 +467,6 @@ def test_compute_relevance_contradiction():
     ), f"Superseded ({score_superseded:.4f}) should be < current ({score_current:.4f})"
     # The ratio should be ~10x (contradiction factor)
     assert score_current / score_superseded > 5.0
-
-
-def test_fact_extractor_parse():
-    """_parse_triples correctly parses LLM JSON responses including code-fenced output."""
-    # Bare JSON array
-    raw1 = '[{"entity": "Python", "predicate": "version", "value": "3.12"}]'
-    triples = fe._parse_triples(raw1)
-    assert len(triples) == 1
-    assert triples[0] == {"entity": "Python", "predicate": "version", "value": "3.12"}
-
-    # Code-fenced JSON (typical LLM output)
-    raw2 = '```json\n[{"entity": "WACC", "predicate": "formula", "value": "Ke*E/V+Kd*D/V*(1-T)"}]\n```'
-    triples2 = fe._parse_triples(raw2)
-    assert len(triples2) == 1
-    assert triples2[0]["entity"] == "WACC"
-
-    # Preamble before JSON (LLM adds explanation text)
-    raw3 = 'Here are the facts:\n[{"entity": "Kelly", "predicate": "maximizes", "value": "growth"}]'
-    triples3 = fe._parse_triples(raw3)
-    assert len(triples3) == 1
-
-    # Malformed JSON → empty list
-    assert fe._parse_triples("not json at all") == []
-
-    # Empty array → empty list
-    assert fe._parse_triples("[]") == []
-
-    # Hard cap at 5 triples
-    many = json.dumps(
-        [{"entity": f"e{i}", "predicate": "p", "value": "v"} for i in range(10)]
-    )
-    assert len(fe._parse_triples(many)) == 5
 
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────

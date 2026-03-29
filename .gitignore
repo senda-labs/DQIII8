@@ -208,3 +208,15 @@ docs/PRO_CANDIDATES.md
 docs/PRO_CANDIDATES.md
 docs/ROADMAP_TO_10.md
 docs/ARCHITECTURE.md
+
+# Chat uploads (private)
+uploads/
+
+# Audit reports (private)
+tasks/audit/
+
+# Superpowers plans/specs (private — internal roadmaps)
+docs/superpowers/
+
+# Temporal schemas
+database/schema_temporal.sql

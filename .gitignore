@@ -186,6 +186,10 @@ logs/
 # Sessions (private — never commit)
 sessions/
 
+# Project private context (never commit)
+my-projects/PROJECT.md
+my-projects/*/PROJECT.md
+
 # System flags
 .dqiii8_proposito
 .jarvis_proposito

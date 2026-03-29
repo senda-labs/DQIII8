@@ -1486,6 +1486,19 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     project = detect_project(prompt)
     label = project["name"]
+
+    # ── Deep interview: ask clarification for very vague prompts ──
+    words = prompt.split()
+    if len(words) < 8 and label == "dqiii8" and classify_cc_tier(prompt) == "C":
+        await update.message.reply_text(
+            "Tu prompt es muy amplio. Para una mejor respuesta:\n"
+            "1. Que proyecto? (intl-reports, nutrition, dqiii8...)\n"
+            "2. Que resultado esperas?\n"
+            "3. Hay restricciones?\n\n"
+            "Reformula con mas detalle y reenvia /cc"
+        )
+        return
+
     tier = classify_cc_tier(prompt)
 
     tier_labels = {"C": "Qwen", "A": "Sonnet", "S": "Opus"}

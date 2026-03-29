@@ -621,7 +621,7 @@ def log_to_db(
                 )
                 conn.commit()
             except Exception as _exc:
-                log.warning("DB log write failed (action_id=%s): %s", None, _exc)
+                log.warning("DB log write failed (action_id=%s): %s", action_id, _exc)
                 pass  # fail-open, never block the pipeline
         conn.close()
     except Exception as _exc:

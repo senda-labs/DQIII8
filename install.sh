@@ -84,14 +84,18 @@ fi
 
 # ── 4. Configuration ──────────────────────────────────────────────────
 step "4/8 Configuration"
-ENV_FILE="$DQIII8_ROOT/config/.env"
+ENV_FILE="$DQIII8_ROOT/.env"
 if [[ -f "$ENV_FILE" ]]; then
-    ok "config/.env already exists"
-    _SKIPPED+=("config/.env")
+    ok ".env already exists"
+    _SKIPPED+=(".env")
 else
     cp "$DQIII8_ROOT/config/.env.example" "$ENV_FILE"
-    warn "config/.env created from template — add your API keys: $ENV_FILE"
-    _INSTALLED+=("config/.env (from template)")
+    warn ".env created from template — add your API keys: $ENV_FILE"
+    _INSTALLED+=(".env (from template)")
+fi
+# Symlink config/.env for scripts that reference either path
+if [[ ! -f "$DQIII8_ROOT/config/.env" ]]; then
+    ln -sf "$ENV_FILE" "$DQIII8_ROOT/config/.env"
 fi
 
 # ── 5. Schema + Knowledge index ───────────────────────────────────────

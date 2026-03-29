@@ -218,5 +218,3 @@ tasks/audit/
 # Superpowers plans/specs (private — internal roadmaps)
 docs/superpowers/
 
-# Temporal schemas
-database/schema_temporal.sql

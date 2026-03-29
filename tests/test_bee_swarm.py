@@ -177,7 +177,7 @@ class TestSwarmRun:
         with (
             patch.object(swarm, "_call_haiku", side_effect=fake_haiku),
             patch.object(
-                swarm, "_ollama_generate", new_callable=AsyncMock
+                swarm, "_openrouter_generate", new_callable=AsyncMock
             ) as mock_ollama,
             patch.object(swarm, "_call_sonnet", new_callable=AsyncMock) as mock_sonnet,
             patch.object(swarm, "_validate", new_callable=AsyncMock) as mock_validate,
@@ -211,7 +211,10 @@ class TestSwarmRun:
         with (
             patch.object(swarm, "_call_haiku", side_effect=slow_haiku),
             patch.object(
-                swarm, "_ollama_generate", new_callable=AsyncMock, return_value="sum"
+                swarm,
+                "_openrouter_generate",
+                new_callable=AsyncMock,
+                return_value="sum",
             ),
             patch.object(
                 swarm, "_call_sonnet", new_callable=AsyncMock, return_value="baseline"

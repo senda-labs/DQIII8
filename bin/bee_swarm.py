@@ -324,13 +324,15 @@ class BeeSwarm:
         return list(completed), reduced
 
     async def _call_haiku(self, subtask: Subtask) -> Subtask:
-        """Call Haiku via Ollama (local, free) or Claude API fallback."""
+        """Call Haiku via Groq (free) or Ollama (local) fallback."""
         t0 = time.monotonic()
         prompt = subtask.prompt
         if subtask.context:
             prompt = f"{prompt}\n\n```\n{subtask.context}\n```"
 
-        result = await self._ollama_generate(prompt)
+        result = await self._openrouter_generate(prompt)
+        if result is None:
+            result = await self._ollama_generate(prompt)
         if result is None:
             result = await self._claude_api_generate(prompt, model="haiku")
 
@@ -357,7 +359,9 @@ class BeeSwarm:
             f"one concise, coherent summary. Eliminate duplicates. "
             f"Keep all unique findings.\n\n{combined}"
         )
-        result = await self._ollama_generate(reduce_prompt)
+        result = await self._openrouter_generate(reduce_prompt)
+        if result is None:
+            result = await self._ollama_generate(reduce_prompt)
         return result or combined
 
     async def _validate(
@@ -382,6 +386,58 @@ class BeeSwarm:
 
     # ── Model backends ──────────────────────────────────────────────────────
 
+    async def _openrouter_generate(
+        self, prompt: str, model: str = "liquid/lfm-2.5-1.2b-instruct:free"
+    ) -> str | None:
+        """Non-blocking OpenRouter call (free tier, fast inference)."""
+        try:
+            import json as _json
+            import os
+            import urllib.request
+
+            api_key = os.environ.get("OPENROUTER_API_KEY") or self._load_env_key(
+                "OPENROUTER_API_KEY"
+            )
+            if not api_key:
+                return None
+
+            def _call() -> str:
+                payload = _json.dumps(
+                    {
+                        "model": model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 1024,
+                    }
+                ).encode()
+                req = urllib.request.Request(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}",
+                        "HTTP-Referer": "https://dqiii8.local",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return _json.loads(r.read())["choices"][0]["message"]["content"]
+
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, _call)
+        except Exception as e:
+            log.debug("OpenRouter unavailable: %s", e)
+            return None
+
+    def _load_env_key(self, key: str) -> str | None:
+        """Load a key from the project .env file."""
+        try:
+            env_path = self.root / ".env"
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip()
+        except Exception:
+            pass
+        return None
+
     async def _ollama_generate(
         self, prompt: str, model: str = "qwen2.5-coder:7b"
     ) -> str | None:
@@ -398,7 +454,7 @@ class BeeSwarm:
                     ).encode(),
                     headers={"Content-Type": "application/json"},
                 )
-                with urllib.request.urlopen(req, timeout=30) as r:
+                with urllib.request.urlopen(req, timeout=120) as r:
                     return _json.loads(r.read())["response"]
 
             loop = asyncio.get_event_loop()

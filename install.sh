@@ -21,7 +21,7 @@ _SKIPPED=()
 _MISSING=()
 
 # ── 1. Python deps ────────────────────────────────────────────────────
-step "1/6 Python dependencies"
+step "1/8 Python dependencies"
 if ! command -v python3 &>/dev/null; then
     err "python3 not found. Install Python 3.10+."
     exit 1
@@ -34,7 +34,7 @@ pip install -q --break-system-packages sqlite-vec 2>/dev/null || pip install -q 
 _INSTALLED+=("Python deps")
 
 # ── 2. Ollama ─────────────────────────────────────────────────────────
-step "2/6 Ollama (local LLM — Tier C)"
+step "2/8 Ollama (local LLM — Tier C)"
 if command -v ollama &>/dev/null; then
     ok "Ollama already installed: $(ollama --version 2>/dev/null | head -1)"
     _SKIPPED+=("Ollama (already present)")
@@ -57,7 +57,7 @@ for MODEL in qwen2.5-coder:7b bge-m3; do
 done
 
 # ── 3. Claude Code ────────────────────────────────────────────────────
-step "3/6 Claude Code (optional — needed for /cc Telegram command)"
+step "3/8 Claude Code (optional — needed for /cc Telegram command)"
 if command -v claude &>/dev/null; then
     ok "Claude Code already installed: $(claude --version 2>/dev/null | echo 'installed')"
     _SKIPPED+=("Claude Code (already present)")
@@ -83,7 +83,7 @@ else
 fi
 
 # ── 4. Configuration ──────────────────────────────────────────────────
-step "4/6 Configuration"
+step "4/8 Configuration"
 ENV_FILE="$DQIII8_ROOT/config/.env"
 if [[ -f "$ENV_FILE" ]]; then
     ok "config/.env already exists"
@@ -95,7 +95,7 @@ else
 fi
 
 # ── 5. Schema + Knowledge index ───────────────────────────────────────
-step "5/6 Database schema + knowledge indexing"
+step "5/8 Database schema + knowledge indexing"
 
 # 5a. Apply schemas (idempotent — all use CREATE TABLE IF NOT EXISTS)
 mkdir -p "$DQIII8_ROOT/database"
@@ -116,16 +116,7 @@ sqlite3 "$DQIII8_ROOT/database/dqiii8_metrics.db" < "$DQIII8_ROOT/database/schem
     || warn "schema.sql → dqiii8_metrics.db had errors"
 _INSTALLED+=("Database schemas")
 
-# 5b. Domain classifier centroids (requires Ollama)
-if python3 "$DQIII8_ROOT/bin/agents/domain_classifier.py" --setup 2>&1; then
-    ok "Domain classifier centroids ready"
-    _INSTALLED+=("Domain centroids")
-else
-    warn "Domain centroids failed — keyword-only fallback active"
-    _MISSING+=("Domain centroids (run: python3 bin/agents/domain_classifier.py --setup)")
-fi
-
-# 5c. Knowledge indexing — one domain at a time (requires Ollama)
+# 5b. Knowledge indexing — one domain at a time (requires Ollama)
 INDEX_OK=1
 for DOMAIN in formal_sciences natural_sciences social_sciences humanities_arts applied_sciences; do
     if python3 "$DQIII8_ROOT/bin/agents/knowledge_indexer.py" --domain "$DOMAIN" 2>&1; then
@@ -136,6 +127,21 @@ for DOMAIN in formal_sciences natural_sciences social_sciences humanities_arts a
     fi
 done
 
+if [[ $INDEX_OK -eq 1 ]]; then
+    _INSTALLED+=("Knowledge index (all 5 domains)")
+else
+    _MISSING+=("Knowledge index (run per domain: python3 bin/agents/knowledge_indexer.py --domain <name>)")
+fi
+
+# 5c. Domain classifier centroids (runs AFTER indexing so centroids use real embeddings)
+if python3 "$DQIII8_ROOT/bin/agents/domain_classifier.py" --setup --force 2>&1; then
+    ok "Domain classifier centroids seeded"
+    _INSTALLED+=("Domain centroids")
+else
+    warn "Domain centroids failed — keyword-only fallback active"
+    _MISSING+=("Domain centroids (run: python3 bin/agents/domain_classifier.py --setup --force)")
+fi
+
 # 5d. Migrate JSON index files → sqlite-vec (vector_chunks table)
 if python3 "$DQIII8_ROOT/bin/agents/vector_store.py" --migrate 2>&1; then
     ok "sqlite-vec migration complete"
@@ -145,14 +151,53 @@ else
     _MISSING+=("Vector store (run: python3 bin/agents/vector_store.py --migrate)")
 fi
 
-if [[ $INDEX_OK -eq 1 ]]; then
-    _INSTALLED+=("Knowledge index (all 5 domains)")
+# ── 6. Claude Code settings + systemd service ────────────────────────
+step "6/8 Claude Code settings + systemd service"
+
+# 6a. Copy Claude Code settings template
+CLAUDE_SETTINGS_DIR="$HOME/.claude"
+mkdir -p "$CLAUDE_SETTINGS_DIR"
+if [[ ! -f "$CLAUDE_SETTINGS_DIR/settings.json" ]]; then
+    cp "$DQIII8_ROOT/config/claude_settings_template.json" "$CLAUDE_SETTINGS_DIR/settings.json"
+    ok "Claude Code settings.json installed from template"
+    _INSTALLED+=("Claude Code settings.json")
 else
-    _MISSING+=("Knowledge index (run per domain: python3 bin/agents/knowledge_indexer.py --domain <name>)")
+    ok "Claude Code settings.json already exists"
+    _SKIPPED+=("Claude Code settings.json")
 fi
 
-# ── 6. Smoke tests ────────────────────────────────────────────────────
-step "6/6 Verification"
+# 6b. Create systemd service for Telegram bot
+SERVICE_FILE="/etc/systemd/system/dqiii8-bot.service"
+if [[ ! -f "$SERVICE_FILE" ]]; then
+    cat > "$SERVICE_FILE" << SERVICEEOF
+[Unit]
+Description=DQIII8 Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$DQIII8_ROOT
+EnvironmentFile=$DQIII8_ROOT/.env
+Environment="PATH=/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/usr/bin/python3 bin/ui/dqiii8_bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+    systemctl daemon-reload
+    ok "systemd service created: dqiii8-bot.service"
+    warn "Start with: systemctl enable --now dqiii8-bot"
+    _INSTALLED+=("systemd service (dqiii8-bot)")
+else
+    ok "systemd service already exists"
+    _SKIPPED+=("systemd service")
+fi
+
+# ── 7. Smoke tests ────────────────────────────────────────────────────
+step "7/8 Verification"
 if python3 -m pytest "$DQIII8_ROOT/tests/test_smoke.py" -q 2>&1; then
     ok "Smoke tests passed"
     _INSTALLED+=("Smoke tests ✓")
@@ -161,7 +206,8 @@ else
     _MISSING+=("Smoke tests (run: python3 -m pytest tests/test_smoke.py -v)")
 fi
 
-# ── Persist DQIII8_ROOT ───────────────────────────────────────────────
+# ── 8. CLI setup ──────────────────────────────────────────────────────
+step "8/8 CLI commands + aliases"
 if ! grep -q "DQIII8_ROOT" ~/.bashrc 2>/dev/null; then
     echo "export DQIII8_ROOT=$DQIII8_ROOT" >> ~/.bashrc
     ok "DQIII8_ROOT added to ~/.bashrc"
@@ -190,22 +236,28 @@ else
     _SKIPPED+=("j command already linked")
 fi
 
-# ── dqa — Claude Code autonomous mode ────────────────────────────────
+# ── dqa/dqo — Claude Code autonomous mode aliases ────────────────────
 if command -v claude &>/dev/null; then
-    if [ ! -f /usr/local/bin/dqa ]; then
-        cat > /usr/local/bin/dqa << 'DQASCRIPT'
-#!/bin/bash
-cd "${DQIII8_ROOT:-$(dirname "$(readlink -f "$0")")/../}" && exec claude "$@"
-DQASCRIPT
-        chmod +x /usr/local/bin/dqa
-        ok "'dqa' command created at /usr/local/bin/dqa"
-        _INSTALLED+=("dqa command → /usr/local/bin/dqa")
+    if ! grep -q "alias dqa=" ~/.bashrc 2>/dev/null; then
+        cat >> ~/.bashrc << 'ALIASEOF'
+
+# DQIII8 autonomous mode
+alias dqa='DQIII8_MODE=autonomous claude --model sonnet'
+alias dqo='cd /root/dqiii8 && DQIII8_MODE=autonomous claude --model opus'
+ALIASEOF
+        ok "dqa/dqo aliases added to ~/.bashrc (dqa=Sonnet, dqo=Opus)"
+        _INSTALLED+=("dqa/dqo aliases in ~/.bashrc")
     else
-        ok "'dqa' already exists"
-        _SKIPPED+=("dqa command")
+        ok "dqa/dqo aliases already in ~/.bashrc"
+        _SKIPPED+=("dqa/dqo aliases")
+    fi
+    # Remove legacy /usr/local/bin/dqa if present
+    if [[ -f /usr/local/bin/dqa ]]; then
+        rm -f /usr/local/bin/dqa
+        ok "Removed legacy /usr/local/bin/dqa (replaced by alias)"
     fi
 else
-    warn "'dqa' not created — Claude Code not installed"
+    warn "dqa/dqo not created — Claude Code not installed"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────

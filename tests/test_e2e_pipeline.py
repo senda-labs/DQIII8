@@ -127,12 +127,6 @@ def test_hierarchical_router_multi_centroid():
     ), f"Expected social_sciences as active centroid, got {domains}"
 
 
-@pytest.mark.xfail(
-    reason="hierarchical_router centroid 'agents' field returns [] — "
-    "agent routing table was updated but centroids table still has stale rows. "
-    "Fix: re-seed centroids table with current AGENT_ROUTING entries.",
-    strict=False,
-)
 def test_hierarchical_router_has_agents():
     from hierarchical_router import classify_hierarchical
 

@@ -1593,6 +1593,50 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         progress_msg=progress_msg,
         project_label=f"AUTO/{label}",
     )
+
+    # ── Ralph verification loop: run smoke tests, retry once on failure ──
+    max_retries = 2
+    for attempt in range(1, max_retries + 1):
+        if not success:
+            break  # execution itself failed, no point testing
+        try:
+            await progress_msg.edit_text(
+                f"[AUTO/{label}] Verifying (attempt {attempt})..."
+            )
+        except Exception:
+            pass
+        verify_proc = await asyncio.create_subprocess_exec(
+            "python3",
+            "-m",
+            "pytest",
+            "tests/test_smoke.py",
+            "-q",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(project["path"]),
+        )
+        v_stdout, v_stderr = await verify_proc.communicate()
+        if verify_proc.returncode == 0:
+            break  # tests pass, done
+        # Tests failed — retry with error context
+        test_output = v_stdout.decode("utf-8", errors="replace")[:2000]
+        retry_prompt = f"Tests failed after your changes. Fix them:\n{test_output}"
+        try:
+            await progress_msg.edit_text(
+                f"[AUTO/{label}] Tests failed, retrying ({attempt}/{max_retries})..."
+            )
+        except Exception:
+            pass
+        success, retry_out, retry_files = await _run_cc_async(
+            prompt=retry_prompt,
+            cwd=project["path"],
+            system_prompt=sys_prompt,
+            progress_msg=progress_msg,
+            project_label=f"AUTO/{label}",
+        )
+        output += f"\n\n--- Retry {attempt} ---\n{retry_out}"
+        files.extend(retry_files)
+
     elapsed = time.time() - t0
 
     try:

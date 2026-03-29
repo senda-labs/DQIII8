@@ -443,7 +443,7 @@ try:
     import subprocess as _rec_sub
 
     _rec = _rec_sub.run(
-        ["python3", str(JARVIS / "bin" / "reconcile_errors.py")],
+        ["python3", str(JARVIS / "bin" / "tools" / "reconcile_errors.py")],
         capture_output=True,
         text=True,
         timeout=15,

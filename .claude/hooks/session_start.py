@@ -31,7 +31,9 @@ if not project:
 
 # Save session start time so stop.py Fallback 2 can scope to this session
 try:
-    Path("/tmp/dqiii8_session_start.txt").write_text(datetime.now().isoformat(), encoding="utf-8")
+    Path("/tmp/dqiii8_session_start.txt").write_text(
+        datetime.now().isoformat(), encoding="utf-8"
+    )
 except Exception:
     pass
 
@@ -50,7 +52,7 @@ if pm.exists():
 lessons = []
 if LESSONS.exists():
     all_lines = LESSONS.read_text(encoding="utf-8").splitlines()
-    lessons = [l for l in all_lines if l.strip().startswith("[20")][-10:]
+    lessons = [l for l in all_lines if l.strip().startswith("[20")][-5:]
 
 # ── Last audit ─────────────────────────────────────────────────────
 audit_info = "No audit yet"
@@ -60,7 +62,8 @@ try:
     if DB.exists():
         conn = sqlite3.connect(str(DB), timeout=2)
         row = conn.execute(
-            "SELECT timestamp,overall_score FROM audit_reports " "ORDER BY timestamp DESC LIMIT 1"
+            "SELECT timestamp,overall_score FROM audit_reports "
+            "ORDER BY timestamp DESC LIMIT 1"
         ).fetchone()
         conn.close()
         if row:
@@ -107,21 +110,27 @@ CONTEXT_DIR = JARVIS / "context"
 _user_profile_block = ""
 _profile_path = CONTEXT_DIR / "user_profile.md"
 if _profile_path.exists():
-    _user_profile_block = "\n\nUSER PROFILE:\n" + _profile_path.read_text(encoding="utf-8")
+    _user_profile_block = "\n\nUSER PROFILE:\n" + _profile_path.read_text(
+        encoding="utf-8"
+    )
 
 # youtube_channels.md: ONLY if project is content
 _channels_block = ""
 if project in ("content",):
     _channels_path = CONTEXT_DIR / "youtube_channels.md"
     if _channels_path.exists():
-        _channels_block = "\n\nYOUTUBE CHANNELS:\n" + _channels_path.read_text(encoding="utf-8")
+        _channels_block = "\n\nYOUTUBE CHANNELS:\n" + _channels_path.read_text(
+            encoding="utf-8"
+        )
 
 # proposito.md: ONLY if exists and JARVIS_PROPOSITO=1
 _proposito_block = ""
 if os.environ.get("JARVIS_PROPOSITO") == "1":
     _proposito_path = CONTEXT_DIR / "proposito.md"
     if _proposito_path.exists():
-        _proposito_block = "\n\nPURPOSE:\n" + _proposito_path.read_text(encoding="utf-8")
+        _proposito_block = "\n\nPURPOSE:\n" + _proposito_path.read_text(
+            encoding="utf-8"
+        )
 
 # ── Recent memories (vault_memory SQLite) ─────────────────────────
 _memories_block = ""
@@ -151,7 +160,9 @@ try:
             _mems = _mm.search_memories(project, "previous session context", top_k=5)
             _sig.alarm(0)
             if _mems:
-                _memories_block = "\n\nRECENT MEMORIES:\n" + "\n".join(f"- {m}" for m in _mems)
+                _memories_block = "\n\nRECENT MEMORIES:\n" + "\n".join(
+                    f"- {m}" for m in _mems
+                )
         finally:
             _sig.alarm(0)
 except Exception:

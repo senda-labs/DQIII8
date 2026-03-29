@@ -67,8 +67,6 @@ ALLOWED_DELETIONS = [
     ".mypy_cache",
     "*.pyc",
     ".ruff_cache",
-    ".omc",
-    "plugins/cache/omc",
     "plugins/cache/",
 ]
 

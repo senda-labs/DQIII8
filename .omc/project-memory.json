@@ -249,9 +249,39 @@
   },
   "hotPaths": [
     {
+      "path": "bin/orchestrator.py",
+      "accessCount": 3,
+      "lastAccessed": 1774797906582,
+      "type": "directory"
+    },
+    {
+      "path": "config/claude_settings_template.json",
+      "accessCount": 2,
+      "lastAccessed": 1774797786541,
+      "type": "file"
+    },
+    {
       "path": ".claude/rules/claude-md-limit.md",
       "accessCount": 1,
       "lastAccessed": 1774797565731,
+      "type": "file"
+    },
+    {
+      "path": "bin/plugin_manager.py",
+      "accessCount": 1,
+      "lastAccessed": 1774797853363,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_plugin_manager.py",
+      "accessCount": 1,
+      "lastAccessed": 1774797871224,
+      "type": "file"
+    },
+    {
+      "path": "CLAUDE.md",
+      "accessCount": 1,
+      "lastAccessed": 1774797960618,
       "type": "file"
     }
   ],

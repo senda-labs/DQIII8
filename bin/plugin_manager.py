@@ -10,11 +10,15 @@ Usage:
     cleanup_plugins(project, installed)
 """
 
+import json
 import logging
 import re
 import subprocess
+from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+_STATE_FILE = Path("/tmp/dqiii8_auto_plugins.json")
 
 # Tier 3 plugins that can be auto-installed/uninstalled
 TIER3_PLUGINS: dict[str, str] = {
@@ -90,6 +94,12 @@ def ensure_plugins(project: dict) -> list[str]:
         except Exception as exc:
             log.warning("Failed to auto-install %s: %s", plugin_name, exc)
 
+    # Persist for cleanup at session end
+    if installed:
+        existing = _load_state()
+        existing.extend(installed)
+        _save_state(list(set(existing)))
+
     return installed
 
 
@@ -113,3 +123,53 @@ def cleanup_plugins(project: dict, installed: list[str]) -> None:
             log.info("Auto-uninstalled plugin: %s", plugin_name)
         except Exception as exc:
             log.warning("Failed to uninstall %s: %s", plugin_name, exc)
+
+
+def _load_state() -> list[str]:
+    """Load auto-installed plugin names from state file."""
+    if _STATE_FILE.exists():
+        try:
+            return json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+
+def _save_state(plugins: list[str]) -> None:
+    """Save auto-installed plugin names to state file."""
+    _STATE_FILE.write_text(json.dumps(plugins), encoding="utf-8")
+
+
+def cleanup_auto_installed() -> int:
+    """Uninstall all auto-installed Tier 3 plugins and clear state.
+
+    Called from stop.py at session end. Returns count of plugins removed.
+    """
+    installed = _load_state()
+    if not installed:
+        return 0
+
+    removed = 0
+    for plugin_name in installed:
+        if plugin_name in PERMANENT_PLUGINS:
+            continue
+        install_id = TIER3_PLUGINS.get(plugin_name)
+        if not install_id:
+            continue
+        try:
+            subprocess.run(
+                ["claude", "plugin", "uninstall", install_id],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            removed += 1
+            log.info("Auto-uninstalled plugin: %s", plugin_name)
+        except Exception as exc:
+            log.warning("Failed to uninstall %s: %s", plugin_name, exc)
+
+    # Clear state file
+    if _STATE_FILE.exists():
+        _STATE_FILE.unlink()
+
+    return removed

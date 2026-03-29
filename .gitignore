@@ -110,6 +110,9 @@ tasks/permission_rejection.json
 node_modules/
 .mcp.json
 
+# OMC plugin runtime state
+.omc/
+
 # === Internal/Private — never push to public repo ===
 CLAUDE.md.save*
 claude-progress.txt

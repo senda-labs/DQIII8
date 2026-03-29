@@ -480,6 +480,17 @@ try:
 except Exception:
     pass
 
+# -- 1d. Cleanup auto-installed Tier 3 plugins
+try:
+    import sys as _pm_sys
+    _pm_sys.path.insert(0, str(JARVIS / 'bin'))
+    from plugin_manager import cleanup_auto_installed
+    _pm_removed = cleanup_auto_installed()
+    if _pm_removed:
+        print(f'[DQIII8] {_pm_removed} Tier 3 plugin(s) auto-uninstalled')
+except Exception as _pm_e:
+    pass  # cleanup failure never blocks shutdown
+
 # ── 2. Auto-commit lessons.md + projects/*.md ──────────────────────
 try:
     files = [str(LESSONS)] if LESSONS.exists() else []

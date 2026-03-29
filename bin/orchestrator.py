@@ -478,6 +478,7 @@ _ARCH_KW = frozenset(
     {
         "diseña",
         "design",
+        "architect",
         "architecture",
         "arquitectura",
         "plan",

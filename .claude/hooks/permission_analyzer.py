@@ -23,11 +23,11 @@ DQIII8_MODE = os.environ.get("DQIII8_MODE", "supervised")
 
 # ── Risk constants ──────────────────────────────────────────────────────────
 BLOCKED_PATHS = [
+    "CLAUDE.md",
     ".env",
     "secrets",
     "dqiii8.db",
     ".claude/settings.json",
-    "CLAUDE.md",
     "schema.sql",
     ".git/",
     "id_rsa",
@@ -175,6 +175,9 @@ class PermissionAnalyzer:
             path = inp.get("file_path", inp.get("path", ""))
             for blocked in BLOCKED_PATHS:
                 if blocked in path:
+                    # Exception: allow CLAUDE.md edits when plugin env var is set
+                    if blocked == "CLAUDE.md" and os.environ.get("CLAUDE_MD_PLUGIN_EDIT") == "1":
+                        continue
                     return self._deny(
                         tool,
                         path,

@@ -261,6 +261,12 @@
       "type": "file"
     },
     {
+      "path": ".claude/hooks/permission_analyzer.py",
+      "accessCount": 2,
+      "lastAccessed": 1774798474734,
+      "type": "file"
+    },
+    {
       "path": ".claude/rules/claude-md-limit.md",
       "accessCount": 1,
       "lastAccessed": 1774797565731,

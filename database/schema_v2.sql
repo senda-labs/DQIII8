@@ -1046,7 +1046,8 @@ CREATE TABLE IF NOT EXISTS token_usage (
     output_tokens INTEGER,
     total_tokens INTEGER,
     cost_estimate REAL,
-    source TEXT DEFAULT 'claude_code'
+    source TEXT DEFAULT 'claude_code',
+    task_complexity TEXT  -- READ_ONLY|SIMPLE_WRITE|CODE_GEN|ARCHITECTURE|CRITICAL
 );
 
 CREATE VIEW IF NOT EXISTS token_usage_daily AS

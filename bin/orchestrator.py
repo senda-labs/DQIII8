@@ -383,6 +383,191 @@ def classify_cc_tier(prompt: str) -> str:
     return "C"
 
 
+# ── 5-level task complexity classifier ───────────────────────────────────────
+#
+# Maps a prompt to one of five complexity tiers used by the Claude Code
+# routing rules (ml-routing.md / token-routing.md).
+#
+#   READ_ONLY    — no writes, pure observation (grep, ls, cat, git log)
+#   SIMPLE_WRITE — single file or trivial multi-step (run tests, git commit)
+#   CODE_GEN     — generate new functions/files, simple refactor
+#   ARCHITECTURE — multi-file refactor, system design, planning
+#   CRITICAL     — production/security/deploy — plan-gate always active
+
+_RO_VERBS = frozenset(
+    {
+        "grep",
+        "find",
+        "ls",
+        "list",
+        "cat",
+        "head",
+        "tail",
+        "show",
+        "read",
+        "lee",
+        "muestra",
+        "busca",
+        "search",
+        "describe",
+        "explain",
+        "explain",
+        "explica",
+        "que es",
+        "how does",
+        "como funciona",
+        "git log",
+        "git status",
+        "git diff",
+        "git show",
+        "git branch",
+        "count",
+        "cuantos",
+        "how many",
+    }
+)
+
+_SIMPLE_WRITE_VERBS = frozenset(
+    {
+        "pytest",
+        "test",
+        "prueba",
+        "run tests",
+        "git add",
+        "git commit",
+        "git push",
+        "commit",
+        "push",
+        "edit",
+        "edita",
+        "cambia una linea",
+        "fix typo",
+        "arregla typo",
+        "rename",
+        "renombra",
+        "chmod",
+        "touch",
+    }
+)
+
+_CODE_GEN_VERBS = frozenset(
+    {
+        "crea",
+        "create",
+        "escribe",
+        "write",
+        "genera",
+        "generate",
+        "implementa",
+        "implement",
+        "añade",
+        "add",
+        "función",
+        "function",
+        "clase",
+        "class",
+        "refactor",
+        "simplifica",
+        "simplify",
+        "extract",
+        "extrae",
+    }
+)
+
+_ARCH_KW = frozenset(
+    {
+        "diseña",
+        "design",
+        "architecture",
+        "arquitectura",
+        "plan",
+        "planifica",
+        "multi-file",
+        "multiples archivos",
+        "sistema",
+        "system",
+        "strategy",
+        "estrategia",
+        "migrate",
+        "migra",
+        "rewrite",
+        "reescribe",
+        "reestructura",
+        "restructure",
+    }
+)
+
+_CRITICAL_KW = frozenset(
+    {
+        "produccion",
+        "production",
+        "prod",
+        "deploy",
+        "seguridad",
+        "security",
+        "secret",
+        "token",
+        "credentials",
+        "credenciales",
+        "cve",
+        "vulnerability",
+        "vulnerabilidad",
+        "exploit",
+        "breach",
+        "hack",
+    }
+)
+
+
+def classify_task_complexity(prompt: str) -> str:
+    """Classify a prompt into one of five complexity tiers.
+
+    Returns one of: READ_ONLY, SIMPLE_WRITE, CODE_GEN, ARCHITECTURE, CRITICAL.
+
+    Routing:
+        READ_ONLY    → executor-lite (Haiku, free)
+        SIMPLE_WRITE → executor-lite (Haiku, free)
+        CODE_GEN     → PAL/Ollama qwen2.5-coder (if available) else Sonnet
+        ARCHITECTURE → Sonnet (session principal)
+        CRITICAL     → Sonnet + plan-gate (Opus review)
+    """
+    lower = prompt.lower()
+    words = set(lower.split())
+
+    # CRITICAL — check first (highest risk, must not be downgraded)
+    for kw in _CRITICAL_KW:
+        if kw in lower:
+            return "CRITICAL"
+
+    # ARCHITECTURE — multi-file, system design
+    if words & _ARCH_KW or len(prompt) > 500:
+        return "ARCHITECTURE"
+    for kw in _ARCH_KW:
+        if kw in lower:
+            return "ARCHITECTURE"
+
+    # CODE_GEN — create / write / implement new code
+    for kw in _CODE_GEN_VERBS:
+        if kw in lower:
+            return "CODE_GEN"
+
+    # SIMPLE_WRITE — single file edits, tests, git commits
+    for kw in _SIMPLE_WRITE_VERBS:
+        if kw in lower:
+            return "SIMPLE_WRITE"
+
+    # READ_ONLY — pure observation
+    for kw in _RO_VERBS:
+        if kw in lower:
+            return "READ_ONLY"
+
+    # Default: if short and no exec verbs → READ_ONLY (safe default for Haiku)
+    if len(prompt) <= 150 and not (words & _EXEC_VERBS):
+        return "READ_ONLY"
+
+    return "CODE_GEN"
+
+
 def should_escalate_to_opus(prompt: str, sonnet_output: str, success: bool) -> bool:
     """Determine if Sonnet's output warrants escalation to Opus.
 

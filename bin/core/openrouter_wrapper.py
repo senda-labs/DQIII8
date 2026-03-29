@@ -551,6 +551,7 @@ def log_to_db(
     error_message: str = "",
     domain: str = "",
     prompt_hash: str = "",
+    task_complexity: str | None = None,
 ) -> None:
     """Registra la llamada en agent_actions con tokens reales y coste estimado."""
     if not DB_PATH.exists():
@@ -657,6 +658,7 @@ def log_to_db(
             tokens_in,
             tokens_out,
             cost_usd,
+            task_complexity=task_complexity,
         )
     except Exception as _exc:
         log.warning("DB logging block failed: %s", _exc)
@@ -672,6 +674,7 @@ def log_token_usage(
     tokens_out: int,
     cost_estimate: float,
     source: str = "openrouter_wrapper",
+    task_complexity: str | None = None,
 ) -> None:
     """Insert one row into token_usage. Fail-open — never blocks the pipeline."""
     if not DB_PATH.exists():
@@ -681,8 +684,8 @@ def log_token_usage(
         conn.execute(
             "INSERT INTO token_usage "
             "(session_id, model, tier, operation, input_tokens, output_tokens, "
-            "total_tokens, cost_estimate, source) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "total_tokens, cost_estimate, source, task_complexity) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 model,
@@ -693,6 +696,7 @@ def log_token_usage(
                 tokens_in + tokens_out,
                 round(cost_estimate, 6),
                 source,
+                task_complexity,
             ),
         )
         conn.commit()

@@ -849,8 +849,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             [
                 "python3",
                 str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
-                "--model",
-                "stepfun/step-3.5-flash:free",
+                "--agent",
+                "default",
             ],
             input=prompt,
             capture_output=True,
@@ -922,8 +922,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         [
             "python3",
             str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
-            "--model",
-            "stepfun/step-3.5-flash:free",
+            "--agent",
+            "default",
         ],
         input=prompt,
         capture_output=True,

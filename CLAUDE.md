@@ -55,3 +55,10 @@ Never hardcode project lists here - PROJECT.md is the source of truth per projec
 - Auto-commit on session close via stop.py hook
 - PermissionAnalyzer: APPROVE/DENY/ESCALATE every tool use
 
+## Plugins (Claude Code)
+Permanent: superpowers, episodic-memory, omc, frontend-design, firecrawl,
+  hookify, semgrep, context7, code-review, skill-creator, figma,
+  code-simplifier, pr-review-toolkit, claude-md-management
+On-demand: Tier 3 auto-install via PROJECT.md "Plugins:" field
+  Available: playwright, greptile, pyright-lsp, superpowers-lab
+Config: config/claude_settings_template.json, bin/plugin_manager.py

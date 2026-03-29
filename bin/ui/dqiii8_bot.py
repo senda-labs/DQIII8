@@ -1409,6 +1409,36 @@ async def _run_groq_direct(prompt: str, system_prompt: str = "") -> tuple[bool, 
     return await asyncio.get_event_loop().run_in_executor(None, _call)
 
 
+async def _run_ollama_direct(prompt: str, system_prompt: str = "") -> tuple[bool, str]:
+    """Call Ollama qwen2.5-coder:7b directly. Tier C code execution.
+
+    The workhorse for code tasks: local, free, fast for small generations.
+    Uses existing stream_response() from the DQ pipeline.
+    """
+    import importlib.util
+    import io
+
+    wrapper_path = JARVIS / "bin" / "core" / "openrouter_wrapper.py"
+    spec = importlib.util.spec_from_file_location("openrouter_wrapper", wrapper_path)
+    wrapper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wrapper)
+
+    def _call() -> tuple[bool, str]:
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            text, _tok_in, _tok_out, success = wrapper.stream_response(
+                "ollama", "qwen2.5-coder:7b", prompt, system_prompt
+            )
+            return bool(success), text
+        except Exception as exc:
+            return False, f"Ollama error: {exc}"
+        finally:
+            sys.stdout = old_stdout
+
+    return await asyncio.get_event_loop().run_in_executor(None, _call)
+
+
 async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/cc <prompt> — Run Claude Code with DQ project detection + live progress."""
     if not authorized(update):
@@ -1433,31 +1463,68 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    from orchestrator import build_context, classify_cc_tier, detect_project
+    from orchestrator import (
+        build_context,
+        classify_cc_tier,
+        detect_project,
+        should_escalate_to_opus,
+    )
 
     project = detect_project(prompt)
     label = project["name"]
     tier = classify_cc_tier(prompt)
 
-    tier_labels = {"B": "Groq", "A": "Sonnet", "S": "Opus"}
+    tier_labels = {"C": "Qwen", "B": "Groq", "A": "Sonnet", "S": "Opus"}
     progress_msg = await update.message.reply_text(f"[{label}] {tier_labels[tier]}...")
 
     t0 = time.time()
+    ctx = build_context(project, prompt) or ""
+    files: list = []
 
-    if tier == "B":
-        ctx = build_context(project, prompt) or ""
+    if tier == "C":
+        # Tier C: Ollama executes code, then Groq reviews
+        success, output = await _run_ollama_direct(prompt, system_prompt=ctx)
+        if success and len(output.strip()) > 50:
+            try:
+                await progress_msg.edit_text(f"[{label}] Groq reviewing...")
+            except Exception:
+                pass
+            review_prompt = (
+                f"Review this code output for correctness and quality. "
+                f"Original task: {prompt}\n\nOutput:\n{output[:3000]}\n\n"
+                f"Reply OK if correct, or explain issues."
+            )
+            _ok, review = await _run_groq_direct(review_prompt)
+            if review and "ok" not in review[:50].lower():
+                output += f"\n\n[Groq review]: {review[:500]}"
+    elif tier == "B":
         success, output = await _run_groq_direct(prompt, system_prompt=ctx)
-        files = []
-    else:
-        model = "claude-opus-4-6" if tier == "S" else "claude-sonnet-4-6"
+    elif tier == "A":
+        # Sonnet plans/analyzes; escalate to Opus only if output is poor
         success, output, files = await _run_cc_async(
             prompt=prompt,
             cwd=project["path"],
-            system_prompt=build_context(project, prompt),
-            model=model,
+            system_prompt=ctx,
+            model="claude-sonnet-4-6",
             progress_msg=progress_msg,
             project_label=label,
         )
+        if should_escalate_to_opus(prompt, output, success):
+            try:
+                await progress_msg.edit_text(f"[{label}] Opus (escalation)...")
+            except Exception:
+                pass
+            tier = "S"
+            success, output, files = await _run_cc_async(
+                prompt=prompt,
+                cwd=project["path"],
+                system_prompt=ctx,
+                model="claude-opus-4-6",
+                progress_msg=progress_msg,
+                project_label=label,
+            )
+    else:
+        success, output = False, f"Unknown tier: {tier}"
 
     elapsed = time.time() - t0
 

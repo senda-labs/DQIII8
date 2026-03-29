@@ -170,6 +170,13 @@ else
     _SKIPPED+=("Claude Code settings.json")
 fi
 
+# 6a-ii. Install OMC plugin (if Claude Code is available)
+if command -v claude &>/dev/null; then
+    echo "  Installing oh-my-claudecode plugin..."
+    claude -p "Run: /plugin marketplace add https://github.com/Yeachan-Heo/oh-my-claudecode && /plugin install oh-my-claudecode" 2>/dev/null || true
+    _INSTALLED+=("oh-my-claudecode plugin")
+fi
+
 # 6b. Create systemd service for Telegram bot
 SERVICE_FILE="/etc/systemd/system/dqiii8-bot.service"
 if [[ ! -f "$SERVICE_FILE" ]]; then

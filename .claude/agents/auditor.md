@@ -36,13 +36,21 @@ SELECT * FROM agent_performance ORDER BY success_rate_pct ASC;
 SELECT * FROM error_keywords_freq LIMIT 10;
 ```
 
-**Unresolved errors:**
+**Unresolved errors (non-transient only):**
 ```sql
-SELECT id, timestamp, agent_name, error_type, error_message, cause
+SELECT id, timestamp, agent_name, error_type, error_message, cause, severity
 FROM error_log
-WHERE resolved = 0
+WHERE resolved = 0 AND severity != 'transient'
 ORDER BY timestamp DESC
 LIMIT 20;
+```
+
+**Error severity distribution:**
+```sql
+SELECT severity, resolved, COUNT(*) as cnt
+FROM error_log
+GROUP BY severity, resolved
+ORDER BY severity;
 ```
 
 **Session summary (last 10 sessions):**
@@ -143,7 +151,7 @@ Score 0-100 based on:
 **Exact formulas (v1.1):**
 ```
 component_1 = success_rate_pct                          # e.g. 99.71
-component_2 = (1 - unresolved_errors/max(total_errors,1)) * 100  # 0 unresolved → 100
+component_2 = (1 - non_transient_unresolved/max(non_transient_errors,1)) * 100  # severity != 'transient'
 component_3 = (1 - hook_blocks/max(total_actions,1)) * 100
 component_4 = (sessions_with_lessons / max(total_sessions,1)) * 100
 component_5 = max(0, 10 - adr_violations * 3) * 10     # scaled to 0-100
@@ -155,6 +163,15 @@ score = (component_1*0.30 + component_2*0.30 + component_3*0.20
 > **PROVISIONAL warning:** If data_range_days < 30, prepend the score with "PROVISIONAL —"
 > and note "SPC baselines require 30+ days; current: N days".
 > Run: `SELECT julianday('now') - julianday(MIN(start_time)) FROM sessions` to get data_range_days.
+
+> **Severity filter for component_2:**
+> Use `severity != 'transient'` when counting errors for scoring.
+> Transient errors (agent retries, file-too-large, expected git failures) are normal
+> in autonomous operation and should not penalize the health score.
+> ```sql
+> SELECT COUNT(*) as non_transient_errors FROM error_log WHERE severity != 'transient';
+> SELECT COUNT(*) as non_transient_unresolved FROM error_log WHERE severity != 'transient' AND resolved = 0;
+> ```
 
 > **Pipeline integrity meta-check (run before computing component_2):**
 > ```sql

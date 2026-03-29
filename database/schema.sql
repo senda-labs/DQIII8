@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS error_log (
     resolved        INTEGER DEFAULT 0,
     resolution_ms   INTEGER,
     lesson_added    INTEGER DEFAULT 0,
-    action_id       INTEGER REFERENCES agent_actions(id)
+    action_id       INTEGER REFERENCES agent_actions(id),
+    severity        TEXT    DEFAULT 'operational'  -- transient|operational|bug
 );
 
 -- ── Session summary ─────────────────────────────────────────────

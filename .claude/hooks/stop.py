@@ -435,6 +435,18 @@ try:
                         _total_tokens,
                     ),
                 )
+                # model_satisfaction — log Claude Code interactive session
+                conn.execute(
+                    "INSERT INTO model_satisfaction "
+                    "(session_id, model_used, task_type, duration_ms, technical_success, tier_used) "
+                    "VALUES (?, ?, 'interactive', ?, ?, 'tier3')",
+                    (
+                        session,
+                        _model,
+                        _total_duration_ms,
+                        0 if (row[1] or 0) > 0 else 1,
+                    ),
+                )
 except Exception:
     pass
 

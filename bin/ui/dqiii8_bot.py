@@ -305,6 +305,17 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
         "technical_success": technical_success,
         "tier_used": "tier3",
     }
+    # Write immediately — guarantees data even if user never clicks 👍/👎
+    _log_satisfaction(
+        session_id=task_id,
+        model_used="claude-sonnet-4-6",
+        task_type=task_type,
+        task_description=description[:100],
+        duration_ms=duration_ms,
+        technical_success=technical_success,
+        tier_used="tier3",
+        user_satisfaction=None,
+    )
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -337,7 +348,18 @@ async def handle_satisfaction_callback(
     if not record:
         await query.edit_message_text("(ya registrado)")
         return
-    _log_satisfaction(**record, user_satisfaction=rating)
+    # Update existing row (written immediately on task completion)
+    try:
+        conn = sqlite3.connect(str(DB), timeout=2)
+        conn.execute(
+            "UPDATE model_satisfaction SET user_satisfaction=? "
+            "WHERE id=(SELECT MAX(id) FROM model_satisfaction WHERE session_id=?)",
+            (rating, record["session_id"]),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as _sat_exc:
+        log.error("Error updating satisfaction: %s", _sat_exc)
     emoji = "👍" if rating else "👎"
     await query.edit_message_text(f"{emoji} Registrado.")
     log.info("Satisfaction: %s | %s | rating=%d", key, record.get("task_type"), rating)

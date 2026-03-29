@@ -230,8 +230,17 @@ def format_progress(project_name: str, phase: str, elapsed: float) -> str:
 
 
 # ── Tier classification for /cc ───────────────────────────────────────────────
+#
+# Philosophy: cheapest tier first. Local models EXECUTE, cloud models SUPERVISE.
+#
+#   C (Ollama qwen2.5-coder:7b) — code execution workhorse ($0, local)
+#   B (Groq llama-3.3-70b)      — simple queries + code review ($0, cloud)
+#   A (Sonnet)                   — planning, complex supervision, default
+#   S (Opus)                     — only when A produces poor results (escalation)
+#
+# Opus is NEVER a first-choice. It's an escalation from Sonnet.
 
-# Action verbs that require Claude Code tool use (file editing, execution)
+# Action verbs that imply code generation/modification
 _ACTION_VERBS = frozenset(
     {
         "implementa",
@@ -293,59 +302,102 @@ _CODE_KW = frozenset(
     }
 )
 
-# Complex keywords (from ml_selector.py)
-_COMPLEX_KW = frozenset(
+# Planning keywords — need Sonnet-level reasoning (not code generation)
+_PLANNING_KW = frozenset(
     {
+        "plan",
+        "planifica",
+        "diseña",
+        "design",
+        "analiza",
+        "analyze",
+        "compara",
+        "compare",
+        "evalúa",
+        "evaluate",
+        "revisa",
+        "review",
+        "audita",
+        "audit",
+        "investiga",
+        "research",
         "architecture",
-        "design system",
-        "multi-step",
-        "orchestrate",
-        "compare and contrast",
-        "analyze in depth",
-        "write a complete",
-        "full implementation",
-        "business plan",
-        "investment strategy",
-        "research paper",
-        "comprehensive report",
         "arquitectura",
-        "microservicios",
-        "diseña sistema",
+        "strategy",
+        "estrategia",
     }
 )
 
 
-def classify_cc_tier(prompt: str) -> str:
-    """Classify a /cc prompt into tier B/A/S.
+def _has_code_keywords(lower: str) -> bool:
+    """Check if prompt contains code-related keywords (word-boundary safe)."""
+    for kw in _CODE_KW:
+        if len(kw) <= 4:
+            if re.search(r"\b" + re.escape(kw) + r"\b", lower):
+                return True
+        else:
+            if kw in lower:
+                return True
+    return False
 
-    B = Groq (simple queries, $0)
-    A = Sonnet (code tasks, default)
-    S = Opus (architecture, deep analysis)
+
+def classify_cc_tier(prompt: str) -> str:
+    """Classify a /cc prompt into execution tier.
+
+    C = Ollama qwen2.5-coder ($0, local) — code tasks, the workhorse
+    B = Groq llama-3.3-70b ($0, cloud) — simple queries, explanations
+    A = Sonnet — planning, complex analysis, code supervision
+    S = Opus — NEVER first-choice; only via escalate_to_opus()
+
+    Returns: "C", "B", or "A". Never returns "S" directly.
     """
     lower = prompt.lower()
     words = set(lower.split())
 
-    # S-tier: complex keywords → Opus
-    if any(kw in lower for kw in _COMPLEX_KW):
-        return "S"
+    # A-tier: planning, analysis, review — needs reasoning, not code gen
+    if words & _PLANNING_KW:
+        return "A"
 
-    # A-tier: action verbs or code keywords → Sonnet
+    # A-tier: long prompts (>300 chars) — likely multi-step, needs planning
+    if len(prompt) > 300:
+        return "A"
+
+    # C-tier: code tasks — action verbs or code keywords → local execution
     if words & _ACTION_VERBS:
-        return "A"
-    code_hits = 0
-    for kw in _CODE_KW:
-        if len(kw) <= 4:
-            if re.search(r"\b" + re.escape(kw) + r"\b", lower):
-                code_hits += 1
-        else:
-            if kw in lower:
-                code_hits += 1
-    if code_hits >= 1:
-        return "A"
+        return "C"
+    if _has_code_keywords(lower):
+        return "C"
 
-    # A-tier: long prompts (>200 chars) likely need reasoning
-    if len(prompt) > 200:
-        return "A"
-
-    # B-tier: short, simple, no action verbs, no code keywords → Groq
+    # B-tier: everything else — simple queries, status, explanations
     return "B"
+
+
+def should_escalate_to_opus(prompt: str, sonnet_output: str, success: bool) -> bool:
+    """Determine if Sonnet's output warrants escalation to Opus.
+
+    Only called after a Sonnet (A-tier) execution that seems insufficient.
+    Opus is the last resort, not a first choice.
+    """
+    if not success:
+        return True
+
+    output_lower = sonnet_output.lower()
+
+    # Too short for a planning task — Sonnet probably failed
+    if len(sonnet_output.strip()) < 200 and len(prompt) > 100:
+        return True
+
+    # Sonnet admitted it can't do it
+    failure_signals = [
+        "i can't",
+        "i cannot",
+        "no puedo",
+        "beyond my",
+        "fuera de mi",
+        "not possible",
+        "no es posible",
+    ]
+    if any(sig in output_lower for sig in failure_signals):
+        return True
+
+    return False

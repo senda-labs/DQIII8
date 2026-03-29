@@ -141,7 +141,7 @@ _TIER_C_AGENTS = frozenset(
 # Fallback models — llm7 removed (0% success rate over 40 calls in 7d audit)
 FALLBACK_MODELS = {
     "openrouter": ("groq", "llama-3.3-70b-versatile"),
-    "groq": ("openrouter", "stepfun/step-3.5-flash:free"),
+    "groq": ("openrouter", "qwen/qwen3-coder:free"),
     "pollinations": ("pollinations", "openai"),
     "anthropic": ("groq", "llama-3.3-70b-versatile"),
 }
@@ -558,7 +558,7 @@ def log_to_db(
             else ("B" if provider in ("groq", "openrouter") else "C")
         )
         conn = sqlite3.connect(str(DB_PATH), timeout=2)
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO agent_actions "
             "(session_id, agent_name, tool_used, action_type, model_used, "
             "tokens_used, tokens_input, tokens_output, estimated_cost_usd, tier, "
@@ -582,6 +582,27 @@ def log_to_db(
             ),
         )
         conn.commit()
+        action_id = cur.lastrowid
+        # Link failure to error_log so audit Component_2 (pipeline integrity) stays intact
+        if not success and error_message:
+            try:
+                conn.execute(
+                    "INSERT INTO error_log "
+                    "(timestamp, session_id, agent_name, error_type, error_message, "
+                    "keywords, severity, resolved, action_id) "
+                    "VALUES (datetime('now'), ?, ?, ?, ?, ?, 'transient', 0, ?)",
+                    (
+                        session_id,
+                        agent,
+                        f"{provider}Error",
+                        error_message[:500],
+                        json.dumps([agent, provider, model]),
+                        action_id,
+                    ),
+                )
+                conn.commit()
+            except Exception as _elog_exc:
+                log.warning("error_log insert failed: %s", _elog_exc)
         # Routing feedback — track per-prompt routing decisions for quality analysis
         if prompt_hash:
             try:
@@ -961,8 +982,14 @@ def main() -> None:
 
     # Resolver proveedor y modelo
     if args.model:
-        primary_provider = "openrouter"
-        primary_model = args.model
+        # Detect provider from model prefix (e.g. "groq/llama-..." → groq)
+        _model_parts = args.model.split("/", 1)
+        if len(_model_parts) == 2 and _model_parts[0] in PROVIDERS:
+            primary_provider = _model_parts[0]
+            primary_model = _model_parts[1]
+        else:
+            primary_provider = "openrouter"
+            primary_model = args.model
     else:
         agent_key = args.agent if args.agent in AGENT_ROUTING else "default"
         primary_provider, primary_model = AGENT_ROUTING[agent_key]

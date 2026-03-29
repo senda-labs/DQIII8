@@ -249,6 +249,12 @@
   },
   "hotPaths": [
     {
+      "path": ".claude/hooks/permission_analyzer.py",
+      "accessCount": 4,
+      "lastAccessed": 1774798642802,
+      "type": "file"
+    },
+    {
       "path": "bin/orchestrator.py",
       "accessCount": 3,
       "lastAccessed": 1774797906582,
@@ -261,9 +267,9 @@
       "type": "file"
     },
     {
-      "path": ".claude/hooks/permission_analyzer.py",
+      "path": "tests/test_permission_analyzer.py",
       "accessCount": 2,
-      "lastAccessed": 1774798474734,
+      "lastAccessed": 1774798664450,
       "type": "file"
     },
     {

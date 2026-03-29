@@ -1034,3 +1034,23 @@ FROM code_metrics
 WHERE ssim_score IS NOT NULL
 GROUP BY project, model_tier, renderer
 ORDER BY best_ssim DESC;
+
+CREATE TABLE IF NOT EXISTS token_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    session_id TEXT,
+    model TEXT NOT NULL,
+    tier TEXT,
+    operation TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    total_tokens INTEGER,
+    cost_estimate REAL,
+    source TEXT DEFAULT 'claude_code'
+);
+
+CREATE VIEW IF NOT EXISTS token_usage_daily AS
+SELECT date(timestamp) as day, model, tier, COUNT(*) as calls,
+SUM(input_tokens) as total_input, SUM(output_tokens) as total_output,
+SUM(total_tokens) as total_tokens, SUM(cost_estimate) as total_cost
+FROM token_usage GROUP BY day, model, tier;

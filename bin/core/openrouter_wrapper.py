@@ -648,9 +648,57 @@ def log_to_db(
         except Exception as _exc:
             log.warning("model_satisfaction insert failed: %s", _exc)
         conn.close()
+        # Token usage granular tracking
+        log_token_usage(
+            session_id,
+            f"{provider}/{model}",
+            tier,
+            agent,
+            tokens_in,
+            tokens_out,
+            cost_usd,
+        )
     except Exception as _exc:
         log.warning("DB logging block failed: %s", _exc)
         pass  # Fail-open: failure must not break pipeline
+
+
+def log_token_usage(
+    session_id: str,
+    model: str,
+    tier: str,
+    operation: str,
+    tokens_in: int,
+    tokens_out: int,
+    cost_estimate: float,
+    source: str = "openrouter_wrapper",
+) -> None:
+    """Insert one row into token_usage. Fail-open — never blocks the pipeline."""
+    if not DB_PATH.exists():
+        return
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=2)
+        conn.execute(
+            "INSERT INTO token_usage "
+            "(session_id, model, tier, operation, input_tokens, output_tokens, "
+            "total_tokens, cost_estimate, source) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                session_id,
+                model,
+                tier,
+                operation,
+                tokens_in,
+                tokens_out,
+                tokens_in + tokens_out,
+                round(cost_estimate, 6),
+                source,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as _exc:
+        log.warning("token_usage insert failed: %s", _exc)
 
 
 def _log_escalation(

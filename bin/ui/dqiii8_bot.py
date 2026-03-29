@@ -1698,6 +1698,39 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             log.warning("Failed to send file %s: %s", fpath, exc)
 
 
+async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/tokens — Show today's token usage summary from token_usage_daily view."""
+    if not authorized(update):
+        return
+    rows = db_query(
+        "SELECT model, tier, calls, total_input, total_output, total_tokens, "
+        "total_cost FROM token_usage_daily WHERE day = date('now') "
+        "ORDER BY total_tokens DESC"
+    )
+    if not rows:
+        await update.message.reply_text("No token usage recorded today.")
+        return
+    totals = db_query(
+        "SELECT SUM(calls), SUM(total_input), SUM(total_output), "
+        "SUM(total_tokens), SUM(total_cost) FROM token_usage_daily "
+        "WHERE day = date('now')"
+    )
+    lines = ["**Token Usage — Today**", ""]
+    for model, tier, calls, inp, out, total, cost in rows:
+        short_model = model.split("/")[-1] if "/" in model else model
+        lines.append(
+            f"`[{tier}] {short_model}` — {total:,} tok ({calls} calls) ${cost:.4f}"
+        )
+    if totals and totals[0][0]:
+        t = totals[0]
+        lines += [
+            "",
+            f"**Total:** {t[3]:,} tokens ({t[1]:,} in / {t[2]:,} out)",
+            f"**Cost:** ${t[4]:.4f} USD",
+        ]
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 async def cmd_cc_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/cc_status — Show Claude Code version, credentials status, and last /cc usage."""
     if not authorized(update):
@@ -1852,6 +1885,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("cc_status", cmd_cc_status))
     APP.add_handler(CommandHandler("auth_status", cmd_auth_status))
     APP.add_handler(CommandHandler("auth_test", cmd_auth_test))
+    APP.add_handler(CommandHandler("tokens", cmd_tokens))
     APP.add_handler(MessageHandler(filters.Regex(r"^/integrar"), _handle_integrar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/rechazar"), _handle_rechazar))
     APP.add_handler(MessageHandler(filters.Regex(r"^/aprobar"), _handle_aprobar))

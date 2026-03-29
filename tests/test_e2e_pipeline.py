@@ -109,10 +109,6 @@ def test_amplified_prompt_contains_original():
 # ── Hierarchical router tests ─────────────────────────────────────────────────
 
 
-@pytest.mark.skip(
-    reason="Flaky timing test — asserts classification_ms < 1000ms but "
-    "observed 1200ms+ on loaded VPS. Benchmark separately with benchmark_knowledge.py."
-)
 def test_hierarchical_router_multi_centroid():
     from hierarchical_router import classify_hierarchical
 
@@ -120,7 +116,6 @@ def test_hierarchical_router_multi_centroid():
 
     assert len(result["active_centroids"]) <= 2
     assert len(result["active_centroids"]) >= 1
-    assert result["classification_ms"] < 1000  # Under 1 second total
     domains = [c["domain"] for c in result["active_centroids"]]
     assert (
         "social_sciences" in domains
@@ -195,20 +190,14 @@ def test_queued_centroids_are_not_active():
     assert not overlap, f"Domains appear in both active and queued: {overlap}"
 
 
-@pytest.mark.xfail(
-    reason="retrieve_knowledge_by_routing() returns empty string — "
-    "it searches .claude/agents/{name}/knowledge/ paths but domain knowledge "
-    "lives in knowledge/{domain}/. Path mismatch introduced when knowledge "
-    "base was moved to top-level knowledge/ dirs.",
-    strict=False,
-)
 def test_knowledge_retrieval_returns_content():
     from hierarchical_router import classify_hierarchical, retrieve_knowledge_by_routing
     from embeddings import get_embedding
 
     query = "Explain microeconomics supply and demand"
-    result = classify_hierarchical(query)
+    # Use same embedding for both classification and retrieval to avoid variance
     emb = get_embedding(query)
+    result = classify_hierarchical(query, prompt_embedding=emb)
     knowledge = retrieve_knowledge_by_routing(result, emb)
 
     assert isinstance(knowledge, str)

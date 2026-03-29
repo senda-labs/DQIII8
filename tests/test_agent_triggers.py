@@ -1,4 +1,5 @@
 """Tests to verify that agent triggers correctly detect keywords."""
+
 import os
 import pytest
 
@@ -36,18 +37,18 @@ TRIGGER_RULES = {
         "pipeline",
         "reels",
     ],
-    "data-analyst": [
+    "finance-specialist": [
         "WACC",
         "DCF",
         "chart",
         "Excel",
         "finance",
     ],
-    "creative-writer": [
-        "chapter",
-        "scene",
-        "novel",
-        "story",
+    "research-analyst": [
+        "investigate",
+        "research",
+        "compare options",
+        "benchmark",
     ],
     "auditor": [
         "/audit",
@@ -72,20 +73,14 @@ def test_no_trigger_overlap():
             all_triggers.append(t)
 
 
-@pytest.mark.skip(
-    reason="CLAUDE.md is gitignored — test would always fail in CI. "
-    "Manually verify delegation table if CLAUDE.md is modified."
-)
-def test_delegation_table_in_claude_md():
-    """CLAUDE.md must contain the delegation table."""
-    claude_md = os.path.join(os.path.dirname(__file__), "..", "CLAUDE.md")
-    if not os.path.isfile(claude_md):
-        pytest.skip("CLAUDE.md not present in this repo (cleaned for public release)")
-    with open(claude_md, encoding="utf-8") as f:
-        content = f.read()
-    assert "python-specialist" in content
-    assert "git-specialist" in content
-    assert "Trigger" in content
+def test_active_agents_exist_on_disk():
+    """All agents listed in TRIGGER_RULES must have .md files on disk."""
+    agents_dir = os.path.join(os.path.dirname(__file__), "..", ".claude", "agents")
+    for agent_name in TRIGGER_RULES:
+        agent_file = os.path.join(agents_dir, f"{agent_name}.md")
+        assert os.path.isfile(
+            agent_file
+        ), f"Agent '{agent_name}' in TRIGGER_RULES but missing: {agent_file}"
 
 
 def test_all_agents_have_unique_name():

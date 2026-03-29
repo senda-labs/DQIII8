@@ -29,8 +29,13 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
-_DQIII8_ROOT = Path(os.environ.get('DQIII8_ROOT', str(Path(__file__).parent.parent.parent)))
-for _d in [_DQIII8_ROOT / 'bin' / s for s in ['', 'core', 'agents', 'monitoring', 'tools', 'ui']]:
+_DQIII8_ROOT = Path(
+    os.environ.get("DQIII8_ROOT", str(Path(__file__).parent.parent.parent))
+)
+for _d in [
+    _DQIII8_ROOT / "bin" / s
+    for s in ["", "core", "agents", "monitoring", "tools", "ui"]
+]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
 
@@ -38,6 +43,7 @@ from embeddings import cosine_similarity, get_embedding
 from db import get_db
 
 import logging
+
 log = logging.getLogger(__name__)
 JARVIS = Path(os.environ.get("DQIII8_ROOT", str(_DQIII8_ROOT)))
 KNOWLEDGE_DIR = JARVIS / "knowledge"
@@ -45,9 +51,9 @@ KNOWLEDGE_DIR = JARVIS / "knowledge"
 # ── Configuration ─────────────────────────────────────────────────────────
 
 # Temperature controls distribution sharpness (lower = more concentrated)
-TAU_1 = 0.25   # Level 1: centroid selection
-TAU_2 = 0.20   # Level 2: agent selection within centroid
-TAU_3 = 0.25   # Level 3: sub-agent selection within agent
+TAU_1 = 0.25  # Level 1: centroid selection
+TAU_2 = 0.20  # Level 2: agent selection within centroid
+TAU_3 = 0.25  # Level 3: sub-agent selection within agent
 
 # Activation thresholds
 BETA_1 = 0.10  # Minimum weight to activate a centroid
@@ -55,8 +61,8 @@ BETA_2 = 0.08  # Minimum weight to activate an agent
 BETA_3 = 0.03  # Minimum weight to activate a sub-agent
 
 # Resource limits
-MAX_ACTIVE_CENTROIDS = 2   # Max simultaneous centroids (scale to 5 with more RAM)
-MAX_KNOWLEDGE_CHUNKS = 8   # Total chunks across all active domains
+MAX_ACTIVE_CENTROIDS = 2  # Max simultaneous centroids (scale to 5 with more RAM)
+MAX_KNOWLEDGE_CHUNKS = 8  # Total chunks across all active domains
 
 # Semantic cache for recent classifications
 _CLASSIFICATION_CACHE: OrderedDict = OrderedDict()
@@ -76,11 +82,17 @@ DOMAIN_HIERARCHY = {
             },
             "statistics": {
                 "description": "Probability, hypothesis testing, regression, Bayesian methods",
-                "files": ["probability_fundamentals.md", "hypothesis_testing_fundamentals.md"],
+                "files": [
+                    "probability_fundamentals.md",
+                    "hypothesis_testing_fundamentals.md",
+                ],
             },
             "algorithms": {
                 "description": "Data structures, algorithms, complexity, computation",
-                "files": ["algorithms_fundamentals.md", "data_structures_fundamentals.md"],
+                "files": [
+                    "algorithms_fundamentals.md",
+                    "data_structures_fundamentals.md",
+                ],
             },
         },
     },
@@ -89,7 +101,10 @@ DOMAIN_HIERARCHY = {
         "agents": {
             "physics": {
                 "description": "Mechanics, thermodynamics, electromagnetism, quantum",
-                "files": ["mechanics_fundamentals.md", "thermodynamics_fundamentals.md"],
+                "files": [
+                    "mechanics_fundamentals.md",
+                    "thermodynamics_fundamentals.md",
+                ],
             },
             "chemistry": {
                 "description": "Organic, inorganic, biochemistry, materials",
@@ -106,15 +121,24 @@ DOMAIN_HIERARCHY = {
         "agents": {
             "economics": {
                 "description": "Microeconomics, macroeconomics, behavioral economics",
-                "files": ["microeconomics_fundamentals.md", "macroeconomics_fundamentals.md"],
+                "files": [
+                    "microeconomics_fundamentals.md",
+                    "macroeconomics_fundamentals.md",
+                ],
             },
             "finance": {
                 "description": "Corporate finance, risk management, derivatives, portfolio theory",
-                "files": ["corporate_finance_fundamentals.md", "risk_management_fundamentals.md"],
+                "files": [
+                    "corporate_finance_fundamentals.md",
+                    "risk_management_fundamentals.md",
+                ],
             },
             "marketing": {
                 "description": "Digital marketing, SEO, SEM, social media, market analysis",
-                "files": ["digital_marketing_fundamentals.md", "market_analysis_fundamentals.md"],
+                "files": [
+                    "digital_marketing_fundamentals.md",
+                    "market_analysis_fundamentals.md",
+                ],
             },
             "business": {
                 "description": "Business planning, startup strategy, operations, management",
@@ -131,7 +155,10 @@ DOMAIN_HIERARCHY = {
         "agents": {
             "literature": {
                 "description": "Narrative, character development, worldbuilding, creative writing",
-                "files": ["narrative_fundamentals.md", "character_development_fundamentals.md"],
+                "files": [
+                    "narrative_fundamentals.md",
+                    "character_development_fundamentals.md",
+                ],
             },
             "philosophy": {
                 "description": "Ethics, logic, epistemology, argumentation",
@@ -156,7 +183,10 @@ DOMAIN_HIERARCHY = {
             },
             "web_development": {
                 "description": "HTML, CSS, JavaScript, React, frontend frameworks, APIs",
-                "files": ["html_css_fundamentals.md", "frontend_frameworks_fundamentals.md"],
+                "files": [
+                    "html_css_fundamentals.md",
+                    "frontend_frameworks_fundamentals.md",
+                ],
             },
             "ai_ml": {
                 "description": "Prompt engineering, agent design, machine learning, NLP",
@@ -168,6 +198,7 @@ DOMAIN_HIERARCHY = {
 
 
 # ── Core math functions ───────────────────────────────────────────────────
+
 
 def softmax_with_temperature(scores: list, temperature: float) -> list:
     """Softmax normalization with temperature scaling.
@@ -215,6 +246,7 @@ def allocate_chunks(weights: dict, max_chunks: int) -> dict:
 
 # ── Centroid loading ──────────────────────────────────────────────────────
 
+
 def load_centroids() -> dict:
     """Load precomputed centroid embeddings from database.
     Note: domain_enrichment table uses 'name' column (not 'domain')."""
@@ -231,7 +263,7 @@ def load_centroids() -> dict:
                     n = len(blob) // 4
                     centroids[name] = list(struct.unpack(f"{n}f", blob))
     except Exception as _exc:
-        log.warning('%s: %s', __name__, _exc)
+        log.warning("%s: %s", __name__, _exc)
     return centroids
 
 
@@ -280,6 +312,7 @@ def compute_agent_centroid(domain: str, agent: str) -> Optional[list]:
 
 
 # ── Main classification pipeline ─────────────────────────────────────────
+
 
 def _cache_key(embedding: list) -> str:
     """Generate cache key from embedding fingerprint (first 20 dims)."""
@@ -331,7 +364,9 @@ def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dic
         return _fallback_result(user_input)
 
     domain_names = sorted(centroids.keys())
-    raw_scores = [cosine_similarity(prompt_embedding, centroids[d]) for d in domain_names]
+    raw_scores = [
+        cosine_similarity(prompt_embedding, centroids[d]) for d in domain_names
+    ]
     weights = softmax_with_temperature(raw_scores, TAU_1)
 
     level1 = {domain_names[i]: round(weights[i], 4) for i in range(len(domain_names))}
@@ -365,12 +400,14 @@ def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dic
         domain_chunks = chunk_allocation.get(domain, 1)
 
         if not agents:
-            active_centroids.append({
-                "domain": domain,
-                "weight": round(domain_weight, 4),
-                "agents": [],
-                "chunks_allocated": domain_chunks,
-            })
+            active_centroids.append(
+                {
+                    "domain": domain,
+                    "weight": round(domain_weight, 4),
+                    "agents": [],
+                    "chunks_allocated": domain_chunks,
+                }
+            )
             continue
 
         agent_names = sorted(agents.keys())
@@ -384,7 +421,11 @@ def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dic
                 desc = agents[agent_name].get("description", agent_name)
                 try:
                     desc_emb = get_embedding(desc)
-                    score = cosine_similarity(prompt_embedding, desc_emb) if desc_emb else 0.0
+                    score = (
+                        cosine_similarity(prompt_embedding, desc_emb)
+                        if desc_emb
+                        else 0.0
+                    )
                 except Exception:
                     score = 0.0
             agent_scores.append(score)
@@ -401,19 +442,23 @@ def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dic
 
         active_agents = []
         for agent_name, chunks in agent_chunk_alloc.items():
-            active_agents.append({
-                "name": agent_name,
-                "weight": round(agent_chunk_weights[agent_name], 4),
-                "chunks_allocated": chunks,
-                "knowledge_files": agents[agent_name].get("files", []),
-            })
+            active_agents.append(
+                {
+                    "name": agent_name,
+                    "weight": round(agent_chunk_weights[agent_name], 4),
+                    "chunks_allocated": chunks,
+                    "knowledge_files": agents[agent_name].get("files", []),
+                }
+            )
 
-        active_centroids.append({
-            "domain": domain,
-            "weight": round(domain_weight, 4),
-            "agents": active_agents,
-            "chunks_allocated": domain_chunks,
-        })
+        active_centroids.append(
+            {
+                "domain": domain,
+                "weight": round(domain_weight, 4),
+                "agents": active_agents,
+                "chunks_allocated": domain_chunks,
+            }
+        )
 
     t_end = time.perf_counter()
     classification_ms = round((t_end - t_start) * 1000, 2)
@@ -422,15 +467,15 @@ def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dic
         "prompt": user_input[:200],
         "level1": level1,
         "active_centroids": active_centroids,
-        "queued_centroids": [
-            {"domain": d, "weight": round(w, 4)} for d, w in queued
-        ],
+        "queued_centroids": [{"domain": d, "weight": round(w, 4)} for d, w in queued],
         "total_chunks": MAX_KNOWLEDGE_CHUNKS,
         "classification_ms": classification_ms,
     }
 
 
-def classify_hierarchical_cached(user_input: str, prompt_embedding: list = None) -> dict:
+def classify_hierarchical_cached(
+    user_input: str, prompt_embedding: list = None
+) -> dict:
     """Cached version of classify_hierarchical.
     Returns cached result if a similar query was classified within TTL.
     Cache key is based on first 20 embedding dimensions."""
@@ -465,7 +510,9 @@ def classify_hierarchical_cached(user_input: str, prompt_embedding: list = None)
     return result
 
 
-def retrieve_knowledge_by_routing(routing_result: dict, prompt_embedding: list = None) -> str:
+def retrieve_knowledge_by_routing(
+    routing_result: dict, prompt_embedding: list = None
+) -> str:
     """Retrieve knowledge chunks based on hierarchical routing result.
     Returns formatted knowledge text for the amplified prompt."""
 
@@ -479,8 +526,11 @@ def retrieve_knowledge_by_routing(routing_result: dict, prompt_embedding: list =
             chunks_to_get = agent["chunks_allocated"]
 
             chunks = _search_agent_knowledge(
-                domain, agent_name, agent["knowledge_files"],
-                prompt_embedding, max_chunks=chunks_to_get
+                domain,
+                agent_name,
+                agent["knowledge_files"],
+                prompt_embedding,
+                max_chunks=chunks_to_get,
             )
 
             if chunks:
@@ -523,7 +573,12 @@ def _search_agent_knowledge(
 
     for chunk in all_chunks:
         source = chunk.get("source", chunk.get("file", ""))
-        if any(af in source for af in agent_files_set):
+        # Match by: explicit file list, agent subdirectory, or agent name prefix
+        if (
+            any(af in source for af in agent_files_set)
+            or source.startswith(f"{agent}/")
+            or source.startswith(f"{agent}_")
+        ):
             emb = chunk.get("embedding")
             if isinstance(emb, list) and prompt_embedding:
                 sim = cosine_similarity(prompt_embedding, emb)
@@ -560,6 +615,7 @@ def _fallback_result(user_input: str) -> dict:
 
 # ── CLI + Testing ─────────────────────────────────────────────────────────
 
+
 def print_routing(result: dict):
     """Pretty print a routing result."""
     print(f"\nInput: {result['prompt']}")
@@ -568,15 +624,21 @@ def print_routing(result: dict):
     print("\nLevel 1 — All centroid scores:")
     for domain, weight in sorted(result["level1"].items(), key=lambda x: -x[1]):
         bar = "█" * int(weight * 40) + "░" * (40 - int(weight * 40))
-        active = " ◀ ACTIVE" if any(
-            c["domain"] == domain for c in result["active_centroids"]
-        ) else ""
-        queued = " ⏳ QUEUED" if any(
-            c["domain"] == domain for c in result["queued_centroids"]
-        ) else ""
+        active = (
+            " ◀ ACTIVE"
+            if any(c["domain"] == domain for c in result["active_centroids"])
+            else ""
+        )
+        queued = (
+            " ⏳ QUEUED"
+            if any(c["domain"] == domain for c in result["queued_centroids"])
+            else ""
+        )
         print(f"  {domain:20s} {bar} {weight:.3f}{active}{queued}")
 
-    print(f"\nActive centroids ({len(result['active_centroids'])}/{MAX_ACTIVE_CENTROIDS} max):")
+    print(
+        f"\nActive centroids ({len(result['active_centroids'])}/{MAX_ACTIVE_CENTROIDS} max):"
+    )
     for centroid in result["active_centroids"]:
         print(
             f"\n  +- {centroid['domain']} "

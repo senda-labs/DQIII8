@@ -20,16 +20,22 @@ git pull origin main && ok "Code updated" || warn "Git pull failed (may need aut
 # 2. Python deps
 echo ""
 echo "▶ 2/10 Python dependencies"
-pip install -q --break-system-packages --ignore-installed \
+if pip install -q --break-system-packages --ignore-installed \
     crawl4ai pdfplumber docxtpl scrapling 2>/dev/null \
     || pip install -q --break-system-packages --ignore-installed \
-    crawl4ai pdfplumber docxtpl scrapling 2>/dev/null \
-    || warn "Some Python deps failed — check manually"
-ok "Python deps"
+    crawl4ai pdfplumber docxtpl scrapling 2>/dev/null; then
+    ok "Python deps"
+else
+    warn "Some Python deps failed — check manually"
+fi
 
 # 3. DB schemas (both databases, idempotent)
 echo ""
 echo "▶ 3/10 Database schemas"
+# Ensure all CREATE statements are idempotent
+sed -i 's/CREATE TABLE \([^I]\)/CREATE TABLE IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
+sed -i 's/CREATE VIEW \([^I]\)/CREATE VIEW IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
+sed -i 's/CREATE INDEX \([^I]\)/CREATE INDEX IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
 sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null || true
 sqlite3 "$DQIII8_ROOT/database/dqiii8_metrics.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null || true
 sqlite3 "$DQIII8_ROOT/database/dqiii8_metrics.db" \
@@ -57,72 +63,47 @@ fi
 echo ""
 echo "▶ 5/10 Knowledge indexes"
 REINDEXED=false
-python3 -c "
-import json, os, sys, glob
-
-domains = ['applied_sciences','formal_sciences','natural_sciences','social_sciences','humanities_arts']
-reindexed = []
-for domain in domains:
-    idx_path = f'knowledge/{domain}/index.json'
-    md_dir = f'knowledge/{domain}'
-    md_count = len(glob.glob(os.path.join(md_dir, '*.md')))
-
-    needs_reindex = False
-    if not os.path.exists(idx_path):
-        needs_reindex = True
-    else:
-        idx = json.load(open(idx_path))
-        chunks = idx.get('chunks', [])
-        if not chunks:
-            needs_reindex = True
-        else:
-            dim = chunks[0].get('embedding_dim', len(chunks[0].get('embedding', [])))
-            if dim != 1024:
-                needs_reindex = True
-            elif len(chunks) != md_count:
-                needs_reindex = True
-
-    if needs_reindex:
-        reindexed.append(domain)
-        print(f'  REINDEX {domain} (md={md_count})')
-    else:
-        print(f'  OK {domain} ({len(chunks)} chunks, {md_count} files)')
-
-if reindexed:
-    print('NEEDS_REINDEX:' + ','.join(reindexed))
-    sys.exit(1)
-else:
-    sys.exit(0)
-" 2>/dev/null
-KNOWLEDGE_STATUS=$?
-
-if [ $KNOWLEDGE_STATUS -eq 0 ]; then
-    ok "Knowledge indexes up to date"
-else
-    REINDEXED=true
-    DOMAINS_TO_INDEX=$(python3 -c "
+INDEX_OK=0
+INDEX_FAIL=0
+DOMAINS_TO_INDEX=$(python3 -c "
 import json, os, glob
 domains = ['applied_sciences','formal_sciences','natural_sciences','social_sciences','humanities_arts']
 for domain in domains:
     idx_path = f'knowledge/{domain}/index.json'
     md_dir = f'knowledge/{domain}'
-    md_count = len(glob.glob(os.path.join(md_dir, '*.md')))
-    needs = False
+    md_files = [f for f in glob.glob(os.path.join(md_dir, '*.md'))
+                if '/papers/' not in f and 'papers/' not in os.path.relpath(f, md_dir)]
+    md_count = len(md_files)
     if not os.path.exists(idx_path):
-        needs = True
-    else:
+        print(domain)
+        continue
+    try:
         idx = json.load(open(idx_path))
         chunks = idx.get('chunks', [])
-        if not chunks: needs = True
-        else:
-            dim = chunks[0].get('embedding_dim', len(chunks[0].get('embedding', [])))
-            if dim != 1024 or len(chunks) != md_count: needs = True
-    if needs: print(domain)
+    except Exception:
+        print(domain)
+        continue
+    if not chunks or len(chunks) != md_count:
+        print(domain)
 " 2>/dev/null)
+
+if [ -z "$DOMAINS_TO_INDEX" ]; then
+    ok "Knowledge indexes up to date (all domains match)"
+else
+    REINDEXED=true
     for d in $DOMAINS_TO_INDEX; do
         warn "Re-indexing $d..."
-        python3 bin/agents/knowledge_indexer.py --domain "$d" 2>/dev/null && ok "  $d indexed" || warn "  $d failed"
+        if python3 bin/agents/knowledge_indexer.py --domain "$d" 2>/dev/null; then
+            INDEX_OK=$((INDEX_OK + 1))
+        else
+            INDEX_FAIL=$((INDEX_FAIL + 1))
+        fi
     done
+    if [ $INDEX_FAIL -eq 0 ]; then
+        ok "Knowledge re-indexed ($INDEX_OK domain(s))"
+    else
+        warn "Knowledge re-indexed ($INDEX_OK OK, $INDEX_FAIL failed)"
+    fi
 fi
 
 # 6. Seed centroids (AFTER indexing)
@@ -142,6 +123,9 @@ for domain in ['applied_sciences','formal_sciences','natural_sciences','social_s
     if not os.path.exists(idx_path): continue
     idx = json.load(open(idx_path))
     chunks = idx.get('chunks', [])
+    if not chunks or not isinstance(chunks[0], dict):
+        print(f'  {domain}: skipped (invalid chunk format)')
+        continue
     embs = [c['embedding'] for c in chunks if 'embedding' in c]
     if not embs: continue
     dim = len(embs[0])
@@ -204,7 +188,7 @@ elif [ -f "/etc/systemd/system/dqiii8-bot.service" ]; then
     systemctl enable --now dqiii8-bot && ok "dqiii8-bot started"
 else
     # Create service automatically
-    cat > /etc/systemd/system/dqiii8-bot.service << 'SVCEOF'
+    cat > /etc/systemd/system/dqiii8-bot.service << SVCEOF
 [Unit]
 Description=DQIII8 Telegram Bot
 After=network.target ollama.service
@@ -212,11 +196,11 @@ After=network.target ollama.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/dqiii8
+WorkingDirectory=$DQIII8_ROOT
 ExecStart=/usr/bin/python3 bin/ui/dqiii8_bot.py
 Restart=always
 RestartSec=5
-Environment=DQIII8_ROOT=/root/dqiii8
+Environment=DQIII8_ROOT=$DQIII8_ROOT
 
 [Install]
 WantedBy=multi-user.target

@@ -66,7 +66,9 @@ def test_deny_rm_rf_tilde():
 
 def test_deny_drop_table():
     """DROP TABLE should be denied."""
-    r = analyzer.evaluate("Bash", {"command": "sqlite3 db.sqlite 'DROP TABLE sessions'"})
+    r = analyzer.evaluate(
+        "Bash", {"command": "sqlite3 db.sqlite 'DROP TABLE sessions'"}
+    )
     assert r["decision"] == "DENY"
 
 
@@ -81,9 +83,16 @@ def test_deny_write_to_env():
 
 
 def test_deny_edit_claude_md():
-    """Editing CLAUDE.md should be denied."""
+    """Editing CLAUDE.md should be denied without env var."""
     r = analyzer.evaluate("Edit", {"file_path": "/root/dqiii8/CLAUDE.md"})
     assert r["decision"] == "DENY"
+
+
+def test_allow_claude_md_with_plugin_env(monkeypatch):
+    """Editing CLAUDE.md should be allowed with CLAUDE_MD_PLUGIN_EDIT=1."""
+    monkeypatch.setenv("CLAUDE_MD_PLUGIN_EDIT", "1")
+    r = analyzer.evaluate("Edit", {"file_path": "/root/dqiii8/CLAUDE.md"})
+    assert r["decision"] == "APPROVE"
 
 
 def test_deny_write_to_db():
@@ -119,7 +128,13 @@ def test_approve_git_status():
 def test_escalate_result_has_required_keys():
     """If _check_repeat_rejections returns something, it must have the correct keys."""
     # Verify structure without mocking the DB
-    expected_keys = {"decision", "reason", "risk_level", "rule_triggered", "suggested_fix"}
+    expected_keys = {
+        "decision",
+        "reason",
+        "risk_level",
+        "rule_triggered",
+        "suggested_fix",
+    }
     deny_result = analyzer._deny("Bash", "rm -rf /", "test", "CRITICAL", "rule", "fix")
     assert set(deny_result.keys()) == expected_keys
     assert deny_result["decision"] == "DENY"

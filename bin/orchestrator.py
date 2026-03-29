@@ -240,8 +240,8 @@ def format_progress(project_name: str, phase: str, elapsed: float) -> str:
 #
 # Opus is NEVER a first-choice. It's an escalation from Sonnet.
 
-# Action verbs that imply code generation/modification
-_ACTION_VERBS = frozenset(
+# Execution verbs — require filesystem/bash access → Sonnet (claude -p)
+_EXEC_VERBS = frozenset(
     {
         "implementa",
         "implement",
@@ -273,32 +273,23 @@ _ACTION_VERBS = frozenset(
         "rename",
         "commit",
         "push",
+        "lista",
+        "list",
+        "test",
+        "prueba",
     }
 )
 
-# Code keywords (from ml_selector.py)
-_CODE_KW = frozenset(
+# Code keywords that imply execution context (not just discussion)
+_EXEC_KW = frozenset(
     {
-        "python",
-        "function",
-        "class",
-        "error",
         "traceback",
         "refactor",
         "debug",
-        "test",
-        "import",
-        "async",
-        "def ",
+        "dockerfile",
         "git ",
         "npm",
         "pip",
-        "dockerfile",
-        "yaml",
-        "json",
-        "sql",
-        "bash",
-        "script",
     }
 )
 
@@ -329,9 +320,9 @@ _PLANNING_KW = frozenset(
 )
 
 
-def _has_code_keywords(lower: str) -> bool:
-    """Check if prompt contains code-related keywords (word-boundary safe)."""
-    for kw in _CODE_KW:
+def _has_exec_keywords(lower: str) -> bool:
+    """Check if prompt contains keywords that imply execution context."""
+    for kw in _EXEC_KW:
         if len(kw) <= 4:
             if re.search(r"\b" + re.escape(kw) + r"\b", lower):
                 return True
@@ -344,32 +335,36 @@ def _has_code_keywords(lower: str) -> bool:
 def classify_cc_tier(prompt: str) -> str:
     """Classify a /cc prompt into execution tier.
 
-    C = Ollama qwen2.5-coder ($0, local) — code tasks, the workhorse
-    B = Groq llama-3.3-70b ($0, cloud) — simple queries, explanations
-    A = Sonnet — planning, complex analysis, code supervision
-    S = Opus — NEVER first-choice; only via escalate_to_opus()
+    C = Qwen local ($0) — knowledge queries, explanations (text-only, no exec)
+    A = Sonnet via claude -p — tasks requiring filesystem/bash execution
+    S = Opus — NEVER first-choice; only via plan quality gate
 
-    Returns: "C", "B", or "A". Never returns "S" directly.
+    Routing principle:
+      - Needs to EXECUTE (create, fix, run, deploy, list files)? → A (Sonnet)
+      - Needs to ANSWER (explain, describe, how does X work)? → C (Qwen)
+      - Qwen gets context injected (CLAUDE.md + PROJECT.md) but has no tools.
+
+    Returns: "C" or "A". Never returns "S" directly.
     """
     lower = prompt.lower()
     words = set(lower.split())
 
-    # A-tier: planning, analysis, review — needs reasoning, not code gen
+    # A-tier: planning, analysis, review — needs Sonnet reasoning
     if words & _PLANNING_KW:
         return "A"
 
-    # A-tier: long prompts (>300 chars) — likely multi-step, needs planning
+    # A-tier: long prompts (>300 chars) — likely multi-step, needs execution
     if len(prompt) > 300:
         return "A"
 
-    # C-tier: code tasks — action verbs or code keywords → local execution
-    if words & _ACTION_VERBS:
-        return "C"
-    if _has_code_keywords(lower):
-        return "C"
+    # A-tier: execution verbs or execution keywords → Sonnet (claude -p)
+    if words & _EXEC_VERBS:
+        return "A"
+    if _has_exec_keywords(lower):
+        return "A"
 
-    # B-tier: everything else — simple queries, status, explanations
-    return "B"
+    # C-tier: knowledge queries — Qwen local with context injection
+    return "C"
 
 
 def should_escalate_to_opus(prompt: str, sonnet_output: str, success: bool) -> bool:

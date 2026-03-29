@@ -1,0 +1,252 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1774797104103,
+  "projectRoot": "/root/dqiii8",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "requirements.txt"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "pip",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "bin",
+      "docs",
+      "examples",
+      "tests"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "bin": {
+      "path": "bin",
+      "purpose": "Executable scripts",
+      "fileCount": 7,
+      "lastAccessed": 1774797104049,
+      "keyFiles": [
+        "README.md",
+        "__init__.py",
+        "autonomous_loop.sh",
+        "director.py",
+        "j.sh"
+      ]
+    },
+    "config": {
+      "path": "config",
+      "purpose": "Configuration files",
+      "fileCount": 4,
+      "lastAccessed": 1774797104059,
+      "keyFiles": [
+        "claude_settings_template.json",
+        "domain_agent_map.json",
+        "intelligence_sources.json"
+      ]
+    },
+    "database": {
+      "path": "database",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1774797104059,
+      "keyFiles": [
+        "dqiii8.db",
+        "dqiii8_metrics.db",
+        "jarvis_metrics.db",
+        "schema.sql",
+        "schema_temporal.sql"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 10,
+      "lastAccessed": 1774797104061,
+      "keyFiles": [
+        "ARCHITECTURE.md",
+        "CHANGELOG.md",
+        "CHECKPOINT_2026-03-28.md",
+        "CHECKPOINT_2026-03-29.md",
+        "DQIII8_PLUGIN_DESIGN.md"
+      ]
+    },
+    "examples": {
+      "path": "examples",
+      "purpose": "Example code",
+      "fileCount": 1,
+      "lastAccessed": 1774797104062,
+      "keyFiles": [
+        "demo_prompts.md"
+      ]
+    },
+    "knowledge": {
+      "path": "knowledge",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1774797104069,
+      "keyFiles": [
+        "AUDIT_REPORT.md",
+        "README.md"
+      ]
+    },
+    "my-projects": {
+      "path": "my-projects",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1774797104084,
+      "keyFiles": [
+        "PROJECT.md",
+        "README.md"
+      ]
+    },
+    "objectives": {
+      "path": "objectives",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1774797104085,
+      "keyFiles": []
+    },
+    "projects": {
+      "path": "projects",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1774797104086,
+      "keyFiles": []
+    },
+    "semgrep-mcp": {
+      "path": "semgrep-mcp",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1774797104087,
+      "keyFiles": []
+    },
+    "sessions": {
+      "path": "sessions",
+      "purpose": null,
+      "fileCount": 450,
+      "lastAccessed": 1774797104090,
+      "keyFiles": [
+        "2026-03-20_session.md",
+        "2026-03-20_session_10.md",
+        "2026-03-20_session_11.md",
+        "2026-03-20_session_2.md",
+        "2026-03-20_session_3.md"
+      ]
+    },
+    "skills-registry": {
+      "path": "skills-registry",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1774797104092,
+      "keyFiles": [
+        "INDEX.md",
+        "README.md"
+      ]
+    },
+    "tasks": {
+      "path": "tasks",
+      "purpose": null,
+      "fileCount": 17,
+      "lastAccessed": 1774797104094,
+      "keyFiles": [
+        "FULL_SYSTEM_MAP.md",
+        "HANDOVER_OPUS_2026-03-22.md",
+        "SYSTEM_AUDIT_PRE_RELEASE.md",
+        "SYSTEM_DIAGNOSIS_2026-03-22.md",
+        "audit-2026-03-18-full.md"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 13,
+      "lastAccessed": 1774797104096,
+      "keyFiles": [
+        "conftest.py",
+        "test_agent_triggers.py",
+        "test_auth_watchdog.py",
+        "test_bot_auth_update.py",
+        "test_cc_check.py"
+      ]
+    },
+    "tmp": {
+      "path": "tmp",
+      "purpose": null,
+      "fileCount": 57,
+      "lastAccessed": 1774797104097,
+      "keyFiles": [
+        "dqiii8_agent_a25e7ec6684c916ff.json",
+        "dqiii8_agent_a272285477600ab9f.json",
+        "dqiii8_agent_a3c3d6ec7600da6b0.json",
+        "dqiii8_agent_a472afdd10a97877f.json",
+        "dqiii8_agent_a4c2b05fca494cfb0.json"
+      ]
+    },
+    "uploads": {
+      "path": "uploads",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1774797104097,
+      "keyFiles": []
+    },
+    "venv": {
+      "path": "venv",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1774797104097,
+      "keyFiles": [
+        "pyvenv.cfg"
+      ]
+    },
+    "database/migrations": {
+      "path": "database/migrations",
+      "purpose": "Database migrations",
+      "fileCount": 1,
+      "lastAccessed": 1774797104098,
+      "keyFiles": []
+    },
+    "venv/bin": {
+      "path": "venv/bin",
+      "purpose": "Executable scripts",
+      "fileCount": 22,
+      "lastAccessed": 1774797104103,
+      "keyFiles": [
+        "Activate.ps1",
+        "activate",
+        "activate.csh"
+      ]
+    },
+    "venv/lib": {
+      "path": "venv/lib",
+      "purpose": "Library code",
+      "fileCount": 0,
+      "lastAccessed": 1774797104103,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}

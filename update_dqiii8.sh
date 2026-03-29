@@ -9,17 +9,51 @@ ok()   { echo -e "${GREEN}✓${NC} $*"; }
 warn() { echo -e "${YELLOW}⚠${NC} $*"; }
 err()  { echo -e "${RED}✗${NC} $*"; }
 
-echo "=== DQIII8 Update v3 — $DQIII8_ROOT ==="
+echo "=== DQIII8 Update v4 — $DQIII8_ROOT ==="
 cd "$DQIII8_ROOT"
+
+sync_workspace() {
+    # Remove local files not in repo, preserving user data
+    local CLEANED=0
+    local EXCLUDES=(
+        -e "my-projects/"
+        -e ".env"
+        -e "database/*.db"
+        -e "database/dqiii8_metrics.db"
+        -e "database/*.db-wal"
+        -e "database/*.db-shm"
+        -e "sessions/"
+        -e ".claude/settings.json"
+        -e "docs/CHECKPOINT_*.md"
+        -e ".omc/"
+        -e ".venv/"
+        -e "venv/"
+        -e "node_modules/"
+    )
+    CLEANED=$(git clean -fd "${EXCLUDES[@]}" 2>/dev/null | wc -l)
+    # Restore tracked files that may have been modified
+    git checkout -- knowledge/ 2>/dev/null || true
+    echo "$CLEANED"
+}
 
 # 1. Pull latest
 echo ""
-echo "▶ 1/10 Git pull"
+echo "▶ 1/11 Git pull"
 git pull origin main && ok "Code updated" || warn "Git pull failed (may need auth)"
+
+# 1b. Sync workspace — remove stale local files
+echo ""
+echo "▶ 1b/11 Sync workspace"
+SYNC_COUNT=$(sync_workspace)
+if [ "$SYNC_COUNT" -gt 0 ] 2>/dev/null; then
+    ok "Cleaned $SYNC_COUNT stale file(s)"
+else
+    ok "Workspace in sync"
+fi
 
 # 2. Python deps
 echo ""
-echo "▶ 2/10 Python dependencies"
+echo "▶ 2/11 Python dependencies"
 if pip install -q --break-system-packages --ignore-installed \
     crawl4ai pdfplumber docxtpl scrapling 2>/dev/null \
     || pip install -q --break-system-packages --ignore-installed \
@@ -31,7 +65,7 @@ fi
 
 # 3. DB schemas (both databases, idempotent)
 echo ""
-echo "▶ 3/10 Database schemas"
+echo "▶ 3/11 Database schemas"
 # Ensure all CREATE statements are idempotent
 sed -i 's/CREATE TABLE \([^I]\)/CREATE TABLE IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
 sed -i 's/CREATE VIEW \([^I]\)/CREATE VIEW IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
@@ -44,7 +78,7 @@ ok "Schemas applied"
 
 # 4. Database integrity (fix broken symlinks)
 echo ""
-echo "▶ 4/10 Database integrity"
+echo "▶ 4/11 Database integrity"
 if [ -L "$DQIII8_ROOT/database/dqiii8.db" ]; then
     TARGET=$(readlink "$DQIII8_ROOT/database/dqiii8.db")
     if [ ! -f "$TARGET" ]; then
@@ -61,7 +95,7 @@ fi
 
 # 5. Knowledge re-index (before centroids) — per-domain chunk count check
 echo ""
-echo "▶ 5/10 Knowledge indexes"
+echo "▶ 5/11 Knowledge indexes"
 REINDEXED=false
 INDEX_OK=0
 INDEX_FAIL=0
@@ -108,7 +142,7 @@ fi
 
 # 6. Seed centroids (AFTER indexing)
 echo ""
-echo "▶ 6/10 Domain centroids"
+echo "▶ 6/11 Domain centroids"
 CENTROID_COUNT=$(sqlite3 "$DQIII8_ROOT/database/dqiii8.db" \
     "SELECT COUNT(*) FROM domain_enrichment;" 2>/dev/null || echo "0")
 if [ "$CENTROID_COUNT" -lt 5 ] || [ "$REINDEXED" = true ]; then
@@ -143,7 +177,7 @@ fi
 
 # 7. Claude Code settings (permissions + plugins)
 echo ""
-echo "▶ 7/10 Claude Code settings"
+echo "▶ 7/11 Claude Code settings"
 if [ -f "$DQIII8_ROOT/config/claude_settings_template.json" ]; then
     if [ ! -f "$HOME/.claude/settings.json" ]; then
         mkdir -p "$HOME/.claude"
@@ -164,7 +198,7 @@ fi
 
 # 8. Bun runtime (required for OMC + Channels plugins)
 echo ""
-echo "▶ 8/10 Bun runtime"
+echo "▶ 8/11 Bun runtime"
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 if command -v bun &>/dev/null; then
@@ -179,7 +213,7 @@ fi
 
 # 9. Services
 echo ""
-echo "▶ 9/10 Services"
+echo "▶ 9/11 Services"
 # Bot service
 if systemctl is-active dqiii8-bot >/dev/null 2>&1; then
     systemctl restart dqiii8-bot && ok "dqiii8-bot restarted"
@@ -213,7 +247,7 @@ systemctl restart ollama 2>/dev/null && ok "Ollama restarted" || warn "Ollama no
 
 # 10. Verify
 echo ""
-echo "▶ 10/10 Verification"
+echo "▶ 10/11 Verification"
 echo "  Tests:"
 python3 -m pytest tests/test_smoke.py -q 2>&1 | tail -3
 echo "  Claude Code:"

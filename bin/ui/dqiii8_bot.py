@@ -1100,9 +1100,10 @@ _CC_MAX_PER_HOUR = 10
 
 
 def _cc_ensure_table() -> None:
-    """Create cc_rate_limit table if it doesn't exist."""
+    """Create cc_rate_limit table if it doesn't exist; enable WAL mode."""
     try:
-        conn = sqlite3.connect(str(DB), timeout=2)
+        conn = sqlite3.connect(str(DB), timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""CREATE TABLE IF NOT EXISTS cc_rate_limit (
                 chat_id TEXT NOT NULL,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -1119,7 +1120,7 @@ _cc_ensure_table()
 def _cc_rate_count(chat_id: str) -> int:
     """Return number of /cc uses by chat_id in the last hour."""
     try:
-        conn = sqlite3.connect(str(DB), timeout=2)
+        conn = sqlite3.connect(str(DB), timeout=10)
         count = conn.execute(
             "SELECT COUNT(*) FROM cc_rate_limit WHERE chat_id = ? "
             "AND timestamp > datetime('now', '-1 hour')",
@@ -1168,7 +1169,7 @@ _CC_MAX_LENGTH = 500
 def _cc_rate_ok(chat_id: str) -> bool:
     """Returns True if chat_id is within rate limit (persistent SQLite store)."""
     try:
-        conn = sqlite3.connect(str(DB), timeout=2)
+        conn = sqlite3.connect(str(DB), timeout=10)
         conn.execute(
             "DELETE FROM cc_rate_limit WHERE timestamp < datetime('now', '-1 hour')"
         )
@@ -1487,31 +1488,18 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     label = project["name"]
     tier = classify_cc_tier(prompt)
 
-    tier_labels = {"C": "Qwen", "B": "Groq", "A": "Sonnet", "S": "Opus"}
-    progress_msg = await update.message.reply_text(f"[{label}] {tier_labels[tier]}...")
+    tier_labels = {"C": "Qwen", "A": "Sonnet", "S": "Opus"}
+    progress_msg = await update.message.reply_text(
+        f"[{label}] {tier_labels.get(tier, tier)}..."
+    )
 
     t0 = time.time()
     ctx = build_context(project, prompt) or ""
     files: list = []
 
     if tier == "C":
-        # Tier C: Ollama executes code, then Groq reviews
+        # Tier C: Qwen answers knowledge queries (text-only, no execution)
         success, output = await _run_ollama_direct(prompt, system_prompt=ctx)
-        if success and len(output.strip()) > 50:
-            try:
-                await progress_msg.edit_text(f"[{label}] Groq reviewing...")
-            except Exception:
-                pass
-            review_prompt = (
-                f"Review this code output for correctness and quality. "
-                f"Original task: {prompt}\n\nOutput:\n{output[:3000]}\n\n"
-                f"Reply OK if correct, or explain issues."
-            )
-            _ok, review = await _run_groq_direct(review_prompt)
-            if review and "ok" not in review[:50].lower():
-                output += f"\n\n[Groq review]: {review[:500]}"
-    elif tier == "B":
-        success, output = await _run_groq_direct(prompt, system_prompt=ctx)
     elif tier == "A":
         # Sonnet plans/analyzes; escalate to Opus only if output is poor
         success, output, files = await _run_cc_async(
@@ -1708,6 +1696,46 @@ async def cmd_auth_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+# ── Global Telegram error handler ───────────────────────────────────────────────
+async def _telegram_error_handler(
+    update: object, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Catch all exceptions dispatched by python-telegram-bot.
+
+    Transient network/conflict errors are logged at WARNING and discarded.
+    All other errors are logged at ERROR and written to error_log.
+    """
+    import traceback as _tb
+
+    from telegram.error import Conflict, NetworkError, TimedOut
+
+    err = context.error
+    if isinstance(err, (NetworkError, TimedOut, Conflict)):
+        log.warning("Telegram transient error (ignored): %s", err)
+        return
+
+    log.error("Unhandled Telegram exception", exc_info=err)
+    tb_str = "".join(_tb.format_exception(type(err), err, err.__traceback__))
+    try:
+        conn = sqlite3.connect(str(DB), timeout=10)
+        conn.execute(
+            "INSERT INTO error_log "
+            "(session_id, agent_name, error_type, error_message, cause, resolved) "
+            "VALUES (?, ?, ?, ?, ?, 0)",
+            (
+                "tg_bot_global",
+                "dqiii8_bot",
+                type(err).__name__,
+                str(err)[:500],
+                tb_str[:1000],
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as db_exc:
+        log.warning("error_log write failed in error handler: %s", db_exc)
+
+
 # ── Main ────────────────────────────────────────────────────────────────────────
 def main() -> None:
     global APP
@@ -1764,6 +1792,7 @@ def main() -> None:
         CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:")
     )
 
+    APP.add_error_handler(_telegram_error_handler)
     log.info("Bot polling. Ctrl+C to stop.")
     APP.run_polling(drop_pending_updates=True)
 

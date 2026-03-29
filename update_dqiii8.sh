@@ -53,28 +53,76 @@ else
     ok "Database is real file"
 fi
 
-# 5. Knowledge re-index (before centroids)
+# 5. Knowledge re-index (before centroids) — per-domain chunk count check
 echo ""
 echo "▶ 5/10 Knowledge indexes"
-NEED_INDEX=false
-if python3 -c "
-import json, os
-idx_path = 'knowledge/applied_sciences/index.json'
-if not os.path.exists(idx_path): exit(1)
-idx = json.load(open(idx_path))
-chunks = idx.get('chunks', [])
-if not chunks: exit(1)
-dim = chunks[0].get('embedding_dim', len(chunks[0].get('embedding', [])))
-exit(0 if dim == 1024 else 1)
-" 2>/dev/null; then
-    ok "Knowledge indexes bge-m3 (1024d)"
+REINDEXED=false
+python3 -c "
+import json, os, sys, glob
+
+domains = ['applied_sciences','formal_sciences','natural_sciences','social_sciences','humanities_arts']
+reindexed = []
+for domain in domains:
+    idx_path = f'knowledge/{domain}/index.json'
+    md_dir = f'knowledge/{domain}'
+    md_count = len(glob.glob(os.path.join(md_dir, '*.md')))
+
+    needs_reindex = False
+    if not os.path.exists(idx_path):
+        needs_reindex = True
+    else:
+        idx = json.load(open(idx_path))
+        chunks = idx.get('chunks', [])
+        if not chunks:
+            needs_reindex = True
+        else:
+            dim = chunks[0].get('embedding_dim', len(chunks[0].get('embedding', [])))
+            if dim != 1024:
+                needs_reindex = True
+            elif len(chunks) != md_count:
+                needs_reindex = True
+
+    if needs_reindex:
+        reindexed.append(domain)
+        print(f'  REINDEX {domain} (md={md_count})')
+    else:
+        print(f'  OK {domain} ({len(chunks)} chunks, {md_count} files)')
+
+if reindexed:
+    print('NEEDS_REINDEX:' + ','.join(reindexed))
+    sys.exit(1)
+else:
+    sys.exit(0)
+" 2>/dev/null
+KNOWLEDGE_STATUS=$?
+
+if [ $KNOWLEDGE_STATUS -eq 0 ]; then
+    ok "Knowledge indexes up to date"
 else
-    NEED_INDEX=true
-    warn "Re-indexing knowledge (this takes 2-5 min)..."
-    for d in applied_sciences formal_sciences natural_sciences social_sciences humanities_arts; do
-        python3 bin/agents/knowledge_indexer.py --domain "$d" 2>/dev/null && echo "  $d indexed" || echo "  $d failed"
+    REINDEXED=true
+    DOMAINS_TO_INDEX=$(python3 -c "
+import json, os, glob
+domains = ['applied_sciences','formal_sciences','natural_sciences','social_sciences','humanities_arts']
+for domain in domains:
+    idx_path = f'knowledge/{domain}/index.json'
+    md_dir = f'knowledge/{domain}'
+    md_count = len(glob.glob(os.path.join(md_dir, '*.md')))
+    needs = False
+    if not os.path.exists(idx_path):
+        needs = True
+    else:
+        idx = json.load(open(idx_path))
+        chunks = idx.get('chunks', [])
+        if not chunks: needs = True
+        else:
+            dim = chunks[0].get('embedding_dim', len(chunks[0].get('embedding', [])))
+            if dim != 1024 or len(chunks) != md_count: needs = True
+    if needs: print(domain)
+" 2>/dev/null)
+    for d in $DOMAINS_TO_INDEX; do
+        warn "Re-indexing $d..."
+        python3 bin/agents/knowledge_indexer.py --domain "$d" 2>/dev/null && ok "  $d indexed" || warn "  $d failed"
     done
-    ok "Knowledge re-indexed"
 fi
 
 # 6. Seed centroids (AFTER indexing)
@@ -82,7 +130,7 @@ echo ""
 echo "▶ 6/10 Domain centroids"
 CENTROID_COUNT=$(sqlite3 "$DQIII8_ROOT/database/dqiii8.db" \
     "SELECT COUNT(*) FROM domain_enrichment;" 2>/dev/null || echo "0")
-if [ "$CENTROID_COUNT" -lt 5 ] || [ "$NEED_INDEX" = true ]; then
+if [ "$CENTROID_COUNT" -lt 5 ] || [ "$REINDEXED" = true ]; then
     python3 -c "
 import sqlite3, json, os
 conn = sqlite3.connect('$DQIII8_ROOT/database/dqiii8.db')

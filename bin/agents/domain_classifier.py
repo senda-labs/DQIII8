@@ -453,6 +453,18 @@ DOMAINS: dict[str, dict] = {
             "git",
             "microservices",
             "cloud",
+            # software design
+            "solid",
+            "design pattern",
+            "design patterns",
+            "clean code",
+            "clean architecture",
+            "dependency injection",
+            "singleton",
+            "factory pattern",
+            "observer pattern",
+            "mvc",
+            "mvvm",
             # software concepts
             "algorithm",
             "computation",

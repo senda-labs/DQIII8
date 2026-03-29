@@ -17,6 +17,7 @@ import pytest
 # Point to test DB so we don't pollute dqiii8.db
 _TMP_DB = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 _TMP_DB.close()
+_ORIG_DQIII8_ROOT = os.environ.get("DQIII8_ROOT")
 os.environ["DQIII8_ROOT"] = str(Path(_TMP_DB.name).parent)
 
 # Monkeypatch DB_PATH before importing
@@ -32,6 +33,12 @@ import vector_store as vs
 _TMP_PATH = Path(_TMP_DB.name)
 tm.DB_PATH = _TMP_PATH
 vs.DB_PATH = _TMP_PATH
+
+# Restore DQIII8_ROOT so other tests aren't affected
+if _ORIG_DQIII8_ROOT is not None:
+    os.environ["DQIII8_ROOT"] = _ORIG_DQIII8_ROOT
+else:
+    os.environ.pop("DQIII8_ROOT", None)
 
 # Apply schema to the temp DB
 _SCHEMA = Path(__file__).parent.parent / "database" / "schema_temporal.sql"

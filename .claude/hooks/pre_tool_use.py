@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-DQIII8 Hook — PreToolUse v5
+DQIII8 Hook — PreToolUse v6
 Thin wrapper: parse stdin → PermissionAnalyzer → handle result + metrics.
 All permission logic (budget, DQIII8_MODE, ALLOWED_DELETIONS…)
 lives exclusively in permission_analyzer.py.
+
+v6: Output Guard — detects commands likely to produce >100 lines of output
+    and denies them with a truncation suggestion to protect context budget.
 """
 
 import json
@@ -126,5 +129,50 @@ if tool in ("Bash",):
                 )
             )
             sys.exit(0)
+
+# ── Output Guard v6: protect context budget from large Bash outputs ──────────
+try:
+    import re as _re
+
+    _LARGE_OUTPUT_PATTERNS = [
+        # git log without -N limit
+        (_re.compile(r"git\s+log(?!\s+--oneline\s+-\d)(?!.*-\d+\b)(?!.*\|\s*head)"),
+         "git log -20 --oneline"),
+        # find without maxdepth on wide paths
+        (_re.compile(r"\bfind\s+/(?!tmp)(?!.*-maxdepth\s+[12])(?!.*\|\s*head)"),
+         "find / -maxdepth 3 … | head -50"),
+        # cat on large files without head
+        (_re.compile(r"\bcat\s+\S+\.(log|txt|json|csv)(?!\s*\|)"),
+         "head -100 <file> or use the Read tool"),
+        # ls -la on root-level dirs
+        (_re.compile(r"\bls\s+-[a-zA-Z]*la?\s+(/[a-z]+/?)\s*$"),
+         "ls -la <dir> | head -50"),
+        # unfiltered git diff without stat
+        (_re.compile(r"\bgit\s+diff\b(?!.*--stat)(?!.*\|\s*head)(?!.*\|\s*wc)"),
+         "git diff --stat or git diff | head -100"),
+    ]
+
+    if tool == "Bash":
+        _cmd = inp.get("command", "").strip()
+        for _pat, _fix in _LARGE_OUTPUT_PATTERNS:
+            if _pat.search(_cmd):
+                print(
+                    json.dumps(
+                        {
+                            "hookSpecificOutput": {
+                                "hookEventName": "PreToolUse",
+                                "permissionDecision": "deny",
+                                "permissionDecisionReason": (
+                                    f"[OutputGuard] Command may produce >100 lines — "
+                                    f"context budget protected. "
+                                    f"Suggested fix: {_fix}"
+                                ),
+                            }
+                        }
+                    )
+                )
+                sys.exit(0)
+except Exception:
+    pass  # output guard must never block execution on error
 
 sys.exit(0)

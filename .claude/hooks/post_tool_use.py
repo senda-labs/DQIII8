@@ -252,4 +252,41 @@ try:
 except Exception:
     pass
 
+# ── Large Output Detector: inject summarizer guidance when output is huge ─────
+# PostToolUse cannot suppress the raw output, but injecting an additionalContext
+# with a compact summary + summarize_output.py invocation hint lets Claude work
+# from the summary rather than re-processing the large raw block.
+try:
+    _raw_resp = data.get("tool_response", "") or ""
+    if isinstance(_raw_resp, dict):
+        _raw_resp = _raw_resp.get("stdout", "") or str(_raw_resp)
+    _resp_str = str(_raw_resp)
+    _LARGE_THRESHOLD = 3000  # chars — ~750 tokens
+
+    if len(_resp_str) > _LARGE_THRESHOLD and tool == "Bash":
+        _head = _resp_str[:1500]
+        _tail = _resp_str[-800:]
+        _omitted = len(_resp_str) - 1500 - 800
+        _token_est = round(_omitted / 4)
+        _summary_ctx = (
+            f"\n[PostToolUse — LARGE OUTPUT DETECTED: {len(_resp_str):,} chars]\n"
+            f"Head (1500 chars):\n{_head}\n"
+            f"{'─'*40}\n"
+            f"[...{_omitted:,} chars / ~{_token_est:,} tokens omitidos...]\n"
+            f"{'─'*40}\n"
+            f"Tail (800 chars):\n{_tail}\n"
+            f"\nPara analizar el contenido omitido:\n"
+            f"  python3 bin/tools/summarize_output.py "
+            f"--query \"¿Qué [error/dato] buscas?\" < /tmp/last_output.txt\n"
+        )
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": _summary_ctx,
+            }
+        }))
+        sys.exit(0)
+except Exception:
+    pass  # large output detector must never block real work
+
 sys.exit(0)

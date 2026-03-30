@@ -507,22 +507,42 @@ except Exception as _pm_e:
 try:
     files = [str(LESSONS)] if LESSONS.exists() else []
     files += [str(p) for p in PROJECTS.glob("*.md")]
-    if files:
-        subprocess.run(
-            ["git", "-C", str(JARVIS), "add"] + files, capture_output=True, timeout=10
+    # Filter out gitignored files to avoid "paths are ignored" errors
+    trackable = []
+    for f in files:
+        check = subprocess.run(
+            ["git", "-C", str(JARVIS), "check-ignore", "-q", f],
+            capture_output=True,
+            timeout=5,
         )
+        if check.returncode != 0:  # returncode 0 = ignored, 1 = not ignored
+            trackable.append(f)
+    if trackable:
         subprocess.run(
-            [
-                "git",
-                "-C",
-                str(JARVIS),
-                "commit",
-                "-m",
-                f"chore(auto): session {session[:8]} {NOW[:10]}",
-            ],
+            ["git", "-C", str(JARVIS), "add"] + trackable,
             capture_output=True,
             timeout=10,
         )
+        # Only commit if there are staged changes
+        status = subprocess.run(
+            ["git", "-C", str(JARVIS), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if status.stdout.strip():
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(JARVIS),
+                    "commit",
+                    "-m",
+                    f"chore(auto): session {session[:8]} {NOW[:10]}",
+                ],
+                capture_output=True,
+                timeout=10,
+            )
 except Exception:
     pass
 

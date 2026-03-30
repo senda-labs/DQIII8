@@ -33,6 +33,9 @@ def send_document(file_path: str | Path, caption: str = "") -> bool:
         return False
 
 
+# Alias for backwards compatibility
+send_telegram_document = send_document
+
 def send_telegram(message: str, parse_mode: str = None) -> bool:
     """Send a message via Telegram API directly (no bot daemon needed)."""
     token = (

@@ -123,12 +123,12 @@ github_research, learned_approvals, loop_effectiveness, autonomy_score
 
 ## 9. Services
 
-| Service | Status |
-|---------|--------|
-| dqiii8-bot | **active** (systemd) |
-| dqiii8-director | inactive (ad-hoc) |
-| dqiii8-knowledge | inactive |
-| dqiii8-metrics | inactive |
+| Service | Status | Notes |
+|---------|--------|-------|
+| dqiii8-bot | **active** (systemd) | Telegram bot, always-on |
+| dqiii8-director | CLI-only (no daemon) | One-shot CLI tool; run via `j cc` or `python3 bin/director.py` |
+| dqiii8-knowledge | cron (weekly) | `bin/agents/knowledge_indexer.py` — scheduled Sun 02:00 UTC |
+| dqiii8-metrics | **cron (daily)** | `bin/monitoring/health_watchdog.py` — scheduled daily 06:00 UTC (added 2026-03-30) |
 
 ---
 
@@ -261,13 +261,15 @@ python3 bin/agents/knowledge_indexer.py --agent python-specialist
 
 ---
 
-## 16. Known Systemic Issues
+## 16. Known Systemic Issues (updated 2026-03-30)
 
-1. **52 unresolved errors** in error_log (primary: BashError, git ops)
+1. ~~52 unresolved errors~~ **RESOLVED** — all 856 errors marked resolved (2026-03-30)
 2. **Groq API keys expired** (all 9, HTTP 403) — OpenRouter/Ollama as replacement
 3. **Ollama slow** on 2-core VPS (>120s generation) — BeeSwarm moved to OpenRouter
-4. **dqiii8-director/knowledge/metrics** services inactive — needs evaluation
-5. **Port 8001 unauthenticated** — P0 security fix
+4. ~~services inactive~~ **RESOLVED** — director=CLI-only, knowledge=weekly cron, metrics=daily cron (health_watchdog 06:00 UTC)
+5. **Port 8001 unauthenticated** — P0 security fix pending
+6. **gh CLI not installed** — `apt install gh` needed for GitHub operations from CLI
+7. **TELEGRAM_BOT_TOKEN** only available inside dqiii8-bot service context (not in ad-hoc sessions)
 
 ---
 

@@ -48,8 +48,9 @@ Para CADA empresa (una a la vez, esperar Telegram entre ellas):
 6. [Python] plan_prompt = build_prompt(slug, "plan")
 
 7. [Agent haiku] Igual que paso 3 pero para "plan".
-   ALTERNATIVA (si QA falla word count): usar build_plan_section_prompts(slug)
-   → 6 secciones en paralelo → assemble_plan_sections(slug, sections)
+   El agente Haiku DEBE usar la herramienta Write para guardar el JSON directamente
+   en companies/{slug}/data/report_content_plan.json — NO usar python3 -c con el JSON inline
+   (falla para JSONs grandes). Después copiar también a report_content.json con Bash cp.
 
 8. [Python] errors = check_qa(slug, "plan")
             → 1 retry si errors.
@@ -66,13 +67,26 @@ Para CADA empresa (una a la vez, esperar Telegram entre ellas):
 
 ```python
 from tools.agent_writer import (
-    build_prompt,              # str con SYSTEM_PROMPT + datos empresa
-    write_content,             # valida schema + escribe JSON
-    check_qa,                  # [] = OK, lista = re-despachar
-    build_plan_section_prompts,# dict[section_name → prompt] para planes largos
-    assemble_plan_sections,    # ensambla 6 secciones → write_content
+    build_prompt,   # str con SYSTEM_PROMPT + datos empresa
+    write_content,  # valida schema + escribe JSON
+    check_qa,       # [] = OK, lista = re-despachar
 )
 ```
+
+## Método de guardado para el agente Haiku
+
+El agente Haiku DEBE guardar el JSON usando la herramienta **Write** directamente al path:
+`companies/{slug}/data/report_content_plan.json`
+
+Luego copiar con Bash:
+```bash
+cp companies/{slug}/data/report_content_plan.json companies/{slug}/data/report_content.json
+```
+
+**PROHIBIDO** para el agente Haiku:
+- Modificar cualquier archivo en `tools/` (agent_writer.py, qa_pre_render.py, etc.)
+- Usar `python3 -c "content = {...}"` con el JSON inline (falla para JSONs grandes)
+- Guardar JSONs incompletos/skeleton y manipular el QA para que pase
 
 ## Orden de ejecución (CSV)
 
@@ -116,6 +130,8 @@ for i,row in enumerate(rows,1):
 6. Una empresa a la vez. Esperar confirmación Telegram antes de la siguiente.
 7. No regenerar content_brief si ya existe Y no hay cambios en meta.json desde entonces.
 8. **PROTOCOLO CERO COMPLACENCIA**: verifica que el DOCX existe en `drafts/` antes del envío.
+9. **NUNCA** modificar archivos en `tools/` — si check_qa falla, corregir el JSON de contenido, no el validador.
+10. El agente Haiku guarda JSON con herramienta **Write**, NO con python3 -c inline.
 
 ## Directorio de trabajo
 

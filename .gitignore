@@ -1,6 +1,9 @@
 # DQIII8 .gitignore
 
-# Database (not versioned — too large and sensitive)
+# Database files — never commit binary DBs (use schema_v2.sql for fresh installs)
+*.db
+*.db-wal
+*.db-shm
 database/*.db
 database/*.db-wal
 database/*.db-shm
@@ -12,8 +15,25 @@ database/migrations/*.sql
 # Config with real keys (example file IS committed, real file is NOT)
 config/.env
 
-# Claude Code credentials
+# Root-level .env (all variants)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Auth & credentials — never commit
 .claude/.credentials.json
+credentials.json
+auth/
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Dashboard auth token
+database/.dashboard_token
 
 # Pytest
 .pytest_cache/

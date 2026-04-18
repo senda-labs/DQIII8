@@ -17,10 +17,18 @@ from pathlib import Path
 from typing import Sequence
 
 RULES_DB = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / ".claude" / "rules_db"
+# Rules split: deterministic modules live in .claude/rules/ (../rules/ from RULES_DB)
+# Legacy contextual rules remain in .claude/rules_db/
 
 # ── Rule file registry ────────────────────────────────────────────────────────
-# Short aliases → file paths relative to rules_db/
+# Paths are relative to RULES_DB. Use "../rules/" for the new deterministic modules.
 _REGISTRY: dict[str, str] = {
+    # ── Deterministic modules (new rule engine split) ─────────────────────────
+    "core-behavior":  "../rules/00_core_behavior.md",
+    "db-mutations":   "../rules/01_database_mutations.md",
+    "hooks-perms":    "../rules/02_hooks_and_permissions.md",
+    "tiering":        "../rules/03_tiering_and_routing.md",
+    # ── Legacy contextual rules (rules_db/) ───────────────────────────────────
     "git-safety":     "git-safety.md",
     "python":         "python.md",
     "routing":        "routing.md",
@@ -31,6 +39,7 @@ _REGISTRY: dict[str, str] = {
     "plan-gate":      "dqiii8-plan-gate.md",
     "context-window": "dqiii8-context-window.md",
     "workspace":      "workspace.md",
+    "intl-reports":   "intl-reports-ops.md",
     "agents":         "common/agents.md",
     "quality":        "common/quality.md",
     "git-workflow":   "common/git-workflow.md",
@@ -40,19 +49,19 @@ _REGISTRY: dict[str, str] = {
 }
 
 # ── ALWAYS injected (minimal ops guard, <300 tokens combined) ────────────────
-_ALWAYS: tuple[str, ...] = ("ops",)          # prohibitions + autonomy rules
+_ALWAYS: tuple[str, ...] = ("ops",)   # prohibitions + autonomy rules
 
 # ── Tool → rules mapping ─────────────────────────────────────────────────────
 # Each entry is a list of rule aliases to inject.
 # Bash rules additionally filtered by command keyword below.
 _TOOL_RULES: dict[str, list[str]] = {
-    "Bash":       [],           # resolved dynamically from command
-    "Edit":       [],           # resolved dynamically from file_path
-    "Write":      [],           # resolved dynamically from file_path
+    "Bash":       [],                        # resolved dynamically from command
+    "Edit":       [],                        # resolved dynamically from file_path
+    "Write":      [],                        # resolved dynamically from file_path
     "Read":       ["prevention"],
     "Glob":       [],
     "Grep":       [],
-    "Agent":      ["routing", "agents"],
+    "Agent":      ["tiering", "agents"],     # tiering replaces legacy routing
     "WebFetch":   [],
     "WebSearch":  [],
     "TodoWrite":  [],
@@ -61,13 +70,17 @@ _TOOL_RULES: dict[str, list[str]] = {
 
 # ── Bash keyword → rules ─────────────────────────────────────────────────────
 _BASH_KEYWORD_RULES: list[tuple[re.Pattern, list[str]]] = [
-    (re.compile(r"\bgit\b"),                       ["git-safety", "prevention"]),
+    (re.compile(r"\bgit\b"),                        ["git-safety", "prevention"]),
     (re.compile(r"\bpython3?\b|\bpytest\b|\bpip\b"), ["python"]),
-    (re.compile(r"\bsqlite3\b"),                   ["prevention"]),
-    (re.compile(r"\bsystemctl\b|\bservice\b"),      ["prevention"]),
-    (re.compile(r"\bnohup\b|\bbg\b|\bnohup\b"),    []),
-    (re.compile(r"\bclauде\b|\bcc\b"),             ["tools"]),
-    (re.compile(r"\bagent\b|\borchestrat"),         ["routing"]),
+    # sqlite3 commands → inject full DB mutation rules
+    (re.compile(r"\bsqlite3\b"),                    ["db-mutations", "prevention"]),
+    # schema migration commands
+    (re.compile(r"apply_migrations|schema_v2"),     ["db-mutations"]),
+    (re.compile(r"\bsystemctl\b|\bservice\b"),       ["prevention"]),
+    (re.compile(r"\bnohup\b|\bbg\b"),               []),
+    (re.compile(r"\bclauде\b|\bcc\b"),              ["tools"]),
+    (re.compile(r"\bagent\b|\borchestrat"),          ["tiering", "agents"]),
+    (re.compile(r"generate_company|save_response|intl.writer|intl.reports"), ["intl-reports"]),
 ]
 
 # ── File extension → rules ───────────────────────────────────────────────────
@@ -75,7 +88,7 @@ _EXT_RULES: dict[str, list[str]] = {
     ".py":   ["python", "quality"],
     ".md":   ["ops"],
     ".json": [],
-    ".sql":  ["prevention"],
+    ".sql":  ["db-mutations", "prevention"],  # SQL edits always get DB mutation rules
     ".sh":   ["git-safety"],
     ".toml": [],
     ".yaml": [],
@@ -120,6 +133,13 @@ def get_rules(tool: str, tool_input: dict) -> str:
         path = tool_input.get("file_path", "")
         ext = Path(path).suffix.lower()
         aliases.extend(_EXT_RULES.get(ext, []))
+        # Path-specific deterministic module injection
+        if ".claude/hooks" in path:
+            aliases.extend(["hooks-perms"])
+        if "openrouter_wrapper" in path or "director.py" in path or "domain_agent" in path:
+            aliases.extend(["tiering"])
+        if "database/" in path or path.endswith(".sql"):
+            aliases.extend(["db-mutations"])
 
     # ── Deduplicate preserving order ─────────────────────────────────────────
     seen: set[str] = set()

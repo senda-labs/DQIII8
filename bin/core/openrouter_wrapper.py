@@ -122,6 +122,12 @@ AGENT_ROUTING = {
     "finance-specialist": ("anthropic", "claude-sonnet-4-6"),
     "auditor": ("anthropic", "claude-sonnet-4-6"),
     "orchestrator": ("anthropic", "claude-sonnet-4-6"),
+    # Accounting-ERP agents (tier per agent definition)
+    "customer-accountant": ("groq", "llama-3.3-70b-versatile"),
+    "supplier-accountant": ("groq", "llama-3.3-70b-versatile"),
+    "invoice-extractor": ("groq", "llama-3.3-70b-versatile"),
+    "tax-auditor": ("anthropic", "claude-sonnet-4-6"),
+    "closing-specialist": ("anthropic", "claude-sonnet-4-6"),
     "default": ("groq", "llama-3.3-70b-versatile"),
 }
 

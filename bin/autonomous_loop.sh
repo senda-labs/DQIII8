@@ -109,6 +109,7 @@ while true; do
     fi
 
     echo "--- Cycle $CYCLE / $MAX_ITER ---"
+    printf '%s Cycle %d\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CYCLE" > "$DQIII8_ROOT_PATH/tasks/autonomous_heartbeat.txt"
     $NOTIFY "[DQIII8] Ciclo $CYCLE/$MAX_ITER — ${OBJECTIVE:0:80}" || true
 
     # Run claude, tee output to terminal + temp file for error detection

@@ -252,7 +252,7 @@ def _fetch_openalex(
                 f"filter=from_publication_date:{cutoff_date},"
                 f"default.search:{urllib.request.quote(concept)}"
                 f"&sort=publication_date:desc&per_page={max_results}"
-                f"&mailto=contact@example.com"
+                f"&mailto={os.environ.get('CONTACT_EMAIL', 'contact@example.com')}"
             )
             req = urllib.request.Request(url, headers={"User-Agent": "DQIII8/1.0"})
             with urllib.request.urlopen(req, timeout=15) as resp:

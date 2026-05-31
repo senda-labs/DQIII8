@@ -338,6 +338,8 @@ async def handle_satisfaction_callback(
     """Registra la respuesta 👍/👎 y actualiza model_satisfaction."""
     query = update.callback_query
     await query.answer()
+    if not authorized(update):
+        return
     data = query.data or ""
     parts = data.split(":", 2)
     if len(parts) != 3 or parts[0] != "sat":
@@ -966,6 +968,9 @@ async def cmd_research_status(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """Shows research_items state by status."""
+    if not authorized(update):
+        await update.message.reply_text("Unauthorized.")
+        return
     conn = sqlite3.connect(str(DB), timeout=5)
     rows = conn.execute(
         "SELECT status, COUNT(*) FROM research_items GROUP BY status ORDER BY COUNT(*) DESC"

@@ -7,6 +7,7 @@ user-invocable: true
 disable-model-invocation: true
 context: fork
 agent: Explore
+experimental: true
 ---
 
 # /red-team — Adversarial Security Testing

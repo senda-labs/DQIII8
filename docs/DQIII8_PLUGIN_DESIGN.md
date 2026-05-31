@@ -27,6 +27,8 @@
 | `/dqiii8:enrich` | Inject domain knowledge into prompt |
 | `/dqiii8:route` | Classify prompt tier (C/B/A/S) |
 
+For the current active skills catalogue, see [[skills-registry/INDEX|Skills Registry]].
+
 ### Hooks to export
 
 | Hook | Event | Purpose |
@@ -43,7 +45,7 @@ The 9 active DQIII8 agents as subagent types:
 
 ## 3. Technical Approach: MCP Server in Python
 
-Claude Code plugins are Node.js/TypeScript. DQIII8 is Python.
+Claude Code plugins are Node.js/TypeScript. DQIII8 is Python — see [[bin/README|Script Catalog]] for all available Python modules.
 
 **Option A: TypeScript wrapper** — TS shim calls Python scripts via child_process.
 - Pro: native plugin format

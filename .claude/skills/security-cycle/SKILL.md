@@ -5,6 +5,7 @@ command: /security-cycle
 allowed-tools: [Bash, Read, Write, Edit, Grep, Glob]
 user-invocable: true
 disable-model-invocation: true
+experimental: true
 ---
 
 # /security-cycle — Iterative Security Hardening

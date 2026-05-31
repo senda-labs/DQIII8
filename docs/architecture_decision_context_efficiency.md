@@ -112,3 +112,11 @@ Sessions will last ~75% longer before compaction. Mission continuity improves dr
 | Delete python/security + python/testing | LOW — content absorbed into common/quality | Content fully merged before deletion |
 | Delete dqiii8-gemini-review | ZERO — skill already exists | |
 | Output guard in pre_tool_use | LOW — exits 0 on all errors | try/except around entire guard |
+
+---
+
+## Related Documents
+
+- [[tasks/FULL_SYSTEM_MAP|Full System Map]] — System state and baseline metrics at the time this decision was made
+- [[CLAUDE]] — The operational kernel whose context window directly benefits from these savings
+- [[bin/README|Script Catalog]] — The `pre_tool_use.py` and pipeline scripts referenced in this ADR

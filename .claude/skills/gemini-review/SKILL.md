@@ -4,6 +4,7 @@ description: Launch an efficiency audit on modified Python files using Aider + G
 command: /gemini-review
 allowed-tools: [Bash, Read]
 user-invocable: true
+experimental: true
 ---
 
 # /gemini-review — Gemini Pro Code Reviewer

@@ -9,7 +9,7 @@ paths:
 
 ## Schema Authority
 `database/schema_v2.sql` is the **single source of truth**.
-- Schema changes: edit `schema_v2.sql` ONLY → run `python3 -m database.apply_migrations`.
+- Schema changes: edit `schema_v2.sql` ONLY → apply manually: `sqlite3 database/dqiii8.db < database/schema_v2.sql` (DDL is idempotent via `CREATE TABLE IF NOT EXISTS`). `python3 -m database.apply_migrations` does NOT exist.
 - NEVER alter the live `dqiii8.db` schema via raw `sqlite3` (one-time data fixes excepted).
 - NEVER commit `*.db`, `*.db-wal`, `*.db-shm` files — they are gitignored by design.
 

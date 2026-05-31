@@ -5,6 +5,7 @@ command: /transcript-learn
 allowed-tools: [Bash, Read, Write, Grep, Glob]
 user-invocable: true
 disable-model-invocation: true
+experimental: true
 ---
 
 # /transcript-learn — Video Knowledge Ingestion

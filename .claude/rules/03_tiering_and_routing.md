@@ -38,13 +38,15 @@ paths:
 
 | Complexity | Executor | Trigger |
 |---|---|---|
-| READ_ONLY | executor-lite (Haiku) | grep, ls, git log, read, count |
-| SIMPLE_WRITE | executor-lite (Haiku) | pytest, git commit, single-file edit |
+| READ_ONLY | executor-lite / explorer-lite (CC interactive only) | grep, ls, git log, read, count |
+| SIMPLE_WRITE | executor-lite (CC interactive only) | pytest, git commit, single-file edit |
 | CODE_GEN | PAL/Ollama → Sonnet fallback | create, implement, refactor |
 | ARCHITECTURE | Sonnet | design, plan, multi-file, >500-char prompt |
 | CRITICAL | Sonnet + Opus plan-gate | security, credentials, production, deploy |
 
 **Goal:** Haiku handles ≥70% of operations. Reserve Sonnet for reasoning-heavy tasks.
+
+> **Scope note — executor-lite / explorer-lite**: these are Claude Code native agents (`.claude/agents/`), invokable via the Agent tool in interactive CC sessions only. In `autonomous_loop.sh` (`claude -p` non-interactive mode) subagent spawning is unavailable — all routing goes through `AGENT_ROUTING` in `openrouter_wrapper.py`.
 
 ## Adding / Changing Routing
 

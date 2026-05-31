@@ -197,6 +197,14 @@ my-projects/*/PROJECT.md
 # Docs with internal info (premium-only)
 docs/CHECKPOINT_*.md
 docs/dqiii8_guide.html
+
+# Personal / server-specific files (never commit)
+server-hostinger.md
+server-netcup.md
+Guion-Sesion-Canon-Genesis-Chaos.md
+my-projects/ANOVA-PLAN-v2.md
+var/
+database/legacy/*.db
 docs/ROADMAP_TO_10.md
 docs/PRO_CANDIDATES.md
 docs/ARCHITECTURE.md

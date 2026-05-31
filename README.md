@@ -10,7 +10,7 @@
   </p>
 </p>
 
-**DQIII8 is a production-grade autonomous AI orchestration engine running on an SSH-only VPS.** It routes every query through a multi-tier LLM pipeline, enriches prompts with domain-specific knowledge, and enforces permissions and lifecycle events through 12 hooks deeply integrated with Claude Code.
+**DQIII8 is a production-grade autonomous AI orchestration engine running on an SSH-only VPS.** It routes every query through a multi-tier LLM pipeline, enriches prompts with domain-specific knowledge, and enforces permissions and lifecycle events through 13 hooks deeply integrated with Claude Code.
 
 Core design principles:
 - **Cost-first routing** — always pick the cheapest model that can handle the task (local → free cloud → paid)
@@ -100,7 +100,7 @@ The `Director` (`bin/director.py`) implements three-stage routing:
 
 Once the task type is determined, the `KnowledgeEnricher` retrieves the top-k relevant chunks and the `IntentAmplifier` restructures the prompt with tier-appropriate scaffolding before the final model call.
 
-### 4 · Lifecycle Hooks (12 hooks)
+### 4 · Lifecycle Hooks (13 hooks)
 
 All hooks live in `.claude/hooks/` and execute at Claude Code lifecycle events:
 
@@ -163,11 +163,11 @@ dqiii8/
 │   └── j.sh                        CLI entry: j cc, j loop, j status
 │
 ├── .claude/
-│   ├── hooks/                      12 lifecycle hooks (never modify lightly)
+│   ├── hooks/                      13 lifecycle hooks (never modify lightly)
 │   │   ├── pre_tool_use.py         PermissionAnalyzer v3 + rules injection
 │   │   ├── session_start.py        Context injection (project, lessons, audit)
 │   │   └── stop.py                 Auto-commit + lessons + metrics
-│   ├── agents/                     9 active specialist agent definitions
+│   ├── agents/                     11 active specialist agent definitions
 │   └── skills/                     17 slash commands (/audit, /handover, etc.)
 │
 ├── database/
@@ -243,9 +243,22 @@ At minimum, add a `GROQ_API_KEY` (free) to enable Tier B. Tier C (Ollama) works 
 
 ---
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [[CONTRIBUTING]] | Contribution guidelines and code style |
+| [[docs/CHANGELOG\|Changelog]] | Version history and known limitations |
+| [[docs/DQIII8_PLUGIN_DESIGN\|Plugin Design (MCP)]] | DQIII8 as a Claude Code plugin — roadmap |
+| [[docs/architecture_decision_context_efficiency\|ADR-001]] | Context efficiency architecture decision |
+| [[bin/README\|Script Catalog]] | Full inventory of bin/ scripts and cron schedules |
+| [[tasks/FULL_SYSTEM_MAP\|Full System Map]] | Complete annotated snapshot of the live system |
+
+---
+
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [[CONTRIBUTING]] for guidelines.
 
 ---
 

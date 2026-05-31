@@ -1,6 +1,6 @@
 ---
 name: intl-reports
-description: Genera y entrega informes de internacionalización (Diagnóstico + Plan) para pymes españolas. Orquesta el pipeline empresa a empresa: content_brief → Haiku writer → QA → DOCX → Telegram → espera confirmación.
+description: Genera y entrega informes de internacionalización (Diagnóstico + Plan) para pymes españolas. Batch pipeline via Orchestrator v4 (core.cli) desde tmux externo. NUNCA empresa-a-empresa con Agent Haiku manual.
 command: /intl-reports
 allowed-tools: [Bash, Agent, Read, Write, Edit, Glob, Grep]
 user-invocable: true
@@ -9,148 +9,192 @@ user-invocable: true
 # /intl-reports — Orquestador de Informes de Internacionalización
 
 Proyecto en `/root/dqiii8/my-projects/intl-reports/`.
-CSV fuente: `Respuestas__P&L_Metal_31_03_2026.csv` (100 empresas).
+CSV tanda3: `data/3a tanda empresas 201 P&L 28 abril.csv` (201 empresas).
 
 ## Arquitectura
 
-**Claude Code Sonnet** = orquestador (esta sesión).
-**Haiku via Agent tool** = escritor de contenido (una llamada por doc_type).
-**Sin SDK externo, sin subprocess LLM. Sin revisión final con Sonnet.**
-
-## Pipeline empresa a empresa
-
-```
-Para CADA empresa (una a la vez, esperar Telegram entre ellas):
-
-1. [Bash] python3 tools/content_brief.py --slug {slug} --type both
-          → Si ya existe content_brief.json y no hay DOCX, se puede reusar.
-
-2. [Python] from tools.agent_writer import build_prompt
-            diag_prompt = build_prompt(slug, "diagnostic")
-
-3. [Agent haiku] Prompt = diag_prompt +
-   "\n\nGenera el JSON completo del diagnóstico siguiendo el schema exacto.
-   Cuando lo tengas, guárdalo ejecutando en Bash:
-   cd /root/dqiii8/my-projects/intl-reports && python3 -c \"
-   import sys,json; sys.path.insert(0,'.')
-   from tools.agent_writer import write_content
-   content = <TU_DICT_JSON>
-   write_content('{slug}','diagnostic',content)
-   \""
-
-4. [Python] errors = check_qa(slug, "diagnostic")
-            → Si errors: 1 retry Haiku con errores + prompt original.
-            → Si retry falla: renderizar igual + loguear.
-
-5. [Bash] python3 tools/rich_docx_builder.py --slug {slug} --type diagnostic
-          → Verificar que drafts/{slug}_*diagnostic*.docx existe.
-
-6. [Python] plan_prompt = build_prompt(slug, "plan")
-
-7. [Agent haiku] Igual que paso 3 pero para "plan".
-   El agente Haiku DEBE usar la herramienta Write para guardar el JSON directamente
-   en companies/{slug}/data/report_content_plan.json — NO usar python3 -c con el JSON inline
-   (falla para JSONs grandes). Después copiar también a report_content.json con Bash cp.
-
-8. [Python] errors = check_qa(slug, "plan")
-            → 1 retry si errors.
-
-9. [Bash] python3 tools/rich_docx_builder.py --slug {slug} --type plan
-          → Verificar que drafts/{slug}_*plan*.docx existe.
-
-10. [Bash] python3 tools/send_telegram.py --slug {slug}
-
-11. ESPERAR confirmación del usuario vía Telegram antes de la siguiente empresa.
-```
-
-## Funciones clave (tools/agent_writer.py)
-
-```python
-from tools.agent_writer import (
-    build_prompt,   # str con SYSTEM_PROMPT + datos empresa
-    write_content,  # valida schema + escribe JSON
-    check_qa,       # [] = OK, lista = re-despachar
-)
-```
-
-## Método de guardado para el agente Haiku
-
-El agente Haiku DEBE guardar el JSON usando la herramienta **Write** directamente al path:
-`companies/{slug}/data/report_content_plan.json`
-
-Luego copiar con Bash:
-```bash
-cp companies/{slug}/data/report_content_plan.json companies/{slug}/data/report_content.json
-```
-
-**PROHIBIDO** para el agente Haiku:
-- Modificar cualquier archivo en `tools/` (agent_writer.py, qa_pre_render.py, etc.)
-- Usar `python3 -c "content = {...}"` con el JSON inline (falla para JSONs grandes)
-- Guardar JSONs incompletos/skeleton y manipular el QA para que pase
-
-## Orden de ejecución (CSV)
-
-Las 100 empresas del CSV, en orden de aparición, saltando las que ya tengan
-ambos DOCX (diagnostic + plan) en `companies/{slug}/drafts/`.
+**Orchestrator v4** (`core.cli`) = pipeline completo por empresa, vía `claude --print` subprocess.
+**NUNCA** lanzar desde Claude Code activo (`CLAUDECODE=1` bloquea con error explícito).
+**Siempre** desde terminal/tmux externo:
 
 ```bash
-# Ver estado completo
+env -u CLAUDECODE python3 -m core.cli run --slug {slug} --concurrency 6
+```
+
+## Pipeline batch (modo producción)
+
+```bash
+# Batch secuencial desde tmux externo — NO desde Claude Code
+bash scripts/batch_run_tanda3.sh data/tanda3_run_ready.txt
+```
+
+El script:
+1. Salta empresas con ambos DOCXs ya existentes (>500 KB c/u)
+2. Detecta estado parcial → `resume`; empresa fresh → `run`
+3. Para en `exit 2` si detecta rate limit (reanudar después)
+4. Flags: `--concurrency 6 --skip-brief`
+
+### Waves del Orchestrator v4
+
+```
+Wave -2  crawler auto          skip si dossier < 30d
+Wave -1  implications_brief    auto [Haiku], --skip-brief lo omite si ya existe
+Wave  0  strategic + diag_intro + diag_areas×6   [8 en paralelo]
+Wave  1  market_signals_layer + diag_conclusions
+Wave  2  plan_body_org + plan_body_financial
+Wave  3  plan_body_governance + plan_body_entry
+Wave  4  plan_body_marketing
+Wave  5  markets + plan_body_recommendations
+Post     QA → auto_qa_fixer → DOCX → Telegram
+```
+
+## Prerrequisitos por empresa (gate real del pipeline)
+
+```
+A. SABI_Export_*.xls         info-origin/              financiero (empleados, revenue)
+B. raw_survey_data.json      info-origin/              cuestionario ANOVA (auto USIL)
+C. ssot.json                 data/                     fuente canónica (reemplaza content_brief.json, eliminado en B7)
+D. company_intelligence.json data/                     REQUERIDO para pasar ACIS gate (completeness ≥85%)
+   └── generado por cobrowsing session:
+       python3 scripts/cobrowsing_batch.py --slug-list data/tanda3_no_acis.txt
+       (Chrome human-in-the-loop, CDP :9222, TUI interactiva)
+```
+
+## ACIS Gate (core/preflight.py) — bloqueador real
+
+Gate bloquea si `completeness < 85`. Scoring (11 puntos totales):
+
+| Componente | Puntos | Fuente |
+|---|---|---|
+| Identity (name + cnae + sector) | 3 | meta.json / ssot.json |
+| Financial (employees ×2 + revenue ×2) | 4 | matrix resolver |
+| Survey | 2 | raw_survey_data.json |
+| company_intelligence signals | 1 | data/company_intelligence.json |
+| osint data | 1 | info-origin/market_intel.json |
+
+Sin `company_intelligence.json`: 9/11 = **81.8% → FAIL**.
+Con `company_intelligence.json`: 10/11 = **90.9% → PASS**.
+
+```bash
+# Diagnóstico gate sin ejecutar
+python3 scripts/acis_dry_run.py --slug {slug}
+
+# Override peligroso (solo si calidad 81.8% es aceptable)
+python3 -m core.cli run --slug {slug} --skip-gate
+```
+
+## Estado de producción (2026-05-21)
+
+| Métrica | Valor |
+|---|---|
+| CSV tanda3 total | 201 empresas |
+| Ambos DOCXs completos | **130** |
+| Excluidas pervasive_no_intent | 6 |
+| Pendientes (sin company_intel) | **65** — `data/tanda3_no_acis.txt` |
+| Errores técnicos en batch | 0 |
+
+**Pendientes 65 — path para completarlas:**
+
+```bash
+# 1. Cobrowsing session (Chrome CDP, human-in-the-loop) — genera company_intelligence.json
+python3 scripts/cobrowsing_batch.py --slug-list data/tanda3_no_acis.txt
+
+# 2. Verificar gate pasa tras cobrowsing
+python3 scripts/acis_dry_run.py --slug {slug}
+
+# 3. Batch producción (desde tmux externo, NO desde Claude Code)
+bash scripts/batch_run_tanda3.sh data/tanda3_no_acis.txt
+```
+
+## Status y diagnóstico
+
+```bash
+# Estado de una empresa
+python3 -m core.cli status --slug {slug}
+
+# Estado del batch completo (tanda3)
 python3 -c "
-import csv, re, pathlib
-ROOT = pathlib.Path('/root/dqiii8/my-projects/intl-reports')
-def slugify(n):
-    import re
-    for a,b in [('á','a'),('é','e'),('í','i'),('ó','o'),('ú','u'),('ñ','n'),
-                ('à','a'),('è','e'),('ì','i'),('ò','o'),('ù','u'),
-                ('ä','a'),('ë','e'),('ï','i'),('ö','o'),('ü','u')]:
-        n = n.replace(a,b)
-    n = re.sub(r'[^\w\s-]','',n.lower()); return re.sub(r'[\s_]+','-',n).strip('-')
-with open(ROOT / 'Respuestas__P&L_Metal_31_03_2026.csv', encoding='utf-8-sig') as f:
-    rows = list(csv.DictReader(f, delimiter=';'))
-for i,row in enumerate(rows,1):
-    name = row.get('Nombre de la empresa','').strip()
-    if not name: continue
-    slug = slugify(name)
-    sd = ROOT/'companies'/slug
-    hd = any((sd/'drafts').glob('*diagnostic*.docx')) if (sd/'drafts').exists() else False
-    hp = any((sd/'drafts').glob('*plan*.docx')) if (sd/'drafts').exists() else False
-    st = 'DONE' if (hd and hp) else ('PARTIAL' if (hd or hp) else 'PENDING')
-    if st != 'DONE':
-        print(f'[{i:3}] {st:8} {\"✓\" if (sd/\"meta.json\").exists() else \"✗ NO META\"} {slug}')
+from pathlib import Path
+slugs = [l.strip() for l in open('data/tanda3_slugs.txt') if l.strip() and not l.startswith('#')]
+for slug in slugs:
+    d = Path('companies') / slug / 'drafts'
+    diag = any(d.glob('*diagnostico*.docx')) if d.exists() else False
+    plan = any(d.glob('*plan*.docx')) if d.exists() else False
+    st = 'DONE' if (diag and plan) else ('PARTIAL' if (diag or plan) else 'PENDING')
+    if st != 'DONE': print(f'{st:8} {slug}')
 "
+
+# ACIS gate batch check
+python3 scripts/pre_batch_check.py --show-failures
 ```
-
-## Reglas absolutas
-
-1. **NUNCA** usar `anthropic` SDK ni subprocess LLM. Solo Agent tool model=haiku.
-2. **NUNCA** hacer revisión final con Sonnet 4.6 — 0 tokens de orquestación en revisión.
-3. **SIEMPRE** llamar `check_qa()` tras `write_content()` antes de renderizar DOCX.
-4. Si `check_qa()` falla en 2do intento → renderizar igual + loguear warnings en DOCX cover.
-5. **NUNCA** enviar por Telegram un DOCX sin verificar que existe en `drafts/`.
-6. Una empresa a la vez. Esperar confirmación Telegram antes de la siguiente.
-7. No regenerar content_brief si ya existe Y no hay cambios en meta.json desde entonces.
-8. **PROTOCOLO CERO COMPLACENCIA**: verifica que el DOCX existe en `drafts/` antes del envío.
-9. **NUNCA** modificar archivos en `tools/` — si check_qa falla, corregir el JSON de contenido, no el validador.
-10. El agente Haiku guarda JSON con herramienta **Write**, NO con python3 -c inline.
 
 ## Directorio de trabajo
 
 ```
 /root/dqiii8/my-projects/intl-reports/
-├── Respuestas__P&L_Metal_31_03_2026.csv   ← fuente de 100 empresas
+├── data/
+│   ├── 3a tanda empresas 201 P&L 28 abril.csv   ← CSV tanda3 (201 empresas)
+│   ├── tanda3_slugs.txt                          ← 136 procesados en batch anterior
+│   ├── tanda3_run_ready.txt                      ← subconjunto listo para run
+│   └── tanda3_no_acis.txt                        ← 65 pendientes (sin company_intel)
 ├── companies/{slug}/
-│   ├── meta.json                           ← fuente de verdad datos empresa
-│   ├── info-origin/raw_survey_data.json    ← cuestionario ANOVA
+│   ├── meta.json                                 ← perfil empresa
+│   ├── orchestrator_state.db                     ← SQLite WAL (runs/tasks/sections)
+│   ├── info-origin/
+│   │   ├── raw_survey_data.json                  ← cuestionario ANOVA
+│   │   ├── company_intelligence.json             ← señales cobrowsing (también en data/)
+│   │   └── SABI_Export_*.xls                     ← financiero SABI
 │   └── data/
-│       ├── content_brief.json
+│       ├── ssot.json                             ← fuente canónica (reemplaza content_brief.json)
+│       ├── company_intelligence.json             ← REQUIRED para ACIS gate
+│       ├── implications_brief.txt                ← auto Wave -1
 │       ├── report_content_diagnostic.json
-│       ├── report_content_plan.json
-│       └── report_content.json            ← último generado
-├── tools/
-│   ├── content_brief.py
-│   ├── agent_writer.py
-│   ├── rich_docx_builder.py
-│   ├── send_telegram.py
-│   └── qa_pre_render.py
-└── data/templates/                        ← plantillas DOCX
+│       └── report_content_plan.json
+├── drafts/  ← ¡OJO! los DOCX están en companies/{slug}/drafts/ (fuera de data/)
+│   └── {slug}_diagnostico.docx
+│   └── {slug}_plan_internacionalizacion.docx
+├── scripts/
+│   ├── batch_run_tanda3.sh                       ← batch producción tanda3
+│   ├── cobrowsing_batch.py                       ← genera company_intelligence.json
+│   ├── acis_dry_run.py                           ← diagnóstico ACIS sin ejecutar
+│   └── pre_batch_check.py                        ← validación pre-batch
+└── tools/
+    ├── acis_validation_layer.py
+    ├── auto_qa_fixer.py
+    └── intel/
+        ├── session.py                            ← cobrowsing human-in-the-loop
+        └── web_presence_runner.py                ← Playwright batch (requiere web_url en ssot)
 ```
+
+## QA Gate (10 checks integrados en v4)
+
+| # | Check | Tipo |
+|---|---|---|
+| 1 | No placeholders (`[PENDIENTE]`, `TODO`, `TBD`) | Hard |
+| 2 | Word counts (≥ ceiling×0.65, floor 40w) | Hard |
+| 3 | Country consistency | Hard |
+| 4 | Radar coherence | Hard |
+| 5 | PESTEL market coherence | Hard |
+| 6–10 | Redundancy, competitor usage, DAFO, entry coherence, repetición | Soft |
+
+Auto-fix pre-QA: `tools/auto_qa_fixer.py` (6 patches + `fix_plan()`).
+Max 2 retries Haiku por sección. Soft failures: no bloquean DOCX.
+
+## Errores frecuentes
+
+| Error | Solución |
+|---|---|
+| `ACIS GATE BLOCKED — completeness 81.8` | Ejecutar cobrowsing session → genera company_intelligence.json |
+| `ssot.json missing` | `python3 -m tools.ssot.ssot_builder --slug {slug}` |
+| `Credit balance too low` | OAuth — `ANTHROPIC_API_KEY` debe ser `""` en subprocess |
+| `CLAUDECODE=1 blocks` | Lanzar desde tmux externo, NUNCA desde Claude Code activo |
+| Rate limit en batch | Esperar, relanzar script (salta automáticamente las ya completadas) |
+
+## Reglas absolutas
+
+1. **NUNCA** lanzar `core.cli run/resume` desde Claude Code activo.
+2. **NUNCA** usar `anthropic` SDK ni subprocess LLM directo.
+3. **NUNCA** modificar archivos en `tools/` — corregir el JSON de contenido, no el validador.
+4. **NUNCA** declarar éxito sin verificar que el DOCX existe en `drafts/` con tamaño >500 KB.
+5. `--skip-gate` solo si completeness ≥80% y no hay tiempo para cobrowsing (documenta el tradeoff).
+6. `content_brief.py` eliminado en B7 — no existe. La fuente canónica es `ssot.json`.

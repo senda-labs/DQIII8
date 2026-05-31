@@ -1,6 +1,6 @@
 # bin/ — DQIII8 Script Catalog
 
-Active scripts only. Archived scripts live in `bin/archive/` (preserved, not deleted).
+Active scripts only. Archived scripts live in `bin/archive/` (preserved, not deleted). For the complete system snapshot see [[tasks/FULL_SYSTEM_MAP|Full System Map]]; the rationale behind the current script structure is in [[docs/architecture_decision_context_efficiency|ADR-001]].
 
 ---
 
@@ -56,6 +56,8 @@ Long-running services, scheduled jobs, and user-facing interfaces.
 | `tools/paper_harvester.py` | called by nightly.sh | Harvests and prunes research papers |
 | `tools/github_researcher.py` | Telegram /research_status | Searches GitHub for relevant repos |
 | `tools/gemini_export.py` | Telegram /dq | Exports modules for Gemini Pro review |
+| `tools/sqlite_mcp.py` | MCP server | SQLite MCP server — serves dqiii8.db over MCP protocol |
+| `tools/setup_gitleaks_hook.sh` | on demand | Installs gitleaks pre-commit hook on VPS — run once per environment |
 
 ---
 
@@ -82,6 +84,10 @@ Moved to `bin/archive/` — preserved for reference or future phases.
 | `archive/agents/memory_manager.py` | Memory manager — replaced by memory_decay.py |
 | `archive/tools/handover.py` | **Phase 6B**: needed for stop.py → CLAUDE.md integration |
 | `archive/tools/reconcile_errors.py` | Error reconciler — one-off tool |
-| `archive/tools/sqlite_mcp.py` | SQLite MCP server — not currently used |
+| `archive/tools/handover.py` (copy) | Moved to `tools/handover.py` — archive copy preserved |
 | `archive/tools/verify_install.py` | **Phase 5**: base for install.sh (public repo) |
 | `archive/ui/interactive_chat.py` | Interactive CLI chat — replaced by dqiii8_bot.py |
+
+---
+
+_Ver también: [[README]] · [[CLAUDE]] · [[tasks/FULL_SYSTEM_MAP|Full System Map]]_

@@ -1,6 +1,6 @@
 # skills-registry/
 
-This directory stores Claude Code skills for DQIII8.
+This directory stores Claude Code skills for DQIII8. For the current skill registry and activation status, see [[skills-registry/INDEX|INDEX.md]].
 
 ## Structure
 

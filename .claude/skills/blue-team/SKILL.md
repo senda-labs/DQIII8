@@ -5,6 +5,7 @@ command: /blue-team
 allowed-tools: [Bash, Read, Write, Edit, Grep, Glob]
 user-invocable: true
 disable-model-invocation: true
+experimental: true
 ---
 
 # /blue-team — Defensive Security Hardening

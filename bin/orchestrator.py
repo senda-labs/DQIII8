@@ -348,39 +348,45 @@ def _has_exec_keywords(lower: str) -> bool:
     return False
 
 
-def classify_cc_tier(prompt: str) -> str:
-    """Classify a /cc prompt into execution tier.
+def detect_task_type(prompt: str) -> str:
+    """Return the broad task category for a /cc prompt.
 
-    C = Qwen local ($0) — knowledge queries, explanations (text-only, no exec)
-    A = Sonnet via claude -p — tasks requiring filesystem/bash execution
-    S = Opus — NEVER first-choice; only via plan quality gate
-
-    Routing principle:
-      - Needs to EXECUTE (create, fix, run, deploy, list files)? → A (Sonnet)
-      - Needs to ANSWER (explain, describe, how does X work)? → C (Qwen)
-      - Qwen gets context injected (CLAUDE.md + PROJECT.md) but has no tools.
-
-    Returns: "C" or "A". Never returns "S" directly.
+    Returns one of: "planning", "execution", "knowledge".
+    Pure function — no side effects, independently testable.
     """
     lower = prompt.lower()
     words = set(lower.split())
 
-    # A-tier: planning, analysis, review — needs Sonnet reasoning
     if words & _PLANNING_KW:
-        return "A"
+        return "planning"
+    if words & _EXEC_VERBS or _has_exec_keywords(lower):
+        return "execution"
+    return "knowledge"
 
-    # A-tier: long prompts (>300 chars) — likely multi-step, needs execution
-    if len(prompt) > 300:
-        return "A"
 
-    # A-tier: execution verbs or execution keywords → Sonnet (claude -p)
-    if words & _EXEC_VERBS:
-        return "A"
-    if _has_exec_keywords(lower):
-        return "A"
+def select_tier(task_type: str, prompt_len: int = 0) -> str:
+    """Map a task type to an execution tier letter.
 
-    # C-tier: knowledge queries — Qwen local with context injection
+    C = Qwen local ($0, text-only context injection, no tools)
+    A = Sonnet via claude -p (filesystem/bash access)
+
+    Returns "C" or "A". Never returns "S" directly — escalation is
+    handled separately by should_fallback().
+    """
+    if task_type in ("planning", "execution"):
+        return "A"
+    if prompt_len > 300:
+        return "A"
     return "C"
+
+
+def classify_cc_tier(prompt: str) -> str:
+    """Classify a /cc prompt into execution tier.
+
+    Thin wrapper around detect_task_type() + select_tier().
+    Returns "C" or "A". Never returns "S" directly.
+    """
+    return select_tier(detect_task_type(prompt), len(prompt))
 
 
 # ── 5-level task complexity classifier ───────────────────────────────────────
@@ -529,12 +535,16 @@ def classify_task_complexity(prompt: str) -> str:
 
     Returns one of: READ_ONLY, SIMPLE_WRITE, CODE_GEN, ARCHITECTURE, CRITICAL.
 
-    Routing:
-        READ_ONLY    → executor-lite (Haiku, free)
-        SIMPLE_WRITE → executor-lite (Haiku, free)
+    Routing (interactive Claude Code sessions only):
+        READ_ONLY    → executor-lite / explorer-lite (CC native Haiku agents, Agent tool)
+        SIMPLE_WRITE → executor-lite (CC native Haiku agent, Agent tool)
         CODE_GEN     → PAL/Ollama qwen2.5-coder (if available) else Sonnet
         ARCHITECTURE → Sonnet (session principal)
         CRITICAL     → Sonnet + plan-gate (Opus review)
+
+    NOTE: executor-lite and explorer-lite are Claude Code native agents (.claude/agents/).
+    They are NOT available in autonomous_loop.sh (claude -p non-interactive mode).
+    In autonomous mode all routing goes through AGENT_ROUTING in openrouter_wrapper.py.
     """
     lower = prompt.lower()
     words = set(lower.split())
@@ -573,32 +583,48 @@ def classify_task_complexity(prompt: str) -> str:
     return "CODE_GEN"
 
 
-def should_escalate_to_opus(prompt: str, sonnet_output: str, success: bool) -> bool:
-    """Determine if Sonnet's output warrants escalation to Opus.
+_FAILURE_SIGNALS = (
+    "i can't",
+    "i cannot",
+    "no puedo",
+    "beyond my",
+    "fuera de mi",
+    "not possible",
+    "no es posible",
+)
 
-    Only called after a Sonnet (A-tier) execution that seems insufficient.
-    Opus is the last resort, not a first choice.
+
+def should_fallback(
+    tier: str,
+    *,
+    success: bool = True,
+    output: str = "",
+    prompt_len: int = 0,
+) -> bool:
+    """Return True if the current tier should escalate to the next tier up.
+
+    Pure function — independently testable, no side effects.
+
+    For tier "A" (Sonnet): escalates to Opus when output is too short
+    or contains explicit failure signals.
+    For any tier: escalates immediately on success=False.
     """
     if not success:
         return True
 
-    output_lower = sonnet_output.lower()
-
-    # Too short for a planning task — Sonnet probably failed
-    if len(sonnet_output.strip()) < 200 and len(prompt) > 100:
-        return True
-
-    # Sonnet admitted it can't do it
-    failure_signals = [
-        "i can't",
-        "i cannot",
-        "no puedo",
-        "beyond my",
-        "fuera de mi",
-        "not possible",
-        "no es posible",
-    ]
-    if any(sig in output_lower for sig in failure_signals):
-        return True
+    if tier == "A":
+        output_lower = output.lower()
+        if len(output.strip()) < 200 and prompt_len > 100:
+            return True
+        if any(sig in output_lower for sig in _FAILURE_SIGNALS):
+            return True
 
     return False
+
+
+def should_escalate_to_opus(prompt: str, sonnet_output: str, success: bool) -> bool:
+    """Backwards-compatible wrapper around should_fallback().
+
+    dqiii8_bot.py imports this name — preserved to avoid changing callers.
+    """
+    return should_fallback("A", success=success, output=sonnet_output, prompt_len=len(prompt))

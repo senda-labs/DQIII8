@@ -760,7 +760,7 @@ def amplify(
 
     def _log(msg: str):
         if verbose:
-            print(f"[amplifier] {msg}", file=sys.stderr)
+            log.debug("%s", msg)
 
     # Phase 1
     _log("phase 1: decompose")
@@ -959,11 +959,8 @@ def main():
     elif not sys.stdin.isatty():
         prompt = sys.stdin.read().strip()
     else:
-        print(
-            'Usage: python3 bin/intent_amplifier.py [--json] "<prompt>"',
-            file=sys.stderr,
-        )
-        print("       python3 bin/intent_amplifier.py --test", file=sys.stderr)
+        log.error('Usage: python3 bin/intent_amplifier.py [--json] "<prompt>"')
+        log.error("       python3 bin/intent_amplifier.py --test")
         sys.exit(1)
 
     result = amplify(prompt, verbose=not as_json)

@@ -20,6 +20,10 @@ from pathlib import Path
 
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
+
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 AGENTS_DIR = DQIII8_ROOT / ".claude" / "agents"
 KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
@@ -87,24 +91,22 @@ def index_agent_knowledge(agent_name: str) -> None:
     knowledge_dir = AGENTS_DIR / agent_name / "knowledge"
 
     if not knowledge_dir.exists():
-        print(
-            f"[ERROR] Knowledge directory not found: {knowledge_dir}", file=sys.stderr
-        )
+        log.error(f"Knowledge directory not found: {knowledge_dir}")
         sys.exit(1)
 
     md_files = sorted(f for f in knowledge_dir.glob("*.md"))
     if not md_files:
-        print(f"[WARN] No .md files found in {knowledge_dir}")
+        log.warning(f"No .md files found in {knowledge_dir}")
         return
 
-    print(f"[INDEXER] {agent_name}: {len(md_files)} file(s) to index")
+    log.info(f"{agent_name}: {len(md_files)} file(s) to index")
 
     index: list[dict] = []
 
     for filepath in md_files:
-        print(f"  {filepath.name}")
+        log.debug(f"{filepath.name}")
         chunks = chunk_document(filepath)
-        print(f"    {len(chunks)} chunk(s)")
+        log.debug(f"{len(chunks)} chunk(s)")
 
         for i, chunk in enumerate(chunks):
             t0 = time.perf_counter()
@@ -119,16 +121,14 @@ def index_agent_knowledge(agent_name: str) -> None:
                     "embedding": embedding,
                 }
             )
-            print(f"    chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
+            log.debug(f"chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
 
     index_path = knowledge_dir / "index.json"
     index_path.write_text(
         json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     total_kb = index_path.stat().st_size / 1024
-    print(
-        f"\n[OK] {agent_name}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)"
-    )
+    log.info(f"{agent_name}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)")
 
 
 def index_domain_knowledge(domain: str) -> None:
@@ -140,7 +140,7 @@ def index_domain_knowledge(domain: str) -> None:
     domain_dir = KNOWLEDGE_ROOT / domain
 
     if not domain_dir.exists():
-        print(f"[ERROR] Domain directory not found: {domain_dir}", file=sys.stderr)
+        log.error(f"Domain directory not found: {domain_dir}")
         sys.exit(1)
 
     md_files = sorted(
@@ -149,18 +149,18 @@ def index_domain_knowledge(domain: str) -> None:
         if not f.name.startswith("PREMIUM_") and f.name != "INDEX.md"
     )
     if not md_files:
-        print(f"[WARN] No indexable .md files found in {domain_dir}")
+        log.warning(f"No indexable .md files found in {domain_dir}")
         return
 
-    print(f"[INDEXER] domain={domain}: {len(md_files)} file(s) to index")
+    log.info(f"domain={domain}: {len(md_files)} file(s) to index")
 
     index: list[dict] = []
 
     for filepath in md_files:
         rel = filepath.relative_to(domain_dir)
-        print(f"  {rel}")
+        log.debug(f"{rel}")
         chunks = chunk_document(filepath)
-        print(f"    {len(chunks)} chunk(s)")
+        log.debug(f"{len(chunks)} chunk(s)")
 
         for i, chunk in enumerate(chunks):
             t0 = time.perf_counter()
@@ -175,16 +175,14 @@ def index_domain_knowledge(domain: str) -> None:
                     "embedding": embedding,
                 }
             )
-            print(f"    chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
+            log.debug(f"chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
 
     index_path = domain_dir / "index.json"
     index_path.write_text(
         json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     total_kb = index_path.stat().st_size / 1024
-    print(
-        f"\n[OK] domain={domain}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)"
-    )
+    log.info(f"domain={domain}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)")
 
 
 def main() -> None:

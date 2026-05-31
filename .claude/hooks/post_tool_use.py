@@ -5,7 +5,27 @@ Patch 5: SQLite block in try/except — never blocks real work
 Auto-format Python with Black after each edit.
 """
 
-import sys, json, time, os, subprocess
+import json
+import logging
+import logging.handlers
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+_log = logging.getLogger("dqiii8.post_tool_use")
+if not _log.handlers:
+    _log.setLevel(logging.DEBUG)
+    _log_dir = Path("/var/log/dqiii8")
+    if _log_dir.exists():
+        _fh = logging.handlers.RotatingFileHandler(
+            str(_log_dir / "hooks.log"), maxBytes=2_000_000, backupCount=3
+        )
+        _fh.setFormatter(logging.Formatter("%(asctime)s [post_tool_use] %(levelname)s %(message)s"))
+        _log.addHandler(_fh)
+    else:
+        _log.addHandler(logging.NullHandler())
 
 try:
     data = json.load(sys.stdin)
@@ -21,7 +41,8 @@ if not agent:
     try:
         with open(f"/tmp/dqiii8_agent_{session}.json", encoding="utf-8") as _af:
             agent = json.load(_af).get("agent_type", "claude-sonnet-4-6")
-    except Exception:
+    except Exception as e:
+        _log.debug("agent-file read skipped: %s", e)
         agent = "claude-sonnet-4-6"
 # Infer from tool+path if agent looks like a UUID (17 hex chars starting with 'a')
 if (
@@ -46,8 +67,8 @@ if tool in ("Edit", "Write", "MultiEdit"):
     if path and path.endswith(".py"):
         try:
             subprocess.run(["black", "--quiet", path], capture_output=True, timeout=10)
-        except Exception:
-            pass
+        except Exception as e:
+            _log.debug("black format skipped: %s", e)
 
 # ── Patch 5: metrics in try/except — never block real work ──
 try:
@@ -93,6 +114,7 @@ try:
             f"{tool} failed (no stderr)" if not success else None
         )
 
+        _action_id = None
         with _get_db(timeout=2) as conn:
             # Find the open action row first (to get its id for error_log FK)
             _action_row = conn.execute(
@@ -151,9 +173,14 @@ try:
                 ).fetchone()
                 _action_id = _refetch[0] if _refetch else None
 
-            if not success:
-                try:
-                    conn.execute(
+        # Separate transaction: error_log INSERT must not share a transaction with
+        # agent_actions UPDATE — a failed INSERT caught inside the same with-block
+        # lets get_db() commit the UPDATE without the INSERT, creating an orphaned
+        # success=0 row with no error_log counterpart (audit component_2 = 0).
+        if not success:
+            try:
+                with _get_db(timeout=5) as _el_conn:
+                    _el_conn.execute(
                         "INSERT INTO error_log "
                         "(timestamp, session_id, agent_name, error_type, error_message, keywords, resolved, action_id) "
                         "VALUES (datetime('now'), ?, ?, ?, ?, ?, 0, ?)",
@@ -166,13 +193,15 @@ try:
                             _action_id,
                         ),
                     )
-                except Exception as _el_err:
-                    print(
-                        f"[post_tool_use] error_log INSERT failed: {_el_err}",
-                        file=sys.stderr,
-                    )
-except Exception:
-    pass  # logging fails silently
+            except Exception as _el_err:
+                _log.warning(
+                    "error_log INSERT failed — orphan created for action_id=%s: %s",
+                    _action_id,
+                    _el_err,
+                    exc_info=True,
+                )
+except Exception as e:
+    _log.warning("metrics DB update failed: %s", e, exc_info=True)
 
 # ── Implicit correction capture ──────────────────────────────────────
 # Pattern: tool fails → same agent+file → tool succeeds = silent fix → lesson
@@ -195,7 +224,8 @@ try:
         try:
             with open(_PENDING, encoding="utf-8") as _f:
                 _pend = json.load(_f)
-        except Exception:
+        except Exception as e:
+            _log.debug("pending-file load skipped: %s", e)
             _pend = {}
     _key = f"{agent}|{_fpath}" if _fpath else ""
     if _key:
@@ -247,10 +277,10 @@ try:
                     )
                     _vc2.commit()
                     _vc2.close()
-                except Exception:
-                    pass
-except Exception:
-    pass
+                except Exception as e:
+                    _log.warning("error-log resolution failed: %s", e, exc_info=True)
+except Exception as e:
+    _log.warning("correction-capture failed: %s", e, exc_info=True)
 
 # ── Large Output Detector: inject summarizer guidance when output is huge ─────
 # PostToolUse cannot suppress the raw output, but injecting an additionalContext
@@ -286,7 +316,7 @@ try:
             }
         }))
         sys.exit(0)
-except Exception:
-    pass  # large output detector must never block real work
+except Exception as e:
+    _log.debug("large-output detector skipped: %s", e)
 
 sys.exit(0)

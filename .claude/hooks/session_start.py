@@ -4,16 +4,33 @@ DQIII8 Hook — SessionStart
 Injects project context, recent lessons, and system state.
 """
 
-import sys, json, os
-from pathlib import Path
+import json
+import logging
+import logging.handlers
+import os
+import sys
 from datetime import datetime
+from pathlib import Path
+
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+
+_log = logging.getLogger("dqiii8.session_start")
+if not _log.handlers:
+    _log.setLevel(logging.DEBUG)
+    _log_dir = Path("/var/log/dqiii8")
+    if _log_dir.exists():
+        _fh = logging.handlers.RotatingFileHandler(
+            str(_log_dir / "hooks.log"), maxBytes=2_000_000, backupCount=3
+        )
+        _fh.setFormatter(logging.Formatter("%(asctime)s [session_start] %(levelname)s %(message)s"))
+        _log.addHandler(_fh)
+    else:
+        _log.addHandler(logging.NullHandler())
 
 try:
     data = json.load(sys.stdin)
 except Exception:
     data = {}
-
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = JARVIS / "database" / "dqiii8.db"
 LESSONS = JARVIS / "tasks" / "lessons.md"
 FLAG = JARVIS / "tasks" / "audit_pending.flag"
@@ -34,8 +51,8 @@ try:
     Path("/tmp/dqiii8_session_start.txt").write_text(
         datetime.now().isoformat(), encoding="utf-8"
     )
-except Exception:
-    pass
+except Exception as e:
+    _log.debug("session-start timestamp write skipped: %s", e)
 
 # ── Project next step ──────────────────────────────────────────────
 next_step = "Not defined"
@@ -68,8 +85,8 @@ try:
         conn.close()
         if row:
             audit_info = f"{row[0][:10]} | Score: {row[1]}/100"
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("audit-score DB failed: %s", e, exc_info=True)
 
 # ── Pending audit alert ────────────────────────────────────────────
 audit_alert = ""
@@ -77,8 +94,8 @@ if FLAG.exists():
     audit_alert = "\n⚠️  AUDIT PENDING — run /audit now."
     try:
         FLAG.unlink()
-    except Exception:
-        pass
+    except Exception as e:
+        _log.debug("audit-flag unlink skipped: %s", e)
 
 # ── Vault Memory — top-8 recent facts ─────────────────────────────
 vault_facts = []
@@ -100,8 +117,8 @@ try:
         ).fetchall()
         _vc.close()
         vault_facts = [f"{r[0]} {r[1]} {r[2]}" for r in _vrows]
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("vault-memory DB failed: %s", e, exc_info=True)
 
 # ── Lazy context load ──────────────────────────────────────────────
 CONTEXT_DIR = JARVIS / "context"
@@ -165,8 +182,8 @@ try:
                 )
         finally:
             _sig.alarm(0)
-except Exception:
-    pass  # silent skip — do not block startup
+except Exception as e:
+    _log.debug("memory-manager skipped: %s", e)
 
 model = os.environ.get("DQIII8_MODEL", "qwen2.5-coder:7b (Ollama)")
 
@@ -176,8 +193,8 @@ try:
     _mode_file = Path("/tmp/dqiii8_mode.txt")
     if _mode_file.exists():
         _mode = _mode_file.read_text(encoding="utf-8").strip()
-except Exception:
-    pass
+except Exception as e:
+    _log.debug("mode-file read skipped: %s", e)
 
 _MODE_BEHAVIORS = {
     "coder": "CODER MODE: code first, minimal prose, Black always, show diffs.",
@@ -198,8 +215,8 @@ try:
     if _progress_file.exists():
         _raw = _progress_file.read_text(encoding="utf-8").strip()
         _progress_block = "\n\nPROGRESS:\n" + _raw
-except Exception:
-    pass
+except Exception as e:
+    _log.debug("progress-file read skipped: %s", e)
 
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DQIII8 — {datetime.now().strftime('%Y-%m-%d %H:%M')}

@@ -13,9 +13,14 @@ Usage:
 
 import argparse
 import sqlite3
+import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 
 DB_PATH = Path(__file__).parent.parent.parent / "database" / "dqiii8.db"
 SKILLS_DIR = Path(__file__).parent.parent.parent / ".claude" / "skills" / "evolved"
@@ -82,7 +87,7 @@ def generate_drafts(clusters: dict[str, list[dict]]) -> None:
     SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     actionable = {k: v for k, v in clusters.items() if len(v) >= MIN_CLUSTER_SIZE}
     if not actionable:
-        print("No clusters with 3+ instincts — nothing to generate.")
+        log.warning("No clusters with 3+ instincts — nothing to generate.")
         return
     for keyword, members in actionable.items():
         slug = keyword.replace(" ", "-").replace("/", "-")

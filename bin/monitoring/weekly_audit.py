@@ -26,10 +26,10 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import logging
-log = logging.getLogger(__name__)
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
+sys.path.insert(0, str(DQIII8_ROOT))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 
 DB = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
 REPORT_DIR = DQIII8_ROOT / "database" / "audit_reports"

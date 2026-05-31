@@ -40,9 +40,9 @@ except ImportError:
 from dashboard_security import get_or_create_dashboard_token, verify_token
 from db import get_db
 
-import logging
-
-log = logging.getLogger(__name__)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 # ── Config ────────────────────────────────────────────────────────────────
 HOST = os.environ.get("DQIII8_DASHBOARD_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DQIII8_DASHBOARD_PORT", "8080"))

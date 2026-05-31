@@ -1,8 +1,13 @@
 import sqlite3
 import os
+import sys
 import requests
 from datetime import datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = JARVIS / "database" / "dqiii8.db"
@@ -59,7 +64,7 @@ def collect_youtube(api_key: str, channel_ids: list) -> list:
                 timeout=10,
             )
             if r.status_code != 200:
-                print(f"[ANALYTICS] YouTube API error {r.status_code}")
+                log.warning("YouTube API error %s", r.status_code)
                 continue
             videos = r.json().get("items", [])
             video_ids = [v["id"]["videoId"] for v in videos]
@@ -89,7 +94,7 @@ def collect_youtube(api_key: str, channel_ids: list) -> list:
                     }
                 )
         except Exception as e:
-            print(f"[ANALYTICS] YouTube error {channel_id}: {e}")
+            log.warning("YouTube error %s: %s", channel_id, e, exc_info=True)
     return results
 
 
@@ -143,7 +148,7 @@ def save_metrics(metrics_list: list) -> int:
 
 def main():
     load_env()
-    print(f"[ANALYTICS] Iniciando — {datetime.now():%Y-%m-%d %H:%M}")
+    log.info("Iniciando — %s", datetime.now().strftime("%Y-%m-%d %H:%M"))
     total_saved = 0
     yt_key = os.environ.get("YOUTUBE_API_KEY", "")
     if yt_key:
@@ -157,12 +162,12 @@ def main():
             metrics = collect_youtube(yt_key, channel_ids)
             saved = save_metrics(metrics)
             total_saved += saved
-            print(f"[ANALYTICS] YouTube: {saved} videos actualizados")
+            log.info("YouTube: %d videos actualizados", saved)
         else:
-            print("[ANALYTICS] YouTube: sin channel_ids en BD")
+            log.info("YouTube: sin channel_ids en BD")
     else:
-        print("[ANALYTICS] YouTube: YOUTUBE_API_KEY no configurada — omitiendo")
-    print(f"[ANALYTICS] Total: {total_saved} registros")
+        log.warning("YouTube: YOUTUBE_API_KEY no configurada — omitiendo")
+    log.info("Total: %d registros", total_saved)
 
 
 if __name__ == "__main__":

@@ -9,11 +9,14 @@ v3: Dual-channel rejections (DB + JSON inbox) + budget check +
 """
 
 import json
+import logging
 import os
 import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger("dqiii8." + __name__)
 
 # ── Configuration ───────────────────────────────────────────────────────────
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
@@ -72,7 +75,7 @@ ALLOWED_DELETIONS = [
 
 # Project directories always safe for writing
 SAFE_PROJECT_DIRS = [
-    "/root/dqiii8/",
+    str(DQIII8_ROOT) + "/",
     "/root/math-image-generator",
     "/tmp/",
 ]
@@ -332,8 +335,8 @@ class PermissionAnalyzer:
                         f"Previous attempts: {count}."
                     ),
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("permission_analyzer: _check_repeat_rejections query failed: %s", e, exc_info=True)
         return None
 
     def _is_learned_safe(self, tool: str, detail: str) -> bool:
@@ -391,8 +394,8 @@ class PermissionAnalyzer:
                     "resource_claim",
                     "Wait 30 min or ask the owning agent to release the resource.",
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("permission_analyzer: _check_resource_claim query failed: %s", e, exc_info=True)
         return None
 
     def _check_budget(self, session_id: str) -> dict | None:
@@ -418,8 +421,8 @@ class PermissionAnalyzer:
                     "Split the objective into smaller subtasks. "
                     "Start a new session with j --autonomous",
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("permission_analyzer: _check_budget query failed: %s", e, exc_info=True)
         return None
 
 
@@ -447,8 +450,8 @@ def _notify_telegram_activation(tool_name: str, pattern: str) -> None:
             json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
             timeout=5,
         )
-    except Exception:
-        pass  # never block the pipeline
+    except Exception as e:
+        log.warning("permission_analyzer: _notify_telegram_activation send failed: %s", e, exc_info=True)  # never block the pipeline
 
 
 def record_decision(tool: str, inp: dict, result: dict) -> None:
@@ -506,8 +509,8 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
                     _notify_telegram_activation(tool, pattern)
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("permission_analyzer: record_decision DB write failed: %s", e, exc_info=True)
 
 
 def record_rejection(tool: str, inp: dict, result: dict) -> None:
@@ -555,8 +558,8 @@ def record_rejection(tool: str, inp: dict, result: dict) -> None:
         )
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("permission_analyzer: record_rejection DB channel write failed: %s", e, exc_info=True)
 
     # Channel 2: JSON mailbox (append to array)
     try:
@@ -574,5 +577,5 @@ def record_rejection(tool: str, inp: dict, result: dict) -> None:
             json.dumps(existing, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("permission_analyzer: record_rejection JSON mailbox write failed: %s", e, exc_info=True)

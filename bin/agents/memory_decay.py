@@ -17,6 +17,10 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
+
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
 
@@ -33,7 +37,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if not DB.exists():
-        print("[memory_decay] DB not found — skipping")
+        log.warning("DB not found — skipping")
         sys.exit(0)
 
     conn = sqlite3.connect(str(DB), timeout=5)
@@ -89,9 +93,9 @@ def main() -> None:
         else:
             to_decay.append((new_score, rid))
 
-    print(f"[memory_decay] Total entries: {len(rows)}")
-    print(f"[memory_decay] To decay (score update): {len(to_decay)}")
-    print(f"[memory_decay] To archive (score < {ARCHIVE_THRESHOLD}): {len(to_archive)}")
+    log.info(f"Total entries: {len(rows)}")
+    log.info(f"To decay (score update): {len(to_decay)}")
+    log.info(f"To archive (score < {ARCHIVE_THRESHOLD}): {len(to_archive)}")
 
     if args.dry_run:
         # Show preview table
@@ -140,7 +144,7 @@ def main() -> None:
             conn.execute("DELETE FROM vault_memory WHERE id=?", (rid,))
             archived += 1
         except Exception as e:
-            print(f"[memory_decay] archive error for id={rid}: {e}")
+            log.error(f"archive error for id={rid}: {e}")
 
     conn.commit()
     conn.close()

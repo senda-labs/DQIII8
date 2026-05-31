@@ -1,0 +1,49 @@
+[project]
+name = "dqiii8"
+version = "1.0.0"
+description = "Autonomous AI orchestration engine — cost-first multi-tier LLM router with knowledge injection"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+readme = "README.md"
+
+# Core dependencies — used by the kernel (bin/). Subproject-specific heavy
+# dependencies (crawl4ai, pdfplumber, sentence-transformers, etc.) live in
+# each my-projects/<name>/requirements.txt, not here.
+dependencies = [
+    "requests>=2.31.0",
+    "sqlite-vec>=0.1.7",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "PyYAML>=6.0.1",
+    "python-telegram-bot>=21.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "numpy>=1.26.0",
+    "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.6.0",
+    "mypy>=1.10.0",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = ["bin/tools/_archived", "my-projects", "database/legacy"]
+
+[tool.ruff.lint]
+# E,F = pycodestyle/pyflakes · B = bugbear · BLE = blind-except (catches
+# `except Exception: pass`) · W = warnings
+select = ["E", "F", "B", "BLE", "W"]
+ignore = ["E501"]  # line length is advisory, not enforced
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true

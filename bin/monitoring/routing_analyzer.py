@@ -26,6 +26,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
+
 DB = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
 OUT = DQIII8_ROOT / "tasks" / "routing_recommendations.json"
 
@@ -46,7 +51,7 @@ DURATION_THRESHOLD_MS = 60_000  # 60s
 
 def analyze() -> list[dict]:
     if not DB.exists():
-        print(f"[routing_analyzer] DB not found: {DB}", file=sys.stderr)
+        log.error("DB not found: %s", DB)
         return []
 
     conn = sqlite3.connect(str(DB), timeout=5)
@@ -172,9 +177,7 @@ def analyze() -> list[dict]:
 
 
 def main() -> None:
-    print(
-        f"[routing_analyzer] Analyzing last {DAYS} days — {NOW.strftime('%Y-%m-%d %H:%M UTC')}"
-    )
+    log.info("Analyzing last %d days — %s", DAYS, NOW.strftime("%Y-%m-%d %H:%M UTC"))
 
     recommendations, stats = analyze()
 
@@ -188,15 +191,15 @@ def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    print(f"[routing_analyzer] {len(stats)} domain/tier combos analyzed")
-    print(f"[routing_analyzer] {len(recommendations)} recommendations → {OUT}")
+    log.info("%d domain/tier combos analyzed", len(stats))
+    log.info("%d recommendations → %s", len(recommendations), OUT)
 
     for rec in recommendations:
         sev = rec["severity"]
-        print(f"  [{sev}] {rec['domain']}/{rec['tier']}: {rec['issue']}")
+        log.warning("[%s] %s/%s: %s", sev, rec["domain"], rec["tier"], rec["issue"])
 
     if not recommendations:
-        print("[routing_analyzer] No routing issues detected")
+        log.info("No routing issues detected")
 
 
 if __name__ == "__main__":

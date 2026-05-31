@@ -28,6 +28,8 @@ from telegram.ext import (
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))  # bin/
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
 from voice_handler import transcribe_audio, synthesize_speech
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -52,7 +54,7 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout),
     ],
 )
-log = logging.getLogger("dqiii8_bot")
+log = _get_logger(__name__)
 
 # ── Global app reference (set in main()) ───────────────────────────────────────
 APP: Application = None  # type: ignore[assignment]
@@ -1930,9 +1932,7 @@ def send_morning_report() -> None:
     token = os.getenv("DQIII8_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
-        print(
-            "[morning_report] DQIII8_BOT_TOKEN or TELEGRAM_CHAT_ID not set — skipping"
-        )
+        log.warning("morning_report: DQIII8_BOT_TOKEN or TELEGRAM_CHAT_ID not set — skipping")
         return
 
     today = datetime.now()
@@ -1989,7 +1989,7 @@ def send_morning_report() -> None:
 
         conn.close()
     except Exception as e:
-        print(f"[morning_report] DB error: {e}")
+        log.warning("morning_report: DB error: %s", e, exc_info=True)
 
     # Find active project + next_step from projects/*.md
     try:
@@ -2027,9 +2027,9 @@ def send_morning_report() -> None:
         data = urllib.parse.urlencode({"chat_id": chat_id, "text": msg}).encode()
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         urllib.request.urlopen(url, data, timeout=10)
-        print(f"[morning_report] Sent OK — {today_str}")
+        log.info("morning_report: Sent OK — %s", today_str)
     except Exception as e:
-        print(f"[morning_report] Telegram send failed: {e}")
+        log.error("morning_report: Telegram send failed: %s", e, exc_info=True)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,10 @@ DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "agents"))
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
+
 DB = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
 NOW = datetime.now(timezone.utc)
 QUIET = "--quiet" in sys.argv
@@ -34,9 +38,11 @@ failures: list[str] = []
 
 def check(name: str, ok: bool, detail: str = "") -> None:
     status = "OK " if ok else "ERR"
-    if not QUIET or not ok:
-        print(f"[WATCHDOG] {status}  {name}" + (f" — {detail}" if detail else ""))
-    if not ok:
+    msg = f"{status}  {name}" + (f" — {detail}" if detail else "")
+    if ok:
+        log.info("%s", msg)
+    else:
+        log.error("%s", msg)
         failures.append(f"{name}: {detail}" if detail else name)
 
 
@@ -202,7 +208,7 @@ def check_working_memory() -> None:
 
 
 def main() -> None:
-    print(f"[WATCHDOG] Starting — {NOW.strftime('%Y-%m-%d %H:%M UTC')}")
+    log.info("Starting — %s", NOW.strftime("%Y-%m-%d %H:%M UTC"))
     check_services()
     check_crons()
     check_auto_learner()
@@ -216,15 +222,15 @@ def main() -> None:
         msg = f"DQIII8 WATCHDOG ALERT\n{NOW.strftime('%Y-%m-%d %H:%M UTC')}\n"
         msg += f"Failed checks ({len(failures)}/{8}):\n"
         msg += "\n".join(f"- {f}" for f in failures)
-        print(f"\n[WATCHDOG] ALERT — {len(failures)} check(s) failed")
+        log.error("ALERT — %d check(s) failed", len(failures))
         try:
             from notify import send_telegram
 
             send_telegram(msg)
         except Exception as e:
-            print(f"[WATCHDOG] notify failed: {e}", file=sys.stderr)
+            log.error("notify failed: %s", e, exc_info=True)
     else:
-        print(f"[WATCHDOG] All checks passed — system healthy")
+        log.info("All checks passed — system healthy")
 
 
 if __name__ == "__main__":

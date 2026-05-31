@@ -24,6 +24,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 ENV_FILE = DQIII8_ROOT / "my-projects" / "auto-report" / ".env"
@@ -33,7 +36,7 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 MAX_TOKENS = 256
 CALL_DELAY_S = 1.5
 
-log = logging.getLogger(__name__)
+log = _get_logger(__name__)
 
 
 def chunk_hash(text: str) -> str:
@@ -134,7 +137,7 @@ def main() -> None:
     if not keys:
         log.error("No Groq keys found in %s", ENV_FILE)
         sys.exit(1)
-    print(f"[key_facts-multi] Loaded {len(keys)} Groq API keys")
+    log.info("Loaded %d Groq API keys", len(keys))
 
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
@@ -151,11 +154,9 @@ def main() -> None:
     if args.limit > 0:
         pending = pending[: args.limit]
 
-    print(
-        f"[key_facts-multi] total={len(all_chunks)} cached={len(cached)} pending={len(pending)}"
-    )
+    log.info("total=%d cached=%d pending=%d", len(all_chunks), len(cached), len(pending))
     if not pending:
-        print("[key_facts-multi] Nothing to do.")
+        log.info("Nothing to do")
         conn.close()
         return
 
@@ -166,9 +167,7 @@ def main() -> None:
     for i, chunk in enumerate(pending, 1):
         # All keys exhausted?
         if len(exhausted_keys) >= len(keys):
-            print(
-                f"  [{i}/{len(pending)}] All {len(keys)} keys exhausted — stopping. ({ok} done)"
-            )
+            log.info("All %d keys exhausted — stopping. (%d done)", len(keys), ok)
             break
 
         # Skip to next available key
@@ -182,12 +181,14 @@ def main() -> None:
         if raw == "__RATE_LIMITED__":
             exhausted_keys.add(key_idx)
             remaining = len(keys) - len(exhausted_keys)
-            print(
-                f"  [{i}/{len(pending)}] Key #{key_idx + 1} rate-limited. "
-                f"{remaining} keys remaining. ({ok} done so far)"
+            log.info(
+                "Key #%d rate-limited. %d keys remaining. (%d done so far)",
+                key_idx + 1,
+                remaining,
+                ok,
             )
             if remaining == 0:
-                print(f"  All keys exhausted — stopping.")
+                log.info("All keys exhausted — stopping")
                 break
             key_idx = (key_idx + 1) % len(keys)
             # Retry this chunk with next key
@@ -205,7 +206,7 @@ def main() -> None:
                             break
                         exhausted_keys.add(k)
                 if not retried:
-                    print(f"  All keys exhausted — stopping. ({ok} done)")
+                    log.info("All keys exhausted — stopping. (%d done)", ok)
                     break
 
         if raw is None or raw == "__RATE_LIMITED__":
@@ -234,10 +235,7 @@ def main() -> None:
         ok += 1
 
         if i % 25 == 0 or i == len(pending):
-            print(
-                f"  [{i}/{len(pending)}] ok={ok} err={errors} key=#{key_idx + 1}",
-                flush=True,
-            )
+            log.info("Processed %d/%d ok=%d err=%d key=#%d", i, len(pending), ok, errors, key_idx + 1)
 
         time.sleep(CALL_DELAY_S)
 
@@ -247,9 +245,7 @@ def main() -> None:
         .execute("SELECT COUNT(*) FROM chunk_key_facts")
         .fetchone()[0]
     )
-    print(
-        f"\n[key_facts-multi] Done — ok={ok} errors={errors} total_cached={final_cached}/1309"
-    )
+    log.info("Done — ok=%d errors=%d total_cached=%d/1309", ok, errors, final_cached)
 
 
 if __name__ == "__main__":

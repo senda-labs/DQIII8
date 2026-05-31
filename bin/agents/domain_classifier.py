@@ -23,6 +23,10 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
+
 sys.path.insert(0, str(Path(__file__).parent))
 from db import get_db, DB_PATH
 from embeddings import (
@@ -539,7 +543,7 @@ _cosine = cosine_similarity
 def setup_db(force: bool = False) -> None:
     """Creates the domain_enrichment table and calculates centroids via Ollama."""
     if not DB_PATH.exists():
-        print(f"[domain_classifier] DB not found: {DB_PATH}", file=sys.stderr)
+        log.error(f"DB not found: {DB_PATH}")
         return
 
     with get_db(timeout=5) as conn:
@@ -565,8 +569,8 @@ def setup_db(force: bool = False) -> None:
             ).fetchone()
 
             if existing and not force and existing[1] is not None:
-                print(
-                    f"  ✓ {domain_name} — already has centroid (use --force to recalculate)"
+                log.info(
+                    f"✓ {domain_name} — already has centroid (use --force to recalculate)"
                 )
                 continue
 
@@ -574,7 +578,7 @@ def setup_db(force: bool = False) -> None:
             centroid_text = (
                 info["description"] + ". Keywords: " + ", ".join(info["keywords"])
             )
-            print(f"  → Calculating centroid for {domain_name}...", end="", flush=True)
+            log.debug(f"Calculating centroid for {domain_name}...")
             vec = _get_embedding(centroid_text)
 
             centroid_blob = _pack_embedding(vec) if vec else None
@@ -600,9 +604,9 @@ def setup_db(force: bool = False) -> None:
                         centroid_blob,
                     ),
                 )
-            print(f" {status}")
+            log.debug(f"Centroid for {domain_name}: {status}")
 
-    print("[domain_classifier] Setup complete.")
+    log.info("Setup complete.")
 
 
 # ── Classification ────────────────────────────────────────────────────────────
@@ -751,10 +755,8 @@ def main() -> None:
         return
 
     if not args:
-        print('Usage: python3 bin/domain_classifier.py "prompt"', file=sys.stderr)
-        print(
-            "     python3 bin/domain_classifier.py --setup [--force]", file=sys.stderr
-        )
+        log.error('Usage: python3 bin/domain_classifier.py "prompt"')
+        log.error("     python3 bin/domain_classifier.py --setup [--force]")
         sys.exit(1)
 
     prompt = " ".join(a for a in args if not a.startswith("--"))

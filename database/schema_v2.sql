@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS error_log (
     resolved        INTEGER DEFAULT 0,
     resolution_ms   INTEGER,
     lesson_added    INTEGER DEFAULT 0
-, action_id INTEGER REFERENCES agent_actions(id));
+, action_id INTEGER REFERENCES agent_actions(id), severity TEXT DEFAULT 'operational');
 CREATE TABLE IF NOT EXISTS sessions (
     session_id          TEXT PRIMARY KEY,
     start_time          TEXT NOT NULL DEFAULT (datetime('now')),
@@ -102,6 +102,7 @@ SELECT
 FROM agent_actions
 GROUP BY agent_name
 ORDER BY success_rate_pct DESC
+/* agent_performance(agent_name,total_actions,success_rate_pct,avg_duration_ms,total_bytes_written,times_blocked,last_active) */
 /* agent_performance(agent_name,total_actions,success_rate_pct,avg_duration_ms,total_bytes_written,times_blocked,last_active) */;
 CREATE VIEW IF NOT EXISTS error_keywords_freq AS
 SELECT
@@ -115,6 +116,7 @@ FROM error_log e, json_each(e.keywords) je
 WHERE e.keywords IS NOT NULL AND e.keywords != '[]'
 GROUP BY je.value
 ORDER BY frequency DESC
+/* error_keywords_freq(keyword,frequency,first_seen,last_seen,avg_resolution_secs,times_resolved) */
 /* error_keywords_freq(keyword,frequency,first_seen,last_seen,avg_resolution_secs,times_resolved) */;
 CREATE TABLE IF NOT EXISTS agent_registry (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -265,6 +267,7 @@ FROM jal_objectives o
 WHERE o.status IN ('completed', 'failed')
 GROUP BY o.type
 ORDER BY reliability_pct DESC
+/* v_claude_reliability(task_type,total_objectives,passed,avg_score_pct,avg_attempts_needed,avg_entropy,reliability_pct) */
 /* v_claude_reliability(task_type,total_objectives,passed,avg_score_pct,avg_attempts_needed,avg_entropy,reliability_pct) */;
 CREATE VIEW IF NOT EXISTS v_error_ranking AS
 SELECT
@@ -281,6 +284,7 @@ SELECT
           p.avg_propagation, 3)         AS danger_index
 FROM jal_error_patterns p
 ORDER BY danger_index DESC
+/* v_error_ranking(pattern_id,category,frequency,failure_rate_pct,avg_severity,avg_propagation,prevention_rule,fix_rule,status,danger_index) */
 /* v_error_ranking(pattern_id,category,frequency,failure_rate_pct,avg_severity,avg_propagation,prevention_rule,fix_rule,status,danger_index) */;
 CREATE VIEW IF NOT EXISTS v_convergence_history AS
 SELECT
@@ -295,6 +299,7 @@ SELECT
     s.steps_failed
 FROM jal_scoring_snapshots s
 ORDER BY s.objective_id, s.attempt
+/* v_convergence_history(objective_id,attempt,score_pct,delta_pct,entropy,converges,convergence_est,has_blocker,steps_failed) */
 /* v_convergence_history(objective_id,attempt,score_pct,delta_pct,entropy,converges,convergence_est,has_blocker,steps_failed) */;
 CREATE TABLE IF NOT EXISTS video_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, collected_at TEXT NOT NULL, platform TEXT NOT NULL, channel_id TEXT, channel_name TEXT, video_id TEXT NOT NULL, video_title TEXT, published_at TEXT, duration_s INTEGER, views INTEGER DEFAULT 0, views_24h INTEGER DEFAULT 0, views_7d INTEGER DEFAULT 0, watch_time_hours REAL DEFAULT 0, avg_view_duration_s INTEGER DEFAULT 0, retention_rate REAL DEFAULT 0, likes INTEGER DEFAULT 0, comments INTEGER DEFAULT 0, shares INTEGER DEFAULT 0, ctr REAL DEFAULT 0, rpm REAL DEFAULT 0, estimated_revenue REAL DEFAULT 0, renderer_used TEXT, mode_narrativo TEXT, api_externa TEXT, coste_produccion REAL DEFAULT 0, performance_score REAL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS channel_stats (id INTEGER PRIMARY KEY AUTOINCREMENT, collected_at TEXT NOT NULL, platform TEXT NOT NULL, channel_id TEXT NOT NULL, channel_name TEXT, subscribers INTEGER DEFAULT 0, total_views INTEGER DEFAULT 0, total_videos INTEGER DEFAULT 0, monthly_revenue REAL DEFAULT 0);
@@ -302,8 +307,10 @@ CREATE TABLE IF NOT EXISTS platform_config (platform TEXT PRIMARY KEY, channel_i
 CREATE INDEX IF NOT EXISTS idx_video_platform ON video_metrics(platform, published_at);
 CREATE INDEX IF NOT EXISTS idx_video_score ON video_metrics(performance_score DESC);
 CREATE VIEW IF NOT EXISTS top_performing_content AS SELECT mode_narrativo, renderer_used, platform, COUNT(*) AS total_videos, ROUND(AVG(views_7d),0) AS avg_views_7d, ROUND(AVG(retention_rate),2) AS avg_retention, ROUND(AVG(ctr),3) AS avg_ctr, ROUND(AVG(rpm),2) AS avg_rpm, ROUND(AVG(performance_score),1) AS avg_score FROM video_metrics WHERE views > 0 GROUP BY mode_narrativo, renderer_used, platform ORDER BY avg_score DESC
+/* top_performing_content(mode_narrativo,renderer_used,platform,total_videos,avg_views_7d,avg_retention,avg_ctr,avg_rpm,avg_score) */
 /* top_performing_content(mode_narrativo,renderer_used,platform,total_videos,avg_views_7d,avg_retention,avg_ctr,avg_rpm,avg_score) */;
 CREATE VIEW IF NOT EXISTS revenue_by_channel AS SELECT platform, channel_name, COUNT(*) AS videos_published, SUM(estimated_revenue) AS total_revenue, ROUND(AVG(rpm),2) AS avg_rpm, SUM(views) AS total_views FROM video_metrics GROUP BY platform, channel_name ORDER BY total_revenue DESC
+/* revenue_by_channel(platform,channel_name,videos_published,total_revenue,avg_rpm,total_views) */
 /* revenue_by_channel(platform,channel_name,videos_published,total_revenue,avg_rpm,total_views) */;
 CREATE TABLE IF NOT EXISTS instincts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -330,7 +337,7 @@ CREATE TABLE IF NOT EXISTS permission_decisions (
     risk_level      TEXT,
     rule_triggered  TEXT,
     suggested_fix   TEXT
-);
+, response_time_s REAL);
 CREATE INDEX IF NOT EXISTS idx_perm_session_tool
     ON permission_decisions(session_id, tool_name, decision, timestamp);
 CREATE TABLE IF NOT EXISTS objectives (
@@ -380,6 +387,7 @@ SELECT
     MAX(completed_at)                                                 AS last_activity
 FROM objectives
 GROUP BY project
+/* loop_effectiveness(project,total_cycles,successful,failed,escalated,success_rate_pct,last_activity) */
 /* loop_effectiveness(project,total_cycles,successful,failed,escalated,success_rate_pct,last_activity) */;
 CREATE VIEW IF NOT EXISTS benchmark_results AS
 SELECT
@@ -406,6 +414,7 @@ FROM objectives
 WHERE model_tier IS NOT NULL
 GROUP BY model_tier, project
 ORDER BY success_rate_pct DESC
+/* benchmark_results(model_tier,project,total_objectives,completed,failed,blocked,success_rate_pct,avg_duration_s,planner_good,planner_partial,planner_poor,avg_ssim_score) */
 /* benchmark_results(model_tier,project,total_objectives,completed,failed,blocked,success_rate_pct,avg_duration_s,planner_good,planner_partial,planner_poor,avg_ssim_score) */;
 CREATE TABLE IF NOT EXISTS code_metrics (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -468,6 +477,7 @@ SELECT
 FROM code_metrics
 GROUP BY model_tier, renderer
 ORDER BY model_tier, renderer
+/* tier_comparison(model_tier,renderer,total_runs,avg_lines,avg_cpu_s,avg_ram_mb,avg_cpu_per_mpx,avg_ssim,avg_cpp_speedup,vectorized_count,tests_passed,success_rate_pct) */
 /* tier_comparison(model_tier,renderer,total_runs,avg_lines,avg_cpu_s,avg_ram_mb,avg_cpu_per_mpx,avg_ssim,avg_cpp_speedup,vectorized_count,tests_passed,success_rate_pct) */;
 CREATE VIEW IF NOT EXISTS tier_ranking AS
 SELECT
@@ -492,6 +502,7 @@ SELECT
 FROM code_metrics
 GROUP BY model_tier
 ORDER BY composite_score DESC
+/* tier_ranking(model_tier,renderers_completed,avg_lines_per_renderer,avg_render_time_s,avg_memory_mb,avg_visual_quality,avg_cpp_speedup,overall_success_pct,composite_score) */
 /* tier_ranking(model_tier,renderers_completed,avg_lines_per_renderer,avg_render_time_s,avg_memory_mb,avg_visual_quality,avg_cpp_speedup,overall_success_pct,composite_score) */;
 CREATE VIEW IF NOT EXISTS visual_convergence AS
 SELECT
@@ -509,6 +520,7 @@ FROM code_metrics
 WHERE ssim_score IS NOT NULL
 GROUP BY project, model_tier, renderer
 ORDER BY best_ssim DESC
+/* visual_convergence(project,model_tier,renderer,total_iterations,worst_ssim,best_ssim,ssim_improvement,ssim_trend,cycles_to_good_quality) */
 /* visual_convergence(project,model_tier,renderer,total_iterations,worst_ssim,best_ssim,ssim_improvement,ssim_trend,cycles_to_good_quality) */;
 CREATE VIEW IF NOT EXISTS autonomy_score AS
 SELECT
@@ -528,6 +540,7 @@ SELECT
 FROM code_metrics
 GROUP BY model_tier
 ORDER BY zero_escalation_pct DESC
+/* autonomy_score(model_tier,total_objectives,total_approvals,total_denials,total_escalations,approval_rate_pct,zero_escalation_pct) */
 /* autonomy_score(model_tier,total_objectives,total_approvals,total_denials,total_escalations,approval_rate_pct,zero_escalation_pct) */;
 CREATE TABLE IF NOT EXISTS loop_objectives (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -848,6 +861,7 @@ SELECT
     COUNT(*) as n_tasks
 FROM knowledge_benchmark_results
 GROUP BY config, model, dq_enabled, task_domain
+/* knowledge_benchmark_summary(config,model,dq_enabled,task_domain,avg_score,avg_tokens,avg_time,avg_messages,avg_cost,avg_hallucinations,n_tasks) */
 /* knowledge_benchmark_summary(config,model,dq_enabled,task_domain,avg_score,avg_tokens,avg_time,avg_messages,avg_cost,avg_hallucinations,n_tasks) */;
 CREATE VIEW IF NOT EXISTS knowledge_benchmark_dq_uplift AS
 SELECT
@@ -861,13 +875,9 @@ JOIN knowledge_benchmark_results b_off
     ON b_on.task_id = b_off.task_id AND b_on.model = b_off.model
 WHERE b_on.dq_enabled = 1 AND b_off.dq_enabled = 0
 GROUP BY b_on.model, b_on.task_domain
+/* knowledge_benchmark_dq_uplift(model,task_domain,score_uplift,tokens_saved,messages_saved,hallucinations_reduced) */
 /* knowledge_benchmark_dq_uplift(model,task_domain,score_uplift,tokens_saved,messages_saved,hallucinations_reduced) */;
-
--- ─────────────────────────────────────────────────────────────────────────────
--- ANALYTICAL VIEWS  (read-only, no data stored)
--- ─────────────────────────────────────────────────────────────────────────────
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS v_cost_savings AS
+CREATE VIEW IF NOT EXISTS v_cost_savings AS
 SELECT 
     date(timestamp) as day,
     CASE model_tier
@@ -884,9 +894,9 @@ SELECT
     ROUND(COUNT(*) * 666 * 0.000015, 4) as sonnet_equivalent_usd
 FROM agent_actions
 WHERE timestamp >= date('now', '-30 days')
-GROUP BY day, tier;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS v_agent_performance AS
+GROUP BY day, tier
+/* v_cost_savings(day,tier,actions,avg_s,actual_cost_usd,sonnet_equivalent_usd) */;
+CREATE VIEW IF NOT EXISTS v_agent_performance AS
 SELECT
     agent_name,
     COUNT(*) as total_actions,
@@ -896,9 +906,9 @@ SELECT
 FROM agent_actions
 WHERE timestamp >= date('now', '-7 days')
 GROUP BY agent_name
-ORDER BY total_actions DESC;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS v_tier_distribution AS
+ORDER BY total_actions DESC
+/* v_agent_performance(agent_name,total_actions,success_pct,avg_ms,failures) */;
+CREATE VIEW IF NOT EXISTS v_tier_distribution AS
 SELECT
     date(timestamp) as day,
     CASE 
@@ -910,9 +920,9 @@ SELECT
     COUNT(*) as actions,
     ROUND(AVG(duration_ms)) as avg_ms
 FROM agent_actions
-GROUP BY day, tier;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS v_dq_uplift AS
+GROUP BY day, tier
+/* v_tier_distribution(day,tier,actions,avg_ms) */;
+CREATE VIEW IF NOT EXISTS v_dq_uplift AS
 SELECT
     model,
     dq_enabled,
@@ -920,121 +930,22 @@ SELECT
     ROUND(AVG(overall_score), 2) as avg_score,
     COUNT(*) as samples
 FROM knowledge_benchmark_results
-GROUP BY model, dq_enabled, task_domain;
-
--- ── Views added for complete fresh-install coverage ───────────────────────────
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS autonomy_score AS
-SELECT
-    model_tier,
-    COUNT(*) AS total_objectives,
-    SUM(permission_approvals) AS total_approvals,
-    SUM(permission_denials) AS total_denials,
-    SUM(escalations_needed) AS total_escalations,
-    ROUND(100.0 * SUM(permission_approvals) /
-        NULLIF(SUM(permission_approvals) + SUM(permission_denials), 0), 1) AS approval_rate_pct,
-    ROUND(100.0 * SUM(CASE WHEN escalations_needed = 0 THEN 1 ELSE 0 END) / COUNT(*), 1) AS zero_escalation_pct
-FROM code_metrics
-GROUP BY model_tier
-ORDER BY zero_escalation_pct DESC;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS knowledge_benchmark_dq_uplift AS
-SELECT
-    b_on.model, b_on.task_domain,
-    ROUND(AVG(b_on.overall_score) - AVG(b_off.overall_score), 2) as score_uplift,
-    ROUND(AVG(b_off.tokens_total) - AVG(b_on.tokens_total), 0) as tokens_saved,
-    ROUND(AVG(b_off.messages_needed) - AVG(b_on.messages_needed), 1) as messages_saved,
-    ROUND(AVG(b_off.hallucination_count) - AVG(b_on.hallucination_count), 1) as hallucinations_reduced
-FROM knowledge_benchmark_results b_on
-JOIN knowledge_benchmark_results b_off
-    ON b_on.task_id = b_off.task_id AND b_on.model = b_off.model
-WHERE b_on.dq_enabled = 1 AND b_off.dq_enabled = 0
-GROUP BY b_on.model, b_on.task_domain;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS knowledge_benchmark_summary AS
-SELECT
-    config, model, dq_enabled, task_domain,
-    ROUND(AVG(overall_score), 2) as avg_score,
-    ROUND(AVG(tokens_total), 0) as avg_tokens,
-    ROUND(AVG(time_seconds), 1) as avg_time,
-    ROUND(AVG(messages_needed), 1) as avg_messages,
-    ROUND(AVG(cost_usd), 4) as avg_cost,
-    ROUND(AVG(hallucination_count), 1) as avg_hallucinations,
-    COUNT(*) as n_tasks
-FROM knowledge_benchmark_results
-GROUP BY config, model, dq_enabled, task_domain;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS revenue_by_channel AS
-SELECT platform, channel_name, COUNT(*) AS videos_published,
-    SUM(estimated_revenue) AS total_revenue,
-    ROUND(AVG(rpm),2) AS avg_rpm, SUM(views) AS total_views
-FROM video_metrics
-GROUP BY platform, channel_name
-ORDER BY total_revenue DESC;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS tier_comparison AS
-SELECT
-    model_tier, renderer,
-    COUNT(*) AS total_runs,
-    ROUND(AVG(lines_of_code), 0) AS avg_lines,
-    ROUND(AVG(cpu_seconds), 2) AS avg_cpu_s,
-    ROUND(AVG(memory_peak_mb), 1) AS avg_ram_mb,
-    ROUND(AVG(cpu_per_megapixel), 3) AS avg_cpu_per_mpx,
-    ROUND(AVG(ssim_score), 4) AS avg_ssim,
-    ROUND(AVG(speedup_vs_python), 2) AS avg_cpp_speedup,
-    SUM(uses_vectorization) AS vectorized_count,
-    SUM(passes_tests) AS tests_passed,
-    ROUND(100.0 * SUM(success) / COUNT(*), 1) AS success_rate_pct
-FROM code_metrics
-GROUP BY model_tier, renderer
-ORDER BY model_tier, renderer;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS tier_ranking AS
-SELECT
-    model_tier,
-    COUNT(DISTINCT renderer) AS renderers_completed,
-    ROUND(AVG(lines_of_code), 0) AS avg_lines_per_renderer,
-    ROUND(AVG(cpu_seconds), 2) AS avg_render_time_s,
-    ROUND(AVG(memory_peak_mb), 1) AS avg_memory_mb,
-    ROUND(AVG(ssim_score), 4) AS avg_visual_quality,
-    ROUND(AVG(speedup_vs_python), 2) AS avg_cpp_speedup,
-    ROUND(100.0 * SUM(success) / COUNT(*), 1) AS overall_success_pct,
-    ROUND(
-        (100.0 * SUM(success) / COUNT(*)) * 0.35 +
-        (100.0 - MIN(100, AVG(lines_of_code) / 2.0)) * 0.20 +
-        (100.0 - MIN(100, AVG(cpu_seconds) / 0.3)) * 0.20 +
-        (COALESCE(AVG(ssim_score), 0) * 100) * 0.25
-    , 1) AS composite_score
-FROM code_metrics
-GROUP BY model_tier
-ORDER BY composite_score DESC;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS top_performing_content AS
-SELECT mode_narrativo, renderer_used, platform, COUNT(*) AS total_videos,
-    ROUND(AVG(views_7d),0) AS avg_views_7d,
-    ROUND(AVG(retention_rate),2) AS avg_retention,
-    ROUND(AVG(ctr),3) AS avg_ctr,
-    ROUND(AVG(rpm),2) AS avg_rpm,
-    ROUND(AVG(performance_score),1) AS avg_score
-FROM video_metrics
-WHERE views > 0
-GROUP BY mode_narrativo, renderer_used, platform
-ORDER BY avg_score DESC;
-
-CREATE VIEW IF NOT EXISTS IF NOT EXISTS visual_convergence AS
-SELECT
-    project, model_tier, renderer,
-    COUNT(*) AS total_iterations,
-    MIN(ssim_score) AS worst_ssim,
-    MAX(ssim_score) AS best_ssim,
-    ROUND(MAX(ssim_score) - MIN(ssim_score), 4) AS ssim_improvement,
-    ssim_trend,
-    MIN(CASE WHEN ssim_score > 0.3 THEN iteration_number END) AS cycles_to_good_quality
-FROM code_metrics
-WHERE ssim_score IS NOT NULL
-GROUP BY project, model_tier, renderer
-ORDER BY best_ssim DESC;
-
+GROUP BY model, dq_enabled, task_domain
+/* v_dq_uplift(model,dq_enabled,domain,avg_score,samples) */;
+CREATE TABLE IF NOT EXISTS cc_rate_limit (
+                chat_id TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+CREATE TABLE IF NOT EXISTS chunk_health (
+    chunk_id    INTEGER PRIMARY KEY,
+    domain      TEXT    DEFAULT '',
+    redundancy_score REAL DEFAULT 0.5,
+    freshness   TEXT    DEFAULT 'unknown',
+    usage_30d   INTEGER DEFAULT 0,
+    verdict     TEXT    DEFAULT 'keep',
+    reviewed_at TEXT    DEFAULT (datetime('now')),
+    FOREIGN KEY (chunk_id) REFERENCES vector_chunks(id)
+);
 CREATE TABLE IF NOT EXISTS token_usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1046,12 +957,11 @@ CREATE TABLE IF NOT EXISTS token_usage (
     output_tokens INTEGER,
     total_tokens INTEGER,
     cost_estimate REAL,
-    source TEXT DEFAULT 'claude_code',
-    task_complexity TEXT  -- READ_ONLY|SIMPLE_WRITE|CODE_GEN|ARCHITECTURE|CRITICAL
-);
-
+    source TEXT DEFAULT "claude_code"
+, task_complexity TEXT);
 CREATE VIEW IF NOT EXISTS token_usage_daily AS
 SELECT date(timestamp) as day, model, tier, COUNT(*) as calls,
 SUM(input_tokens) as total_input, SUM(output_tokens) as total_output,
 SUM(total_tokens) as total_tokens, SUM(cost_estimate) as total_cost
-FROM token_usage GROUP BY day, model, tier;
+FROM token_usage GROUP BY day, model, tier
+/* token_usage_daily(day,model,tier,calls,total_input,total_output,total_tokens,total_cost) */;

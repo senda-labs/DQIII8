@@ -16,12 +16,15 @@ import asyncio
 import json
 import logging
 import re
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-log = logging.getLogger(__name__)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 
 # ── Cost constants (USD per 1M tokens) ─────────────────────────────────────
 _COST = {

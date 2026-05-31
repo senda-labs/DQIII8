@@ -41,7 +41,7 @@ else:
     os.environ.pop("DQIII8_ROOT", None)
 
 # Apply schema to the temp DB
-_SCHEMA = Path(__file__).parent.parent / "database" / "schema_temporal.sql"
+_SCHEMA = Path(__file__).parent.parent / "database" / "legacy" / "schema_temporal.sql"
 
 
 @pytest.fixture(autouse=True)
@@ -218,11 +218,7 @@ def test_vector_store_init_and_upsert():
     """vec0 table can be created and vectors inserted/searched."""
     # Ensure schema is applied
     conn = sqlite3.connect(str(_TMP_PATH))
-    conn.executescript(
-        (Path(__file__).parent.parent / "database" / "schema_temporal.sql").read_text(
-            encoding="utf-8"
-        )
-    )
+    conn.executescript(_SCHEMA.read_text(encoding="utf-8"))
     conn.close()
 
     vs.init_vec_table()

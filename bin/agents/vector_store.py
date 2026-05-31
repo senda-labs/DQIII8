@@ -25,6 +25,10 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
+
 import sqlite_vec
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
@@ -194,7 +198,7 @@ def migrate_from_json(verbose: bool = True) -> dict:
             data = json.loads(idx_path.read_text(encoding="utf-8"))
         except Exception as exc:
             if verbose:
-                print(f"  [skip] {idx_path}: {exc}", file=sys.stderr)
+                log.warning(f"[skip] {idx_path}: {exc}")
             errors += 1
             continue
 
@@ -248,7 +252,7 @@ def migrate_from_json(verbose: bool = True) -> dict:
 
         if verbose:
             label = agent_name or domain
-            print(f"  {label:30s} {len(data):4d} chunks")
+            log.info(f"{label:30s} {len(data):4d} chunks")
 
     elapsed = time.perf_counter() - t0
     stats = {
@@ -260,7 +264,7 @@ def migrate_from_json(verbose: bool = True) -> dict:
     }
 
     if verbose:
-        print(f"\n  Migrated: {new_chunks}/{total_chunks} new chunks in {elapsed:.2f}s")
+        log.info(f"Migrated: {new_chunks}/{total_chunks} new chunks in {elapsed:.2f}s")
 
     return stats
 
@@ -317,10 +321,7 @@ def search_text(
     """Embed query text and run KNN search. Returns same format as search_vectors."""
     emb = _embed_query(query)
     if emb is None:
-        print(
-            "[vector_store] No embedder available — cannot run KNN search",
-            file=sys.stderr,
-        )
+        log.warning("No embedder available — cannot run KNN search")
         return []
     return search_vectors(emb, top_k=top_k, domain=domain, agent_name=agent_name)
 

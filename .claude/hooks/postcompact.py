@@ -10,6 +10,8 @@ Always exits 0 — never abort.
 """
 
 import json
+import logging
+import logging.handlers
 import os
 import sqlite3
 import sys
@@ -21,6 +23,19 @@ DB = JARVIS / "database" / "dqiii8.db"
 LESSONS = JARVIS / "tasks" / "lessons.md"
 STATE_FILE = JARVIS / "tasks" / "precompact_state.json"
 
+_log = logging.getLogger("dqiii8.postcompact")
+if not _log.handlers:
+    _log.setLevel(logging.DEBUG)
+    _log_dir = Path("/var/log/dqiii8")
+    if _log_dir.exists():
+        _fh = logging.handlers.RotatingFileHandler(
+            str(_log_dir / "hooks.log"), maxBytes=2_000_000, backupCount=3
+        )
+        _fh.setFormatter(logging.Formatter("%(asctime)s [postcompact] %(levelname)s %(message)s"))
+        _log.addHandler(_fh)
+    else:
+        _log.addHandler(logging.NullHandler())
+
 try:
     data = json.load(sys.stdin)
 except Exception:
@@ -31,8 +46,8 @@ pre_state: dict = {}
 try:
     if STATE_FILE.exists():
         pre_state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("pre-compact state unreadable: %s", e)
 
 # ── Active project ───────────────────────────────────────────────────
 project = (
@@ -48,8 +63,8 @@ try:
     if LESSONS.exists():
         all_lines = LESSONS.read_text(encoding="utf-8").splitlines()
         lessons = [l for l in all_lines if l.strip().startswith("[20")][-3:]
-except Exception:
-    pass
+except Exception as e:
+    _log.debug("lessons unreadable: %s", e)
 
 # ── Latest audit score ───────────────────────────────────────────────
 audit_info = "No audit"
@@ -63,8 +78,8 @@ try:
         conn.close()
         if row:
             audit_info = f"{row[0][:10]} | Score: {row[1]}/100"
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("audit-score DB failed: %s", e)
 
 # ── Project next step ────────────────────────────────────────────────
 next_step = "Not defined"
@@ -77,8 +92,8 @@ try:
                 if i + 1 < len(lines) and lines[i + 1].strip():
                     next_step = lines[i + 1].strip()
                 break
-except Exception:
-    pass
+except Exception as e:
+    _log.debug("next-step unreadable: %s", e)
 
 # ── Session stats before compact ─────────────────────────────────────
 actions_before = pre_state.get("actions_count", "?")

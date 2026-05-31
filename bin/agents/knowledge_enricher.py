@@ -990,5 +990,5 @@ if __name__ == "__main__":
     result, chunks = enrich_with_knowledge(
         raw, args.domain, args.max_chunks, min_similarity=args.min_sim
     )
-    print(f"[enricher] chunks_used={chunks}", file=sys.stderr)
+    log.info("chunks_used=%d", chunks)
     print(result)

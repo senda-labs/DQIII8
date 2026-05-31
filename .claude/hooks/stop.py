@@ -4,7 +4,7 @@ DQIII8 Hook — Stop
 Closes session in DB, updates lessons.md, auto-commit, audit flag.
 """
 
-import sys, json, os, subprocess
+import sys, json, os, subprocess, logging, logging.handlers
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -12,6 +12,20 @@ try:
     data = json.load(sys.stdin)
 except Exception:
     data = {}
+
+# ── Logging setup ──────────────────────────────────────────────────────
+_log = logging.getLogger("dqiii8.stop")
+if not _log.handlers:
+    _log.setLevel(logging.DEBUG)
+    _log_dir = Path("/var/log/dqiii8")
+    if _log_dir.exists():
+        _fh = logging.handlers.RotatingFileHandler(
+            str(_log_dir / "hooks.log"), maxBytes=2_000_000, backupCount=3
+        )
+        _fh.setFormatter(logging.Formatter("%(asctime)s [stop] %(levelname)s %(message)s"))
+        _log.addHandler(_fh)
+    else:
+        _log.addHandler(logging.NullHandler())
 
 session = data.get("session_id", "unknown")
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
@@ -61,7 +75,7 @@ try:
 
     lessons_added = max(0, lines_after - lines_before)
 
-    # Fallback 1: git diff of working tree (covers uncommitted lessons.md)
+    # Fallback 1: git diff of working tree
     if lessons_added == 0:
         diff_count = sum(
             1 for line in result.stdout.splitlines() if _is_lesson_line(line)
@@ -79,8 +93,8 @@ try:
                 _fb2_start = datetime.fromisoformat(
                     _ts_file.read_text(encoding="utf-8").strip()
                 )
-        except Exception:
-            pass
+        except Exception as _e:
+            _log.debug("session-ts parse: %s", _e)
         log_result = subprocess.run(
             [
                 "git",
@@ -108,8 +122,8 @@ try:
                     )
                     if commit_dt < _fb2_start:
                         continue  # commit pre-dates this session — skip
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _log.debug("commit-date parse: %s", _e)
             result2 = subprocess.run(
                 [
                     "git",
@@ -132,8 +146,8 @@ try:
                 lessons_added = count2
                 result = result2  # update for instincts
                 break
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("lesson-count failed", exc_info=True)
 
 # ── 0a-supplement. Add implicit lessons captured by post_tool_use ──
 try:
@@ -156,8 +170,8 @@ try:
             ).fetchone()[0]
             lessons_added += _vault_count or 0
         _vc.close()
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("lesson-supplement DB failed", exc_info=True)
 
 
 # ── 0a-bis. Auto-lesson detector (pattern-based, $0 cost) ────────
@@ -177,7 +191,7 @@ try:
             f"[DQIII8] {_auto_count} auto-lesson(s) detected ({_patterns_count} patterns)"
         )
 except Exception as _ale:
-    pass
+    _log.debug("auto_learner unavailable: %s", _ale)
 
 # ── 0b. Extract instincts from lessons.md ─────────────────────────
 try:
@@ -230,8 +244,8 @@ try:
         _ic.close()
         if _inserted:
             print(f"[DQIII8] {_inserted} instinct(s) extracted from lessons.md")
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("instinct-extract failed", exc_info=True)
 
 # ── 0c. Vault Memory extraction (session ≥ 10 min) ───────────────
 try:
@@ -323,8 +337,8 @@ try:
                         _vic.close()
                         if _vcnt:
                             print(f"[DQIII8] {_vcnt} vault fact(s) extracted")
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("vault-memory failed", exc_info=True)
 
 # ── 0d. Intelligence Loop — boost/decay instinct confidence ───────
 try:
@@ -369,8 +383,8 @@ try:
                         if (_now_dt - _lap).days > 30:
                             _iconf = max(0.10, _iconf - 0.03)
                             _updated += 1
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        _log.debug("instinct-date parse: %s", _e)
                 _ic.execute(
                     "UPDATE instincts SET confidence=? WHERE id=?", (_iconf, _iid)
                 )
@@ -378,8 +392,8 @@ try:
             _ic.close()
             if _updated:
                 print(f"[DQIII8] intelligence loop: {_updated} instinct(s) updated")
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("intelligence-loop failed", exc_info=True)
 
 # ── 1. Close session in DB ────────────────────────────────────────
 try:
@@ -447,8 +461,8 @@ try:
                         0 if (row[1] or 0) > 0 else 1,
                     ),
                 )
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("session-close DB failed", exc_info=True)
 
 # ── 1b. Reconcile error_log with agent_actions ────────────────────
 try:
@@ -489,8 +503,8 @@ try:
         )
         _lm_conn.commit()
         _lm_conn.close()
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("learning-metrics DB failed", exc_info=True)
 
 # -- 1d. Cleanup auto-installed Tier 3 plugins
 try:
@@ -501,7 +515,7 @@ try:
     if _pm_removed:
         print(f'[DQIII8] {_pm_removed} Tier 3 plugin(s) auto-uninstalled')
 except Exception as _pm_e:
-    pass  # cleanup failure never blocks shutdown
+    _log.debug("plugin-cleanup skipped: %s", _pm_e)
 
 # ── 2. Auto-commit lessons.md + projects/*.md ──────────────────────
 try:
@@ -543,8 +557,8 @@ try:
                 capture_output=True,
                 timeout=10,
             )
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("auto-commit failed", exc_info=True)
 
 # ── 2b. Git push after auto-commit ────────────────────────────────
 try:
@@ -725,8 +739,8 @@ duration: {_duration_str}
             except Exception as _ge:
                 print(f"[DQIII8] Gemini review skip: {_ge}")
 
-except Exception:
-    pass  # handover failure never blocks shutdown
+except Exception as e:
+    _log.warning("handover failed", exc_info=True)
 
 # ── 5. SPC audit triggers (replaces simple 7-day flag) ────────────
 try:
@@ -765,8 +779,8 @@ except Exception as _spc_e:
                 (JARVIS / "tasks" / "audit_pending.flag").write_text(
                     "Audit pending — run /audit at the start of the next session."
                 )
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.warning("spc-fallback failed", exc_info=True)
 
 # ── 6. Sync context-mode events → agent_actions ───────────────────
 try:

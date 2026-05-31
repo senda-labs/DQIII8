@@ -18,11 +18,14 @@ Timeout: 2s hard limit.
 """
 
 import json
+import logging
 import os
 import signal
 import sqlite3
 import sys
 import time
+
+log = logging.getLogger("dqiii8." + __name__)
 
 DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/dqiii8")
 DB = os.path.join(DQIII8_ROOT, "database", "dqiii8.db")
@@ -109,8 +112,8 @@ def _resolve_agent(data: dict) -> str:
         try:
             with open(f"/tmp/dqiii8_agent_{session}.json", encoding="utf-8") as _f:
                 agent = json.load(_f).get("agent_type", "")
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("post_tool_use_failure: agent lookup file read failed (best-effort): %s", e)
     if not agent:
         agent = "claude-sonnet-4-6"
 
@@ -188,8 +191,8 @@ def main() -> None:
 
         conn.commit()
         conn.close()
-    except Exception:
-        pass  # never block on logging failure
+    except Exception as e:
+        log.warning("post_tool_use_failure: error_log/agent_actions DB write failed: %s", e, exc_info=True)  # never block on logging failure
 
     sys.exit(0)
 

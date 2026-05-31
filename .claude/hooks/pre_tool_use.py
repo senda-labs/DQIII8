@@ -13,10 +13,13 @@ v7 changes (ADR-001 corrections):
 """
 
 import json
+import logging
 import os
 import re
 import sys
 import time
+
+log = logging.getLogger("dqiii8." + __name__)
 
 try:
     data = json.load(sys.stdin)
@@ -56,8 +59,8 @@ except Exception as _e:
 if result["decision"] in ("DENY", "ESCALATE"):
     try:
         record_rejection(tool, inp, result)
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("pre_tool_use: record_rejection failed: %s", e, exc_info=True)
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -101,8 +104,8 @@ try:
         )
         _conn.commit()
         _conn.close()
-except Exception:
-    pass
+except Exception as e:
+    log.warning("pre_tool_use: agent_actions metrics insert failed: %s", e, exc_info=True)
 
 # ── OAuth protection ──────────────────────────────────────────────────────────
 _OAUTH_FILES = ["/root/.claude.json", "/root/.claude/.credentials.json"]
@@ -124,8 +127,8 @@ _rules_context = ""
 try:
     from rules_dispatcher import get_rules
     _rules_context = get_rules(tool, inp)
-except Exception:
-    pass  # never block on rules injection failure
+except Exception as e:
+    log.debug("pre_tool_use: rules RAG injection failed (best-effort): %s", e)  # never block on rules injection failure
 
 # ── Output Truncation: wrap large-output Bash commands ───────────────────────
 # Detects commands likely to produce >3000 chars and appends the truncation

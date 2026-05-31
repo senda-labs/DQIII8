@@ -22,6 +22,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
+
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
 SPC_TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS spc_metrics (
@@ -223,7 +228,7 @@ def main() -> None:
     result = check_triggers(session_id)
     print(json.dumps(result, indent=2))
     if result.get("trigger"):
-        print(f"\n[SPC] AUDIT TRIGGERED — {result['reason']}", file=sys.stderr)
+        log.warning("AUDIT TRIGGERED — %s", result["reason"])
         import subprocess as _sp
         _sp.run(
             ["python3", str(DQIII8_ROOT / "bin" / "monitoring" / "auditor_local.py")],

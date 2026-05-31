@@ -24,12 +24,15 @@ Output via stdout: {"decision": "allow"|"deny", "reason": "..."}
 """
 
 import json
+import logging
 import os
 import sqlite3
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+log = logging.getLogger("dqiii8." + __name__)
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
@@ -217,8 +220,8 @@ def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> di
                     "ESCALA",
                 ):
                     return parsed
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
-        pass
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
+        log.warning("permission_request: LLM supervisor subprocess call failed: %s", e, exc_info=True)
 
     # Timeout or error → PERMITE (do not block autonomy on LLM failure)
     return {"decision": "PERMITE", "reason": "llm-timeout-3s"}
@@ -260,8 +263,8 @@ def _poll_for_response(perm_file: Path, start: float, max_wait: float) -> dict |
                 response = json.loads(perm_file.read_text(encoding="utf-8"))
                 perm_file.unlink(missing_ok=True)
                 return response
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("permission_request: perm_file poll parse failed (best-effort): %s", e)
         time.sleep(POLL_INTERVAL_S)
     return None
 
@@ -285,8 +288,8 @@ def _log_decision(
         )
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("permission_request: _log_decision DB write failed: %s", e, exc_info=True)
 
 
 def _layer3_telegram_flow(

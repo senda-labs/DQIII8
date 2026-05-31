@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Notification utilities for DQIII8. Uses direct API calls to avoid bot daemon conflicts."""
 
+import logging
 import os
 import sys
 from pathlib import Path
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 
 
 def send_document(file_path: str | Path, caption: str = "") -> bool:
@@ -66,7 +71,7 @@ def send_telegram(message: str, parse_mode: str = None) -> bool:
 def notify(message: str, parse_mode: str = None):
     """Best-effort notification. Tries Telegram, falls back to print."""
     if not send_telegram(message, parse_mode=parse_mode):
-        print(f"[notify] {message}")
+        log.warning("notify fallback (Telegram unavailable): %s", message)
 
 
 if __name__ == "__main__":

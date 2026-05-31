@@ -42,9 +42,9 @@ for _d in [
 from embeddings import cosine_similarity, get_embedding
 from db import get_db
 
-import logging
-
-log = logging.getLogger(__name__)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 JARVIS = Path(os.environ.get("DQIII8_ROOT", str(_DQIII8_ROOT)))
 KNOWLEDGE_DIR = JARVIS / "knowledge"
 

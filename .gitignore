@@ -34,6 +34,7 @@ id_ed25519
 
 # Dashboard auth token
 database/.dashboard_token
+database/system_profile.json
 
 # Pytest
 .pytest_cache/
@@ -44,9 +45,8 @@ tasks/nightly-report.md
 # Agent worktrees (ephemeral)
 .claude/worktrees/
 
-# Skills cache (downloaded via /skills-sync)
-skills-registry/cache/everything-claude-code/
-skills-registry/cache/awesome-subagents/
+# Skills cache (downloaded via /skills-sync — external repos, do not version)
+skills-registry/cache/
 
 # Ephemeral state flags
 tasks/audit_pending.flag
@@ -60,6 +60,7 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+venv/
 *.egg-info/
 
 # Windows
@@ -67,20 +68,10 @@ Thumbs.db
 desktop.ini
 *.lnk
 
-# Secrets (should never end up here)
-.env
-*.pem
-*.key
-id_rsa
-id_ed25519
-venv/
 # Aider
 .aider.chat.history.md
 .aider.input.history
 .aider*
-
-# Skills cache (external repos — do not version)
-skills-registry/cache/
 
 # Internal logs
 database/system_metrics.log
@@ -95,6 +86,7 @@ tasks/test_results/
 
 # Internal system files
 .jarvis_proposito
+.dqiii8_proposito
 objectives/active/
 objectives/failed/
 
@@ -106,9 +98,6 @@ tasks/precompact_state.json
 # Premium features (not included in free tier)
 knowledge/*/user_uploads/
 knowledge/**/PREMIUM_*
-
-
-# Premium knowledge (not in public tier)
 knowledge/*/PREMIUM_*
 knowledge/*/*/PREMIUM_*
 knowledge/**/templates/
@@ -140,7 +129,6 @@ PLAN_MAESTRO.md
 00_DASHBOARD.md
 CHANGELOG.md
 !docs/CHANGELOG.md
-pyproject.toml
 
 # Internal directories
 context/
@@ -149,7 +137,6 @@ projects/
 tasks/
 decisions/
 database/audit_reports/
-database/system_metrics.log
 database/qdrant/
 
 # User projects — track placeholder only, never project contents
@@ -174,10 +161,8 @@ bin/script_benchmark.py
 *.swp
 *.swo
 *~
-database/.dashboard_token
-database/system_profile.json
 
-# Editor files (from ECC reference)
+# Editor files
 .idea/
 .vscode/
 *.sublime-project
@@ -185,10 +170,6 @@ database/system_profile.json
 .project
 .classpath
 .settings/
-
-# Additional env patterns
-.env.local
-.env.*.local
 
 # Temporary files
 tmp/
@@ -208,28 +189,16 @@ coverage/
 
 # Logs (generic)
 logs/
-.mcp.json
-
-# Sessions (private — never commit)
-sessions/
 
 # Project private context (never commit)
 my-projects/PROJECT.md
 my-projects/*/PROJECT.md
-
-# System flags
-.dqiii8_proposito
-.jarvis_proposito
 
 # Docs with internal info (premium-only)
 docs/CHECKPOINT_*.md
 docs/dqiii8_guide.html
 docs/ROADMAP_TO_10.md
 docs/PRO_CANDIDATES.md
-
-# Internal docs (premium-only)
-docs/PRO_CANDIDATES.md
-docs/ROADMAP_TO_10.md
 docs/ARCHITECTURE.md
 
 # Chat uploads (private)
@@ -241,3 +210,13 @@ tasks/audit/
 # Superpowers plans/specs (private — internal roadmaps)
 docs/superpowers/
 
+# Security — never commit credentials or purge logs
+secrets_to_purge.txt
+*.purge.txt
+
+# Obsidian workspace artifacts
+*.canvas
+.obsidian/
+
+# Gitleaks config (keep local, not in repo)
+.gitleaks.toml

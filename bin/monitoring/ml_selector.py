@@ -11,9 +11,10 @@ import sqlite3
 import sys
 from pathlib import Path
 
-import logging
-log = logging.getLogger(__name__)
 DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(DQIII8_ROOT))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
 MODEL_PATH = DQIII8_ROOT / "models" / "tier_predictor.pkl"
 

@@ -12,10 +12,13 @@ Responsibilities:
 
 import sys
 import json
+import logging
 import time
 import os
 import subprocess
 from pathlib import Path
+
+log = logging.getLogger("dqiii8." + __name__)
 
 try:
     data = json.load(sys.stdin)
@@ -59,8 +62,8 @@ if resolved_name in WORKTREE_AGENTS and agent_id:
             timeout=15,
         )
         worktree_path = wt_dir
-    except Exception:
-        pass  # worktree failure must never block agent execution
+    except Exception as e:
+        log.warning("subagent_start: git worktree creation failed: %s", e, exc_info=True)  # worktree failure must never block agent execution
 
 # ── Step 1: Write lookup file (secure, no /tmp race condition) ───────────────
 if agent_id:
@@ -81,8 +84,8 @@ if agent_id:
         fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(lookup, f)
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("subagent_start: agent lookup file write failed: %s", e, exc_info=True)
 
 # ── Step 2: INSERT into agent_registry ──────────────────────────────────────
 try:
@@ -102,8 +105,8 @@ try:
         )
         conn.commit()
         conn.close()
-except Exception:
-    pass  # logging never blocks execution
+except Exception as e:
+    log.warning("subagent_start: agent_registry INSERT failed: %s", e, exc_info=True)  # logging never blocks execution
 
 # ── Step 3: Inject additionalContext ────────────────────────────────────────
 ctx = (

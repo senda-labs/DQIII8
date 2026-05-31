@@ -9,6 +9,8 @@ Exit 0 always: never abort the compaction.
 """
 
 import json
+import logging
+import logging.handlers
 import os
 import sqlite3
 import sys
@@ -19,6 +21,19 @@ JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = JARVIS / "database" / "dqiii8.db"
 STATE_FILE = JARVIS / "tasks" / "precompact_state.json"
 SESSION_ID = os.environ.get("CLAUDE_SESSION_ID", "unknown")
+
+_log = logging.getLogger("dqiii8.precompact")
+if not _log.handlers:
+    _log.setLevel(logging.DEBUG)
+    _log_dir = Path("/var/log/dqiii8")
+    if _log_dir.exists():
+        _fh = logging.handlers.RotatingFileHandler(
+            str(_log_dir / "hooks.log"), maxBytes=2_000_000, backupCount=3
+        )
+        _fh.setFormatter(logging.Formatter("%(asctime)s [precompact] %(levelname)s %(message)s"))
+        _log.addHandler(_fh)
+    else:
+        _log.addHandler(logging.NullHandler())
 
 try:
     data = json.load(sys.stdin)
@@ -57,14 +72,14 @@ try:
     )
     conn.commit()
     conn.close()
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("db-stats read failed: %s", e, exc_info=True)
 
 # ── Write state file for post-compact recovery ─────────────────────
 try:
     STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
-except Exception:
-    pass
+except Exception as e:
+    _log.warning("state-file write failed: %s", e, exc_info=True)
 
 # PreCompact must output {} and exit 0 (never abort compaction)
 print(json.dumps({}))

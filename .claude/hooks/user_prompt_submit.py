@@ -14,12 +14,15 @@ Rules:
 """
 
 import json
+import logging
 import os
 import re
 import signal
 import sqlite3
 import sys
 from pathlib import Path
+
+log = logging.getLogger("dqiii8." + __name__)
 
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 PROJECTS_DIR = JARVIS / "projects"
@@ -169,8 +172,8 @@ def _log_skill_invocation(skill_name: str) -> None:
             )
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("user_prompt_submit: _log_skill_invocation skill_metrics write failed: %s", e, exc_info=True)
 
 
 def _spc_alert() -> str:

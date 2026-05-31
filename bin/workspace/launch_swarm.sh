@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SESSION="${1:-dqiii8-swarm}"
-DQIII8="/root/dqiii8"
+DQIII8="${DQIII8_ROOT:-/root/dqiii8}"
 
 # Kill existing session if present
 tmux kill-session -t "$SESSION" 2>/dev/null || true

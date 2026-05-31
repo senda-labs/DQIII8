@@ -29,6 +29,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 
@@ -37,7 +40,7 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 MAX_TOKENS_PER_CALL = 256
 CALL_DELAY_S = 2.0  # conservative — Groq free tier has burst limits
 
-log = logging.getLogger(__name__)
+log = _get_logger(__name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -203,15 +206,13 @@ def cmd_generate(domain: str | None, dry_run: bool) -> None:
 
     pending = [c for c in chunks if chunk_hash(c["text"]) not in cached]
     label = domain or "ALL"
-    print(
-        f"\n[key_facts] domain={label}  chunks={len(chunks)}  cached={len(cached)}  pending={len(pending)}"
-    )
+    log.info("domain=%s chunks=%d cached=%d pending=%d", label, len(chunks), len(cached), len(pending))
     if not pending:
-        print("[key_facts] Nothing to do.")
+        log.info("Nothing to do")
         return
 
     if dry_run:
-        print(f"[key_facts] --dry-run: would process {len(pending)} chunks.")
+        log.info("--dry-run: would process %d chunks", len(pending))
         return
 
     ok = skipped = errors = 0
@@ -223,9 +224,7 @@ def cmd_generate(domain: str | None, dry_run: bool) -> None:
         raw = _call_groq(prompt, token)
 
         if raw == "__RATE_LIMITED__":
-            print(
-                f"  [{i}/{len(pending)}] Rate-limited — stopping. ({ok} done, {skipped} skipped)"
-            )
+            log.info("Rate-limited — stopping. (%d done, %d skipped)", ok, skipped)
             break
 
         if raw is None:
@@ -244,11 +243,11 @@ def cmd_generate(domain: str | None, dry_run: bool) -> None:
         _save_facts(ch, chunk["source"], chunk.get("domain") or "", facts)
         ok += 1
         if i % 10 == 0 or i == len(pending):
-            print(f"  [{i}/{len(pending)}] ok={ok} skip={skipped} err={errors}")
+            log.info("Processed %d/%d ok=%d skip=%d err=%d", i, len(pending), ok, skipped, errors)
 
         time.sleep(CALL_DELAY_S)
 
-    print(f"\n[key_facts] Done — ok={ok} skipped={skipped} errors={errors}")
+    log.info("Done — ok=%d skipped=%d errors=%d", ok, skipped, errors)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

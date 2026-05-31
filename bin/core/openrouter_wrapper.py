@@ -24,8 +24,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import logging
-
-log = logging.getLogger(__name__)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 # ── Provider configuration ──────────────────────────────────────────────────
 
 PROVIDERS = {
@@ -391,10 +392,9 @@ def load_agent_system_prompt(agent_name: str, prompt: str = "") -> str:
                 _spec.loader.exec_module(_dl)
                 result = _dl.get_domain_lens(prompt, domain)
                 if result.get("system_prompt"):
-                    print(
-                        f"[DQIII8] domain lens: agent={agent_name} "
-                        f"domain={domain} chunks={result['chunks_used']}",
-                        file=sys.stderr,
+                    log.debug(
+                        "domain lens: agent=%s domain=%s chunks=%s",
+                        agent_name, domain, result["chunks_used"],
                     )
                     return result["system_prompt"]
         except Exception as _exc:
@@ -880,14 +880,11 @@ def main() -> None:
     elif not sys.stdin.isatty():
         prompt = sys.stdin.read().strip()
     else:
-        print(
-            "[openrouter_wrapper] Error: proporciona un prompt o usa stdin.",
-            file=sys.stderr,
-        )
+        log.error("no prompt provided — use stdin or pass a prompt argument")
         sys.exit(1)
 
     if not prompt:
-        print("[openrouter_wrapper] Error: empty prompt.", file=sys.stderr)
+        log.error("empty prompt")
         sys.exit(1)
 
     # Capture original prompt for working memory (before DQ enrichment mutates it)
@@ -997,10 +994,9 @@ def main() -> None:
                         _cg = _ilu.module_from_spec(_spec_cg)
                         _spec_cg.loader.exec_module(_cg)
                         if not _cg.should_enrich(prompt, _domain, _chunks, _gate_tier):
-                            print(
-                                f"[DQIII8] confidence gate: skip enrichment "
-                                f"domain={_domain} tier={_gate_tier} chunks={len(_chunks)}",
-                                file=sys.stderr,
+                            log.debug(
+                                "confidence gate: skip enrichment domain=%s tier=%d chunks=%d",
+                                _domain, _gate_tier, len(_chunks),
                             )
                             _chunks = []
                 except Exception as _exc:
@@ -1018,11 +1014,10 @@ def main() -> None:
                     prompt = _ia_result["amplified"]
                     _knowledge_chunks = _ia_result["chunks_used"]
                     _enriched_domain = _domain
-                    print(
-                        f"[DQIII8] pipeline: domain={_domain} "
-                        f"chunks={_knowledge_chunks} "
-                        f"intent={_ia_result['intent']} tier={_ia_result['tier']}",
-                        file=sys.stderr,
+                    log.debug(
+                        "pipeline: domain=%s chunks=%d intent=%s tier=%s",
+                        _domain, _knowledge_chunks,
+                        _ia_result["intent"], _ia_result["tier"],
                     )
     except Exception as _exc:
         log.warning("%s: %s", __name__, _exc)
@@ -1047,10 +1042,8 @@ def main() -> None:
                     prompt, _routing_domain
                 )
                 if _sel_agent != "default":
-                    print(
-                        f"[DQIII8] domain selector: {_sel_agent} "
-                        f"(domain={_routing_domain})",
-                        file=sys.stderr,
+                    log.debug(
+                        "domain selector: %s domain=%s", _sel_agent, _routing_domain
                     )
         except Exception as _exc:
             log.warning("selector/enricher failed: %s", _exc)
@@ -1082,10 +1075,7 @@ def main() -> None:
         and _routing_domain is not None
         and _routing_domain != "applied_sciences"
     ):
-        print(
-            f"[DQIII8] Tier C skipped: domain={_routing_domain}, escalated to B",
-            file=sys.stderr,
-        )
+        log.info("Tier C skipped: domain=%s, escalated to B", _routing_domain)
         primary_provider = "groq"
         primary_model = "llama-3.3-70b-versatile"
         _escalated_from_ollama = True
@@ -1095,10 +1085,7 @@ def main() -> None:
     if not system_prompt and _domain_system:
         system_prompt = _domain_system
     if system_prompt:
-        print(
-            f"[DQIII8] system prompt loaded: {agent_name} ({len(system_prompt)} chars)",
-            file=sys.stderr,
-        )
+        log.debug("system prompt loaded: %s (%d chars)", agent_name, len(system_prompt))
 
     # Construir cadena: primario + fallbacks
     chain = [(primary_provider, primary_model)]
@@ -1129,7 +1116,7 @@ def main() -> None:
 
     # Intentar cada proveedor en orden
     for provider, model in chain:
-        print(f"[DQIII8] {agent_name} | {provider} | {model}", file=sys.stderr)
+        log.info("%s | %s | %s", agent_name, provider, model)
         t0 = int(time.time() * 1000)
         text, tokens_in, tokens_out, ok = stream_response(
             provider, model, prompt, system_prompt
@@ -1162,12 +1149,10 @@ def main() -> None:
                     pass  # fail-open
             sys.exit(0)
 
-        print(f"[DQIII8] {provider} failed — trying next...", file=sys.stderr)
+        log.warning("%s failed — trying next...", provider)
         _log_escalation("cli", agent_name, provider, model, err_msg)
 
-    print(
-        "\n[openrouter_wrapper] Error: todos los providers fallaron.", file=sys.stderr
-    )
+    log.error("all providers failed")
     sys.exit(1)
 
 

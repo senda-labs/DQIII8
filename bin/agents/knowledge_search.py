@@ -24,6 +24,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
 from embeddings import get_embedding, cosine_similarity
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
+
 # Approximate tokens = chars / 4
 CHARS_PER_TOKEN = 4
 
@@ -94,7 +98,7 @@ def main() -> None:
     try:
         results = search(args.agent, args.query, top_k=args.top_k)
     except FileNotFoundError as exc:
-        print(f"[ERROR] {exc}", file=sys.stderr)
+        log.error(str(exc))
         sys.exit(1)
     elapsed_ms = (time.perf_counter() - t0) * 1000
 

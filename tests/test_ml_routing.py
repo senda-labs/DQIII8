@@ -19,7 +19,13 @@ DQIII8_ROOT = Path(__file__).parent.parent
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 sys.path.insert(0, str(DQIII8_ROOT))
 
-from bin.orchestrator import classify_cc_tier, classify_task_complexity
+from bin.orchestrator import (
+    classify_cc_tier,
+    classify_task_complexity,
+    detect_task_type,
+    select_tier,
+    should_fallback,
+)
 
 # ── classify_task_complexity ──────────────────────────────────────────────────
 
@@ -160,6 +166,84 @@ class TestClassifyCcTier:
 
     def test_git_exec_kw_returns_a(self):
         assert classify_cc_tier("run git status") == "A"
+
+
+# ── detect_task_type ──────────────────────────────────────────────────────────
+
+
+class TestDetectTaskType:
+    def test_planning_keywords(self):
+        assert detect_task_type("plan the migration") == "planning"
+        assert detect_task_type("diseña la arquitectura") == "planning"
+        assert detect_task_type("analyze the bottlenecks") == "planning"
+
+    def test_execution_verbs(self):
+        assert detect_task_type("create a function") == "execution"
+        assert detect_task_type("fix the bug in auth") == "execution"
+        assert detect_task_type("implement retry logic") == "execution"
+
+    def test_execution_keywords(self):
+        assert detect_task_type("there is a traceback in the logs") == "execution"
+        assert detect_task_type("refactor this module") == "execution"
+
+    def test_knowledge_queries(self):
+        assert detect_task_type("what is bge-m3") == "knowledge"
+        assert detect_task_type("how does the orchestrator work") == "knowledge"
+        assert detect_task_type("hola") == "knowledge"
+
+    def test_pure_function_no_side_effects(self):
+        r1 = detect_task_type("plan it")
+        r2 = detect_task_type("plan it")
+        assert r1 == r2 == "planning"
+
+
+# ── select_tier ───────────────────────────────────────────────────────────────
+
+
+class TestSelectTier:
+    def test_planning_maps_to_a(self):
+        assert select_tier("planning") == "A"
+
+    def test_execution_maps_to_a(self):
+        assert select_tier("execution") == "A"
+
+    def test_knowledge_short_maps_to_c(self):
+        assert select_tier("knowledge", 0) == "C"
+        assert select_tier("knowledge", 150) == "C"
+
+    def test_knowledge_long_prompt_maps_to_a(self):
+        assert select_tier("knowledge", 301) == "A"
+        assert select_tier("knowledge", 1000) == "A"
+
+    def test_boundary_300_chars(self):
+        assert select_tier("knowledge", 300) == "C"
+        assert select_tier("knowledge", 301) == "A"
+
+
+# ── should_fallback ───────────────────────────────────────────────────────────
+
+
+class TestShouldFallback:
+    def test_failure_always_escalates(self):
+        assert should_fallback("A", success=False) is True
+        assert should_fallback("C", success=False) is True
+
+    def test_success_c_tier_no_escalation(self):
+        assert should_fallback("C", success=True, output="some output") is False
+
+    def test_short_output_escalates(self):
+        assert should_fallback("A", success=True, output="too short", prompt_len=150) is True
+
+    def test_long_output_no_escalation(self):
+        long_output = "This is a detailed valid response. " * 20
+        assert should_fallback("A", success=True, output=long_output, prompt_len=50) is False
+
+    def test_failure_signal_escalates(self):
+        assert should_fallback("A", success=True, output="I cannot do this task", prompt_len=50) is True
+        assert should_fallback("A", success=True, output="no puedo completar eso", prompt_len=50) is True
+
+    def test_short_prompt_no_escalation_on_short_output(self):
+        assert should_fallback("A", success=True, output="ok", prompt_len=50) is False
 
 
 # ── token_usage task_complexity column ───────────────────────────────────────

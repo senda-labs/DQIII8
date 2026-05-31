@@ -27,6 +27,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
+
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 WRAPPER = DQIII8_ROOT / "bin" / "core" / "openrouter_wrapper.py"
@@ -309,10 +313,6 @@ def analyze_intent(user_request: str, verbose: bool = True) -> dict:
         recommended_tier, _source.
     """
 
-    def _log(msg: str) -> None:
-        if verbose:
-            print(f"[director] {msg}", file=sys.stderr)
-
     plan: dict | None = None
     source = "llm"
 
@@ -320,10 +320,7 @@ def analyze_intent(user_request: str, verbose: bool = True) -> dict:
     instinct_task_type, instinct_confidence = _query_instincts_fast_path(user_request)
 
     if instinct_task_type:
-        _log(
-            f"instinct match: {instinct_task_type} "
-            f"(conf={instinct_confidence:.2f}) — skipping LLM"
-        )
+        log.info("instinct match: %s (conf=%.2f) — skipping LLM", instinct_task_type, instinct_confidence)
         source = f"instinct:{instinct_confidence:.2f}"
         agent = TASK_AGENT_MAP.get(instinct_task_type, "orchestrator")
         tier = TASK_TIER_MAP.get(instinct_task_type, 3)
@@ -343,12 +340,12 @@ def analyze_intent(user_request: str, verbose: bool = True) -> dict:
         }
     else:
         # Step 2: LLM via openrouter_wrapper (tier2, free)
-        _log("querying LLM for intent analysis...")
+        log.info("querying LLM for intent analysis")
         plan = _call_llm_for_intent(user_request)
 
         if plan is None:
             # Single retry after 2 seconds
-            _log("retrying LLM after failure...")
+            log.info("retrying LLM after failure")
             import time as _time
 
             _time.sleep(2)
@@ -356,7 +353,7 @@ def analyze_intent(user_request: str, verbose: bool = True) -> dict:
 
         if plan is None:
             # Step 3: Keyword fallback
-            _log("LLM unavailable — using keyword fallback")
+            log.info("LLM unavailable — using keyword fallback")
             source = "keyword_fallback"
             plan = _keyword_fallback(user_request)
 
@@ -451,14 +448,11 @@ def main() -> None:
     elif not sys.stdin.isatty():
         request = sys.stdin.read().strip()
     else:
-        print(
-            'Usage: python3 bin/director.py [--json|--quiet] "<request>"',
-            file=sys.stderr,
-        )
+        log.error('Usage: python3 bin/director.py [--json|--quiet] "<request>"')
         sys.exit(1)
 
     if not request:
-        print("[director] Error: empty request.", file=sys.stderr)
+        log.error("Error: empty request.")
         sys.exit(1)
 
     plan = analyze_intent(request, verbose=not quiet)

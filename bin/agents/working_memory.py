@@ -10,8 +10,13 @@ Session IDs by entry point:
 
 import os
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+log = _get_logger(__name__)
 
 DB_PATH = (
     Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8_metrics.db"

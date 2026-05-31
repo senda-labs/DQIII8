@@ -12,11 +12,14 @@ Actions:
 """
 
 import json
+import logging
 import os
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+
+log = logging.getLogger("dqiii8." + __name__)
 
 DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/dqiii8")
 DB = Path(DQIII8_ROOT) / "database" / "dqiii8.db"
@@ -100,10 +103,10 @@ try:
             )
             conn.commit()
             conn.close()
-        except Exception:
-            pass  # never block on logging failure
+        except Exception as e:
+            log.warning("semgrep_scan: vault_memory shannon_score upsert failed: %s", e, exc_info=True)  # never block on logging failure
 
-except Exception:
-    pass
+except Exception as e:
+    log.warning("semgrep_scan: semgrep subprocess scan failed: %s", e, exc_info=True)
 
 sys.exit(0)

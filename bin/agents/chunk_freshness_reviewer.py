@@ -31,6 +31,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bin.core.logging_config import get_logger as _get_logger
+
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 ENV_FILE = DQIII8_ROOT / "my-projects" / "auto-report" / ".env"
@@ -38,7 +41,7 @@ ENV_FILE = DQIII8_ROOT / "my-projects" / "auto-report" / ".env"
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
-log = logging.getLogger("freshness_reviewer")
+log = _get_logger(__name__)
 
 CREATE_TABLE = """\
 CREATE TABLE IF NOT EXISTS chunk_health (
@@ -242,31 +245,25 @@ def cmd_review(conn: sqlite3.Connection, limit: int, dry_run: bool = False) -> d
     ).fetchone()[0]
 
     if dry_run:
-        print(
-            f"[freshness] Would review {min(limit, total_unreviewed)} of {total_unreviewed} unreviewed chunks"
-        )
+        log.info("Would review %d of %d unreviewed chunks", min(limit, total_unreviewed), total_unreviewed)
         return {"pending": total_unreviewed}
 
     if not pending:
-        print("[freshness] All chunks already reviewed.")
+        log.info("All chunks already reviewed")
         return {"pending": 0}
 
     caller = GroqCaller()
     if not caller.keys:
-        print("[freshness] ERROR: No Groq API keys found")
+        log.error("No Groq API keys found")
         return {"errors": 1}
 
-    print(
-        f"[freshness] Reviewing {len(pending)} chunks ({len(caller.keys)} Groq keys loaded)"
-    )
+    log.info("Reviewing %d chunks (%d Groq keys loaded)", len(pending), len(caller.keys))
 
     stats: dict[str, int] = {"keep": 0, "demote": 0, "archive": 0, "errors": 0}
 
     for i, (chunk_id, domain, text) in enumerate(pending, 1):
         if caller.exhausted and len(caller.exhausted) >= len(caller.keys):
-            print(
-                f"  [{i}/{len(pending)}] All keys exhausted — stopping. ({sum(v for k,v in stats.items() if k != 'errors')} done)"
-            )
+            log.info("All keys exhausted — stopping. (%d done)", sum(v for k, v in stats.items() if k != 'errors'))
             break
 
         redundancy = _assess_redundancy(text, caller)
@@ -283,10 +280,14 @@ def cmd_review(conn: sqlite3.Connection, limit: int, dry_run: bool = False) -> d
         stats[v] = stats.get(v, 0) + 1
 
         if i % 5 == 0 or i == len(pending):
-            print(
-                f"  [{i}/{len(pending)}] keep={stats['keep']} demote={stats['demote']} "
-                f"archive={stats['archive']} err={stats['errors']}",
-                flush=True,
+            log.info(
+                "Processed %d/%d keep=%d demote=%d archive=%d err=%d",
+                i,
+                len(pending),
+                stats['keep'],
+                stats['demote'],
+                stats['archive'],
+                stats['errors'],
             )
 
         time.sleep(1.5)  # Rate limit spacing (2 LLM calls per chunk)

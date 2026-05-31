@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # chrome_debug.sh — lanza Chrome con CDP en puerto 9222 (headless, sin interfere con pipeline)
 # Uso en VPS:  bash ~/dqiii8/bin/chrome_debug.sh
-# Uso remoto:  ssh root@YOUR_VPS_HOST 'bash ~/dqiii8/bin/chrome_debug.sh'
+# Uso remoto:  ssh $DQIII8_VPS_HOST 'bash ~/dqiii8/bin/chrome_debug.sh'
 
 PORT=9222
 LOG=/tmp/chrome_debug.log

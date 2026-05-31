@@ -7,7 +7,7 @@
 # Añadir alias en ~/.zshrc o ~/.bashrc:
 #   alias chrome-vps='bash ~/chrome_connect_local.sh'
 
-VPS_HOST="root@YOUR_VPS_HOST"
+VPS_HOST="${DQIII8_VPS_HOST:-root@your-vps-host}"
 REMOTE_PORT=9222
 LOCAL_PORT=9222
 TUNNEL_PID_FILE="/tmp/chrome_tunnel.pid"

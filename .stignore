@@ -1,3 +1,33 @@
-archived-projects/
+// Git internals — never sync
+.git
+**/.git
+
+// Git worktrees
+.worktrees/
+**/.worktrees/
+
+// Python cache
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+// Virtual environments
 venv/
 **/venv/
+.venv/
+**/.venv/
+
+// Archived / legacy
+archived-projects/
+
+// OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+// Large binary / logs
+*.log
+database/*.db
+database/legacy/*.db

@@ -228,3 +228,4 @@ secrets_to_purge.txt
 
 # Gitleaks config (keep local, not in repo)
 .gitleaks.toml
+.stfolder

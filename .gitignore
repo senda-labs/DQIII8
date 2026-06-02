@@ -81,8 +81,7 @@ database/audit-*.md
 
 # Internal task directories (do not publish)
 tasks/integration_proposals/
-tasks/research_queue/
-tasks/test_results/
+tasks/research/
 
 # Internal system files
 .jarvis_proposito

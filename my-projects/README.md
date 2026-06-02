@@ -1,34 +1,38 @@
 # my-projects/
 
-This directory is the home for your personal projects built on top of DQIII8.
+Proyectos personales construidos sobre DQIII8. Cada subcarpeta es un proyecto independiente con su propio `PROJECT.md`.
 
-## Usage
-
-Create a subdirectory per project:
+## Navegación rápida
 
 ```
 my-projects/
-├── my-content-pipeline/
-├── my-finance-tracker/
-└── my-research-agent/
+├── intl-reports/          🟢 PRODUCCIÓN — pipeline DOCXs internacionalización
+│   └── CONTEXT.md         ← leer primero al reanudar sesión
+├── content-automation/    🟢 PRODUCCIÓN — 5 canales YouTube automatizados
+├── automatic-nutrition/   🟡 MVP — SaaS dietas B2B, 5 clientes
+├── mejorapoker-src/       🟡 MVP — analizador manos poker
+├── accounting-erp/        🟡 DISEÑADO — ERP PYMEs España (PGC 2007)
+├── ouroboros-q-eml/       🟡 EN PROGRESO — motor trading EML, Fase 0A
+├── pokemon-genesis-chaos/ 🟠 EN PAUSA — fangame Pokémon, mkxp-z
+└── global-media-org/      🔵 DISEÑO — stalled, sin código
 ```
 
-Each project can have its own:
-- `.claude/agents/` — project-specific agent MDs with custom knowledge
-- `config/` — project-specific config (excluded from git)
-- `README.md` — project documentation
+Ver índice completo con estados y próximos pasos: [`PROJECT.md`](PROJECT.md)
 
-## Connecting your workspace
+## Cómo reanudar un proyecto
 
-If you use the private workspace pattern (`dqiii8-workspace`), run:
+1. `cd my-projects/{nombre}/`
+2. Leer `CONTEXT.md` o `PROJECT.md` del proyecto
+3. Para intl-reports: leer `vault/000_INDEX.md` → `CONTEXT.md`
 
-```bash
-bash /path/to/dqiii8-workspace/overlay.sh
-```
+## Convención de archivos por proyecto
 
-This replaces this directory with a symlink to your workspace's `my-projects/`.
+| Archivo | Propósito |
+|---|---|
+| `PROJECT.md` | Arquitectura, decisiones, backlog |
+| `CONTEXT.md` | Estado actual + próximo paso (para resumir sesión rápido) |
+| `README.md` | Documentación pública / instalación |
 
-## Note
+## Nota
 
-`my-projects/*/` is excluded from the public repo via `.gitignore`.
-Never commit personal project files to `senda-labs/DQIII8`.
+`my-projects/*/` está excluido del repo público vía `.gitignore`.

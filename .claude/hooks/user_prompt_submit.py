@@ -24,10 +24,10 @@ from pathlib import Path
 
 log = logging.getLogger("dqiii8." + __name__)
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-PROJECTS_DIR = JARVIS / "projects"
-LESSONS_FILE = JARVIS / "tasks" / "lessons.md"
-DB = JARVIS / "database" / "dqiii8.db"
+DQIII8 = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+PROJECTS_DIR = DQIII8 / "projects"
+LESSONS_FILE = DQIII8 / "tasks" / "lessons.md"
+DB = DQIII8 / "database" / "dqiii8.db"
 
 # ── Timeout guard ─────────────────────────────────────────────────────────────
 
@@ -43,51 +43,89 @@ signal.alarm(1)  # hard 1-second limit
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _read_active_project() -> dict | None:
+def _parse_project_file(md_path) -> dict | None:
+    """Parse a project .md file and return its metadata dict, or None if not active."""
+    try:
+        text = md_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+    if not re.search(r"^status:\s*active", text, re.MULTILINE):
+        return None
+    m = re.search(r"^last_updated:\s*(.+)$", text, re.MULTILINE)
+    last_updated = m.group(1).strip() if m else "0000-00-00"
+    m_model = re.search(r"^model:\s*(.+)$", text, re.MULTILINE)
+    model = m_model.group(1).strip() if m_model else "unknown"
+    m_next = re.search(r"##\s*(?:[Nn]ext step|[Pp]r[oó]ximo paso)[^\n]*\n\s*\n*\**(.+)", text, re.IGNORECASE)
+    next_step = m_next.group(1).strip().strip("*").strip() if m_next else ""
+    if len(next_step) > 120:
+        next_step = next_step[:117] + "..."
+    # Extract tags for keyword detection: tags: [a, b, c] or tags:\n  - a
+    tags = set()
+    tags.add(md_path.stem)
+    m_tags = re.search(r"^tags:\s*\[([^\]]+)\]", text, re.MULTILINE)
+    if m_tags:
+        for t in re.split(r"[,\s]+", m_tags.group(1)):
+            t = t.strip().strip('"').strip("'")
+            if t:
+                tags.add(t)
+    else:
+        for t in re.findall(r"^\s*-\s+(.+)", text[text.find("tags:"):text.find("tags:")+200] if "tags:" in text else "", re.MULTILINE):
+            tags.add(t.strip())
+    # cwd_match alias
+    m_cwd = re.search(r"^cwd_match:\s*(.+)$", text, re.MULTILINE)
+    if m_cwd:
+        tags.add(m_cwd.group(1).strip())
+    return {
+        "name": md_path.stem,
+        "model": model,
+        "next_step": next_step,
+        "last_updated": last_updated,
+        "tags": tags,
+    }
+
+
+def _load_all_projects() -> list[dict]:
+    """Return all active projects from projects/ dir, sorted by last_updated desc."""
+    if not PROJECTS_DIR.exists():
+        return []
+    projects = []
+    for md in PROJECTS_DIR.glob("*.md"):
+        p = _parse_project_file(md)
+        if p:
+            projects.append(p)
+    projects.sort(key=lambda x: x["last_updated"], reverse=True)
+    return projects
+
+
+def _detect_project_from_prompt(prompt: str, projects: list[dict]) -> dict | None:
     """
-    Find the most recently updated active project.
-    Returns dict with keys: name, model, next_step, last_updated
+    Check if the prompt explicitly mentions any known project by name or tag.
+    Returns the matching project dict, or None.
+    Matches are case-insensitive and handle hyphens as spaces/hyphens.
+    """
+    prompt_lower = prompt.lower()
+    for project in projects:
+        for tag in project["tags"]:
+            tag_normalized = tag.lower().replace("-", "[ -]?")
+            if re.search(r"\b" + tag_normalized + r"\b", prompt_lower):
+                return project
+    return None
+
+
+def _read_active_project(prompt: str = "") -> dict | None:
+    """
+    Find the relevant project: prompt keyword match > most recently updated active.
+    Returns dict with keys: name, model, next_step, last_updated, tags
     or None if no active project found.
     """
-    if not PROJECTS_DIR.exists():
+    projects = _load_all_projects()
+    if not projects:
         return None
-
-    candidates = []
-    for md in PROJECTS_DIR.glob("*.md"):
-        try:
-            text = md.read_text(encoding="utf-8")
-        except Exception:
-            continue
-        # Only consider files with status: active in frontmatter
-        if not re.search(r"^status:\s*active", text, re.MULTILINE):
-            continue
-        # Extract last_updated
-        m = re.search(r"^last_updated:\s*(.+)$", text, re.MULTILINE)
-        last_updated = m.group(1).strip() if m else "0000-00-00"
-        # Extract model
-        m_model = re.search(r"^model:\s*(.+)$", text, re.MULTILINE)
-        model = m_model.group(1).strip() if m_model else "unknown"
-        # Extract next step — matches "Next step", "Próximo paso", etc.
-        # Skips blank lines between header and content
-        m_next = re.search(r"##\s*(?:[Nn]ext step|[Pp]r[oó]ximo paso)[^\n]*\n\s*\n*\**(.+)", text, re.IGNORECASE)
-        next_step = m_next.group(1).strip().strip("*").strip() if m_next else ""
-        # Truncate next_step to 120 chars
-        if len(next_step) > 120:
-            next_step = next_step[:117] + "..."
-        candidates.append(
-            {
-                "name": md.stem,
-                "model": model,
-                "next_step": next_step,
-                "last_updated": last_updated,
-            }
-        )
-
-    if not candidates:
-        return None
-
-    candidates.sort(key=lambda x: x["last_updated"], reverse=True)
-    return candidates[0]
+    if prompt:
+        matched = _detect_project_from_prompt(prompt, projects)
+        if matched:
+            return matched
+    return projects[0]
 
 
 def _extract_keywords(prompt: str) -> list[str]:
@@ -211,8 +249,8 @@ def main() -> None:
     if skill_m:
         _log_skill_invocation(skill_m.group(1).lower())
 
-    # ── Find active project ──────────────────────────────────────────────────
-    project = _read_active_project()
+    # ── Find active project (keyword match first, then most-recent fallback) ──
+    project = _read_active_project(prompt=prompt)
     if not project:
         sys.exit(0)  # silence: no active project
 

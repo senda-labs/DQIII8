@@ -39,8 +39,11 @@ FLAG = JARVIS / "tasks" / "audit_pending.flag"
 project = os.environ.get("DQIII8_PROJECT", "")
 if not project:
     cwd = Path(data.get("cwd", "."))
+    # Detect project from CWD path parts — check known projects dir
+    _projects_dir = JARVIS / "projects"
+    _known = {p.stem for p in _projects_dir.glob("*.md")} if _projects_dir.exists() else set()
     for part in cwd.parts:
-        if part in ("content",):
+        if part in _known or part in ("content",):
             project = part
             break
     if not project:

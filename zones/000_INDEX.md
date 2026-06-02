@@ -28,7 +28,7 @@
 | B | [[zone_B_extensions]] | .claude/ — agents (17), skills (19), hooks (14), rules engine |
 | C | [[zone_C_database]] | dqiii8.db (46T+20V), dqiii8_metrics.db, schema_v2.sql, var/ |
 | D | [[zone_D_infrastructure]] | VPS, SSH, Telegram bot (bin/ui/), infrastructure/ACTIVE.md |
-| E | [[zone_E_projects]] | my-projects/ — 10 active + archived, status, entry points |
+| E | [[zone_E_projects]] | my-projects/ — 9 active + archived, status, entry points |
 | F | [[zone_F_knowledge]] | docs/, knowledge/, ADRs, CHANGELOG, architecture decisions |
 | G | [[zone_G_tasks]] | tasks/ — audit, benchmarks, research, results, FULL_SYSTEM_MAP |
 | H | [[zone_H_config]] | config/, .claude/rules/, .obsidian/, tiering table |

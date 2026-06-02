@@ -26,17 +26,49 @@ prompt
 
 ## Key Files
 
+`bin/agents/` holds 21 modules. Core pipeline (the 7 steps above):
+
 | File | LOC | Role |
 |---|---|---|
 | `bin/core/openrouter_wrapper.py` | 934 | Entry point, multi-provider router, full DQ pipeline |
-| `bin/agents/domain_classifier.py` | 710 | Domain + confidence classification |
-| `bin/agents/intent_amplifier.py` | 791 | Prompt enrichment per tier |
-| `bin/agents/knowledge_enricher.py` | 250 | RAG chunk retrieval |
-| `bin/agents/confidence_gate.py` | 64 | Gate: should RAG run? |
-| `bin/agents/working_memory.py` | 121 | SQLite session memory |
+| `bin/agents/domain_classifier.py` | 710 | [1] Domain + confidence classification |
+| `bin/agents/knowledge_enricher.py` | 250 | [2] RAG chunk retrieval |
+| `bin/agents/confidence_gate.py` | 64 | [3] Gate: should RAG run? |
+| `bin/agents/intent_amplifier.py` | 791 | [4] Prompt enrichment per tier |
+| `bin/agents/working_memory.py` | 121 | [7] SQLite session memory |
 | `bin/director.py` | — | Orchestrates multi-step tasks |
 | `bin/core/ollama_wrapper.py` | 126 | Tier C (local) wrapper |
 | `bin/core/auth_watchdog.py` | — | OAuth / API key watchdog |
+
+Routing / classification helpers:
+
+| File | LOC | Role |
+|---|---|---|
+| `bin/agents/hierarchical_router.py` | 680 | Domain→subdomain→agent routing tree |
+| `bin/agents/subdomain_classifier.py` | 392 | Subdomain refinement under a domain |
+| `bin/agents/domain_agent_selector.py` | 88 | Maps domain → specialist agent |
+| `bin/agents/domain_lens.py` | 127 | Domain-specific prompt framing |
+
+Knowledge / RAG support (feeds step [2]):
+
+| File | LOC | Role |
+|---|---|---|
+| `bin/agents/hybrid_search.py` | 474 | Hybrid vector + keyword retrieval |
+| `bin/agents/vector_store.py` | 424 | Embedding store + similarity search |
+| `bin/agents/knowledge_indexer.py` | 206 | Builds/updates the knowledge index |
+| `bin/agents/knowledge_search.py` | 130 | Query interface over the index |
+| `bin/agents/chunk_freshness_reviewer.py` | 376 | Flags stale chunks for re-embedding |
+| `bin/agents/key_facts_generator.py` | 289 | Extracts key facts from chunks |
+| `bin/agents/key_facts_multikey_batch.py` | 252 | Batch key-fact extraction (multi-key) |
+
+Memory / learning:
+
+| File | LOC | Role |
+|---|---|---|
+| `bin/agents/temporal_memory.py` | 470 | Time-decayed long-term memory |
+| `bin/agents/memory_decay.py` | 218 | Decay scheduler for stored memories |
+| `bin/agents/instinct_evolver.py` | 155 | Evolves learned instincts (see instinct-status) |
+| `bin/agents/template_loader.py` | 82 | Loads prompt/response templates |
 
 ---
 
@@ -68,6 +100,22 @@ main()  # full pipeline
 stream_response()
 log_to_db()
 ```
+
+---
+
+## bin/ Layout
+
+`ls bin/` — top-level operational dirs not covered above:
+
+| Path | Contents |
+|---|---|
+| `bin/core/` | Wrappers (openrouter, ollama), db.py, auth/security, pipeline core |
+| `bin/agents/` | 21 pipeline + routing + RAG + memory modules (see Key Files) |
+| `bin/monitoring/` | analytics_collector, audit_trigger, health_watchdog, ml_selector, routing_analyzer, cost_tracker, weekly_audit, subscription |
+| `bin/tools/` | gemini_review, knowledge_harvester, benchmark_*, github_researcher, db_init, sqlite_mcp, handover, summarize/truncate_output, etc. (+ `_archived/`) |
+| `bin/workspace/` | launch scripts: launch_swarm.sh, launch_beeswarm.sh, launch_monitor.sh |
+| `bin/ui/` | Telegram bot (`dqiii8_bot.py`) — see [[zone_D_infrastructure]] |
+| `bin/` (root) | director.py, orchestrator.py, bee_swarm.py, j.sh, nightly.sh, autonomous_loop.sh, plugin_manager.py |
 
 ---
 

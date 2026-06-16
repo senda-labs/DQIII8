@@ -186,6 +186,11 @@ class PermissionAnalyzer:
             return False
 
         for tgt in targets:
+            # Absolute paths are only safe if they resolve inside a project dir
+            if tgt.startswith("/"):
+                real_tgt = os.path.realpath(os.path.normpath(tgt))
+                if not any(real_tgt.startswith(os.path.realpath(safe)) for safe in SAFE_PROJECT_DIRS):
+                    return False
             last = tgt.rstrip("/").rsplit("/", 1)[-1].replace("*", "")
             if last not in allowed:
                 return False
@@ -196,7 +201,7 @@ class PermissionAnalyzer:
         # 1. Credential paths — block any access (read or write) using path-component matching
         for cred in BASH_CREDENTIAL_PATHS:
             # Match as path component: must be preceded/followed by space, quote, slash, or string boundary
-            pattern = r'(?:^|[\s\'">/=@])' + re.escape(cred) + r'(?:[\s\'"/=@]|$)'
+            pattern = r'(?:^|[\s\'">/=@:(])' + re.escape(cred) + r'(?:[\s\'"/=@:;|)(&<>]|$)'
             if re.search(pattern, cmd):
                 return self._deny(
                     "Bash", cmd,

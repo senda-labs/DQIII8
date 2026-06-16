@@ -167,3 +167,44 @@ def test_FAILING_learned_bypasses_critical(monkeypatch):
 def test_FAILING_allowed_token_in_comment():
     r = analyzer.evaluate("Bash", {"command": "rm -rf /etc/passwd # node_modules"})
     assert r["decision"] == "DENY"
+
+
+# ── Fix 5: credential trailing-boundary regression tests ─────────────────────
+
+
+def test_credential_after_semicolon():
+    r = analyzer.evaluate("Bash", {"command": "cat .env; echo done"})
+    assert r["decision"] == "DENY"
+
+
+def test_credential_after_pipe():
+    r = analyzer.evaluate("Bash", {"command": "cat .env|base64"})
+    assert r["decision"] == "DENY"
+
+
+def test_credential_after_colon_pythonpath():
+    r = analyzer.evaluate("Bash", {"command": "PYTHONPATH=.env:$PYTHONPATH python3 app.py"})
+    assert r["decision"] == "DENY"
+
+
+def test_credential_in_subshell():
+    r = analyzer.evaluate("Bash", {"command": "echo $(cat .env)"})
+    assert r["decision"] == "DENY"
+
+
+# ── Fix 10: rm absolute-path basename collision regression tests ──────────────
+
+
+def test_rm_absolute_tmp_denied():
+    r = analyzer.evaluate("Bash", {"command": "rm -rf /var/tmp"})
+    assert r["decision"] == "DENY"
+
+
+def test_rm_absolute_build_denied():
+    r = analyzer.evaluate("Bash", {"command": "rm -rf /etc/build"})
+    assert r["decision"] == "DENY"
+
+
+def test_rm_project_node_modules_ok():
+    r = analyzer.evaluate("Bash", {"command": "rm -rf /root/dqiii8/node_modules"})
+    assert r["decision"] == "APPROVE"

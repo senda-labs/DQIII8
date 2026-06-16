@@ -146,11 +146,13 @@ _TIER_C_AGENTS = frozenset(
 
 # Fallback universal por proveedor (cuando el modelo primario falla)
 # Fallback models — llm7 removed (0% success rate over 40 calls in 7d audit)
-FALLBACK_MODELS = {
-    "openrouter": ("groq", "llama-3.3-70b-versatile"),
-    "groq": ("openrouter", "qwen/qwen3-coder:free"),
-    "pollinations": ("pollinations", "openai"),
-    "anthropic": ("groq", "llama-3.3-70b-versatile"),
+_PROVIDER_DEFAULT_MODEL = {
+    "ollama": "qwen2.5-coder:7b",
+    "groq": "llama-3.3-70b-versatile",
+    "github": "deepseek-v3-0324",
+    "openrouter": "qwen/qwen3-coder:free",
+    "pollinations": "openai",
+    "anthropic": "claude-sonnet-4-6",
 }
 
 # Cadena de fallback por proveedor primario
@@ -168,9 +170,11 @@ FALLBACK_CHAIN = {
 TIER_COSTS: dict[str, tuple[float, float]] = {
     "ollama": (0.0, 0.0),
     "groq": (0.0, 0.0),
+    "github": (0.0, 0.0),
     "llm7": (0.0, 0.0),
     "pollinations": (0.0, 0.0),
     "openrouter": (0.003, 0.015),  # Claude Sonnet pricing aprox.
+    "anthropic": (0.003, 0.015),
 }
 
 # Tier map — C/B/A/S/S+ for explicit routing and classification
@@ -564,7 +568,7 @@ def log_to_db(
             if provider == "anthropic"
             else ("B" if provider in ("groq", "openrouter") else "C")
         )
-        conn = sqlite3.connect(str(DB_PATH), timeout=2)
+        conn = sqlite3.connect(str(DB_PATH), timeout=30)
         cur = conn.execute(
             "INSERT INTO agent_actions "
             "(session_id, agent_name, tool_used, action_type, model_used, "
@@ -680,7 +684,7 @@ def log_token_usage(
     if not DB_PATH.exists():
         return
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=2)
+        conn = sqlite3.connect(str(DB_PATH), timeout=30)
         conn.execute(
             "INSERT INTO token_usage "
             "(session_id, model, tier, operation, input_tokens, output_tokens, "
@@ -712,7 +716,7 @@ def _log_escalation(
     if not DB_PATH.exists():
         return
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=2)
+        conn = sqlite3.connect(str(DB_PATH), timeout=30)
         conn.execute(
             "INSERT INTO error_log "
             "(timestamp, session_id, agent_name, error_type, error_message, keywords, resolved) "
@@ -744,7 +748,7 @@ def print_routing_table() -> None:
         print(f"  {tier:<6} {provider:<12} {model:<30} {route}")
     print()
     print(
-        "Fallback chain (Tier C): Ollama → OpenRouter → Groq → llm7.io → Pollinations"
+        "Fallback chain (Tier C): Ollama → OpenRouter → Groq → Pollinations"
     )
     print()
 
@@ -800,16 +804,25 @@ def _enforce_sensitive_permissions() -> None:
     import stat
 
     root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-    # Sensitive files → 600
-    for rel in (".env", "database/dqiii8_metrics.db", "database/dqiii8.db"):
+    # Active files → 600 (owner read-write only)
+    for rel in (".env", "database/dqiii8.db"):
         path = root / rel
-        if path.exists():
+        if path.exists() and not path.is_symlink():
             current = path.stat().st_mode & 0o777
             if current not in (0o600, 0o640):
                 try:
                     os.chmod(str(path), stat.S_IRUSR | stat.S_IWUSR)
                 except OSError as _exc:
                     log.warning("chmod %s failed: %s", path, _exc)
+    # History DB → 444 (readonly — archived backup, not the live SSOT)
+    _hist = root / "database" / "dqiii8_history.db"
+    if _hist.exists() and not _hist.is_symlink():
+        current = _hist.stat().st_mode & 0o777
+        if current != 0o444:
+            try:
+                os.chmod(str(_hist), 0o444)
+            except OSError as _exc:
+                log.warning("chmod history.db failed: %s", _exc)
     # Database directory → 700 (owner only)
     db_dir = root / "database"
     if db_dir.exists():
@@ -1089,10 +1102,8 @@ def main() -> None:
 
     # Construir cadena: primario + fallbacks
     chain = [(primary_provider, primary_model)]
-    for fallback_provider in FALLBACK_CHAIN.get(primary_provider, []):
-        fb_provider, fb_model = FALLBACK_MODELS.get(
-            fallback_provider, (fallback_provider, "gpt-4o-mini")
-        )
+    for fb_provider in FALLBACK_CHAIN.get(primary_provider, []):
+        fb_model = _PROVIDER_DEFAULT_MODEL.get(fb_provider, "llama-3.3-70b-versatile")
         chain.append((fb_provider, fb_model))
     # When escalated from Ollama, add qwen as last-resort (offline fallback)
     if _escalated_from_ollama:
@@ -1178,7 +1189,7 @@ def get_recommendation(task_type: str) -> tuple[str, float, int]:
         return model, _ROUTER_NEUTRAL, 0
 
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=2)
+        conn = sqlite3.connect(str(DB_PATH), timeout=30)
         rows = conn.execute(
             """
             SELECT model_used, AVG(user_satisfaction), COUNT(*)

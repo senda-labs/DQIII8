@@ -1,0 +1,7 @@
+[Unit]
+Description=DQIII8 daily health check
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/dqiii8
+ExecStart=/usr/bin/python3 /root/dqiii8/bin/tools/health_check.py

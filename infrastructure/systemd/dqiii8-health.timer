@@ -1,0 +1,9 @@
+[Unit]
+Description=DQIII8 daily health check timer
+
+[Timer]
+OnCalendar=*-*-* 07:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

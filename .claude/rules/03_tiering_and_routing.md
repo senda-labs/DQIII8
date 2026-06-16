@@ -15,7 +15,7 @@ paths:
 | B | Groq | `llama-3.3-70b-versatile` | $0 | Research, analysis, writing, domain knowledge |
 | B+ | GitHub Models | `deepseek-v3-0324` / `codestral-2501` | $0 | Code review, long-context, fallback |
 | A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Finance, orchestration, architecture decisions |
-| S | Anthropic | `claude-opus-4-6` | ~$0.20/turn | Multi-agent coordination, system design ONLY |
+| S | Anthropic | `claude-opus-4-8` | ~$0.20/turn | Multi-agent coordination, system design ONLY |
 
 **RULE: Start at C. Escalate only when:**
 1. Task type is explicitly mapped to a higher tier (see `AGENT_ROUTING` in `openrouter_wrapper.py`).

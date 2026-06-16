@@ -202,17 +202,17 @@ TIER_MAP = {
     },
     "S": {
         "provider": "anthropic",
-        "model": "claude-opus-4-6",
+        "model": "claude-opus-4-8",
         "cost_input_1k": 0.015,
         "cost_output_1k": 0.075,
-        "desc": "Opus planner — ~$0.15-0.50",
+        "desc": "Opus 4.8 planner — ~$0.15-0.50",
     },
     "S+": {
         "provider": "anthropic",
-        "model": "claude-opus-4-6",
+        "model": "claude-opus-4-8",
         "cost_input_1k": 0.015,
         "cost_output_1k": 0.075,
-        "desc": "Opus orchestrator — ~$0.50-2.00",
+        "desc": "Opus 4.8 orchestrator — ~$0.50-2.00",
     },
 }
 
@@ -309,7 +309,7 @@ ROUTING_TABLE = [
     (
         "S",
         "anthropic",
-        "claude-opus-4-6",
+        "claude-opus-4-8",
         "opus_planner",
         [
             "mobilize",

@@ -48,12 +48,14 @@ try:
     from permission_analyzer import PermissionAnalyzer, record_rejection
     result = PermissionAnalyzer().evaluate(tool, inp, session_id=session)
 except Exception as _e:
+    # Fail CLOSED: a crash inside the security evaluator must DENY, never approve.
+    log.error("pre_tool_use: PermissionAnalyzer crashed — failing closed: %s", _e, exc_info=True)
     result = {
-        "decision": "APPROVE",
-        "reason": f"analyzer_error:{_e}",
-        "risk_level": "LOW",
-        "rule_triggered": None,
-        "suggested_fix": None,
+        "decision": "DENY",
+        "reason": f"analyzer_error:{_e} — failing closed for safety",
+        "risk_level": "CRITICAL",
+        "rule_triggered": "analyzer_crash",
+        "suggested_fix": "Fix the analyzer error, then retry.",
     }
 
 if result["decision"] in ("DENY", "ESCALATE"):
@@ -107,17 +109,27 @@ try:
 except Exception as e:
     log.warning("pre_tool_use: agent_actions metrics insert failed: %s", e, exc_info=True)
 
-# ── OAuth protection ──────────────────────────────────────────────────────────
+# ── OAuth protection (allowlist model) ───────────────────────────────────────
+# Any Bash command referencing an OAuth file is DENIED unless it is a bare
+# metadata check (ls/stat/test -e/-f). Allowlist beats denylist: unknown
+# binaries (curl, nc, jq, wget, rsync, scp...) fail closed automatically.
 _OAUTH_FILES = ["/root/.claude.json", "/root/.claude/.credentials.json"]
+_OAUTH_ALLOWED_RE = re.compile(
+    r'^\s*(?:ls(?:\s+-[a-zA-Z]+)*|stat|test\s+-[ef]|\[\s+-[ef])\s+\S'
+)
 if tool == "Bash":
-    _cmd_check = inp.get("command", "")
-    for _f in _OAUTH_FILES:
-        if _f in _cmd_check and any(x in _cmd_check for x in ["rm ", "truncate", "> ", "mv "]):
+    _cmd_check = inp.get("command", "") or ""
+    if any(_f in _cmd_check for _f in _OAUTH_FILES):
+        _has_chain = any(op in _cmd_check for op in ("|", ";", "&&", "||", ">", "<", "`", "$("))
+        if _has_chain or not _OAUTH_ALLOWED_RE.match(_cmd_check):
             print(json.dumps({
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": f"Protected: OAuth credential {_f}",
+                    "permissionDecisionReason": (
+                        "Protected: OAuth credential file referenced. Only bare "
+                        "ls/stat/test metadata checks are permitted."
+                    ),
                 }
             }))
             sys.exit(0)

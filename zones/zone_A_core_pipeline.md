@@ -1,5 +1,5 @@
 # Zone A — Core Pipeline
-> Updated: 2026-06-02
+> Updated: 2026-06-16
 
 ---
 
@@ -65,10 +65,18 @@ Memory / learning:
 
 | File | LOC | Role |
 |---|---|---|
-| `bin/agents/temporal_memory.py` | 470 | Time-decayed long-term memory |
-| `bin/agents/memory_decay.py` | 218 | Decay scheduler for stored memories |
 | `bin/agents/instinct_evolver.py` | 155 | Evolves learned instincts (see instinct-status) |
 | `bin/agents/template_loader.py` | 82 | Loads prompt/response templates |
+| `bin/tools/_archived/temporal_memory.py` | 470 | **[ARCHIVED]** Time-decayed long-term memory |
+| `bin/tools/_archived/memory_decay.py` | 218 | **[ARCHIVED]** Decay scheduler |
+
+Plan Compiler (opt-in feature):
+
+| File | LOC | Role |
+|---|---|---|
+| `bin/agents/plan_compiler.py` | — | Compiles prompt → structured execution plan |
+| `bin/core/dq_compile.py` | — | CLI: `python3 -m bin.core.dq_compile "prompt"` |
+| `.claude/hooks/dq_compile_hook.py` | — | Injects plan as additionalContext (DQ_COMPILE_HOOK=1) |
 
 ---
 
@@ -112,7 +120,7 @@ log_to_db()
 | `bin/core/` | Wrappers (openrouter, ollama), db.py, auth/security, pipeline core |
 | `bin/agents/` | 21 pipeline + routing + RAG + memory modules (see Key Files) |
 | `bin/monitoring/` | analytics_collector, audit_trigger, health_watchdog, ml_selector, routing_analyzer, cost_tracker, weekly_audit, subscription |
-| `bin/tools/` | gemini_review, knowledge_harvester, benchmark_*, github_researcher, db_init, sqlite_mcp, handover, summarize/truncate_output, etc. (+ `_archived/`) |
+| `bin/tools/` | gemini_review, knowledge_harvester, benchmark_*, health_check, pal/, github_researcher, db_init, sqlite_mcp, etc. (+ `_archived/` for legacy) |
 | `bin/workspace/` | launch scripts: launch_swarm.sh, launch_beeswarm.sh, launch_monitor.sh |
 | `bin/ui/` | Telegram bot (`dqiii8_bot.py`) — see [[zone_D_infrastructure]] |
 | `bin/` (root) | director.py, orchestrator.py, bee_swarm.py, j.sh, nightly.sh, autonomous_loop.sh, plugin_manager.py |

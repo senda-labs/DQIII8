@@ -1,6 +1,6 @@
 # 000_INDEX — dqiii8 Attention Router
 > Reading this file routes you to the correct zone in <5 seconds. Stay under 250 lines.
-> Updated: 2026-06-02
+> Updated: 2026-06-16
 
 ---
 
@@ -13,10 +13,10 @@
 | CLI | `j cc` / `j loop` / `j status` |
 | DB | `database/dqiii8.db` (46T + 20V live) · `dqiii8_metrics.db` |
 | Pipeline | 7-step DQ: Classify → Retrieve → Gate → Amplify → Route → Execute → Memory |
-| Hooks | 14 · Skills: 19 · Agents: 17 |
+| Hooks | 15 · Skills: 20 · Agents: 17 |
 | Repos | public: `senda-labs/DQIII8` · premium: `senda-labs/DQIII8-premium` |
 
-**Active projects:** intl-reports (pipeline activo) · content-automation · pokemon-genesis-chaos · accounting-erp
+**Active projects:** intl-reports (tanda5 pendiente) · content-automation · accounting-erp · ouroboros-q-eml
 
 ---
 
@@ -77,6 +77,9 @@ j status           # system status
 
 # Pipeline direct
 python bin/core/openrouter_wrapper.py --prompt "..."
+
+# Plan compiler (opt-in: DQ_COMPILE_HOOK=1)
+python3 -m bin.core.dq_compile "prompt"
 
 # DB
 sqlite3 database/dqiii8.db ".tables"

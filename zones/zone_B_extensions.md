@@ -1,5 +1,5 @@
 # Zone B — Extensions (.claude/)
-> Updated: 2026-06-02
+> Updated: 2026-06-16
 
 ---
 
@@ -32,13 +32,14 @@ All Claude Code extensions: agents, skills, hooks, rules, and the permission/rul
 
 ---
 
-## Skills (19) — `.claude/skills/`
+## Skills (20) — `.claude/skills/`
 
 | Skill | Trigger | Purpose |
 |---|---|---|
 | audit | `/audit` | Full system health audit |
 | blue-team | — | Security defensive review |
 | checkpoint | `/checkpoint` | Save session state |
+| drive-upload | `/drive-upload` | Upload intl-reports DOCXs to Google Drive via rclone |
 | gemini-review | `/gemini-review` | Gemini-based code review |
 | handover | `/handover` | Session handover note |
 | instinct-status | `/instinct-status` | Instinct system check |
@@ -60,7 +61,7 @@ All Claude Code extensions: agents, skills, hooks, rules, and the permission/rul
 
 ---
 
-## Hooks (14) — `.claude/hooks/`
+## Hooks (15) — `.claude/hooks/`
 
 | Hook | File | Fires on |
 |---|---|---|
@@ -74,6 +75,7 @@ All Claude Code extensions: agents, skills, hooks, rules, and the permission/rul
 | precompact | precompact.py | Before context compact |
 | postcompact | postcompact.py | After context compact |
 | user_prompt_submit | user_prompt_submit.py | On user prompt |
+| dq_compile_hook | dq_compile_hook.py | Opt-in plan compiler (DQ_COMPILE_HOOK=1) |
 | subagent_start | subagent_start.py | Subagent start |
 | rules_dispatcher | rules_dispatcher.py | Dynamic rule injection |
 | semgrep_scan | semgrep_scan.py | Security scan |

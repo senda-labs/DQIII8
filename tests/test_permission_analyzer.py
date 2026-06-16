@@ -221,3 +221,41 @@ def test_credential_in_backtick_subshell():
 def test_credential_assign_backtick():
     r = analyzer.evaluate("Bash", {"command": "x=`cat .ssh/id_rsa`"})
     assert r["decision"] == "DENY"
+
+
+# ── v3.2 ADDITIONAL REGRESSION TESTS (audit 2026-06-16) ─────────────────────
+
+# Fix 2 — path traversal safe path is still allowed
+def test_legit_project_write_ok():
+    r = analyzer.evaluate("Write", {"file_path": "/root/dqiii8/tasks/x.txt"})
+    assert r["decision"] == "APPROVE"
+
+
+# Fix 5 — dd exfiltration
+def test_bypass_dd_if_env():
+    r = analyzer.evaluate("Bash", {"command": "dd if=.ssh/id_rsa of=/tmp/x"})
+    assert r["decision"] == "DENY"
+
+
+# Fix 9 — learned approval still works for genuinely benign commands
+def test_learned_benign_still_fast_paths(monkeypatch):
+    monkeypatch.setattr(PermissionAnalyzer, "_is_learned_safe", lambda self, t, d: True)
+    r = analyzer.evaluate("Bash", {"command": "echo hello"})
+    assert r["decision"] == "APPROVE"
+    assert r["rule_triggered"] == "learned_approval"
+
+
+# Fix 10 — chained rm with allowed token
+def test_bypass_allowed_token_chained():
+    r = analyzer.evaluate("Bash", {"command": "rm -rf /important && echo build"})
+    assert r["decision"] == "DENY"
+
+
+def test_mixed_targets_denied():
+    r = analyzer.evaluate("Bash", {"command": "rm -rf ~/node_modules /etc"})
+    assert r["decision"] == "DENY"
+
+
+def test_safe_subpath_deletion_ok():
+    r = analyzer.evaluate("Bash", {"command": "rm -rf ~/proj/node_modules"})
+    assert r["decision"] == "APPROVE"

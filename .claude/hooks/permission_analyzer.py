@@ -6,6 +6,8 @@ Centralized permission evaluation for pre_tool_use hooks.
 v2: SQLite timeout + ALLOWED_DELETIONS + ESCALATE loop
 v3: Dual-channel rejections (DB + JSON inbox) + budget check +
     autonomous auto-approve + FIX ESCALATE count (DENY+ESCALATE)
+v3.1: BLOCKED_PATHS Bash enforcement, CLAUDE_MD_PLUGIN_EDIT bypass removal,
+      in-process fallback counter, defensive pattern check wrapping
 """
 
 import json
@@ -13,6 +15,7 @@ import logging
 import os
 import re
 import sqlite3
+import threading as _threading
 from datetime import datetime
 from pathlib import Path
 
@@ -38,6 +41,18 @@ BLOCKED_PATHS = [
     ".ssh/",
     "context/proposito.md",
 ]
+
+# Paths where even READ is dangerous (credential exfiltration risk)
+BASH_CREDENTIAL_PATHS = [
+    ".credentials.json",
+    ".env",
+    "id_rsa",
+    "id_ed25519",
+    ".ssh/",
+]
+
+# Bash operators that indicate a WRITE to a file
+_BASH_WRITE_SIGNS = [">", ">>", "tee ", "sed -i", "truncate "]
 
 # Always CRITICAL regardless of mode
 CRITICAL_PATTERNS = [
@@ -108,8 +123,9 @@ DENIAL_HINTS: dict[str, str] = {
         "database/migrations/YYYYMMDD_description.sql"
     ),
     "blocked_path:CLAUDE.md": (
-        "System instructions are not modified from code. "
-        "The user updates them manually."
+        "System instructions cannot be modified from code. "
+        "Use the revise-claude-md skill to generate a diff, "
+        "then apply it manually from the terminal."
     ),
     "blocked_path:dqiii8.db": (
         "Use INSERT/UPDATE via sqlite3 with the existing wrapper. "
@@ -135,8 +151,83 @@ DENIAL_HINTS: dict[str, str] = {
 }
 
 
+# In-process fallback counter for DENY/ESCALATE when DB is unavailable
+_proc_rejection_counts: dict[str, int] = {}
+_proc_rejection_lock = _threading.Lock()
+
+
 class PermissionAnalyzer:
     """Centralized permission evaluator for Claude Code tools."""
+
+    def _rm_target_is_allowed(self, cmd: str) -> bool:
+        """
+        True only if EVERY rm argument is an allowed-deletion target.
+        The allowed token must be the final path component — not a substring
+        anywhere in the command string.
+        """
+        allowed = set()
+        for tok in ALLOWED_DELETIONS:
+            t = tok.strip().strip("/").lstrip("./").replace("*", "")
+            t = t.rsplit("/", 1)[-1]
+            if t:
+                allowed.add(t)
+
+        targets: list[str] = []
+        for m in re.finditer(r'\brm\b((?:\s+-{1,2}[a-zA-Z]+)*)((?:\s+[^\s;&|]+)+)', cmd):
+            arg_blob = m.group(2)
+            for arg in arg_blob.split():
+                if arg.startswith("-"):
+                    continue
+                if arg in ("{}", "+", "\\;", ";"):
+                    continue
+                targets.append(arg)
+
+        if not targets:
+            return False
+
+        for tgt in targets:
+            last = tgt.rstrip("/").rsplit("/", 1)[-1].replace("*", "")
+            if last not in allowed:
+                return False
+        return True
+
+    def _bash_touches_blocked(self, cmd: str) -> dict | None:
+        """Block Bash commands that read credential paths or write to any blocked path."""
+        # 1. Credential paths — block any access (read or write) using path-component matching
+        for cred in BASH_CREDENTIAL_PATHS:
+            # Match as path component: must be preceded/followed by space, quote, slash, or string boundary
+            pattern = r'(?:^|[\s\'">/=@])' + re.escape(cred) + r'(?:[\s\'"/=@]|$)'
+            if re.search(pattern, cmd):
+                return self._deny(
+                    "Bash", cmd,
+                    f"Credential path '{cred}' referenced in Bash — access blocked.",
+                    "CRITICAL",
+                    f"bash_credential_path:{cred}",
+                    "Use os.environ.get() for secrets. Never reference credential files in Bash.",
+                )
+        # 2. All BLOCKED_PATHS — block write operations
+        is_write = any(sign in cmd for sign in _BASH_WRITE_SIGNS)
+        if not is_write:
+            # Detect sqlite3/psql/mysql with DML (writes to DB without shell write operators)
+            if re.search(r'\b(?:sqlite3|psql|mysql|mariadb)\b', cmd):
+                if re.search(r'\b(?:INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|REPLACE)\b', cmd, re.IGNORECASE):
+                    is_write = True
+        if not is_write:
+            # Detect python/perl writing inline
+            cmd_lower = cmd.lower()
+            if ("python" in cmd_lower or "perl" in cmd_lower) and "open(" in cmd:
+                is_write = any(q in cmd for q in ("'w'", '"w"', "'a'", '"a"'))
+        if is_write:
+            for blocked in BLOCKED_PATHS:
+                if blocked in cmd:
+                    return self._deny(
+                        "Bash", cmd,
+                        f"Blocked path '{blocked}' targeted by Bash write operation.",
+                        "CRITICAL",
+                        f"bash_write_blocked_path:{blocked}",
+                        "Use Write/Edit tool for file modifications. Bash cannot bypass path restrictions.",
+                    )
+        return None
 
     def evaluate(self, tool: str, inp: dict, session_id: str | None = None) -> dict:
         """
@@ -149,24 +240,22 @@ class PermissionAnalyzer:
         detail = str(inp.get("file_path", inp.get("command", "")))
 
         # 0a. Safe project directories — fast-path (respects BLOCKED_PATHS)
+        # Path is canonicalized (realpath + normpath) BEFORE the prefix check so
+        # traversal payloads like /root/dqiii8/../../etc/sudoers cannot pass.
         if tool in ("Write", "Edit", "MultiEdit"):
             file_path = inp.get("file_path", inp.get("path", ""))
-            if any(safe in file_path for safe in SAFE_PROJECT_DIRS):
-                if not any(blocked in file_path for blocked in BLOCKED_PATHS):
+            real_path = os.path.realpath(os.path.normpath(file_path))
+            in_safe_dir = any(
+                real_path.startswith(os.path.realpath(safe))
+                for safe in SAFE_PROJECT_DIRS
+            )
+            if in_safe_dir:
+                if not any(blocked in real_path for blocked in BLOCKED_PATHS):
                     return self._approve(
                         "Safe project directory", "LOW", "safe_project_dir"
                     )
-        elif tool == "Bash":
-            # For Bash: fast-path only for output/tmp directories (not project paths)
-            bash_safe = ["/tmp/"]
-            if any(safe in detail for safe in bash_safe):
-                return self._approve("Safe output directory", "LOW", "safe_project_dir")
 
-        # 0b. learned_approvals — fast-path for historically safe patterns
-        if self._is_learned_safe(tool, detail):
-            return self._approve(
-                "Pattern approved by history", "LOW", "learned_approval"
-            )
+        # 0b block removed — learned_approvals moved after CRITICAL_PATTERNS (see 4a)
 
         # 1. ESCALATE — closes infinite loops
         escalate = self._check_repeat_rejections(tool, detail, _session)
@@ -183,12 +272,6 @@ class PermissionAnalyzer:
             path = inp.get("file_path", inp.get("path", ""))
             for blocked in BLOCKED_PATHS:
                 if blocked in path:
-                    # Exception: allow CLAUDE.md edits when plugin env var is set
-                    if (
-                        blocked == "CLAUDE.md"
-                        and os.environ.get("CLAUDE_MD_PLUGIN_EDIT") == "1"
-                    ):
-                        continue
                     return self._deny(
                         tool,
                         path,
@@ -206,46 +289,72 @@ class PermissionAnalyzer:
             if claim_deny:
                 return claim_deny
 
+        # Extract Bash command once for all Bash checks (3c, 4, 4b)
+        _bash_cmd = inp.get("command", "") or "" if tool == "Bash" else ""
+
+        # 3c. BLOCKED_PATHS enforcement for Bash
+        if tool == "Bash":
+            try:
+                cmd = _bash_cmd
+                _bash_block = self._bash_touches_blocked(cmd)
+                if _bash_block:
+                    return _bash_block
+            except Exception as _bte:
+                log.warning("permission_analyzer: _bash_touches_blocked failed: %s", _bte)
+
         # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
         if tool == "Bash":
-            cmd = inp.get("command", "")
-            for pattern in CRITICAL_PATTERNS:
-                if re.search(pattern, cmd, re.IGNORECASE):
-                    return self._deny(
-                        tool,
-                        cmd,
-                        f"Catastrophic command blocked: '{cmd[:80]}'",
-                        "CRITICAL",
-                        f"critical_pattern:{pattern}",
-                        "This command is irreversible and catastrophic.",
-                    )
+            try:
+                cmd = _bash_cmd
+                for pattern in CRITICAL_PATTERNS:
+                    if re.search(pattern, cmd, re.IGNORECASE):
+                        return self._deny(
+                            tool, cmd,
+                            f"Catastrophic command blocked: '{cmd[:80]}'",
+                            "CRITICAL", f"critical_pattern:{pattern}",
+                            "This command is irreversible and catastrophic.",
+                        )
+            except Exception as _ce:
+                log.warning("permission_analyzer: CRITICAL pattern check failed: %s", _ce)
+                return self._deny(
+                    tool, str(inp.get("command", ""))[:80],
+                    "Internal analyzer error during critical check — denying as precaution.",
+                    "HIGH", "analyzer_internal_error",
+                    "Retry with a valid command string.",
+                )
+
+        # 4a. learned_approvals — only AFTER blocked-path + CRITICAL checks.
+        # A historically-safe pattern can never override a CRITICAL deny.
+        if self._is_learned_safe(tool, detail):
+            return self._approve(
+                "Pattern approved by history", "LOW", "learned_approval"
+            )
 
         # 4b. High-risk commands with ALLOWED_DELETIONS exception
         if tool == "Bash":
-            cmd = inp.get("command", "")
-            for pattern in HIGH_RISK_PATTERNS:
-                if re.search(pattern, cmd, re.IGNORECASE):
-                    is_safe_deletion = any(safe in cmd for safe in ALLOWED_DELETIONS)
-                    if is_safe_deletion:
-                        break
-                    if DQIII8_MODE == "autonomous":
-                        return self._deny(
-                            tool,
-                            cmd,
-                            f"High-risk command in autonomous mode: {cmd[:80]}",
-                            "HIGH",
-                            f"high_risk_pattern:{pattern}",
-                            "Use ALLOWED_DELETIONS or run in supervised mode.",
-                        )
-                    else:
-                        return self._deny(
-                            tool,
-                            cmd,
-                            f"Blocked command: '{cmd[:80]}'",
-                            "CRITICAL",
-                            f"high_risk_pattern:{pattern}",
-                            "This command is destructive and irreversible.",
-                        )
+            try:
+                cmd = _bash_cmd
+                for pattern in HIGH_RISK_PATTERNS:
+                    if re.search(pattern, cmd, re.IGNORECASE):
+                        is_safe_deletion = self._rm_target_is_allowed(cmd)
+                        if is_safe_deletion:
+                            break
+                        if DQIII8_MODE == "autonomous":
+                            return self._deny(
+                                tool, cmd,
+                                f"High-risk command in autonomous mode: {cmd[:80]}",
+                                "HIGH", f"high_risk_pattern:{pattern}",
+                                "Use ALLOWED_DELETIONS or run in supervised mode.",
+                            )
+                        else:
+                            return self._deny(
+                                tool, cmd,
+                                f"Blocked command: '{cmd[:80]}'",
+                                "CRITICAL", f"high_risk_pattern:{pattern}",
+                                "This command is destructive and irreversible.",
+                            )
+            except Exception as _he:
+                log.warning("permission_analyzer: HIGH_RISK pattern check failed: %s", _he)
 
         # 5. Autonomous mode — auto-approve standard tools (after checks)
         if DQIII8_MODE == "autonomous" and tool in AUTO_APPROVE_TOOLS:
@@ -315,10 +424,10 @@ class PermissionAnalyzer:
                 """,
                 (_session, tool, f"%{detail[:50]}%"),
             ).fetchone()
-            conn.close()
 
             count = row[0] if row else 0
             if count >= MAX_SAME_REJECTION:
+                conn.close()
                 return {
                     "decision": "ESCALATE",
                     "reason": (
@@ -335,8 +444,32 @@ class PermissionAnalyzer:
                         f"Previous attempts: {count}."
                     ),
                 }
+            conn.close()
+            # Reset in-process fallback if DB is healthy
+            _key = f"{tool}|{detail[:50]}"
+            with _proc_rejection_lock:
+                _proc_rejection_counts.pop(_key, None)
         except Exception as e:
-            log.warning("permission_analyzer: _check_repeat_rejections query failed: %s", e, exc_info=True)
+            log.warning(
+                "permission_analyzer: _check_repeat_rejections query failed "
+                "— using in-process counter: %s", e
+            )
+            _key = f"{tool}|{detail[:50]}"
+            with _proc_rejection_lock:
+                _proc_rejection_counts[_key] = _proc_rejection_counts.get(_key, 0) + 1
+                _count = _proc_rejection_counts[_key]
+            if _count >= MAX_SAME_REJECTION:
+                return {
+                    "decision": "ESCALATE",
+                    "reason": (
+                        f"Action '{tool}: {detail[:60]}' rejected "
+                        f"{_count} times (in-process counter — DB unavailable). "
+                        "Requires human decision."
+                    ),
+                    "risk_level": "HIGH",
+                    "rule_triggered": f"repeat_rejection_inproc:{_count}",
+                    "suggested_fix": "DB unavailable. Human confirmation required.",
+                }
         return None
 
     def _is_learned_safe(self, tool: str, detail: str) -> bool:

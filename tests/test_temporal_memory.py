@@ -14,6 +14,22 @@ from pathlib import Path
 
 import pytest
 
+# Skip entire module if sqlite_vec extension is not installed
+def _sqlite_vec_available() -> bool:
+    try:
+        import sqlite3 as _s
+        c = _s.connect(":memory:")
+        c.enable_load_extension(True)
+        c.load_extension("sqlite_vec")
+        return True
+    except Exception:
+        return False
+
+pytestmark = pytest.mark.skipif(
+    not _sqlite_vec_available(),
+    reason="sqlite_vec extension not installed — run: pip install sqlite-vec",
+)
+
 # Point to test DB so we don't pollute dqiii8.db
 _TMP_DB = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 _TMP_DB.close()

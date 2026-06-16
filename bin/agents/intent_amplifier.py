@@ -585,11 +585,19 @@ def _build_amplified_prompt(
             amplified += intent_suffix
         return amplified, len(effective_chunks)
     if tier == 3:
-        # Tier A: frontier models don't need structural instructions
-        return (
-            _build_prompt_tier_a(original, effective_chunks, context_block=_ctx_block),
-            len(effective_chunks),
-        )
+        # Tier A (B4): all tier-3 prompts carry a compiled EXECUTION PLAN block.
+        # plan_compiler is deterministic (zero-LLM) — adds ~1,950-2,300 chars of
+        # structured scaffolding. Fail-open: if compile fails, use raw prompt only.
+        plan_block = ""
+        try:
+            from plan_compiler import dq_compile
+            plan_block = dq_compile(original, intent_pattern=intent.get("id") if intent else None).render()
+        except Exception:
+            pass
+        base = _build_prompt_tier_a(original, effective_chunks, context_block=_ctx_block)
+        if plan_block:
+            base = f"{base}\n\n---\n\n{plan_block}"
+        return base, len(effective_chunks)
 
     # Default: original [CONTEXT]/[KNOWLEDGE]/[REQUEST] format (tier=None or unknown)
     chunks = effective_chunks
@@ -686,12 +694,16 @@ def _log_amplification(
     tier: int,
     elapsed_ms: int,
     routing: dict = None,
+    chunks_injected: int = 0,
+    success: int = 1,
 ):
     try:
         routing_method = "hierarchical_3level" if routing else "single"
         active_count = len(routing["active_centroids"]) if routing else 1
         queued_count = len(routing["queued_centroids"]) if routing else 0
         classification_ms = routing["classification_ms"] if routing else 0
+        confidence = round(min(intent.get("score", 0) / 10.0, 1.0), 3)
+        knowledge_used = 1 if chunks_injected > 0 else 0
 
         with get_db() as conn:
             conn.execute(
@@ -699,8 +711,9 @@ def _log_amplification(
                 INSERT INTO amplification_log
                 (created_at, original_prompt, amplified_prompt, action_detected, entity_detected,
                  niche_detected, intent_pattern, top_domain, tier_selected, elapsed_ms,
+                 confidence, knowledge_used, success,
                  routing_method, active_centroids_count, queued_centroids_count, classification_ms)
-                VALUES (datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
                 (
                     original[:500],
@@ -712,6 +725,9 @@ def _log_amplification(
                     domains[0]["domain"] if domains else "",
                     tier,
                     elapsed_ms,
+                    confidence,
+                    knowledge_used,
+                    success,
                     routing_method,
                     active_count,
                     queued_count,

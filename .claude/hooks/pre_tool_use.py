@@ -120,7 +120,7 @@ _OAUTH_ALLOWED_RE = re.compile(
 if tool == "Bash":
     _cmd_check = inp.get("command", "") or ""
     if any(_f in _cmd_check for _f in _OAUTH_FILES):
-        _has_chain = any(op in _cmd_check for op in ("|", ";", "&&", "||", ">", "<", "`", "$("))
+        _has_chain = any(op in _cmd_check for op in ("|", ";", "&&", "||", ">", "<", "`", "$(", "\n", "\r"))
         if _has_chain or not _OAUTH_ALLOWED_RE.match(_cmd_check):
             print(json.dumps({
                 "hookSpecificOutput": {

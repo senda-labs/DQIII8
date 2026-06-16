@@ -208,3 +208,16 @@ def test_rm_absolute_build_denied():
 def test_rm_project_node_modules_ok():
     r = analyzer.evaluate("Bash", {"command": "rm -rf /root/dqiii8/node_modules"})
     assert r["decision"] == "APPROVE"
+
+
+# ── Fix: backtick boundary regression tests ──────────────────────────────────
+
+
+def test_credential_in_backtick_subshell():
+    r = analyzer.evaluate("Bash", {"command": "echo `cat .env`"})
+    assert r["decision"] == "DENY"
+
+
+def test_credential_assign_backtick():
+    r = analyzer.evaluate("Bash", {"command": "x=`cat .ssh/id_rsa`"})
+    assert r["decision"] == "DENY"

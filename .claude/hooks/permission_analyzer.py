@@ -201,7 +201,7 @@ class PermissionAnalyzer:
         # 1. Credential paths — block any access (read or write) using path-component matching
         for cred in BASH_CREDENTIAL_PATHS:
             # Match as path component: must be preceded/followed by space, quote, slash, or string boundary
-            pattern = r'(?:^|[\s\'">/=@:(])' + re.escape(cred) + r'(?:[\s\'"/=@:;|)(&<>]|$)'
+            pattern = r'(?:^|[\s\'">/=@:(`$])' + re.escape(cred) + r'(?:[\s\'"/=@:;|)(&<>`$]|$)'
             if re.search(pattern, cmd):
                 return self._deny(
                     "Bash", cmd,

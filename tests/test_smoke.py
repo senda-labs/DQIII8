@@ -111,8 +111,11 @@ def test_working_memory_save_and_retrieve():
     import sqlite3
     from working_memory import get_session_context, save_exchange
 
+    from working_memory import DB_PATH, _get_conn
+
     sid = "test_unit_wm_001"
-    conn = sqlite3.connect("database/dqiii8_metrics.db")
+    # Use _get_conn so the table is created before cleanup attempts
+    conn = _get_conn()
     conn.execute("DELETE FROM session_memory WHERE session_id = ?", (sid,))
     conn.commit()
     conn.close()
@@ -122,7 +125,7 @@ def test_working_memory_save_and_retrieve():
     assert "WACC" in ctx, f"Expected 'WACC' in context, got: {ctx!r}"
     assert "Tesla" in ctx, f"Expected 'Tesla' in context, got: {ctx!r}"
 
-    conn = sqlite3.connect("database/dqiii8_metrics.db")
+    conn = _get_conn()
     conn.execute("DELETE FROM session_memory WHERE session_id = ?", (sid,))
     conn.commit()
     conn.close()
@@ -411,12 +414,15 @@ def test_amplifier_overhead_chars():
             0,
             3000,
         ),
+        # Tier A bounds raised 2026-06-10: B4 wires plan_compiler.dq_compile() into
+        # every tier-3 prompt — the EXECUTION PLAN block adds ~1,950-2,300 chars
+        # (deterministic, zero-LLM). Raw-data overhead remains 0-500 on top.
         (
             "social_sciences",
             "calculate WACC for Tesla assuming 10% cost of equity",
             3,
-            0,
-            500,
+            1900,
+            2900,
         ),
     ]
     for domain, prompt, expected_tier, min_oh, max_oh in cases:
@@ -529,9 +535,18 @@ def test_gate_integrated_blocks_low_sim_chunks_tier_a():
         f"Tier A gate must block chunks with score=0.38 < 0.55. "
         f"chunks_used={result['chunks_used']}, tier={result['tier']}"
     )
+    # B4 (2026-06-10): tier-3 prompts always carry the compiled EXECUTION PLAN
+    # block (process scaffolding, not knowledge). The gate contract is about
+    # knowledge injection: blocked chunk text must NOT appear in the prompt.
+    assert result["amplified"].startswith(
+        "calculate WACC for Tesla assuming 10% cost of equity"
+    ), "Original prompt must lead the amplified prompt"
     assert (
-        result["amplified"] == "calculate WACC for Tesla assuming 10% cost of equity"
-    ), "When gate blocks all chunks, amplified must equal original prompt"
+        "mRNA encapsulation" not in result["amplified"]
+    ), "Gate-blocked chunk text must never leak into the amplified prompt"
+    assert (
+        "[EXECUTION PLAN" in result["amplified"]
+    ), "Tier A prompts must carry the compiled execution plan block (B4)"
 
 
 def test_needs_cot_detects_formula_queries():

@@ -19,13 +19,24 @@ from bin.core.logging_config import get_logger as _get_logger
 log = _get_logger(__name__)
 
 DB_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8_metrics.db"
+    Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8_history.db"
 )
 
 
 def _get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS session_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+            content TEXT NOT NULL,
+            domain TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
+    )
+    conn.commit()
     return conn
 
 

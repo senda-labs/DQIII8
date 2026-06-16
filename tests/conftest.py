@@ -10,8 +10,31 @@ Marks:
   @pytest.mark.requires_db      — test needs dqiii8.db initialized
 """
 
+import os
 import subprocess
+import uuid
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolate_session_id(monkeypatch):
+    """Give each test a unique session ID so repeated DENY decisions don't
+    accumulate in the production DB and trigger _check_repeat_rejections.
+    SESSION_ID is captured at module import time, so we patch the variable
+    directly rather than relying on the env var being re-read."""
+    import sys
+    unique_id = f"pytest-{uuid.uuid4().hex[:8]}"
+    monkeypatch.setenv("CLAUDE_SESSION_ID", unique_id)
+    # Patch the module-level constant that was already read at import time
+    pa_mod = sys.modules.get("permission_analyzer")
+    if pa_mod is not None:
+        monkeypatch.setattr(pa_mod, "SESSION_ID", unique_id)
+
+
+@pytest.fixture
+def anyio_backend():
+    """Pin anyio-marked async tests to asyncio — trio is not installed on the VPS."""
+    return "asyncio"
 
 
 def _ollama_available() -> bool:

@@ -20,10 +20,10 @@ import pytest
 # Skip entire module if sqlite_vec extension is not installed
 def _sqlite_vec_available() -> bool:
     try:
-        import sqlite3 as _s
+        import sqlite3 as _s, sqlite_vec as _sv
         c = _s.connect(":memory:")
         c.enable_load_extension(True)
-        c.load_extension("sqlite_vec")
+        _sv.load(c)
         return True
     except Exception:
         return False
@@ -84,6 +84,7 @@ def _apply_fts5(conn: sqlite3.Connection) -> None:
 
 def test_vector_store_init_and_upsert():
     """vec0 table can be created and vectors inserted/searched."""
+    vs.DB_PATH = _TMP_PATH  # re-assert in case another module clobbered it
     vs.init_vec_table()
 
     conn = sqlite3.connect(str(_TMP_PATH))
@@ -143,6 +144,7 @@ def test_hybrid_search_vector_only():
 
 def test_hybrid_search_keyword():
     """search_by_keywords finds FTS5 matches; returns search_method='keyword'."""
+    hs.DB_PATH = _TMP_PATH  # re-assert in case another module clobbered it
     conn = sqlite3.connect(str(_TMP_PATH))
     _apply_fts5(conn)
     cur = conn.execute(

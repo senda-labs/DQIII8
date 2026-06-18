@@ -90,6 +90,11 @@ def main() -> int:
     else:
         logger.info("=== the_odds_api: skipped (--skip-odds) ===")
 
+    # 3. FBRef — xG + stats for completed WC2026 matches (rate-limited 4.5s/req)
+    from capture.sources.fbref import ingest as fbref_ingest
+    if not run_source("fbref", lambda: fbref_ingest(conn)):
+        failures += 1
+
     conn.close()
 
     if failures:

@@ -412,3 +412,55 @@ def test_parse_odds_event_totals():
     labels = {r["outcome"] for r in result["odds_rows"]}
     assert "over_2.5" in labels
     assert "under_2.5" in labels
+
+
+# --- FBRef ---
+from capture.sources.fbref import parse_match_stats, _norm_stat
+
+_FBREF_SUMMARY_HTML = """
+<table id="team_stats">
+  <tbody>
+    <tr><th>Stat</th><th>Squad</th><th>Squad</th></tr>
+    <tr><td>Expected Goals (xG)</td><td>1.8</td><td>0.4</td></tr>
+    <tr><td>Total Shots</td><td>14</td><td>6</td></tr>
+    <tr><td>Shots on Target</td><td>5</td><td>2</td></tr>
+    <tr><td>Corners</td><td>7</td><td>3</td></tr>
+    <tr><td>Possession</td><td>62%</td><td>38%</td></tr>
+    <tr><td>Fouls</td><td>10</td><td>14</td></tr>
+    <tr><td>Yellow Cards</td><td>1</td><td>2</td></tr>
+    <tr><td>Red Cards</td><td>0</td><td>0</td></tr>
+  </tbody>
+</table>
+"""
+
+def test_fbref_parse_xg():
+    stats = parse_match_stats(_FBREF_SUMMARY_HTML)
+    assert abs(stats["home_xg"] - 1.8) < 0.01
+    assert abs(stats["away_xg"] - 0.4) < 0.01
+
+def test_fbref_parse_shots():
+    stats = parse_match_stats(_FBREF_SUMMARY_HTML)
+    assert stats["home_shots"] == 14
+    assert stats["away_shots"] == 6
+    assert stats["home_sot"] == 5
+    assert stats["away_sot"] == 2
+
+def test_fbref_parse_corners():
+    stats = parse_match_stats(_FBREF_SUMMARY_HTML)
+    assert stats["home_corners"] == 7
+    assert stats["away_corners"] == 3
+
+def test_fbref_parse_possession():
+    stats = parse_match_stats(_FBREF_SUMMARY_HTML)
+    assert abs(stats["home_possession"] - 62.0) < 0.01
+
+def test_fbref_parse_cards():
+    stats = parse_match_stats(_FBREF_SUMMARY_HTML)
+    assert stats["home_yellow"] == 1
+    assert stats["away_yellow"] == 2
+    assert stats["home_red"] == 0
+    assert stats["away_red"] == 0
+
+def test_fbref_parse_returns_empty_on_no_table():
+    stats = parse_match_stats("<html><body>no stats here</body></html>")
+    assert stats == {}

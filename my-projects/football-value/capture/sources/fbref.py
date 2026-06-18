@@ -11,6 +11,7 @@ import os
 import re
 import time
 import threading
+from difflib import SequenceMatcher
 from typing import Any
 
 import requests
@@ -20,7 +21,10 @@ logger = logging.getLogger(__name__)
 
 _BASE = "https://fbref.com"
 _SCHEDULE_URL = f"{_BASE}/en/comps/1/schedule/World-Cup-Scores-and-Fixtures"
-_DELAY_S = float(os.getenv("FBREF_DELAY_S", "4.5"))
+_raw_delay = float(os.getenv("FBREF_DELAY_S", "4.5"))
+_DELAY_S = max(4.0, _raw_delay)
+if _raw_delay < 4.0:
+    logger.warning("FBREF_DELAY_S=%s below 4.0s minimum — clamped to 4.0s", _raw_delay)
 
 _USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -137,6 +141,14 @@ def fetch_schedule() -> list[dict]:
     return matches
 
 
+def _name_match(a: str, b: str) -> bool:
+    """Return True if names are exact or have ratio >= 0.75 (avoids 'mali'/'somalia' false positives)."""
+    if a == b:
+        return True
+    ratio = SequenceMatcher(None, a, b).ratio()
+    return ratio >= 0.75
+
+
 def _find_fixture_id(conn, date_iso: str, home: str, away: str) -> str | None:
     """Match a FBRef game row to our canonical fixture by date + fuzzy team name."""
     home_n = home.lower().strip()
@@ -154,10 +166,9 @@ def _find_fixture_id(conn, date_iso: str, home: str, away: str) -> str | None:
     for row in rows:
         if row[1] == home_n and row[2] == away_n:
             return row[0]
-        # partial match (e.g. "United States" vs "usa")
-        if home_n in row[1] or row[1] in home_n:
-            if away_n in row[2] or row[2] in away_n:
-                return row[0]
+        # fuzzy match (e.g. "United States" vs "usa") — ratio>=0.75 avoids 'mali'/'somalia' false positives
+        if _name_match(home_n, row[1]) and _name_match(away_n, row[2]):
+            return row[0]
     return None
 
 

@@ -180,7 +180,9 @@ class DixonColes:
 
 def load_matches_from_db(conn) -> list[dict[str, Any]]:
     """
-    Load completed matches with scores from football.db.
+    Load completed WC fixtures with scores from football.db.
+    Only includes fixtures where both teams are registered (openfootball/fifa_fdcp sources).
+    football_data rows (NULL team IDs) are excluded by design — they cover domestic leagues.
     Returns one row per fixture_id (first source encountered for duplicates).
     """
     rows = conn.execute(
@@ -197,6 +199,7 @@ def load_matches_from_db(conn) -> list[dict[str, Any]]:
            WHERE ms.home_score IS NOT NULL
              AND ms.away_score IS NOT NULL
              AND f.status = 'completed'
+             AND f.tournament LIKE 'WC%'
         """
     ).fetchall()
 

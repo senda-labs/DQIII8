@@ -76,17 +76,21 @@ def main() -> int:
         failures += 1
 
     # 2. The Odds API — WC2026 pre-match odds (h2h + totals)
-    #    500 req/month free tier: use once daily, covers both markets in one call
+    #    500 req/month free tier: use once daily. Skipped if key not set.
     if not args.skip_odds:
         import os
-        from capture.sources.the_odds_api import ingest as odds_ingest
-        sport = os.getenv("ODDS_API_SPORT", "soccer_wc")
+        odds_key = os.getenv("THE_ODDS_API_KEY", "")
+        if not odds_key:
+            logger.warning("the_odds_api: THE_ODDS_API_KEY not set — skipping (add to .env)")
+        else:
+            from capture.sources.the_odds_api import ingest as odds_ingest
+            sport = os.getenv("ODDS_API_SPORT", "soccer_wc")
 
-        def _odds():
-            return asyncio.run(odds_ingest(conn, sport=sport, markets="h2h,totals"))
+            def _odds():
+                return asyncio.run(odds_ingest(conn, sport=sport, markets="h2h,totals"))
 
-        if not run_source("the_odds_api", _odds):
-            failures += 1
+            if not run_source("the_odds_api", _odds):
+                failures += 1
     else:
         logger.info("=== the_odds_api: skipped (--skip-odds) ===")
 

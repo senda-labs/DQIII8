@@ -12,6 +12,7 @@ Parameters (per fit):
 """
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from typing import Any
@@ -19,6 +20,8 @@ from typing import Any
 import numpy as np
 from scipy.optimize import minimize
 from scipy.stats import poisson
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,8 +53,11 @@ def _tau(x: int, y: int, lh: float, la: float, rho: float) -> float:
 
 def _joint_prob(x: int, y: int, lh: float, la: float, rho: float) -> float:
     """P(home=x, away=y) under Dixon-Coles model."""
-    p = poisson.pmf(x, lh) * poisson.pmf(y, la) * _tau(x, y, lh, la, rho)
-    return max(p, 1e-10)  # numerical floor
+    t = _tau(x, y, lh, la, rho)
+    p = poisson.pmf(x, lh) * poisson.pmf(y, la) * t
+    if p <= 0:
+        return 1e-10  # tau went negative — log-likelihood will penalize this region
+    return p
 
 
 class DixonColes:
@@ -80,9 +86,15 @@ class DixonColes:
         n = len(teams)
         idx = {t: i for i, t in enumerate(teams)}
 
+        if len(matches) < n * 2:
+            logger.warning(
+                "DixonColes: only %d matches for %d teams — fit may be unreliable (need >= %d)",
+                len(matches), n, n * 2,
+            )
+
         # Initial params: [attack×n, defense×n, home_adv, rho]
-        # Constrain: sum(attack) = 0 (identifiability) via fixing attack[0]=0
-        # We use unconstrained optimization and fix attack[0]=0 post-hoc.
+        # Identifiability: constrain attack[0]=0 via SLSQP equality. Defense is left free
+        # (conventional Dixon-Coles parameterization; attack sum-to-zero is not required).
         x0 = np.zeros(2 * n + 2)
         x0[-2] = 0.3   # home advantage prior
         x0[-1] = -0.1  # rho prior (negative = low-score inflation)
@@ -103,7 +115,7 @@ class DixonColes:
 
         # Bounds on attack/defense to keep lambdas sane on sparse datasets
         # attack/defense in (-3, 3) → lambda range exp(-6)..exp(6+3) ≈ 0.002..8103
-        bounds = [(-3.0, 3.0)] * (2 * n) + [(-2.0, 2.0), (-1.0, 1.0)]  # home_adv, rho
+        bounds = [(-3.0, 3.0)] * (2 * n) + [(-2.0, 2.0), (-0.5, 0.5)]  # home_adv, rho
 
         # Constraints: attack[0] = 0 (fix one team as baseline for identifiability)
         constraints = [{"type": "eq", "fun": lambda p: p[0]}]
@@ -114,6 +126,12 @@ class DixonColes:
             constraints=constraints,
             options={"maxiter": 1000, "ftol": 1e-9},
         )
+
+        if not result.success:
+            logger.warning(
+                "DixonColes optimizer did not converge (n=%d matches, %d teams): %s",
+                len(matches), n, result.message,
+            )
 
         params = result.x
         for t in teams:
@@ -163,8 +181,7 @@ class DixonColes:
 def load_matches_from_db(conn) -> list[dict[str, Any]]:
     """
     Load completed matches with scores from football.db.
-    Joins match_stats → fixtures → teams. Returns list of match dicts.
-    Prefers 'fifa_fdcp' scores; falls back to any source.
+    Returns one row per fixture_id (first source encountered for duplicates).
     """
     rows = conn.execute(
         """SELECT DISTINCT

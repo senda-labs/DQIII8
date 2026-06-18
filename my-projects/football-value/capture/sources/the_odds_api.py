@@ -24,20 +24,38 @@ _BASE = "https://api.the-odds-api.com/v4"
 _DEFAULT_SPORT = os.getenv("ODDS_API_SPORT", "soccer_wc")
 _REGIONS = "eu"
 
-# Team name aliases: maps The Odds API names → names stored in our teams table.
-# Lower-cased on both sides; extend as new tournaments add unfamiliar names.
+# Team name aliases: maps The Odds API names → canonical names in our teams table.
+# Both the API name and the DB name are lowercased before lookup, so keys here
+# are lowercased Odds API strings; values are lowercased DB names.
+# WC2026 DB uses FIFA FDCP naming (Czechia, Korea Republic, Türkiye, etc.)
 _TEAM_ALIASES: dict[str, str] = {
+    # USA variants
     "united states": "usa",
     "us": "usa",
+    # Ireland
     "republic of ireland": "ireland",
+    # Ivory Coast
     "côte d'ivoire": "ivory coast",
     "cote d'ivoire": "ivory coast",
+    # Korea — Odds API uses "South Korea", FIFA FDCP uses "Korea Republic"
+    "south korea": "korea republic",
+    # Czechia — Odds API uses "Czech Republic", FIFA FDCP uses "Czechia"
+    "czech republic": "czechia",
+    # Turkey — Odds API uses "Turkey", FIFA FDCP uses "Türkiye"
+    "turkey": "türkiye",
+    "turkiye": "türkiye",   # ASCII fallback
+    # Iran — Odds API uses "Iran", FIFA FDCP uses "IR Iran"
+    "iran": "ir iran",
+    # Cape Verde — Odds API uses "Cape Verde", FIFA FDCP uses "Cabo Verde"
+    "cape verde": "cabo verde",
+    # DR Congo — Odds API uses "DR Congo", FIFA FDCP uses "Congo DR"
+    "dr congo": "congo dr",
+    # North Macedonia / North Korea
     "north macedonia": "north macedonia",
     "dpr korea": "north korea",
-    "turkiye": "turkey",
-    "south korea": "south korea",
-    "bosnia and herzegovina": "bosnia & herzegovina",
-    "bosnia & herzegovina": "bosnia & herzegovina",
+    # Bosnia
+    "bosnia and herzegovina": "bosnia and herzegovina",
+    "bosnia & herzegovina": "bosnia and herzegovina",
 }
 
 

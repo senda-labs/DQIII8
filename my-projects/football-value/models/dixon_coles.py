@@ -60,6 +60,20 @@ def _joint_prob(x: int, y: int, lh: float, la: float, rho: float) -> float:
     return p
 
 
+def _poisson_pmf_continuous(x: float, lam: float) -> float:
+    """Generalized Poisson PMF for non-integer x (uses lgamma for Γ(x+1)).
+    Enables xG-based likelihood where observed 'goals' are continuous.
+    At integer x this matches scipy.stats.poisson.pmf exactly.
+    """
+    if x < 0 or lam <= 0:
+        return 0.0
+    try:
+        log_p = -lam + x * math.log(lam) - math.lgamma(x + 1)
+        return math.exp(log_p)
+    except (ValueError, OverflowError):
+        return 1e-10
+
+
 class DixonColes:
     """
     Bivariate Poisson goals model with ρ-correction.
@@ -70,7 +84,13 @@ class DixonColes:
         edge = value_edge(pred.home_win, 2.10)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, mode: str = "goals", alpha: float = 0.5) -> None:
+        if mode not in ("goals", "xg", "hybrid"):
+            raise ValueError(f"mode must be 'goals', 'xg', or 'hybrid', got {mode!r}")
+        if not 0.0 <= alpha <= 1.0:
+            raise ValueError(f"alpha must be in [0, 1], got {alpha}")
+        self._mode = mode
+        self._alpha = alpha
         self._attack: dict[str, float] = {}
         self._defense: dict[str, float] = {}
         self._home_adv: float = 0.0
@@ -81,15 +101,28 @@ class DixonColes:
         """
         Fit on a list of completed matches.
         Each match: {"home_team": str, "away_team": str, "home_score": int, "away_score": int}
+        mode="xg"/"hybrid" also requires "home_xg" and "away_xg" keys (float | None).
         """
-        teams = sorted({m["home_team"] for m in matches} | {m["away_team"] for m in matches})
+        # Filter matches based on mode
+        if self._mode in ("xg", "hybrid"):
+            usable = [m for m in matches if m.get("home_xg") is not None and m.get("away_xg") is not None]
+            n_dropped = len(matches) - len(usable)
+            if n_dropped:
+                logger.warning(
+                    "DixonColes(mode=%r): dropped %d/%d matches missing xG",
+                    self._mode, n_dropped, len(matches),
+                )
+        else:
+            usable = matches
+
+        teams = sorted({m["home_team"] for m in usable} | {m["away_team"] for m in usable})
         n = len(teams)
         idx = {t: i for i, t in enumerate(teams)}
 
-        if len(matches) < n * 2:
+        if len(usable) < n * 2:
             logger.warning(
                 "DixonColes: only %d matches for %d teams — fit may be unreliable (need >= %d)",
-                len(matches), n, n * 2,
+                len(usable), n, n * 2,
             )
 
         # Initial params: [attack×n, defense×n, home_adv, rho]
@@ -99,18 +132,34 @@ class DixonColes:
         x0[-2] = 0.3   # home advantage prior
         x0[-1] = -0.1  # rho prior (negative = low-score inflation)
 
+        mode = self._mode
+        alpha = self._alpha
+
         def neg_log_likelihood(params: np.ndarray) -> float:
-            attack  = params[:n]
-            defense = params[n:2*n]
+            attack   = params[:n]
+            defense  = params[n:2*n]
             home_adv = params[-2]
-            rho = params[-1]
+            rho      = params[-1]
             ll = 0.0
-            for m in matches:
+            for m in usable:
                 i_h = idx[m["home_team"]]
                 i_a = idx[m["away_team"]]
                 lh = math.exp(home_adv + attack[i_h] + defense[i_a])
                 la = math.exp(attack[i_a] + defense[i_h])
-                ll += math.log(_joint_prob(int(m["home_score"]), int(m["away_score"]), lh, la, rho))
+                if mode == "goals":
+                    # Original discrete path with τ-correction
+                    ll += math.log(_joint_prob(int(m["home_score"]), int(m["away_score"]), lh, la, rho))
+                elif mode == "xg":
+                    # Continuous Poisson — τ not applied (calibrated for discrete goals)
+                    p_h = _poisson_pmf_continuous(m["home_xg"], lh)
+                    p_a = _poisson_pmf_continuous(m["away_xg"], la)
+                    ll += math.log(max(p_h * p_a, 1e-20))
+                else:  # hybrid
+                    eff_h = alpha * m["home_xg"] + (1 - alpha) * m["home_score"]
+                    eff_a = alpha * m["away_xg"] + (1 - alpha) * m["away_score"]
+                    p_h = _poisson_pmf_continuous(eff_h, lh)
+                    p_a = _poisson_pmf_continuous(eff_a, la)
+                    ll += math.log(max(p_h * p_a, 1e-20))
             return -ll
 
         # Bounds on attack/defense to keep lambdas sane on sparse datasets
@@ -129,8 +178,8 @@ class DixonColes:
 
         if not result.success:
             logger.warning(
-                "DixonColes optimizer did not converge (n=%d matches, %d teams): %s",
-                len(matches), n, result.message,
+                "DixonColes optimizer did not converge (mode=%r, n=%d matches, %d teams): %s",
+                self._mode, len(usable), n, result.message,
             )
 
         params = result.x
@@ -138,8 +187,8 @@ class DixonColes:
             self._attack[t]  = params[idx[t]]
             self._defense[t] = params[n + idx[t]]
         self._home_adv = params[-2]
-        self._rho = params[-1]
-        self._fitted = True
+        self._rho      = params[-1]
+        self._fitted   = True
         return self
 
     def _lambdas(self, home: str, away: str) -> tuple[float, float]:
@@ -191,7 +240,9 @@ def load_matches_from_db(conn) -> list[dict[str, Any]]:
                ht.name AS home_team,
                at.name AS away_team,
                ms.home_score,
-               ms.away_score
+               ms.away_score,
+               ms.home_xg,
+               ms.away_xg
            FROM match_stats ms
            JOIN fixtures f ON ms.fixture_id = f.id
            JOIN teams ht ON f.home_team_id = ht.id
@@ -208,9 +259,11 @@ def load_matches_from_db(conn) -> list[dict[str, Any]]:
         fid = row[0]
         if fid not in seen:
             seen[fid] = {
-                "home_team": row[1],
-                "away_team": row[2],
+                "home_team":  row[1],
+                "away_team":  row[2],
                 "home_score": row[3],
                 "away_score": row[4],
+                "home_xg":    row[5],  # may be None if FBRef not yet ingested
+                "away_xg":    row[6],
             }
     return list(seen.values())

@@ -18,7 +18,20 @@ paths:
 | A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Finance, orchestración, decisiones arquitectónicas |
 | S | Anthropic | `claude-opus-4-8` | ~$0.20/turn | Multi-agent coordination, system design ONLY |
 
-**NIM rate limits:** 40 RPM global (no headers x-ratelimit). Usa exponential backoff en 429. Modelos destacados disponibles: `deepseek-ai/deepseek-v4-flash` (1M ctx), `writer/palmyra-fin-70b-32k`, `writer/palmyra-med-70b-32k`, `meta/llama-4-maverick-17b-128e-instruct` (1M ctx). Modelo `nutrition-specialist` ya ruteado a NIM (`palmyra-med`).
+**NIM — sondeo completo 2026-06-26 (50/121 activos):**
+
+| Categoría | Modelos confirmados | Latencia |
+|-----------|--------------------|---------:|
+| LLM frontera | `mistralai/mistral-large-3-675b-instruct-2512` | **0.3s** |
+| LLM 100B+ | `openai/gpt-oss-120b`, `nvidia/nemotron-3-super-120b-a12b` | 0.5–1.0s |
+| Código (1M ctx) | `deepseek-ai/deepseek-v4-flash` | 1.4s |
+| Safety | `nvidia/llama-3.1-nemoguard-8b-content-safety`, `meta/llama-guard-4-12b`, `nvidia/gliner-pii` | 0.1s |
+| Visión | `microsoft/phi-4-multimodal-instruct`, `meta/llama-3.2-90b-vision-instruct` | 0.2–0.3s |
+| Traducción | `nvidia/riva-translate-4b-instruct-v1.1` | 0.2s |
+| Embeddings | **Todos 404** — usar alternativa externa | — |
+
+Rate limit: 40 RPM global, sin headers x-ratelimit → exponential backoff en 429.
+`writer/palmyra-*` y modelos código especializados (granite, codestral, starcoder) son 404 en esta cuenta.
 
 **RULE: Start at C. Escalate only when:**
 1. Task type is explicitly mapped to a higher tier (see `AGENT_ROUTING` in `openrouter_wrapper.py`).

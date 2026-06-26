@@ -67,11 +67,16 @@ PROVIDERS = {
         "api_key_env": "GITHUB_TOKEN",
         "headers_extra": {},
     },
-    # NVIDIA NIM — Tier B+ (free, OpenAI-compatible, 121 models, 40 RPM global)
-    # Confirmed working: meta/llama-3.3-70b-instruct, meta/llama-4-maverick-17b-128e-instruct
-    # Specialized: writer/palmyra-fin-70b-32k, writer/palmyra-med-70b-32k, baai/bge-m3
-    # Long-context: deepseek-ai/deepseek-v4-flash (1M ctx), meta/llama-4-maverick (1M ctx)
-    # Rate limit: 40 RPM global (no x-ratelimit headers — use exponential backoff on 429)
+    # NVIDIA NIM — Tier B+ (free, OpenAI-compatible, 50/121 models activos, 40 RPM global)
+    # Sondeo completo 2026-06-26: 50 OK, 58 404, 9 timeout, 4 error
+    # RÁPIDOS (<1s): mistral-large-3-675b(0.3s), llama-3.1-70b(0.3s), llama-4-maverick(0.3s),
+    #               ministral-14b(0.1s), nemotron-mini-4b(0.1s), phi-4-multimodal(0.2s)
+    # CÓDIGO: deepseek-v4-flash(1.4s, 1M ctx) — únicos granite/codestral/starcoder son 404
+    # SAFETY: nemoguard-8b-content-safety(0.1s), llama-guard-4-12b(0.1s), gliner-pii(0.1s)
+    # VISIÓN: phi-4-multimodal(0.2s), llama-3.2-90b-vision(0.3s), llama-3.2-11b-vision(4.9s)
+    # TRADUCCIÓN: riva-translate-4b-v1.1(0.2s)
+    # EMBEDDINGS: todos 404 en esta cuenta — usar alternativa externa
+    # Rate limit: 40 RPM global (no x-ratelimit headers — exponential backoff en 429)
     "nim": {
         "base_url": "https://integrate.api.nvidia.com/v1",
         "api_key_env": "NVIDIA_API_KEY",
@@ -101,64 +106,73 @@ def _validate_url(url: str) -> None:
 # ── Tabla de routing por agente ─────────────────────────────────────────────
 
 AGENT_ROUTING = {
-    # Tier C — Ollama local (qwen2.5-coder:7b) — tareas de código simples/pipeline
-    # Benchmark: qwen bien en applied_sciences; timeouts/mediocre en razonamiento complejo (4.5/10 vs llama 7.9/10)
-    "git-specialist": ("ollama", "qwen2.5-coder:7b"),
+    # ── Tier C — Ollama local ────────────────────────────────────────────────
+    "git-specialist":    ("ollama", "qwen2.5-coder:7b"),
     "content-automator": ("ollama", "qwen2.5-coder:7b"),
-    # Tier B+ NIM — Generación de código desde pseudocódigo/spec (DeepSeek V4 Flash: 1M ctx, 8s TTFB)
-    # Patrón: pseudocódigo → code-generator (NIM) → code-validator (Opus) para validación estricta
+
+    # ── Tier B+ NIM — Código (DeepSeek V4 Flash: 1.4s, 1M ctx, confirmado) ──
+    # Patrón: pseudocódigo → [nim] → code-validator [Opus] revisión estricta
     "python-specialist": ("nim", "deepseek-ai/deepseek-v4-flash"),
-    "web-specialist": ("nim", "deepseek-ai/deepseek-v4-flash"),
-    "algo-specialist": ("nim", "deepseek-ai/deepseek-v4-flash"),
-    # Tier B — Cloud free (groq/llama-3.3-70b) — domain knowledge specialists
-    "ai-ml-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "biology-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "web-specialist":    ("nim", "deepseek-ai/deepseek-v4-flash"),
+    "algo-specialist":   ("nim", "deepseek-ai/deepseek-v4-flash"),
+
+    # ── Tier B+ NIM — Alta calidad (Mistral Large 3 675B: 0.3s, confirmado) ─
+    # 675B a 0.3s: mejor modelo gratuito disponible en NIM para razonamiento
+    "research-analyst":  ("nim", "mistralai/mistral-large-3-675b-instruct-2512"),
+    "software-specialist":("nim", "mistralai/mistral-large-3-675b-instruct-2512"),
+    "data-specialist":   ("nim", "mistralai/mistral-large-3-675b-instruct-2512"),
+    "ai-ml-specialist":  ("nim", "mistralai/mistral-large-3-675b-instruct-2512"),
+
+    # ── Tier B+ NIM — Safety / Moderation (0.1s, confirmados) ───────────────
+    "safety-checker":    ("nim", "nvidia/llama-3.1-nemoguard-8b-content-safety"),
+    "content-safety":    ("nim", "meta/llama-guard-4-12b"),
+    "pii-detector":      ("nim", "nvidia/gliner-pii"),
+
+    # ── Tier B+ NIM — Vision (phi-4-multimodal: 0.2s, confirmado) ───────────
+    "vision-specialist": ("nim", "microsoft/phi-4-multimodal-instruct"),
+
+    # ── Tier B+ NIM — Traducción (riva: 0.2s, confirmado) ───────────────────
+    "translate-specialist": ("nim", "nvidia/riva-translate-4b-instruct-v1.1"),
+
+    # ── Tier B — Groq (dominio general, baja latencia) ───────────────────────
+    "biology-specialist":   ("groq", "llama-3.3-70b-versatile"),
     "chemistry-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "data-specialist": ("groq", "llama-3.3-70b-versatile"),
     "economics-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "history-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "language-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "legal-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "logic-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "history-specialist":   ("groq", "llama-3.3-70b-versatile"),
+    "language-specialist":  ("groq", "llama-3.3-70b-versatile"),
+    "legal-specialist":     ("groq", "llama-3.3-70b-versatile"),
+    "logic-specialist":     ("groq", "llama-3.3-70b-versatile"),
     "marketing-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "math-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "nutrition-specialist": ("nim", "writer/palmyra-med-70b-32k"),
-    "philosophy-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "physics-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "software-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "stats-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "writing-specialist": ("groq", "llama-3.3-70b-versatile"),
-    # Tier B — Other cloud-free agents
-    "research-analyst": ("groq", "llama-3.3-70b-versatile"),
-    # code-reviewer → Opus: revisión estricta con contexto completo post code-generator
-    # Recibe output de python/algo/web-specialist + contexto del proyecto para atacar el código
-    "code-reviewer": ("anthropic", "claude-opus-4-8"),
-    # code-validator = alias explícito para la fase de validación en el pipeline pseudocódigo→código→review
+    "math-specialist":      ("groq", "llama-3.3-70b-versatile"),
+    "nutrition-specialist": ("groq", "llama-3.3-70b-versatile"),  # palmyra-med 404
+    "philosophy-specialist":("groq", "llama-3.3-70b-versatile"),
+    "physics-specialist":   ("groq", "llama-3.3-70b-versatile"),
+    "stats-specialist":     ("groq", "llama-3.3-70b-versatile"),
+    "writing-specialist":   ("groq", "llama-3.3-70b-versatile"),
+
+    # ── Tier S — Opus: revisión estricta post-generación ────────────────────
+    # Recibe código generado + spec original + contexto proyecto. Ataca el código.
+    "code-reviewer":  ("anthropic", "claude-opus-4-8"),
     "code-validator": ("anthropic", "claude-opus-4-8"),
-    # Tier A — Paid / high-stakes agents
+
+    # ── Tier A — Sonnet: agentes de alto valor ───────────────────────────────
     "finance-specialist": ("anthropic", "claude-sonnet-4-6"),
-    "auditor": ("anthropic", "claude-sonnet-4-6"),
-    "orchestrator": ("anthropic", "claude-sonnet-4-6"),
-    # Accounting-ERP agents (tier per agent definition)
+    "auditor":            ("anthropic", "claude-sonnet-4-6"),
+    "orchestrator":       ("anthropic", "claude-sonnet-4-6"),
+
+    # ── Accounting-ERP ───────────────────────────────────────────────────────
     "customer-accountant": ("groq", "llama-3.3-70b-versatile"),
     "supplier-accountant": ("groq", "llama-3.3-70b-versatile"),
-    "invoice-extractor": ("groq", "llama-3.3-70b-versatile"),
-    "tax-auditor": ("anthropic", "claude-sonnet-4-6"),
-    "closing-specialist": ("anthropic", "claude-sonnet-4-6"),
+    "invoice-extractor":   ("groq", "llama-3.3-70b-versatile"),
+    "tax-auditor":         ("anthropic", "claude-sonnet-4-6"),
+    "closing-specialist":  ("anthropic", "claude-sonnet-4-6"),
+
     "default": ("groq", "llama-3.3-70b-versatile"),
 }
 
-# Agents for which Tier C (Ollama/qwen) is always correct regardless of domain.
-# All other agents on Tier C will be auto-escalated to Tier B when domain != applied_sciences.
-_TIER_C_AGENTS = frozenset(
-    {
-        "python-specialist",
-        "git-specialist",
-        "web-specialist",
-        "algo-specialist",
-        "content-automator",
-    }
-)
+# Agents locked to Tier C (Ollama) regardless of domain — never auto-escalated.
+# python/web/algo-specialist ahora en NIM B+ (DeepSeek V4 Flash).
+_TIER_C_AGENTS = frozenset({"git-specialist", "content-automator"})
 
 # Fallback universal por proveedor (cuando el modelo primario falla)
 # Fallback models — llm7 removed (0% success rate over 40 calls in 7d audit)
@@ -169,7 +183,7 @@ _PROVIDER_DEFAULT_MODEL = {
     "openrouter": "qwen/qwen3-coder:free",
     "pollinations": "openai",
     "anthropic": "claude-sonnet-4-6",
-    "nim": "meta/llama-3.3-70b-instruct",
+    "nim": "mistralai/mistral-large-3-675b-instruct-2512",  # 675B, 0.3s, mejor disponible
 }
 
 # Cadena de fallback por proveedor primario

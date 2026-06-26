@@ -13,9 +13,12 @@ paths:
 |---|---|---|---|---|
 | C | Ollama (local) | `qwen2.5-coder:7b` | $0 | Code, git, pipeline, applied_sciences |
 | B | Groq | `llama-3.3-70b-versatile` | $0 | Research, analysis, writing, domain knowledge |
-| B+ | GitHub Models | `deepseek-v3-0324` / `codestral-2501` | $0 | Code review, long-context, fallback |
-| A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Finance, orchestration, architecture decisions |
+| B+ | NVIDIA NIM | `meta/llama-3.3-70b-instruct` | $0 | Long-context (1M), dominio médico/fin, fallback groq 429 |
+| B++ | GitHub Models | `deepseek-v3-0324` / `codestral-2501` | $0 | Code review, fallback NIM |
+| A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Finance, orchestración, decisiones arquitectónicas |
 | S | Anthropic | `claude-opus-4-8` | ~$0.20/turn | Multi-agent coordination, system design ONLY |
+
+**NIM rate limits:** 40 RPM global (no headers x-ratelimit). Usa exponential backoff en 429. Modelos destacados disponibles: `deepseek-ai/deepseek-v4-flash` (1M ctx), `writer/palmyra-fin-70b-32k`, `writer/palmyra-med-70b-32k`, `meta/llama-4-maverick-17b-128e-instruct` (1M ctx). Modelo `nutrition-specialist` ya ruteado a NIM (`palmyra-med`).
 
 **RULE: Start at C. Escalate only when:**
 1. Task type is explicitly mapped to a higher tier (see `AGENT_ROUTING` in `openrouter_wrapper.py`).
@@ -23,6 +26,30 @@ paths:
 3. Domain is finance/trading/architecture AND complexity ≥ ARCHITECTURE level.
 
 **NEVER skip tiers.** NEVER use A/S for a task B can handle.
+
+## Patrón: Pseudocódigo → Código → Validación
+
+Pipeline de dos fases para implementación a partir de plan/spec:
+
+```
+[Plan / Pseudocódigo]
+        ↓
+  code-generator          NIM / deepseek-ai/deepseek-v4-flash   (B+, 1M ctx, 8s TTFB)
+  python-specialist       NIM / deepseek-ai/deepseek-v4-flash   (B+)
+  algo-specialist         NIM / deepseek-ai/deepseek-v4-flash   (B+)
+  web-specialist          NIM / deepseek-ai/deepseek-v4-flash   (B+)
+        ↓
+  code-reviewer           Anthropic / claude-opus-4-8            (S — revisión estricta)
+  code-validator          Anthropic / claude-opus-4-8            (S — alias explícito)
+```
+
+**Regla de uso:** Solo escalar a `code-reviewer`/`code-validator` cuando el código generado
+toca ≥2 módulos, tiene lógica de negocio crítica, o el plan original tenía ambigüedad de spec.
+Opus recibe: código generado + contexto completo del proyecto + spec original.
+Opus ataca el código: busca bugs, violaciones de contratos, edge cases no cubiertos, deuda técnica.
+
+**DeepSeek V4 Flash en NIM:** confirmado 200 OK, ~8s TTFB, 1M tokens contexto, $0.
+Ventaja sobre Ollama qwen local: contexto de 1M (vs 32K), reasoning más profundo en pseudocódigo complejo.
 
 ## Director Routing Algorithm (3 stages, in order)
 
@@ -52,8 +79,20 @@ paths:
 
 - To add a new agent: add entry to `AGENT_ROUTING` in `openrouter_wrapper.py` AND to `config/domain_agent_map.json`.
 - To change a tier assignment: update `AGENT_ROUTING`. Do NOT change `TASK_TIER_MAP` in `director.py` without also updating `KEYWORD_TASK_TYPE`.
-- All provider URLs are allowlisted in `_ALLOWED_HOSTS`. New providers must be added there first.
+- All provider URLs are allowlisted in `_ALLOWED_HOSTS`. New providers must be added there first (automático al añadir a `PROVIDERS` dict).
 - API keys are env vars only (`api_key_env` field in `PROVIDERS` dict). NEVER hardcode.
+- `bin/core/providers/base.py` — Provider registry futuro (no activo). No usar hasta migración formal.
+
+## Fallback Chain (SECUENCIAL, no round-robin)
+
+```
+ollama  → groq → nim → openrouter → github → pollinations
+groq    → nim → openrouter → github → pollinations
+nim     → groq → openrouter → github → pollinations
+github  → groq → nim → pollinations
+```
+
+Errores 429/500/502/503 en `stream_response()` triggean fallback automático al siguiente proveedor.
 
 ## Escalation to Opus (Plan Gate)
 

@@ -67,6 +67,16 @@ PROVIDERS = {
         "api_key_env": "GITHUB_TOKEN",
         "headers_extra": {},
     },
+    # NVIDIA NIM — Tier B+ (free, OpenAI-compatible, 121 models, 40 RPM global)
+    # Confirmed working: meta/llama-3.3-70b-instruct, meta/llama-4-maverick-17b-128e-instruct
+    # Specialized: writer/palmyra-fin-70b-32k, writer/palmyra-med-70b-32k, baai/bge-m3
+    # Long-context: deepseek-ai/deepseek-v4-flash (1M ctx), meta/llama-4-maverick (1M ctx)
+    # Rate limit: 40 RPM global (no x-ratelimit headers — use exponential backoff on 429)
+    "nim": {
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "api_key_env": "NVIDIA_API_KEY",
+        "headers_extra": {},
+    },
     # Anthropic — uses ANTHROPIC_API_KEY if set, otherwise falls back to
     # Claude Code CLI (`claude -p`) which uses OAuth credentials.
     "anthropic": {
@@ -91,13 +101,15 @@ def _validate_url(url: str) -> None:
 # ── Tabla de routing por agente ─────────────────────────────────────────────
 
 AGENT_ROUTING = {
-    # Tier C — Ollama local (qwen2.5-coder:7b) — code & pipeline tasks only
-    # Benchmark: qwen performs well for applied_sciences; timeouts/mediocre elsewhere (4.5/10 vs llama 7.9/10)
-    "python-specialist": ("ollama", "qwen2.5-coder:7b"),
+    # Tier C — Ollama local (qwen2.5-coder:7b) — tareas de código simples/pipeline
+    # Benchmark: qwen bien en applied_sciences; timeouts/mediocre en razonamiento complejo (4.5/10 vs llama 7.9/10)
     "git-specialist": ("ollama", "qwen2.5-coder:7b"),
-    "web-specialist": ("ollama", "qwen2.5-coder:7b"),
-    "algo-specialist": ("ollama", "qwen2.5-coder:7b"),
     "content-automator": ("ollama", "qwen2.5-coder:7b"),
+    # Tier B+ NIM — Generación de código desde pseudocódigo/spec (DeepSeek V4 Flash: 1M ctx, 8s TTFB)
+    # Patrón: pseudocódigo → code-generator (NIM) → code-validator (Opus) para validación estricta
+    "python-specialist": ("nim", "deepseek-ai/deepseek-v4-flash"),
+    "web-specialist": ("nim", "deepseek-ai/deepseek-v4-flash"),
+    "algo-specialist": ("nim", "deepseek-ai/deepseek-v4-flash"),
     # Tier B — Cloud free (groq/llama-3.3-70b) — domain knowledge specialists
     "ai-ml-specialist": ("groq", "llama-3.3-70b-versatile"),
     "biology-specialist": ("groq", "llama-3.3-70b-versatile"),
@@ -110,7 +122,7 @@ AGENT_ROUTING = {
     "logic-specialist": ("groq", "llama-3.3-70b-versatile"),
     "marketing-specialist": ("groq", "llama-3.3-70b-versatile"),
     "math-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "nutrition-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "nutrition-specialist": ("nim", "writer/palmyra-med-70b-32k"),
     "philosophy-specialist": ("groq", "llama-3.3-70b-versatile"),
     "physics-specialist": ("groq", "llama-3.3-70b-versatile"),
     "software-specialist": ("groq", "llama-3.3-70b-versatile"),
@@ -118,7 +130,11 @@ AGENT_ROUTING = {
     "writing-specialist": ("groq", "llama-3.3-70b-versatile"),
     # Tier B — Other cloud-free agents
     "research-analyst": ("groq", "llama-3.3-70b-versatile"),
-    "code-reviewer": ("openrouter", "openai/gpt-oss-120b:free"),
+    # code-reviewer → Opus: revisión estricta con contexto completo post code-generator
+    # Recibe output de python/algo/web-specialist + contexto del proyecto para atacar el código
+    "code-reviewer": ("anthropic", "claude-opus-4-8"),
+    # code-validator = alias explícito para la fase de validación en el pipeline pseudocódigo→código→review
+    "code-validator": ("anthropic", "claude-opus-4-8"),
     # Tier A — Paid / high-stakes agents
     "finance-specialist": ("anthropic", "claude-sonnet-4-6"),
     "auditor": ("anthropic", "claude-sonnet-4-6"),
@@ -153,16 +169,18 @@ _PROVIDER_DEFAULT_MODEL = {
     "openrouter": "qwen/qwen3-coder:free",
     "pollinations": "openai",
     "anthropic": "claude-sonnet-4-6",
+    "nim": "meta/llama-3.3-70b-instruct",
 }
 
 # Cadena de fallback por proveedor primario
-# Fallback chain — llm7 removed (0% success), anthropic added
+# Fallback chain — llm7 removed (0% success), anthropic added, nim added as B+
 FALLBACK_CHAIN = {
-    "ollama": ["groq", "openrouter", "github", "pollinations"],
-    "openrouter": ["groq", "github", "pollinations"],
-    "groq": ["openrouter", "github", "pollinations"],
-    "github": ["groq", "pollinations"],
-    "anthropic": ["groq", "openrouter", "pollinations"],
+    "ollama": ["groq", "nim", "openrouter", "github", "pollinations"],
+    "openrouter": ["groq", "nim", "github", "pollinations"],
+    "groq": ["nim", "openrouter", "github", "pollinations"],
+    "nim": ["groq", "openrouter", "github", "pollinations"],
+    "github": ["groq", "nim", "pollinations"],
+    "anthropic": ["groq", "nim", "openrouter", "pollinations"],
     "pollinations": [],
 }
 
@@ -170,6 +188,7 @@ FALLBACK_CHAIN = {
 TIER_COSTS: dict[str, tuple[float, float]] = {
     "ollama": (0.0, 0.0),
     "groq": (0.0, 0.0),
+    "nim": (0.0, 0.0),
     "github": (0.0, 0.0),
     "llm7": (0.0, 0.0),
     "pollinations": (0.0, 0.0),
@@ -192,6 +211,13 @@ TIER_MAP = {
         "cost_input_1k": 0.0,
         "cost_output_1k": 0.0,
         "desc": "Cloud free — $0",
+    },
+    "B+": {
+        "provider": "nim",
+        "model": "meta/llama-3.3-70b-instruct",
+        "cost_input_1k": 0.0,
+        "cost_output_1k": 0.0,
+        "desc": "NVIDIA NIM — $0, 40 RPM global, 1M ctx models",
     },
     "A": {
         "provider": "anthropic",

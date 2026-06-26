@@ -1,6 +1,7 @@
 #!/bin/bash
 # DQIII8 — Installation Script
-# Usage: bash install.sh
+# Usage: bash install.sh [--with-knowledge]
+#   --with-knowledge  Also pull bge-m3 and index the knowledge base (requires Ollama)
 # Tested on Ubuntu 22.04/24.04
 
 set -euo pipefail
@@ -13,7 +14,14 @@ warn() { echo -e "${YELLOW}⚠${NC} $*"; }
 err()  { echo -e "${RED}✗${NC} $*"; }
 step() { echo -e "\n${YELLOW}▶ $*${NC}"; }
 
+# ── Parse flags ───────────────────────────────────────────────────────
+WITH_KNOWLEDGE=0
+for _arg in "$@"; do
+    [[ "$_arg" == "--with-knowledge" ]] && WITH_KNOWLEDGE=1
+done
+
 echo "DQIII8 Install — root: $DQIII8_ROOT"
+[[ $WITH_KNOWLEDGE -eq 1 ]] && echo "  Mode: full (with knowledge base)"
 echo ""
 
 _INSTALLED=()
@@ -34,27 +42,46 @@ pip install -q --break-system-packages sqlite-vec 2>/dev/null || pip install -q 
 _INSTALLED+=("Python deps")
 
 # ── 2. Ollama ─────────────────────────────────────────────────────────
-step "2/8 Ollama (local LLM — Tier C)"
+step "2/8 Ollama (local LLM — Tier C, optional)"
+_OLLAMA_OK=0
 if command -v ollama &>/dev/null; then
     ok "Ollama already installed: $(ollama --version 2>/dev/null | head -1)"
     _SKIPPED+=("Ollama (already present)")
+    _OLLAMA_OK=1
 else
-    warn "Ollama not found. Installing..."
-    curl -fsSL https://ollama.com/install.sh | sh
-    ok "Ollama installed"
-    _INSTALLED+=("Ollama")
-fi
-# Pull required models only if not already present
-for MODEL in qwen2.5-coder:7b bge-m3; do
-    if ollama list 2>/dev/null | grep -q "^${MODEL}"; then
-        ok "Model $MODEL already present"
-        _SKIPPED+=("$MODEL")
+    warn "Ollama not found."
+    echo ""
+    echo "  Ollama enables Tier C (free local models: qwen2.5-coder:7b)."
+    echo "  Without Ollama, Tier B (Groq) becomes the starting point."
+    echo ""
+    read -r -p "  Install Ollama now? (y/N): " _REPLY
+    if [[ "${_REPLY,,}" == "y" ]]; then
+        curl -fsSL https://ollama.com/install.sh | sh
+        ok "Ollama installed"
+        _INSTALLED+=("Ollama")
+        _OLLAMA_OK=1
     else
-        echo "  Pulling $MODEL (this may take a few minutes)..."
-        ollama pull "$MODEL" && ok "Model $MODEL ready"
-        _INSTALLED+=("$MODEL")
+        warn "Skipped. Tier C inactive — Tier B (Groq) will be the entry point."
+        _MISSING+=("Ollama (optional Tier C — run: curl -fsSL https://ollama.com/install.sh | sh)")
     fi
-done
+fi
+
+if [[ $_OLLAMA_OK -eq 1 ]]; then
+    # Core model: always pull qwen2.5-coder:7b for Tier C
+    MODELS=(qwen2.5-coder:7b)
+    # Knowledge-base embedding model: only with --with-knowledge
+    [[ $WITH_KNOWLEDGE -eq 1 ]] && MODELS+=(bge-m3)
+    for MODEL in "${MODELS[@]}"; do
+        if ollama list 2>/dev/null | grep -q "^${MODEL}"; then
+            ok "Model $MODEL already present"
+            _SKIPPED+=("$MODEL")
+        else
+            echo "  Pulling $MODEL (this may take a few minutes)..."
+            ollama pull "$MODEL" && ok "Model $MODEL ready"
+            _INSTALLED+=("$MODEL")
+        fi
+    done
+fi
 
 # ── 3. Claude Code ────────────────────────────────────────────────────
 step "3/8 Claude Code (optional — needed for /cc Telegram command)"
@@ -98,61 +125,67 @@ if [[ ! -f "$DQIII8_ROOT/config/.env" ]]; then
     ln -sf "$ENV_FILE" "$DQIII8_ROOT/config/.env"
 fi
 
-# ── 5. Schema + Knowledge index ───────────────────────────────────────
-step "5/8 Database schema + knowledge indexing"
+# ── 5. Database schema ────────────────────────────────────────────────
+step "5/8 Database schema"
 
-# 5a. Apply schemas (idempotent — all use CREATE TABLE IF NOT EXISTS)
+# 5a. Apply schema_v2.sql (idempotent — CREATE TABLE IF NOT EXISTS throughout)
+# This is the single source of truth for fresh installs.
 mkdir -p "$DQIII8_ROOT/database"
-sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema.sql" \
-    && ok "dqiii8.db: schema.sql applied" \
-    || warn "schema.sql had errors (likely already applied)"
-sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_temporal.sql" \
-    && ok "dqiii8.db: schema_temporal.sql applied" \
-    || warn "schema_temporal.sql had errors"
-sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null \
-    ; ok "dqiii8.db: schema_v2.sql applied (extra tables)"
-sqlite3 "$DQIII8_ROOT/database/jarvis_metrics.db" < "$DQIII8_ROOT/database/schema.sql" \
-    && ok "jarvis_metrics.db: schema.sql applied" \
-    || warn "schema.sql → jarvis_metrics.db had errors"
-# dqiii8_metrics.db — working memory + session_memory (required by smoke tests)
-sqlite3 "$DQIII8_ROOT/database/dqiii8_metrics.db" < "$DQIII8_ROOT/database/schema.sql" \
-    && ok "dqiii8_metrics.db: schema.sql applied" \
-    || warn "schema.sql → dqiii8_metrics.db had errors"
-_INSTALLED+=("Database schemas")
+if sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null; then
+    ok "dqiii8.db: schema_v2.sql applied (46 tables)"
+else
+    warn "schema_v2.sql had errors — check database/ directory"
+fi
+# dqiii8_metrics.db — working memory + session events (required by smoke tests)
+if sqlite3 "$DQIII8_ROOT/database/dqiii8_metrics.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null; then
+    ok "dqiii8_metrics.db: schema applied"
+else
+    warn "dqiii8_metrics.db schema failed — smoke tests may be affected"
+fi
+_INSTALLED+=("Database schema (schema_v2.sql)")
 
-# 5b. Knowledge indexing — one domain at a time (requires Ollama)
-INDEX_OK=1
-for DOMAIN in formal_sciences natural_sciences social_sciences humanities_arts applied_sciences; do
-    if python3 "$DQIII8_ROOT/bin/agents/knowledge_indexer.py" --domain "$DOMAIN" 2>&1; then
-        ok "  domain $DOMAIN indexed"
+# 5b-5d. Knowledge indexing — only with --with-knowledge flag
+if [[ $WITH_KNOWLEDGE -eq 1 ]]; then
+    if [[ $_OLLAMA_OK -ne 1 ]]; then
+        warn "--with-knowledge requires Ollama. Skipping knowledge indexing."
+        _MISSING+=("Knowledge index (Ollama required)")
     else
-        warn "  domain $DOMAIN indexing failed — check Ollama is running"
-        INDEX_OK=0
+        # 5b. Index knowledge domains
+        INDEX_OK=1
+        for DOMAIN in formal_sciences natural_sciences social_sciences humanities_arts applied_sciences; do
+            if python3 "$DQIII8_ROOT/bin/agents/knowledge_indexer.py" --domain "$DOMAIN" 2>&1; then
+                ok "  domain $DOMAIN indexed"
+            else
+                warn "  domain $DOMAIN indexing failed — check Ollama is running"
+                INDEX_OK=0
+            fi
+        done
+        if [[ $INDEX_OK -eq 1 ]]; then
+            _INSTALLED+=("Knowledge index (all 5 domains)")
+        else
+            _MISSING+=("Knowledge index (run per domain: python3 bin/agents/knowledge_indexer.py --domain <name>)")
+        fi
+
+        # 5c. Domain classifier centroids
+        if python3 "$DQIII8_ROOT/bin/agents/domain_classifier.py" --setup --force 2>&1; then
+            ok "Domain classifier centroids seeded"
+            _INSTALLED+=("Domain centroids")
+        else
+            warn "Domain centroids failed — keyword-only fallback active"
+            _MISSING+=("Domain centroids (run: python3 bin/agents/domain_classifier.py --setup --force)")
+        fi
+
+        # 5d. Migrate JSON index files → sqlite-vec
+        if python3 "$DQIII8_ROOT/bin/agents/vector_store.py" --migrate 2>&1; then
+            ok "sqlite-vec migration complete"
+            _INSTALLED+=("Vector store")
+        else
+            warn "vector_store migration failed — hybrid search will be limited"
+            _MISSING+=("Vector store (run: python3 bin/agents/vector_store.py --migrate)")
+        fi
     fi
-done
-
-if [[ $INDEX_OK -eq 1 ]]; then
-    _INSTALLED+=("Knowledge index (all 5 domains)")
 else
-    _MISSING+=("Knowledge index (run per domain: python3 bin/agents/knowledge_indexer.py --domain <name>)")
-fi
-
-# 5c. Domain classifier centroids (runs AFTER indexing so centroids use real embeddings)
-if python3 "$DQIII8_ROOT/bin/agents/domain_classifier.py" --setup --force 2>&1; then
-    ok "Domain classifier centroids seeded"
-    _INSTALLED+=("Domain centroids")
-else
-    warn "Domain centroids failed — keyword-only fallback active"
-    _MISSING+=("Domain centroids (run: python3 bin/agents/domain_classifier.py --setup --force)")
-fi
-
-# 5d. Migrate JSON index files → sqlite-vec (vector_chunks table)
-if python3 "$DQIII8_ROOT/bin/agents/vector_store.py" --migrate 2>&1; then
-    ok "sqlite-vec migration complete"
-    _INSTALLED+=("Vector store")
-else
-    warn "vector_store migration failed — hybrid search will be limited"
-    _MISSING+=("Vector store (run: python3 bin/agents/vector_store.py --migrate)")
+    _SKIPPED+=("Knowledge indexing (run: bash install.sh --with-knowledge)")
 fi
 
 # ── 6. Claude Code settings + systemd service ────────────────────────
@@ -170,12 +203,8 @@ else
     _SKIPPED+=("Claude Code settings.json")
 fi
 
-# 6a-ii. Install OMC plugin (if Claude Code is available)
-if command -v claude &>/dev/null; then
-    echo "  Installing oh-my-claudecode plugin..."
-    claude -p "Run: /plugin marketplace add https://github.com/Yeachan-Heo/oh-my-claudecode && /plugin install oh-my-claudecode" 2>/dev/null || true
-    _INSTALLED+=("oh-my-claudecode plugin")
-fi
+# 6a-ii. Optional plugins — skipped in automated installs to avoid unattended LLM calls
+# To install oh-my-claudecode manually: claude /plugin marketplace add oh-my-claudecode
 
 # 6b. Create systemd service for Telegram bot
 SERVICE_FILE="/etc/systemd/system/dqiii8-bot.service"

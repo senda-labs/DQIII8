@@ -1,6 +1,6 @@
 # 000_INDEX — dqiii8 Attention Router
 > Reading this file routes you to the correct zone in <5 seconds. Stay under 250 lines.
-> Updated: 2026-06-16
+> Updated: 2026-06-20
 
 ---
 
@@ -16,7 +16,7 @@
 | Hooks | 15 · Skills: 20 · Agents: 17 |
 | Repos | public: `senda-labs/DQIII8` · premium: `senda-labs/DQIII8-premium` |
 
-**Active projects:** intl-reports (tanda5 pendiente) · content-automation · accounting-erp · ouroboros-q-eml
+**Active projects:** intl-reports (tanda5 pendiente) · content-automation · football-value (WC2026 live) · accounting-erp · ouroboros-q-eml
 
 ---
 

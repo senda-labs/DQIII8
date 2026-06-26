@@ -1,5 +1,33 @@
 # DQIII8 .gitignore
 
+# ── Knowledge base — content not versioned; populate locally ──────────
+# Only the two policy/stub docs are committed; all corpus content is local.
+knowledge/*
+!knowledge/README.md
+!knowledge/AUDIT_REPORT.md
+
+# ── Session history — personal handover notes & chat logs ─────────────
+sessions/
+
+# ── Operational / ephemeral state ─────────────────────────────────────
+zones/SESSION.md
+claude-progress.txt
+.claude/settings.local.json
+objectives/
+uploads/
+var/
+archived-projects/
+.obsidian/
+.stfolder
+.stignore
+.aider.input.history
+.aider.chat.history.md
+
+# ── Private projects — only README + .gitkeep allowed ─────────────────
+my-projects/*
+!my-projects/README.md
+!my-projects/.gitkeep
+
 # Database files — never commit binary DBs (use schema_v2.sql for fresh installs)
 *.db
 *.db-wal
@@ -61,6 +89,7 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+venvs/
 *.egg-info/
 
 # Windows

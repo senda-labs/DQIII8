@@ -1,198 +1,162 @@
 <p align="center">
   <h1 align="center">DQIII8</h1>
-  <p align="center">Autonomous Multi-Agent Orchestration Engine</p>
+  <p align="center">Autonomous, Cost-First Multi-Agent Orchestration Engine</p>
   <p align="center">
-    <img alt="Tests" src="https://img.shields.io/badge/tests-38%20passed-brightgreen">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-285%20passing-brightgreen">
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg">
     <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue">
-    <img alt="Platform" src="https://img.shields.io/badge/platform-Ubuntu%2024.04-lightgrey">
-    <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-v2.1-blueviolet">
+    <img alt="Platform" src="https://img.shields.io/badge/platform-Ubuntu%2022.04%2F24.04-lightgrey">
+    <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-integrated-blueviolet">
   </p>
 </p>
 
-**DQIII8 is a production-grade autonomous AI orchestration engine running on an SSH-only VPS.** It routes every query through a multi-tier LLM pipeline, enriches prompts with domain-specific knowledge, and enforces permissions and lifecycle events through 13 hooks deeply integrated with Claude Code.
+**DQIII8 is an autonomous AI orchestration engine built for SSH-only VPS deployment.**
+Every request flows through a cost-first routing pipeline that always tries the cheapest
+capable model first — local → free cloud → paid frontier — escalating only when the task
+demands it. It is deeply integrated with [Claude Code](https://claude.com/claude-code)
+through 14 lifecycle hooks, 21 skills, and 17 specialist agents.
 
-Core design principles:
-- **Cost-first routing** — always pick the cheapest model that can handle the task (local → free cloud → paid)
-- **Knowledge injection** — domain knowledge retrieved via hybrid search (vector + FTS5) before the model sees the prompt
-- **Deterministic permissions** — every tool call is evaluated by `PermissionAnalyzer` (APPROVE / DENY / ESCALATE)
-- **Telegram-first UI** — `@YourBotName` is the primary external trigger, backed by 23 commands
+This repository is a **reference implementation**. It shows the architecture, routing
+logic, hook system, and agent patterns so you can build a similar system with your own
+models and providers. The knowledge base, databases, and credentials are populated
+locally — see [Installation](#installation).
 
-> **Disclaimer:** Running DQIII8 requires a populated SQLite schema (79 tables), configured API keys for the provider tiers you want active, and Ollama installed locally for Tier C. See [INSTALL.md](INSTALL.md) for the full setup procedure. The system is designed for Ubuntu 22.04/24.04 on an SSH-only VPS.
+---
+
+## Design principles
+
+- **Cost-first routing** — pick the cheapest tier that can do the job; escalate only on explicit task-type match or tier failure. Never skip tiers.
+- **Deterministic permissions** — every tool call is evaluated by `PermissionAnalyzer` (APPROVE / DENY / ESCALATE) inside a `pre_tool_use` hook before execution.
+- **State in SQLite** — instincts, agent actions, model performance, and session events live in a local SQLite database. No external state store.
+- **Knowledge injection (optional)** — domain knowledge retrieved via hybrid search (vector + FTS5) before the model sees the prompt. Off by default for a clean install.
+- **Composable agents** — 17 specialist agents + 14 hooks + 21 skills form a layered permission and routing system, all configurable.
+
+---
+
+## Tier table
+
+| Tier | Provider | Example model | Cost | When used |
+|---|---|---|---|---|
+| **C** | Ollama (local) | `qwen2.5-coder:7b` | $0 | Code, git, pipeline tasks |
+| **B** | Groq | `llama-3.3-70b-versatile` | $0 | Research, analysis, writing |
+| **B+** | NVIDIA NIM | `meta/llama-3.3-70b-instruct` | $0 · 40 RPM | Long-context (1M tokens), Groq 429 fallback |
+| **B++** | GitHub Models | `deepseek-v3` / `codestral` | $0 | Code review, NIM fallback |
+| **A** | Anthropic | `claude-sonnet-4-x` | ~$0.03/turn | Finance, orchestration, architecture decisions |
+| **S** | Anthropic | `claude-opus-4-x` | ~$0.20/turn | Multi-agent coordination, system design only |
+
+Fallback chain is **sequential** (not round-robin): `ollama → groq → nim → github`.
+
+**Minimum viable install:** free `GROQ_API_KEY` only — Tier B fully active, $0.  
+**Recommended free stack:** Groq + NVIDIA NIM + GitHub Models — Tiers B, B+, B++ at $0.
 
 ---
 
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                        Entry Points                            │
-│   Telegram /cc   │   CLI `j cc`   │   Director   │  Dashboard │
-└────────┬─────────────────┬──────────────┬──────────────┬──────┘
-         │                 │              │              │
-         ▼                 ▼              ▼              ▼
-┌───────────────────────────────────────────────────────────────┐
-│                   DQ Pipeline  (8 Steps)                       │
-│                                                               │
-│  [1] Domain Classifier  (keyword centroid → embedding fallback)│
-│  [2] Subdomain Classifier                                      │
-│  [3] Hierarchical Router  (softmax, multi-level)              │
-│  [4] Agent Selector  (27 specialists, 5 knowledge domains)    │
-│  [5] Knowledge Enricher  (hybrid: vector + FTS5 + graph)      │
-│  [6] Confidence Gate  (should enrich? cost/quality decision)  │
-│  [7] Intent Amplifier  (tier-specific prompt scaffolding)     │
-│  [8] Stream Response  (provider call + fallback chain)        │
-└───────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌────────────────────────────────────────────────────────────┐
-│              Tiered LLM Router                              │
-│                                                            │
-│  Tier C  │  Ollama (local)   │ qwen2.5-coder:7b  │  $0    │
-│  Tier B  │  Groq (free)      │ llama-3.3-70b     │  $0    │
-│  Tier B+ │  GitHub Models    │ deepseek/codestral │  $0   │
-│  Tier A  │  Anthropic (paid) │ claude-sonnet-4-6  │ ~$0.03│
-│  Tier S  │  Anthropic (paid) │ claude-opus-4-6    │ ~$0.20│
-└────────────────────────────────────────────────────────────┘
+                         Entry points
+    Telegram /cc  ·  CLI: dq cc / dq loop / dq status  ·  Director
+                                  │
+                                  ▼
+                      DQ Pipeline  (7 steps)
+  [1] Classify    domain + subdomain  (keyword centroid → embedding fallback)
+  [2] Retrieve    hybrid knowledge search  (vector + FTS5)      [optional]
+  [3] Gate        confidence check — is enrichment worth the cost?
+  [4] Amplify     tier-specific prompt scaffolding
+  [5] Route       cost-first tier selection with sequential fallback chain
+  [6] Execute     provider call  (C → B → B+ → B++ → A → S)
+  [7] Memory      record actions, cost, and satisfaction to SQLite
+                                  │
+                                  ▼
+         Claude Code  ←──dispatch.py──→  NIM / Groq / GitHub workers
+              │
+    14 hooks · 21 skills · 17 agents · PermissionAnalyzer
 ```
 
 ---
 
-## Core Features
+## Core components
 
-### 1 · Dynamic SQLite State Engine (79 tables)
+### Cost-first router — `bin/core/openrouter_wrapper.py`
+Declares every provider with its `api_key_env` variable (no hardcoded keys) and a strict
+`_ALLOWED_HOSTS` allowlist. `AGENT_ROUTING` maps each named agent to a `(provider, model)`
+pair. HTTP errors (429 / 5xx) trigger automatic sequential fallback.
 
-All operational state lives in `database/dqiii8.db` — a SQLite database with 79 tables covering:
+### Director (3-stage intent routing) — `bin/director.py`
+1. **Instincts fast-path** — `SELECT keyword, confidence FROM instincts WHERE confidence > 0.7`; on a match, skip LLM classification.
+2. **LLM classification** — Tier B (Groq) classifies `task_type`, `complexity`, `recommended_tier`.
+3. **Keyword fallback** — static dict as last resort.
 
-- **`instincts`** — learned keyword → task-type mappings with confidence scores. The Director queries these first; if confidence > 0.7, the LLM classification step is skipped entirely, reducing latency and cost.
-- **`agent_actions`** — audit log of every tool call, model invocation, and permission decision
-- **`model_performance`** — per-model satisfaction scores, latency, and cost metrics used by the adaptive router
-- **`session_events`** — session lifecycle tracking (start, stop, tool usage, errors)
-- **`knowledge_chunks`** — vector embeddings (bge-m3, 1024d) for the 5 knowledge domains
+Optional: `DQIII8_USE_GRAPH=1` routes through a LangGraph `StateGraph` with identical output schema.
 
-Schema is fully idempotent (`database/schema_v2.sql`). No migrations needed for fresh installs.
+### Bidirectional bridge — `bin/core/dispatch.py`
+Lets Claude Code dispatch tasks to NIM/Groq workers and collect results:
+- `dispatch(agent, prompt)` — sync call, returns structured JSON
+- `dispatch_parallel(tasks)` — fan-out to N agents, collect in order
+- `DQIII8_USE_AGNO=1` — optional Agno AgentOS backend (NIM/Groq/GitHub agents with SQLite session memory)
 
-### 2 · Tiered LLM Pipeline (C → B → A → S)
+### MetaGPT-pattern code quality — `bin/core/code_quality.py`
+City-block decomposition pipeline:
+1. **Optimization analysis** (NIM Mistral 675B) — review spec before writing
+2. **Engineer** (NIM DeepSeek V4 Flash) — generate one self-contained function/class with contract docstring
+3. **Sandbox** — execute generated code in an isolated subprocess
+4. **Haiku Context Bombardment** — feed Haiku 4.5 all context, fire 100 adversarial questions (traceability, contracts, invariants, edge cases). Gaps = real quality debt.
+5. **Opus reviewer** — invoked ONLY if `haiku_score < 70` or critical gaps found (cost gate keeps most runs at $0)
 
-```python
-# bin/core/openrouter_wrapper.py
-AGENT_ROUTING = {
-    # Tier C — local, $0
-    "python-specialist":  ("ollama", "qwen2.5-coder:7b"),
-    # Tier B — cloud free, $0
-    "research-analyst":   ("groq",  "llama-3.3-70b-versatile"),
-    # Tier A — paid, Sonnet
-    "finance-specialist": ("anthropic", "claude-sonnet-4-6"),
-    # Tier S — paid, Opus (reserved for orchestration)
-    "orchestrator":       ("anthropic", "claude-opus-4-6"),
-}
-```
+### Lifecycle hooks — `.claude/hooks/` (14 hooks)
 
-Every provider is declared with its `api_key_env` variable name — no hardcoded keys anywhere in source. A strict URL allowlist (`_ALLOWED_HOSTS`) prevents any call to non-declared endpoints.
-
-### 3 · Auto-Routing with Context Injection
-
-The `Director` (`bin/director.py`) implements three-stage routing:
-
-1. **Instincts fast-path** — SQL `SELECT keyword, confidence FROM instincts` → if match ≥ 0.7, skip LLM
-2. **LLM classification** — Tier B (Groq) classifies `task_type`, `complexity`, `recommended_tier`
-3. **Keyword fallback** — static `KEYWORD_TASK_TYPE` dict as last resort
-
-Once the task type is determined, the `KnowledgeEnricher` retrieves the top-k relevant chunks and the `IntentAmplifier` restructures the prompt with tier-appropriate scaffolding before the final model call.
-
-### 4 · Lifecycle Hooks (13 hooks)
-
-All hooks live in `.claude/hooks/` and execute at Claude Code lifecycle events:
-
-| Hook | Event | What it does |
+| Hook | Lifecycle event | Responsibility |
 |---|---|---|
-| `pre_tool_use.py` | Before every tool | PermissionAnalyzer v3: APPROVE / DENY / ESCALATE; dynamic rules injection (~200–800 tokens); output truncation |
-| `session_start.py` | Session open | Injects project context, last 5 lessons, last audit result |
-| `stop.py` | Session close | Auto-commit, lessons extraction, session metrics |
-| `post_tool_use.py` | After every tool | Records tool usage, cost estimation to DB |
-| `notification.py` | Async events | Routes alerts to Telegram |
+| `pre_tool_use.py` | before every tool | PermissionAnalyzer (APPROVE / DENY / ESCALATE) + dynamic rule injection |
+| `session_start.py` | session open | inject zone context, recent lessons, last audit |
+| `post_tool_use.py` | after every tool | record cost estimate and tool usage to DB |
+| `stop.py` | session close | auto-commit, lessons extraction, session metrics |
+| `semgrep_scan.py` | on file write | static analysis gate on generated code |
+| `rules_dispatcher.py` | pre-tool | load 1–3 rule files relevant to the current call (~200–800 tokens) |
 
-**PermissionAnalyzer** evaluates tool calls against:
-- Pattern blocklist (`CRITICAL_PATTERNS`, `HIGH_RISK_PATTERNS`)
-- Path blocklist (`.env`, `CLAUDE.md`, `dqiii8.db`, `.ssh/`)
-- Budget check (daily Tier A/S spend)
-- Mode awareness (`supervised` vs `autonomous`)
+`PermissionAnalyzer` checks pattern blocklists, path blocklists (`.env`, `CLAUDE.md`, `*.db`, `.ssh/`), daily budget cap, and execution mode (`supervised` vs `autonomous`). A DENY is final — the wrapper never retries.
 
-**Dynamic rules injection** — `rules_dispatcher.py` loads only the rule files relevant to the current context (1–3 of 16 rule files, ~200–800 tokens) instead of loading all rules on every hook invocation.
+### SQLite state engine — `database/schema_v2.sql`
+46 live tables + 20 views. `schema_v2.sql` is the idempotent source of truth — apply it
+for a fresh install; no migration scripts needed. Key tables: `instincts`, `agent_actions`,
+`model_performance`, `session_events`, `routing_feedback`.
 
-### 5 · Telegram UI (`@YourBotName`)
-
-The Telegram bot (`bin/ui/dqiii8_bot.py`) acts as the primary external trigger. Key commands:
-
-| Command | Description |
-|---|---|
-| `/cc <prompt>` | Route through full DQ pipeline + Claude Code |
-| `/loop [project] [cycles]` | Start autonomous orchestration loop |
-| `/status [project]` | System or project status |
-| `/audit` | Full system health audit |
-| `/dq` | DQ pipeline metrics and model scores |
-| `/score` | Model satisfaction scores |
-| `/auth_status` | OAuth/API key status |
+### Telegram UI — `bin/ui/dqiii8_bot.py`
+Primary external trigger. Commands: `/cc`, `/loop`, `/status`, `/audit`, `/dq`, `/score`,
+`/auth_status`, and more. Optional — the system works fully via CLI without it.
 
 ---
 
-## Directory Structure
+## Directory layout
 
 ```
 dqiii8/
-├── bin/
-│   ├── core/
-│   │   ├── openrouter_wrapper.py   Multi-provider LLM router with fallback chain
-│   │   ├── db.py                   SQLite connection pool + query helpers
-│   │   ├── db_security.py          Credential scanner + env conflict detection
-│   │   ├── auth_watchdog.py        OAuth token monitoring
-│   │   └── embeddings.py           bge-m3 vector embed (Ollama)
-│   ├── agents/
-│   │   ├── domain_classifier.py    Keyword → embedding domain classification
-│   │   ├── knowledge_enricher.py   Hybrid vector + FTS5 retrieval
-│   │   ├── intent_amplifier.py     Tier-specific prompt restructuring
-│   │   └── ...                     22 more pipeline agents
-│   ├── ui/
-│   │   └── dqiii8_bot.py           Telegram bot (23 commands, async)
-│   ├── tools/
-│   │   ├── auto_learner.py         Instinct learning from session history
-│   │   ├── auto_researcher.py      Background knowledge harvesting
-│   │   └── truncate_output.py      Large-output guardrail
-│   ├── director.py                 Intent parser + task router (instincts + LLM)
-│   ├── orchestrator.py             /cc and /auto Telegram command handler
-│   └── j.sh                        CLI entry: j cc, j loop, j status
-│
+├── bin/                  Engine
+│   ├── core/             openrouter_wrapper.py · dispatch.py · db.py
+│   │                     code_quality.py · graph.py · agno_agents.py
+│   ├── agents/           domain_classifier · knowledge_enricher · intent_amplifier …
+│   ├── director.py       3-stage intent routing
+│   └── orchestrator.py   /cc and /loop command handling
 ├── .claude/
-│   ├── hooks/                      13 lifecycle hooks (never modify lightly)
-│   │   ├── pre_tool_use.py         PermissionAnalyzer v3 + rules injection
-│   │   ├── session_start.py        Context injection (project, lessons, audit)
-│   │   └── stop.py                 Auto-commit + lessons + metrics
-│   ├── agents/                     11 active specialist agent definitions
-│   └── skills/                     17 slash commands (/audit, /handover, etc.)
-│
-├── database/
-│   ├── schema_v2.sql               Idempotent schema (source of truth)
-│   ├── schema.sql                  Legacy schema reference
-│   └── [*.db files — gitignored]   Runtime databases (never committed)
-│
-├── knowledge/                      5 domain indexes (bge-m3 embeddings, 1024d)
-│   ├── applied_sciences/
-│   ├── formal_sciences/
-│   ├── natural_sciences/
-│   ├── social_sciences/
-│   └── humanities_arts/
-│
-├── config/
-│   ├── .env.example                Environment variable template
-│   ├── domain_agent_map.json       Domain → agent routing table
-│   └── intelligence_sources.json  Knowledge harvesting sources
-│
-└── tests/                          Test suite (38 passing)
+│   ├── hooks/            14 lifecycle hooks
+│   ├── skills/           21 slash-command skills
+│   ├── agents/           17 specialist agent definitions
+│   └── rules/            core behavior · tiering · database · hooks rules
+├── config/               .env.example · domain_agent_map.json · claude_settings_template.json
+├── database/             schema_v2.sql  (source of truth — *.db are gitignored)
+├── knowledge/            README.md + AUDIT_REPORT.md stubs — populate locally
+├── tests/                285 tests across 21 files
+├── examples/             usage examples
+├── zones/                Obsidian-style architecture context for Claude Code
+└── install.sh            one-shot installer
 ```
 
 ---
 
-## Quick Start
+## Installation
+
+**Requirements:** Ubuntu 22.04/24.04 (or WSL2), Python 3.10+.  
+Ollama is optional (enables Tier C local models). The knowledge/RAG layer is also optional.
 
 ```bash
 git clone https://github.com/senda-labs/DQIII8
@@ -200,65 +164,65 @@ cd DQIII8
 bash install.sh
 ```
 
-**Requirements:** Ubuntu 22.04/24.04 (or WSL2), Python 3.10+, 8 GB RAM, Ollama (for Tier C local models).
+The installer:
+1. Installs Python dependencies
+2. Prompts to install Ollama (optional — skip to start with Tier B only)
+3. Pulls `qwen2.5-coder:7b` if Ollama is installed
+4. Copies `config/.env.example` → `.env` if not present
+5. Applies `database/schema_v2.sql` (creates all 46 tables)
+6. Copies Claude Code settings template
+7. Runs smoke tests
+
+**Enable the optional knowledge base** (requires Ollama + `bge-m3`):
+```bash
+bash install.sh --with-knowledge
+```
+This additionally pulls `bge-m3`, indexes the 5 knowledge domains, seeds domain
+classifier centroids, and migrates embeddings to `sqlite-vec`.
+
+### Quick start
 
 ```bash
-# 1. Configure API keys
-cp config/.env.example .env
+# 1. Add your API keys (Groq is the free minimum)
 nano .env
 
-# 2. Initialize the database
-python3 -m database.apply_migrations
-
-# 3. Index the knowledge base (one-time, ~10 min)
-for d in applied_sciences formal_sciences natural_sciences social_sciences humanities_arts; do
-    python3 bin/agents/knowledge_indexer.py --domain "$d"
-done
-
-# 4. Start the Telegram bot
-systemctl enable --now dqiii8-bot
-
-# 5. Verify
+# 2. Verify the install
 python3 -m pytest tests/test_smoke.py -q
+
+# 3. Route a task
+dq cc "analyze Apple WACC"
+dq status
 ```
 
 ---
 
-## Environment Variables
+## Environment variables
 
-Copy `config/.env.example` to `.env` at project root:
+Copy `config/.env.example` to `.env`:
 
-| Variable | Tier | Required | Description |
+| Variable | Tier | Required | Source |
 |---|---|---|---|
-| `GROQ_API_KEY` | B | **Yes** (free) | [console.groq.com](https://console.groq.com) |
-| `GITHUB_TOKEN` | B+ | Recommended (free) | GitHub Models access |
-| `OPENROUTER_API_KEY` | B/A | Optional | Any model via OpenRouter |
-| `ANTHROPIC_API_KEY` | A/S | Optional | Direct API (OAuth via Claude Max also supported) |
-| `TELEGRAM_BOT_TOKEN` | UI | For Telegram UI | From @BotFather |
-| `TELEGRAM_CHAT_ID` | UI | For Telegram UI | Your chat ID |
-| `FIRECRAWL_API_KEY` | Tools | Optional | Web crawling |
-| `EXA_API_KEY` | Tools | Optional | Semantic web search |
+| `GROQ_API_KEY` | B | **Yes (free)** | [console.groq.com](https://console.groq.com) |
+| `NVIDIA_API_KEY` | B+ | Recommended (free) | [integrate.api.nvidia.com](https://integrate.api.nvidia.com) |
+| `GITHUB_TOKEN` | B++ | Optional (free) | GitHub → Settings → Developer settings |
+| `ANTHROPIC_API_KEY` | A/S | Optional (paid) | [console.anthropic.com](https://console.anthropic.com) |
+| `TELEGRAM_BOT_TOKEN` | UI | Optional | [@BotFather](https://t.me/BotFather) |
+| `OLLAMA_BASE_URL` | C | Optional | default: `http://localhost:11434` |
 
-At minimum, add a `GROQ_API_KEY` (free) to enable Tier B. Tier C (Ollama) works with zero API keys.
+Claude Code OAuth is also supported for Anthropic calls — set `ANTHROPIC_API_KEY=""`
+in subprocess env to force OAuth instead of the direct API key.
 
 ---
 
 ## Documentation
 
 | Document | Description |
-|----------|-------------|
-| [[CONTRIBUTING]] | Contribution guidelines and code style |
-| [[docs/CHANGELOG\|Changelog]] | Version history and known limitations |
-| [[docs/DQIII8_PLUGIN_DESIGN\|Plugin Design (MCP)]] | DQIII8 as a Claude Code plugin — roadmap |
-| [[docs/architecture_decision_context_efficiency\|ADR-001]] | Context efficiency architecture decision |
-| [[bin/README\|Script Catalog]] | Full inventory of bin/ scripts and cron schedules |
-| [[tasks/FULL_SYSTEM_MAP\|Full System Map]] | Complete annotated snapshot of the live system |
-
----
-
-## Contributing
-
-See [[CONTRIBUTING]] for guidelines.
+|---|---|
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Version history |
+| [docs/DQIII8_PLUGIN_DESIGN.md](docs/DQIII8_PLUGIN_DESIGN.md) | DQIII8 as a Claude Code plugin |
+| [docs/architecture_decision_context_efficiency.md](docs/architecture_decision_context_efficiency.md) | ADR-001: context efficiency |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
+| [PRIVACY.md](PRIVACY.md) | Data handling |
 
 ---
 

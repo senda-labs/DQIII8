@@ -257,7 +257,7 @@ TIER_MAP = {
 }
 
 # Priority order for tier comparison (lower index = higher priority = cheaper)
-TIER_ORDER = {"C": 0, "B": 1, "A": 2, "S": 3, "S+": 4}
+TIER_ORDER = {"C": 0, "B": 1, "B+": 1, "B++": 1, "A": 2, "S": 3, "S+": 4}
 
 # ── Automatic routing by keywords (classify subcommand) ──────────────────────
 # Each entry: (tier, provider, model, route_name, keywords)

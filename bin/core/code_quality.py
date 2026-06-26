@@ -191,7 +191,7 @@ def _generate_100_questions(code: str, spec: str) -> list[str]:
     return questions[:100]
 
 
-def _haiku_bombardment(code: str, context: str, questions: list[str], timeout: int = 60) -> dict:
+def _haiku_bombardment(code: str, context: str, questions: list[str], timeout: int = 300) -> dict:
     """
     Phase 1 (ingest): feed Haiku all code + context in ONE call.
     Phase 2 (bombard): ask all questions, no new context allowed.
@@ -312,7 +312,7 @@ def _node_engineer_cityblock(state: CodeQualityState) -> dict:
         f"SPEC:\n{spec}\n\nCONTEXT:\n{ctx}\n\n"
         f"OPTIMIZATION NOTES:\n{opt_notes}{feedback}"
     )
-    res = dispatch(_ENGINEER_AGENT, prompt, timeout=120)
+    res = dispatch(_ENGINEER_AGENT, prompt, timeout=180)
     code = _extract_code(res.get("response", ""))
     return {"generated_code": code}
 

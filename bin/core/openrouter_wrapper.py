@@ -377,7 +377,8 @@ def sanitize_prompt(prompt: str) -> str:
     dangerous_patterns = [
         r"ignore previous instructions",
         r"ignore all previous",
-        r"disregard (all |your |previous )?instructions",
+        r"ignore all instructions",
+        r"disregard (?:(?:all |your |previous ){1,3})?instructions",
         r"system:\s*you are now",
         r"new (role|persona|instructions?|context)",
         r"you are now (a |an )?",

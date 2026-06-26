@@ -75,12 +75,17 @@ def dispatch(
             **meta, "prompt": full_prompt[:200] + "...",
         }
         result_file.write_text(json.dumps(pending, indent=2))
-        subprocess.Popen(
-            [sys.executable, str(WRAPPER), "--agent", agent, full_prompt],
-            stdout=open(str(result_file), "w"),
-            stderr=subprocess.DEVNULL,
-            cwd=str(DQIII8_ROOT),
-        )
+        # Open file handle explicitly and close parent's copy after Popen inherits it
+        _fh = open(str(result_file), "w")
+        try:
+            subprocess.Popen(
+                [sys.executable, str(WRAPPER), "--agent", agent, full_prompt],
+                stdout=_fh,
+                stderr=subprocess.DEVNULL,
+                cwd=str(DQIII8_ROOT),
+            )
+        finally:
+            _fh.close()  # Parent closes its copy; child process keeps its own fd
         return {"task_id": task_id, "status": "pending", "result_file": str(result_file), **meta}
 
     # Modo sync — bloquea hasta tener respuesta

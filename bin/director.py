@@ -168,7 +168,8 @@ def _query_instincts_fast_path(user_request: str) -> tuple[str | None, float]:
             "WHERE confidence > 0.7 ORDER BY confidence DESC LIMIT 100"
         ).fetchall()
         conn.close()
-    except Exception:
+    except Exception as _exc:
+        log.warning("instincts DB query failed: %s", _exc)
         return None, 0.0
 
     for keyword, confidence in rows:
@@ -197,7 +198,8 @@ def _get_model_for_task(task_type: str) -> tuple[str, float]:
 
         model, score, _ = get_recommendation(task_type)
         return model, score
-    except Exception:
+    except Exception as _exc:
+        log.warning("model_router get_recommendation failed: %s", _exc)
         _defaults: dict[str, str] = {
             "code": "qwen2.5-coder:7b",
             "pipeline": "qwen2.5-coder:7b",
@@ -236,7 +238,8 @@ def _call_llm_for_intent(user_request: str) -> dict | None:
         if not json_match:
             return None
         return json.loads(json_match.group())
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as _exc:
+        log.warning("LLM intent call failed: %s", _exc)
         return None
 
 

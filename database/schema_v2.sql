@@ -965,3 +965,15 @@ SUM(input_tokens) as total_input, SUM(output_tokens) as total_output,
 SUM(total_tokens) as total_tokens, SUM(cost_estimate) as total_cost
 FROM token_usage GROUP BY day, model, tier
 /* token_usage_daily(day,model,tier,calls,total_input,total_output,total_tokens,total_cost) */;
+CREATE TABLE IF NOT EXISTS routing_feedback (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT NOT NULL DEFAULT (datetime('now')),
+    prompt_hash TEXT NOT NULL,
+    domain      TEXT,
+    tier_used   TEXT,
+    model_used  TEXT,
+    success     INTEGER DEFAULT 1,
+    duration_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_routing_feedback_hash ON routing_feedback(prompt_hash);
+CREATE INDEX IF NOT EXISTS idx_routing_feedback_domain ON routing_feedback(domain, tier_used);

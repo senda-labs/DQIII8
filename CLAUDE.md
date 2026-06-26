@@ -19,11 +19,13 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 
 | Domain | Read this first |
 |---|---|
-| Any action | `.claude/rules/00_core_behavior.md` |
-| DB schema / SQL | `.claude/rules/01_database_mutations.md` |
-| Hooks / PermissionAnalyzer | `.claude/rules/02_hooks_and_permissions.md` |
-| Tiering / routing | `.claude/rules/03_tiering_and_routing.md` |
-| Git safety | `.claude/rules_db/git-safety.md` |
+| Any action | `.claude/rules/00_core_behavior.md` (always loaded — zero-complacency, scope, cost-first) |
+| DB schema / SQL / sqlite3 | `.claude/rules/01_database_mutations.md` |
+| Hooks or PermissionAnalyzer | `.claude/rules/02_hooks_and_permissions.md` |
+| Tiering / routing / agent changes | `.claude/rules/03_tiering_and_routing.md` |
+| Git / Bash safety | `.claude/rules_db/git-safety.md` |
+| Error prevention (recurring) | `.claude/rules_db/dqiii8-error-prevention.md` |
+| intl-reports pipeline | `my-projects/intl-reports/RULE` (reglas absolutas + pipeline) |
 
 ## Inviolable Rules
 - NEVER write to `.env`, `CLAUDE.md`, `database/schema.sql` from generated code.

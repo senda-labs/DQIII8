@@ -42,6 +42,20 @@ Organized by top-level academic domain (matches the domain classifier taxonomy i
 
 ---
 
+## Dispatch Bridge (CC ↔ dqiii8)
+
+| Componente | Ruta | Función |
+|-----------|------|---------|
+| `bin/core/dispatch.py` | dqiii8 root | Módulo + CLI para despachar a NIM/Groq desde CC |
+| `.claude/skills/dispatch-agent/SKILL.md` | dqiii8 root | Skill: `/dispatch-agent` — Hermes Work Loop pattern |
+| `tasks/results/` | dqiii8 root | Resultados JSON de dispatches (sync+async) |
+| `tasks/queue/` | dqiii8 root | Cola async bidireccional |
+| `bin/autonomous_loop.sh` | dqiii8 root | Canal dqiii8→CC (ya existía: `claude -p`) |
+
+Patrón Hermes: CC orquesta → `dispatch_parallel()` a N agentes NIM/Groq → CC recolecta → Opus valida si crítico.
+
+---
+
 ## Provider Research
 
 | Doc | Fecha | Contenido |

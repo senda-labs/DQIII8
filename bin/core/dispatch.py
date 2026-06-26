@@ -66,6 +66,25 @@ def _resolve_agent_meta(agent: str) -> dict:
     return {"provider": provider, "model": model}
 
 
+# Optional Agno backend for OpenAI-compatible providers (NIM/Groq/GitHub).
+# Opt-in via DQIII8_USE_AGNO=1 to preserve the default subprocess behaviour
+# that CC skills depend on. Subprocess remains the fallback on any failure.
+try:
+    from bin.core.agno_agents import AgentRegistry as _AgentRegistry
+
+    _AGNO_REGISTRY = _AgentRegistry()
+    _USE_AGNO = True
+except Exception:
+    _AGNO_REGISTRY = None
+    _USE_AGNO = False
+
+_AGNO_FALLBACK_PROVIDERS = {"ollama", "anthropic"}
+
+
+def _agno_enabled() -> bool:
+    return _USE_AGNO and os.environ.get("DQIII8_USE_AGNO") == "1"
+
+
 def dispatch(
     agent: str,
     prompt: str,
@@ -106,6 +125,28 @@ def dispatch(
         finally:
             _fh.close()  # Parent closes its copy; child process keeps its own fd
         return {"task_id": task_id, "status": "pending", "result_file": str(result_file), **meta}
+
+    # Modo sync — Agno backend opcional (NIM/Groq/GitHub) si está habilitado
+    if _agno_enabled() and meta["provider"] not in _AGNO_FALLBACK_PROVIDERS:
+        try:
+            agno_res = _AGNO_REGISTRY.run(agent, full_prompt, timeout=timeout)
+            if agno_res.get("status") == "ok" and agno_res.get("response"):
+                out = {
+                    "task_id": task_id,
+                    "agent": agent,
+                    "status": "ok",
+                    "latency_ms": agno_res.get("latency_ms", 0),
+                    "response": agno_res.get("response", ""),
+                    "error": None,
+                    **meta,
+                }
+                if project or async_mode:
+                    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+                    result_file.write_text(json.dumps(out, indent=2))
+                    out["result_file"] = str(result_file)
+                return out
+        except Exception:
+            pass  # fall through to subprocess
 
     # Modo sync — bloquea hasta tener respuesta
     t0 = time.time()
@@ -186,6 +227,20 @@ def read_result(task_id_or_file: str) -> dict | None:
         return json.loads(path.read_text())
     except Exception:
         return None
+
+
+def run_code_quality(spec: str, context: str = "", city_block_name: str = "") -> dict:
+    """
+    Run the full MetaGPT city-block pipeline from the dispatch layer.
+
+    Returns CodeQualityResult as a dict.
+    """
+    from bin.core.code_quality import CodeQualityPipeline
+
+    result = CodeQualityPipeline().run(
+        spec=spec, context=context, city_block_name=city_block_name
+    )
+    return result.__dict__
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────

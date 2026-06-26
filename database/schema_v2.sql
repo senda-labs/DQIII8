@@ -977,3 +977,28 @@ CREATE TABLE IF NOT EXISTS routing_feedback (
 );
 CREATE INDEX IF NOT EXISTS idx_routing_feedback_hash ON routing_feedback(prompt_hash);
 CREATE INDEX IF NOT EXISTS idx_routing_feedback_domain ON routing_feedback(domain, tier_used);
+
+-- ── Orchestration: LangGraph StateGraph + Agno AgentOS ─────────────────────────
+-- StateGraph checkpoints (manual persist; InMemorySaver holds live state).
+CREATE TABLE IF NOT EXISTS graph_states (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id    TEXT NOT NULL,
+    stage        TEXT NOT NULL,
+    state_json   TEXT NOT NULL,
+    source       TEXT,
+    user_request TEXT NOT NULL,
+    timestamp    TEXT DEFAULT (datetime('now')),
+    duration_ms  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_graph_thread ON graph_states(thread_id, timestamp);
+
+-- Agno agent metadata registry. NOTE: the table name `agent_registry` is
+-- already used by the runtime agent-spawn tracker (agent_id/agent_type), so
+-- this metadata table is `agno_agent_registry` to avoid a destructive change.
+CREATE TABLE IF NOT EXISTS agno_agent_registry (
+    name         TEXT PRIMARY KEY,
+    provider     TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    tier         TEXT,
+    created_at   TEXT DEFAULT (datetime('now'))
+);

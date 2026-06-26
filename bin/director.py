@@ -294,9 +294,25 @@ def _keyword_fallback(user_request: str) -> dict:
 # ── Main function ─────────────────────────────────────────────────────────────
 
 
+# Feature flag: if DQIII8_USE_GRAPH=1, route through the LangGraph StateGraph
+_GRAPH = None
+
+
+def _get_graph():
+    global _GRAPH
+    if _GRAPH is None and os.environ.get("DQIII8_USE_GRAPH") == "1":
+        from bin.core.graph import DirectorGraph
+
+        _GRAPH = DirectorGraph()
+    return _GRAPH
+
+
 def analyze_intent(user_request: str, verbose: bool = True) -> dict:
     """
     Analyzes the intent of a request and returns an execution plan.
+
+    If DQIII8_USE_GRAPH=1, delegates to the LangGraph StateGraph (same dict
+    schema). Otherwise uses the in-process 3-stage pipeline.
 
     Priority:
       1. Instincts DB (confidence > 0.7) → fast path without LLM
@@ -314,6 +330,10 @@ def analyze_intent(user_request: str, verbose: bool = True) -> dict:
         dict with keys: task_type, subtasks, output_format, complexity,
         recommended_tier, _source.
     """
+
+    g = _get_graph()
+    if g:
+        return g.invoke(user_request)
 
     plan: dict | None = None
     source = "llm"

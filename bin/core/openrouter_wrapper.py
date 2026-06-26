@@ -115,6 +115,9 @@ AGENT_ROUTING = {
     "python-specialist": ("nim", "deepseek-ai/deepseek-v4-flash"),
     "web-specialist":    ("nim", "deepseek-ai/deepseek-v4-flash"),
     "algo-specialist":   ("nim", "deepseek-ai/deepseek-v4-flash"),
+    "code-engineer":     ("nim", "deepseek-ai/deepseek-v4-flash"),   # MetaGPT Engineer role
+    "opt-analyst":       ("nim", "mistralai/mistral-large-3-675b-instruct-2512"),  # optimization analysis
+    "context-probe":     ("anthropic", "claude-haiku-4-5-20251001"),  # Haiku context bombardment
 
     # ── Tier B+ NIM — Alta calidad (Mistral Large 3 675B: 0.3s, confirmado) ─
     # 675B a 0.3s: mejor modelo gratuito disponible en NIM para razonamiento

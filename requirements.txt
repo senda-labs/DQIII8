@@ -18,3 +18,7 @@ uvicorn>=0.29.0
 # Analysis tools (optional — only for media analysis)
 numpy>=1.26.0
 Pillow>=10.0.0
+
+# Orchestration — StateGraph director, Agno AgentOS, MetaGPT-pattern pipeline
+langgraph>=1.1.3
+agno>=2.6.19

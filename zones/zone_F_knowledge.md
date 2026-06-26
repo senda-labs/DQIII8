@@ -1,5 +1,5 @@
 # Zone F — Knowledge & Docs
-> Updated: 2026-06-02
+> Updated: 2026-06-26
 
 ---
 
@@ -42,6 +42,16 @@ Organized by top-level academic domain (matches the domain classifier taxonomy i
 
 ---
 
+## Provider Research
+
+| Doc | Fecha | Contenido |
+|-----|-------|-----------|
+| `docs/research/2026-06-26-nvidia-nim-investigation.md` | 2026-06-26 | Sondeo completo NIM (52/121 modelos), deep research 107 agentes, routing integrado |
+
+Reglas operacionales: `.claude/rules_db/nim-provider.md`
+
+---
+
 ## Key Architecture Decisions
 
 | ADR | File | Decision |
@@ -58,6 +68,20 @@ Organized by top-level academic domain (matches the domain classifier taxonomy i
 | `senda-labs/DQIII8-premium` (private) | Bilingüe classifier, benchmark infra, premium knowledge |
 
 Premium layer applied via `overlay.sh` in `/root/dqiii8-workspace/`.
+
+---
+
+## football-value — Decisiones de modelado (2026-06-20)
+
+| Decisión | Rationale |
+|---|---|
+| Dixon-Coles xG-adjusted (rho=0 en xG/hybrid) | τ-correction solo válida para conteos enteros |
+| neutral_venue=True para todo WC2026 | Todos los partidos en sede neutral |
+| Bootstrap σ_λ (n=200, seed=42) | Epistemic uncertainty; n_bootstrap=0 → no apostar |
+| Elo + Transfermarkt prior (0.7/0.3) | Transfermarkt supera FIFA rank para predicción internacional (Peeters 2018) |
+| Ridge regularization (default 0.1) | Previene colapso de λ con datos WC escasos (16 partidos inicial) |
+| fair_edge > 0.05 threshold | De-vigged; raw edge sobrestima EV en 5-7% |
+| adjusted_kelly_fraction = raw_kf / (1 + σ_avg²) | Shrinkage automático de stake bajo incertidumbre alta |
 
 ---
 

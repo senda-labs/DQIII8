@@ -1,0 +1,86 @@
+[extend]
+useDefault = true
+
+# ── Custom rules for DQIII8 secrets ──────────────────────────────────────────
+
+[[rules]]
+id = "nvidia-nim-key"
+description = "NVIDIA NIM / NGC API Key"
+regex = '''nvapi-[A-Za-z0-9_-]{20,}'''
+tags = ["api-key", "nvidia"]
+
+[[rules]]
+id = "telegram-bot-token"
+description = "Telegram Bot Token"
+# Require context keyword before the value to avoid matching arbitrary number:string patterns
+regex = '''(?i)(?:telegram|bot_token|BOT_TOKEN|DQIII8_BOT_TOKEN)\s*[=:]\s*\d{8,12}:[A-Z][A-Za-z0-9_-]{34}'''
+tags = ["api-key", "telegram"]
+
+[[rules]]
+id = "groq-api-key"
+description = "Groq API Key"
+regex = '''gsk_[A-Za-z0-9]{50,}'''
+tags = ["api-key", "groq"]
+
+[[rules]]
+id = "openrouter-key"
+description = "OpenRouter API Key"
+regex = '''sk-or-v1-[A-Za-z0-9]{60,}'''
+tags = ["api-key", "openrouter"]
+
+[[rules]]
+id = "elevenlabs-key"
+description = "ElevenLabs API Key"
+regex = '''sk_[a-f0-9]{48}'''
+tags = ["api-key", "elevenlabs"]
+
+[[rules]]
+id = "firecrawl-key"
+description = "Firecrawl API Key"
+# Require key assignment context to avoid matching fc- inside URLs/auth tokens
+regex = '''(?i)(?:firecrawl|FIRECRAWL_API_KEY)\s*[=:]\s*fc-[A-Za-z0-9]{30,}'''
+tags = ["api-key", "firecrawl"]
+
+[[rules]]
+id = "spanish-ip-vps"
+description = "Known VPS IP — must not appear in committed files"
+regex = '''159\.195\.149\.\d{1,3}'''
+tags = ["infra", "ip"]
+
+# ── Global allowlist ──────────────────────────────────────────────────────────
+
+[allowlist]
+description = "Known safe patterns — placeholders, test fixtures, regex definitions"
+regexes = [
+    # Placeholder / example strings
+    '''TU_API_KEY_AQUI''',
+    '''YOUR_.*KEY''',
+    '''gsk_YOUR_KEY''',
+    '''sk-ant-YOUR_KEY''',
+    '''gsk_x+''',
+
+    # Test fixtures (truncated / fake values)
+    '''sk-ant-oat01-truncated''',
+
+    # Regex pattern definitions in source code (db_security.py etc.)
+    '''r"ghp_''',
+    '''r"sk-ant-''',
+    '''r"gsk_''',
+
+    # HTML/JS placeholder in dashboard
+    '''gsk_&#8230''',
+    '''sk-ant-&#8230''',
+]
+paths = [
+    # Files intentionally containing key patterns
+    '''bin/core/db_security\.py''',
+    '''bin/ui/dashboard\.html''',
+    '''bin/j\.sh''',
+    '''tests/test_auth_watchdog\.py''',
+    # Example / template files
+    '''\.env\.example''',
+    '''config/\.env\.example''',
+    # Documentation examples
+    '''docs/.*INICIO-RAPIDO\.md''',
+    '''docs/APIS\.md''',
+]

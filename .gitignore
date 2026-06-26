@@ -254,6 +254,5 @@ secrets_to_purge.txt
 *.canvas
 .obsidian/
 
-# Gitleaks config (keep local, not in repo)
-.gitleaks.toml
+# Gitleaks runtime state (keep local)
 .stfolder

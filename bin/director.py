@@ -22,7 +22,6 @@ import json
 import os
 import re
 import sqlite3
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -221,7 +220,7 @@ def _call_llm_for_intent(user_request: str) -> dict | None:
     intent analysis. Captures stdout (JSON response), ignores stderr.
     Returns the parsed dict, or None if the call or parse fails.
     """
-    prompt = _ANALYSIS_PROMPT.format(request=shlex.quote(user_request))
+    prompt = _ANALYSIS_PROMPT.format(request=user_request)
     try:
         result = subprocess.run(
             [sys.executable, str(WRAPPER), "--agent", "research-analyst", prompt],

@@ -32,6 +32,25 @@ DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", Path(__file__).resolve().parent
 RESULTS_DIR = DQIII8_ROOT / "tasks" / "results"
 WRAPPER = DQIII8_ROOT / "bin" / "core" / "openrouter_wrapper.py"
 
+
+def _load_dotenv() -> None:
+    """Load .env into os.environ so subprocess inherits API keys."""
+    env_file = DQIII8_ROOT / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+_load_dotenv()
+
 # Importar routing table para metadata
 sys.path.insert(0, str(DQIII8_ROOT))
 try:

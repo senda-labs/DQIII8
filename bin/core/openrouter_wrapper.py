@@ -556,8 +556,9 @@ def stream_response(
                 if "error" in chunk:
                     return full_text, tokens_in, tokens_out, False
                 # Capturar tokens reales si la API los devuelve (OpenRouter/Groq)
-                if "usage" in chunk:
-                    usage = chunk["usage"]
+                # Guard against "usage": null in NIM streaming responses
+                usage = chunk.get("usage") or {}
+                if usage:
                     tokens_in = usage.get("prompt_tokens", tokens_in)
                     tokens_out = usage.get("completion_tokens", tokens_out)
                 choices = chunk.get("choices", [])

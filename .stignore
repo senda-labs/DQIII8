@@ -38,5 +38,10 @@ database/legacy/*.db
 *.pem
 **/.gnupg/
 **/rclone.conf
-*.env
+// .env variants: .env, .env.dev, .env.bak.*, .env.local, etc.
+.env
+.env.*
 **/.env
+**/.env.*
+*.env
+*.env.*

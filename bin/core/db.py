@@ -10,11 +10,13 @@ DB_PATH = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "database" / "dq
 
 
 @contextmanager
-def get_db(timeout=10):
+def get_db(timeout=10, busy_timeout_ms=None):
     """Context manager for SQLite connections. Auto-commits on success, rollbacks on error."""
     conn = sqlite3.connect(str(DB_PATH), timeout=timeout)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    if busy_timeout_ms is not None:
+        conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
     try:
         yield conn
         conn.commit()

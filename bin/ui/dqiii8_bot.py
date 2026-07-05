@@ -30,6 +30,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))  # bin/
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+from bin.core import human_pending
+from bin.core.human_pending import events
 from voice_handler import transcribe_audio, synthesize_speech
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -367,6 +369,83 @@ async def handle_satisfaction_callback(
     emoji = "👍" if rating else "👎"
     await query.edit_message_text(f"{emoji} Registrado.")
     log.info("Satisfaction: %s | %s | rating=%d", key, record.get("task_type"), rating)
+
+
+async def handle_resume_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """hpt: family — resume flow for human_pending_tasks (jarvis-control3 v2).
+    100% DB-driven (no in-RAM dicts): the row itself is the source of truth,
+    so this survives bot restarts. Per-row allowed_chat_id, NOT the global
+    ALLOWED_CHAT_ID — a row is only actionable by the chat that owns it.
+    Two-tap confused-deputy confirmation before the row is unblocked: a
+    prompt-injected sub-agent could otherwise insert a hostile row and rely
+    on a single accidental tap to move it toward execution."""
+    query = update.callback_query
+    data = query.data or ""
+    if not data.startswith(("hpt:", "hptok:", "hptno:")):
+        return
+
+    prefix, _, task_id = data.partition(":")
+    row = human_pending.get_task(task_id)
+    if not row:
+        await _safe_answer(query, "Tarea no encontrada o ya archivada.")
+        return
+
+    if str(update.effective_chat.id) != str(row["allowed_chat_id"]):
+        log.warning("hpt: unauthorized chat %s tried to act on row %s", update.effective_chat.id, task_id)
+        await _safe_answer(query, "No autorizado.")
+        return
+
+    await _safe_answer(query)
+
+    if prefix == "hpt:":
+        if row["status"] != "notified":
+            await query.edit_message_text(f"(ya procesado: {row['status']})")
+            return
+        confirm_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Confirmar reanudar", callback_data=f"hptok:{task_id}"),
+            InlineKeyboardButton("❌ Cancelar", callback_data=f"hptno:{task_id}"),
+        ]])
+        await query.edit_message_text(
+            f"Reanudar {row['project']} / {row['action_id']}?\n"
+            f"resume_args: {row['resume_args']}\n"
+            f"Confirma para desbloquear (un worker separado ejecutará).",
+            reply_markup=confirm_kb,
+        )
+        return
+
+    if prefix == "hptok:":
+        if row["status"] != "notified":
+            await query.edit_message_text(f"(ya procesado: {row['status']})")
+            return
+        ok = human_pending.unblock(task_id)
+        events.insert_event(task_id, "resolved_by_user", {"chat_id": str(update.effective_chat.id)})
+        if ok:
+            await query.edit_message_text("✅ Desbloqueado. Pendiente de ejecución por worker.")
+        else:
+            await query.edit_message_text("(ya procesado por otro tap)")
+        return
+
+    if prefix == "hptno:":
+        if row["status"] not in ("pending", "notified", "unblocked"):
+            await query.edit_message_text(f"(ya procesado: {row['status']})")
+            return
+        try:
+            ok = human_pending.cancel(task_id, resolved_by=str(update.effective_chat.id))
+            await query.edit_message_text("❌ Cancelado." if ok else "(ya procesado por otro tap)")
+        except Exception as exc:
+            log.error("hptno: failed to cancel %s: %s", task_id, exc)
+            await query.edit_message_text("(error al cancelar, ver logs)")
+        return
+
+
+async def _safe_answer(query, text: str | None = None) -> None:
+    try:
+        if text:
+            await query.answer(text, show_alert=True)
+        else:
+            await query.answer()
+    except Exception:
+        pass  # Telegram callback tokens expire; the DB transition below still applies
 
 
 async def _spawn_task(update: Update, description: str) -> str:
@@ -1910,6 +1989,9 @@ def main() -> None:
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     APP.add_handler(
         CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:")
+    )
+    APP.add_handler(
+        CallbackQueryHandler(handle_resume_callback, pattern=r"^hpt")
     )
 
     APP.add_error_handler(_telegram_error_handler)

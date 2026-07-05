@@ -1,0 +1,8 @@
+[Unit]
+Description=DQIII8 human_pending_tasks reconciliation + retry poller
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/dqiii8
+EnvironmentFile=/root/dqiii8/.env
+ExecStart=/usr/bin/python3 /root/dqiii8/services/hpt_poller.py

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -34,12 +35,13 @@ _REGISTRY: dict[str, str] = {
     "routing":        "routing.md",
     "ops":            "dqiii8-ops.md",
     "prevention":     "dqiii8-error-prevention.md",
-    "deliverables":   "dqiii8-deliverables.md",
     "tools":          "dqiii8-tools.md",
     "plan-gate":      "dqiii8-plan-gate.md",
-    "context-window": "dqiii8-context-window.md",
+    # "deliverables" / "context-window" aliases removed 2026-07-05: their files
+    # never existed and no tool/keyword mapping referenced them (audit P3-15).
     "workspace":      "workspace.md",
     "intl-reports":   "intl-reports-ops.md",
+    "web-tools":      "web-research-tools.md",
     "agents":         "common/agents.md",
     "quality":        "common/quality.md",
     "git-workflow":   "common/git-workflow.md",
@@ -62,8 +64,8 @@ _TOOL_RULES: dict[str, list[str]] = {
     "Glob":       [],
     "Grep":       [],
     "Agent":      ["tiering", "agents"],     # tiering replaces legacy routing
-    "WebFetch":   [],
-    "WebSearch":  [],
+    "WebFetch":   ["web-tools"],
+    "WebSearch":  ["web-tools"],
     "TodoWrite":  [],
     "TodoRead":   [],
 }
@@ -78,9 +80,10 @@ _BASH_KEYWORD_RULES: list[tuple[re.Pattern, list[str]]] = [
     (re.compile(r"apply_migrations|schema_v2"),     ["db-mutations"]),
     (re.compile(r"\bsystemctl\b|\bservice\b"),       ["prevention"]),
     (re.compile(r"\bnohup\b|\bbg\b"),               []),
-    (re.compile(r"\bclauде\b|\bcc\b"),              ["tools"]),
+    (re.compile(r"\bclaude\b|\bcc\b"),               ["tools"]),
     (re.compile(r"\bagent\b|\borchestrat"),          ["tiering", "agents"]),
     (re.compile(r"generate_company|save_response|intl.writer|intl.reports"), ["intl-reports"]),
+    (re.compile(r"\bfirecrawl\b"),                   ["web-tools"]),
 ]
 
 # ── File extension → rules ───────────────────────────────────────────────────
@@ -97,11 +100,25 @@ _EXT_RULES: dict[str, list[str]] = {
 
 
 def _read(alias: str) -> str:
-    """Read rule file content; return empty string on any error."""
-    path = RULES_DB / _REGISTRY.get(alias, "")
+    """Read rule file content; return empty string on any error.
+
+    Fail-open by contract (hook errors must degrade to APPROVE), but emit a
+    degraded-signal warning to stderr so missing/broken rule files are visible
+    in hook logs instead of silently injecting nothing (audit P3-15, 2026-07-05).
+    """
+    rel = _REGISTRY.get(alias, "")
+    if not rel:
+        print(f"[rules_dispatcher] WARN: unknown rule alias '{alias}'", file=sys.stderr)
+        return ""
+    path = RULES_DB / rel
     try:
         return path.read_text(encoding="utf-8").strip()
-    except Exception:
+    except Exception as exc:
+        print(
+            f"[rules_dispatcher] WARN: rule file unreadable for alias "
+            f"'{alias}' ({path}): {exc.__class__.__name__}",
+            file=sys.stderr,
+        )
         return ""
 
 

@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
 log = _get_logger(__name__)
 
-DB = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
+DB = DQIII8_ROOT / "database" / "dqiii8.db"  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
 OUT = DQIII8_ROOT / "tasks" / "routing_recommendations.json"
 
 DAYS = 30

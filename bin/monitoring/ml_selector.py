@@ -15,7 +15,7 @@ DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(DQIII8_ROOT))
 from bin.core.logging_config import get_logger as _get_logger
 log = _get_logger(__name__)
-DB_PATH = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
 MODEL_PATH = DQIII8_ROOT / "models" / "tier_predictor.pkl"
 
 CODE_KEYWORDS = {

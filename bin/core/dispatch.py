@@ -11,9 +11,18 @@ Modos de uso:
   Parallel: python3 bin/core/dispatch.py --tasks tasks.json
   Import:   from bin.core.dispatch import dispatch, dispatch_parallel
 
+Async (fixed 2026-07-05 — audit CRITICAL #1): the parent writes a "pending" JSON
+envelope to tasks/results/dispatch-<id>.json and spawns a DETACHED WORKER
+(this same script with --_worker) that runs the normal sync path, then
+atomically replaces the envelope with the final JSON result. read_result()
+therefore always sees valid JSON: {"status": "pending"} until completion,
+then {"status": "ok"|"error"|"timeout", "response": ...}.
+(The old design piped raw wrapper stdout over the .json file — unparseable.)
+
 Salida JSON:
-  {task_id, agent, provider, model, response, tokens_in, tokens_out,
-   latency_ms, status, error?, result_file?}
+  {task_id, agent, provider, model, response, latency_ms, status,
+   error?, result_file?}
+  (tokens_in/tokens_out no se emiten — el wrapper no los expone vía stdout.)
 """
 
 from __future__ import annotations
@@ -85,20 +94,27 @@ def _agno_enabled() -> bool:
     return _USE_AGNO and os.environ.get("DQIII8_USE_AGNO") == "1"
 
 
+# Default sync timeout. NOTE (audit 2026-07-05 MED: timeout inversion): the
+# wrapper's per-attempt HTTP timeout is 180s and the claude CLI path allows
+# 300s — a 120s outer timeout killed slow-but-succeeding Tier-A calls while the
+# wrapper logged success (double-execution risk). Keep this ≥ 300.
+DEFAULT_TIMEOUT = 300
+
+
 def dispatch(
     agent: str,
     prompt: str,
     context: str = "",
     project: str = "",
-    timeout: int = 120,
+    timeout: int = DEFAULT_TIMEOUT,
     async_mode: bool = False,
 ) -> dict:
     """
     Despacha una tarea al agente indicado vía openrouter_wrapper.
 
     Returns dict con:
-      task_id, agent, provider, model, response, tokens_in, tokens_out,
-      latency_ms, status ("ok" | "error" | "timeout"), result_file (si async)
+      task_id, agent, provider, model, response, latency_ms,
+      status ("ok" | "error" | "timeout" | "pending"), result_file (si async)
     """
     task_id = str(uuid.uuid4())[:8]
     meta = _resolve_agent_meta(agent)
@@ -107,23 +123,35 @@ def dispatch(
 
     if async_mode:
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-        # Escribe tarea pendiente y lanza en background
+        # Persist the prompt for the worker (may exceed argv limits) and write
+        # a valid "pending" JSON envelope that the worker atomically replaces.
+        prompt_file = RESULTS_DIR / f"dispatch-{task_id}.prompt"
+        prompt_file.write_text(full_prompt)
         pending = {
             "task_id": task_id, "agent": agent, "status": "pending",
-            **meta, "prompt": full_prompt[:200] + "...",
+            **meta, "prompt": full_prompt[:200],
+            "result_file": str(result_file),
         }
         result_file.write_text(json.dumps(pending, indent=2))
-        # Open file handle explicitly and close parent's copy after Popen inherits it
-        _fh = open(str(result_file), "w")
         try:
             subprocess.Popen(
-                [sys.executable, str(WRAPPER), "--agent", agent, full_prompt],
-                stdout=_fh,
+                [
+                    sys.executable, str(Path(__file__).resolve()), "--_worker",
+                    "--agent", agent,
+                    "--_prompt-file", str(prompt_file),
+                    "--_result-file", str(result_file),
+                    "--_task-id", task_id,
+                    "--timeout", str(timeout),
+                ],
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 cwd=str(DQIII8_ROOT),
+                start_new_session=True,  # survive parent exit
             )
-        finally:
-            _fh.close()  # Parent closes its copy; child process keeps its own fd
+        except Exception as exc:
+            failed = {**pending, "status": "error", "error": f"worker spawn failed: {exc}"}
+            result_file.write_text(json.dumps(failed, indent=2))
+            return failed
         return {"task_id": task_id, "status": "pending", "result_file": str(result_file), **meta}
 
     # Modo sync — Agno backend opcional (NIM/Groq/GitHub) si está habilitado
@@ -202,7 +230,7 @@ def dispatch_parallel(tasks: list[dict], max_workers: int = 6) -> list[dict]:
             prompt=task["prompt"],
             context=task.get("context", ""),
             project=task.get("project", ""),
-            timeout=task.get("timeout", 120),
+            timeout=task.get("timeout", DEFAULT_TIMEOUT),
         )
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -214,8 +242,40 @@ def dispatch_parallel(tasks: list[dict], max_workers: int = 6) -> list[dict]:
     return results
 
 
+def _run_async_worker(
+    agent: str, prompt_file: str, result_file: str, task_id: str, timeout: int
+) -> None:
+    """Detached async worker: run the sync path and atomically publish the result.
+
+    Always leaves valid JSON in result_file (tmp-write + os.replace), even on
+    crash — read_result() can never observe a half-written or raw-text file.
+    """
+    rf = Path(result_file)
+    try:
+        prompt = Path(prompt_file).read_text()
+        out = dispatch(agent=agent, prompt=prompt, timeout=timeout, async_mode=False)
+        out["task_id"] = task_id
+        out["result_file"] = str(rf)
+    except Exception as exc:
+        out = {
+            "task_id": task_id, "agent": agent, "status": "error",
+            "response": "", "error": f"async worker crashed: {exc}",
+            "result_file": str(rf),
+        }
+    tmp = rf.with_name(rf.name + ".tmp")
+    tmp.write_text(json.dumps(out, indent=2))
+    os.replace(tmp, rf)
+    try:
+        Path(prompt_file).unlink()
+    except OSError:
+        pass
+
+
 def read_result(task_id_or_file: str) -> dict | None:
-    """Lee el resultado de una tarea async por task_id o path completo."""
+    """Lee el resultado de una tarea async por task_id o path completo.
+
+    Devuelve {"status": "pending", ...} mientras el worker no ha terminado;
+    después, el resultado final. None solo si la tarea no existe."""
     path = Path(task_id_or_file)
     if not path.exists():
         # buscar por task_id en results dir
@@ -254,13 +314,29 @@ def _cli():
     parser.add_argument("--context", "-c", default="", help="Contexto adicional (texto)")
     parser.add_argument("--context-file", help="Fichero con contexto")
     parser.add_argument("--project", default="", help="Proyecto para persistir resultado")
-    parser.add_argument("--timeout", "-t", type=int, default=120)
+    parser.add_argument("--timeout", "-t", type=int, default=DEFAULT_TIMEOUT)
     parser.add_argument("--async", dest="async_mode", action="store_true",
                         help="Modo async — devuelve task_id inmediatamente")
     parser.add_argument("--tasks", help="JSON file con lista de tareas para dispatch paralelo")
     parser.add_argument("--read", help="Leer resultado de task_id o fichero")
     parser.add_argument("--list-agents", action="store_true", help="Lista agentes disponibles")
+    # Internal async-worker plumbing (spawned by dispatch(async_mode=True))
+    parser.add_argument("--_worker", dest="_worker", action="store_true",
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--_prompt-file", dest="_prompt_file", help=argparse.SUPPRESS)
+    parser.add_argument("--_result-file", dest="_result_file", help=argparse.SUPPRESS)
+    parser.add_argument("--_task-id", dest="_task_id", help=argparse.SUPPRESS)
     args = parser.parse_args()
+
+    if args._worker:
+        _run_async_worker(
+            agent=args.agent,
+            prompt_file=args._prompt_file,
+            result_file=args._result_file,
+            task_id=args._task_id,
+            timeout=args.timeout,
+        )
+        return
 
     if args.list_agents:
         print("\nAgentes disponibles en AGENT_ROUTING:\n")

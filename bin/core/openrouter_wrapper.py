@@ -27,6 +27,23 @@ import logging
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
 log = _get_logger(__name__)
+
+# ── Auto-load .env so API keys are available regardless of shell environment ─
+def _load_dotenv() -> None:
+    """Load /root/dqiii8/.env into os.environ (setdefault — never overwrites existing vars)."""
+    root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+    env_path = root / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        os.environ.setdefault(k.strip(), v.strip())
+
+_load_dotenv()
+
 # ── Provider configuration ──────────────────────────────────────────────────
 
 PROVIDERS = {
@@ -157,6 +174,8 @@ AGENT_ROUTING = {
     # Recibe código generado + spec original + contexto proyecto. Ataca el código.
     "code-reviewer":  ("anthropic", "claude-opus-4-8"),
     "code-validator": ("anthropic", "claude-opus-4-8"),
+    # hermes — NousResearch Hermes-3 405B (OpenRouter free, $0) — estrategia, analytics, datos
+    "hermes":         ("openrouter", "nousresearch/hermes-3-llama-3.1-405b:free"),
 
     # ── Tier A — Sonnet: agentes de alto valor ───────────────────────────────
     "finance-specialist": ("anthropic", "claude-sonnet-4-6"),
@@ -200,6 +219,61 @@ FALLBACK_CHAIN = {
     "anthropic": ["groq", "nim", "openrouter", "pollinations"],
     "pollinations": [],
 }
+
+# ── No-downgrade guard (audit 2026-07-05, HIGH #5) ──────────────────────────
+# Agents whose PRIMARY provider is Anthropic (Tier A/S). If the claude CLI/OAuth
+# fails, these must FAIL LOUDLY (exit 2) instead of silently falling back to a
+# free-tier model: an "adversarial Opus review" produced by Llama-70B is worse
+# than no review. Derived from AGENT_ROUTING so it can never drift out of sync.
+# Explicit opt-in escape hatch: DQIII8_ALLOW_DOWNGRADE=1.
+_NO_DOWNGRADE = frozenset(
+    agent for agent, (prov, _m) in AGENT_ROUTING.items() if prov == "anthropic"
+)
+
+
+def build_chain(
+    primary_provider: str,
+    primary_model: str,
+    escalated_from_ollama: bool = False,
+    allow_downgrade: bool | None = None,
+) -> tuple[list[tuple[str, str]], bool]:
+    """Build the ordered (provider, model) attempt chain for one call.
+
+    Anthropic-tier primaries get NO free-tier fallback (see _NO_DOWNGRADE):
+    returns ([(anthropic, model)], no_downgrade=True) so the caller can exit
+    loudly on failure. All other providers keep their FALLBACK_CHAIN.
+    """
+    if allow_downgrade is None:
+        allow_downgrade = os.environ.get("DQIII8_ALLOW_DOWNGRADE", "") == "1"
+    no_downgrade = primary_provider == "anthropic" and not allow_downgrade
+    chain: list[tuple[str, str]] = [(primary_provider, primary_model)]
+    if not no_downgrade:
+        for fb_provider in FALLBACK_CHAIN.get(primary_provider, []):
+            chain.append(
+                (fb_provider, _PROVIDER_DEFAULT_MODEL.get(fb_provider, "llama-3.3-70b-versatile"))
+            )
+        # When escalated from Ollama, add qwen as last-resort (offline fallback)
+        if escalated_from_ollama:
+            chain.append(("ollama", "qwen2.5-coder:7b"))
+    return chain, no_downgrade
+
+
+# ── Retry / backoff / circuit breaker (audit 2026-07-05, HIGH #4) ────────────
+# Per-provider: up to _RETRY_ATTEMPTS on TRANSIENT errors (429/5xx/network),
+# exponential backoff 1s→2s (+jitter). Fatal errors (401/403/404 auth/config)
+# skip retries and move to the next provider immediately — satisfies the NIM
+# invariant ("exponential backoff en 429") in 00_core_behavior.md.
+# Circuit breaker state persists across wrapper invocations in a JSON file:
+# _BREAKER_THRESHOLD consecutive failures open the circuit for
+# _BREAKER_COOLDOWN_S seconds (then one half-open probe is allowed).
+# Best-effort state (atomic replace, fail-open on any I/O error).
+_RETRY_ATTEMPTS = 3
+_RETRY_BASE_DELAY_S = 1.0
+_BREAKER_THRESHOLD = 3
+_BREAKER_COOLDOWN_S = 120
+_BREAKER_PATH = (
+    Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "var" / "circuit_breaker.json"
+)
 
 # Coste por 1K tokens (input, output) en USD — 0.0 = gratuito/local
 TIER_COSTS: dict[str, tuple[float, float]] = {
@@ -484,11 +558,12 @@ def build_request(provider_name: str, model: str, prompt: str, system_prompt: st
 
 
 def _stream_via_claude_cli(
-    model: str, prompt: str, system_prompt: str = ""
-) -> tuple[str, int, int, bool]:
+    model: str, prompt: str, system_prompt: str = "", echo: bool = True
+) -> tuple[str, int, int, bool, bool]:
     """Tier A fallback: call Claude Code CLI when ANTHROPIC_API_KEY is not set.
 
     Uses OAuth via ~/.claude/.credentials.json (same as dqiii8_bot /cc).
+    Returns (text, tokens_in, tokens_out, success, retryable).
     """
     cmd = ["claude", "-p", prompt, "--output-format", "json", "--model", model]
     if system_prompt:
@@ -513,27 +588,42 @@ def _stream_via_claude_cli(
             except json.JSONDecodeError:
                 pass
         if text:
-            print(text, flush=True)
+            if echo:
+                print(text, flush=True)
             tokens_in = len(prompt) // 4
             tokens_out = len(text) // 4
-            return str(text).strip(), tokens_in, tokens_out, True
-        return "", 0, 0, False
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as exc:
+            return str(text).strip(), tokens_in, tokens_out, True, False
+        # Ran but produced nothing → likely auth/model config; retry won't help
+        return "", 0, 0, False, False
+    except subprocess.TimeoutExpired as exc:
+        log.warning("claude CLI timeout: %s", exc)
+        return "", 0, 0, False, True  # transient — retryable
+    except FileNotFoundError as exc:
+        log.warning("claude CLI not found: %s", exc)
+        return "", 0, 0, False, False  # fatal — CLI absent
+    except Exception as exc:
         log.warning("claude CLI failed: %s", exc)
-        return "", 0, 0, False
+        return "", 0, 0, False, False
 
 
-def stream_response(
-    provider_name: str, model: str, prompt: str, system_prompt: str = ""
-) -> tuple[str, int, int, bool]:
-    """
-    Makes the request and streams to stdout.
-    Returns (full_text, tokens_input, tokens_output, success).
-    Uses real API tokens if available; estimates by chars otherwise.
+def _request_once(
+    provider_name: str,
+    model: str,
+    prompt: str,
+    system_prompt: str = "",
+    echo: bool = True,
+) -> tuple[str, int, int, bool, bool]:
+    """One attempt against one provider.
+
+    Returns (full_text, tokens_in, tokens_out, success, retryable):
+      retryable=True  → transient (429/408/5xx/network/timeout) — worth retrying.
+      retryable=False → fatal for this provider (auth/config 4xx) — skip retries.
+    With echo=False output is fully buffered (nothing hits stdout), so a failed
+    attempt can never contaminate the final response (audit 2026-07-05 P0-3).
     """
     # Anthropic without API key → delegate to Claude Code CLI (OAuth)
     if provider_name == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
-        return _stream_via_claude_cli(model, prompt, system_prompt)
+        return _stream_via_claude_cli(model, prompt, system_prompt, echo=echo)
 
     url, headers, payload = build_request(
         provider_name, model, sanitize_prompt(prompt), system_prompt
@@ -557,7 +647,7 @@ def stream_response(
                     continue
                 # Detectar error embebido en el stream
                 if "error" in chunk:
-                    return full_text, tokens_in, tokens_out, False
+                    return full_text, tokens_in, tokens_out, False, True
                 # Capturar tokens reales si la API los devuelve (OpenRouter/Groq)
                 # Guard against "usage": null in NIM streaming responses
                 usage = chunk.get("usage") or {}
@@ -570,22 +660,131 @@ def stream_response(
                 delta = choices[0].get("delta", {})
                 token = delta.get("content", "")
                 if token:
-                    print(token, end="", flush=True)
+                    if echo:
+                        print(token, end="", flush=True)
                     full_text += token
     except urllib.error.HTTPError as e:
-        if e.code in (429, 500, 502, 503):
-            return full_text, tokens_in, tokens_out, False
-        return full_text, tokens_in, tokens_out, False
+        # 429/408/5xx = transient → retryable; other 4xx (401/403/404) = auth/config → fatal
+        retryable = e.code in (408, 429, 500, 502, 503, 504)
+        return full_text, tokens_in, tokens_out, False, retryable
     except (urllib.error.URLError, TimeoutError):
-        return full_text, tokens_in, tokens_out, False
+        return full_text, tokens_in, tokens_out, False, True
 
-    if full_text:
+    if full_text and echo:
         print()  # newline final
     # Fallback to estimation if the API did not return usage
     if not tokens_in and not tokens_out:
         tokens_in = len(prompt) // 4
         tokens_out = len(full_text) // 4
-    return full_text, tokens_in, tokens_out, bool(full_text)
+    return full_text, tokens_in, tokens_out, bool(full_text), True
+
+
+def stream_response(
+    provider_name: str, model: str, prompt: str, system_prompt: str = ""
+) -> tuple[str, int, int, bool]:
+    """
+    Makes the request and streams to stdout (compat shim over _request_once —
+    kept 4-tuple for external callers: pal/engine.py, dqiii8_bot.py).
+    Returns (full_text, tokens_input, tokens_output, success).
+    Uses real API tokens if available; estimates by chars otherwise.
+    """
+    text, tokens_in, tokens_out, ok, _retryable = _request_once(
+        provider_name, model, prompt, system_prompt, echo=True
+    )
+    return text, tokens_in, tokens_out, ok
+
+
+# ── Circuit breaker helpers (file-backed, best-effort, fail-open) ────────────
+
+
+def _breaker_load() -> dict:
+    try:
+        return json.loads(_BREAKER_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _breaker_save(state: dict) -> None:
+    try:
+        _BREAKER_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _BREAKER_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state), encoding="utf-8")
+        os.replace(tmp, _BREAKER_PATH)
+    except Exception as _exc:
+        log.warning("circuit breaker save failed: %s", _exc)
+
+
+def _breaker_allows(provider: str) -> bool:
+    """True unless the provider's circuit is open and still cooling down."""
+    entry = _breaker_load().get(provider)
+    if not entry:
+        return True
+    if entry.get("failures", 0) < _BREAKER_THRESHOLD:
+        return True
+    if time.time() >= entry.get("opened_until", 0):
+        return True  # cooldown elapsed → allow one half-open probe
+    return False
+
+
+def _breaker_record(provider: str, success: bool) -> None:
+    state = _breaker_load()
+    if success:
+        if provider in state:
+            state.pop(provider, None)
+            _breaker_save(state)
+        return
+    entry = state.get(provider) or {"failures": 0, "opened_until": 0}
+    entry["failures"] = int(entry.get("failures", 0)) + 1
+    if entry["failures"] >= _BREAKER_THRESHOLD:
+        entry["opened_until"] = time.time() + _BREAKER_COOLDOWN_S
+        log.warning(
+            "circuit OPEN for %s (%d consecutive failures, cooldown %ds)",
+            provider, entry["failures"], _BREAKER_COOLDOWN_S,
+        )
+    state[provider] = entry
+    _breaker_save(state)
+
+
+def _call_with_retry(
+    provider: str, model: str, prompt: str, system_prompt: str = ""
+) -> tuple[str, int, int, bool]:
+    """One provider attempt with retry/backoff + circuit breaker.
+
+    Transient failures (429/5xx/network) retry up to _RETRY_ATTEMPTS with
+    exponential backoff (1s, 2s + jitter). Fatal errors (auth/config 4xx) break
+    immediately so the fallback chain moves on. Output is buffered per attempt —
+    nothing reaches stdout until the caller decides (no partial+full concat).
+    """
+    import random
+
+    if not _breaker_allows(provider):
+        log.warning(
+            "circuit open for %s — skipping provider (cooldown %ds)",
+            provider, _BREAKER_COOLDOWN_S,
+        )
+        return "", 0, 0, False
+    text, tokens_in, tokens_out = "", 0, 0
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        text, tokens_in, tokens_out, ok, retryable = _request_once(
+            provider, model, prompt, system_prompt, echo=False
+        )
+        if ok:
+            _breaker_record(provider, True)
+            return text, tokens_in, tokens_out, True
+        if not retryable:
+            log.warning(
+                "%s/%s fatal error (auth/config) — not retrying", provider, model
+            )
+            break
+        if attempt < _RETRY_ATTEMPTS:
+            delay = _RETRY_BASE_DELAY_S * (2 ** (attempt - 1)) + random.uniform(0, 0.25)
+            log.warning(
+                "%s/%s attempt %d/%d failed — retrying in %.1fs",
+                provider, model, attempt, _RETRY_ATTEMPTS, delay,
+            )
+            time.sleep(delay)
+    _breaker_record(provider, False)
+    return text, tokens_in, tokens_out, False
 
 
 def log_to_db(
@@ -608,11 +807,16 @@ def log_to_db(
     try:
         cost_in, cost_out = TIER_COSTS.get(provider, (0.0, 0.0))
         cost_usd = (tokens_in / 1000.0) * cost_in + (tokens_out / 1000.0) * cost_out
-        tier = (
-            "A"
-            if provider == "anthropic"
-            else ("B" if provider in ("groq", "openrouter") else "C")
-        )
+        # Correct tier labeling (audit 2026-07-05 MED #8: nim/github/pollinations
+        # were all mislabeled "C", corrupting tier/cost analytics)
+        _provider_tier = {
+            "ollama": "C", "groq": "B", "openrouter": "B", "pollinations": "B",
+            "nim": "B+", "github": "B++",
+        }
+        if provider == "anthropic":
+            tier = "S" if "opus" in model.lower() else "A"
+        else:
+            tier = _provider_tier.get(provider, "C")
         conn = sqlite3.connect(str(DB_PATH), timeout=30)
         cur = conn.execute(
             "INSERT INTO agent_actions "
@@ -849,8 +1053,12 @@ def _enforce_sensitive_permissions() -> None:
     import stat
 
     root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-    # Active files → 600 (owner read-write only)
-    for rel in (".env", "database/dqiii8.db"):
+    # Active files → 600 (owner read-write only).
+    # dqiii8_history.db is the LIVE session_memory store (working_memory.py) —
+    # the 2026-06-10 ADR's rename-to-readonly-archive was never executed, so the
+    # old force-chmod-444 here was wrong (it only worked because we run as root).
+    for rel in (".env", "database/dqiii8.db", "database/dqiii8_history.db",
+                "database/dqiii8_metrics.db"):
         path = root / rel
         if path.exists() and not path.is_symlink():
             current = path.stat().st_mode & 0o777
@@ -859,15 +1067,6 @@ def _enforce_sensitive_permissions() -> None:
                     os.chmod(str(path), stat.S_IRUSR | stat.S_IWUSR)
                 except OSError as _exc:
                     log.warning("chmod %s failed: %s", path, _exc)
-    # History DB → 444 (readonly — archived backup, not the live SSOT)
-    _hist = root / "database" / "dqiii8_history.db"
-    if _hist.exists() and not _hist.is_symlink():
-        current = _hist.stat().st_mode & 0o777
-        if current != 0o444:
-            try:
-                os.chmod(str(_hist), 0o444)
-            except OSError as _exc:
-                log.warning("chmod history.db failed: %s", _exc)
     # Database directory → 700 (owner only)
     db_dir = root / "database"
     if db_dir.exists():
@@ -1145,14 +1344,18 @@ def main() -> None:
     if system_prompt:
         log.debug("system prompt loaded: %s (%d chars)", agent_name, len(system_prompt))
 
-    # Construir cadena: primario + fallbacks
-    chain = [(primary_provider, primary_model)]
-    for fb_provider in FALLBACK_CHAIN.get(primary_provider, []):
-        fb_model = _PROVIDER_DEFAULT_MODEL.get(fb_provider, "llama-3.3-70b-versatile")
-        chain.append((fb_provider, fb_model))
-    # When escalated from Ollama, add qwen as last-resort (offline fallback)
-    if _escalated_from_ollama:
-        chain.append(("ollama", "qwen2.5-coder:7b"))
+    # Construir cadena: primario + fallbacks.
+    # Anthropic-tier primaries get NO free-tier fallback (_NO_DOWNGRADE) — they
+    # fail loudly (exit 2) instead of silently downgrading to Llama-70B.
+    chain, _no_downgrade = build_chain(
+        primary_provider, primary_model, escalated_from_ollama=_escalated_from_ollama
+    )
+    if _no_downgrade:
+        log.info(
+            "no-downgrade guard active: %s is Anthropic-tier — free-tier fallback "
+            "disabled (DQIII8_ALLOW_DOWNGRADE=1 to opt in)",
+            agent_name,
+        )
 
     # Working memory: prepend recent session context for Tier B/A calls.
     # Tier C (Ollama/qwen) skips this — small models choke on extra prefix tokens.
@@ -1170,11 +1373,13 @@ def main() -> None:
             log.warning("working_memory session context failed: %s", _exc)
             pass  # fail-open
 
-    # Intentar cada proveedor en orden
+    # Intentar cada proveedor en orden (con retry/backoff + circuit breaker).
+    # La salida se bufferiza por intento y solo se emite tras éxito — un intento
+    # fallido nunca contamina stdout con respuesta parcial.
     for provider, model in chain:
         log.info("%s | %s | %s", agent_name, provider, model)
         t0 = int(time.time() * 1000)
-        text, tokens_in, tokens_out, ok = stream_response(
+        text, tokens_in, tokens_out, ok = _call_with_retry(
             provider, model, prompt, system_prompt
         )
         duration_ms = int(time.time() * 1000) - t0
@@ -1195,6 +1400,7 @@ def main() -> None:
         )
 
         if ok:
+            print(text, flush=True)
             if _wm and _session_id:
                 try:
                     _wm.save_exchange(
@@ -1207,6 +1413,21 @@ def main() -> None:
 
         log.warning("%s failed — trying next...", provider)
         _log_escalation("cli", agent_name, provider, model, err_msg)
+
+    if _no_downgrade:
+        log.error(
+            "Anthropic-tier call FAILED for agent '%s' and downgrade is disabled "
+            "(_NO_DOWNGRADE). NOT falling back to a free-tier model. Fix the "
+            "claude CLI / OAuth credentials, or set DQIII8_ALLOW_DOWNGRADE=1 to "
+            "permit an explicit downgrade.",
+            agent_name,
+        )
+        print(
+            f"ERROR: anthropic-tier call failed for agent '{agent_name}'; "
+            "free-tier downgrade disabled (_NO_DOWNGRADE). See error_log.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     log.error("all providers failed")
     sys.exit(1)

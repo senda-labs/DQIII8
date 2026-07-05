@@ -22,7 +22,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-DB = Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8_metrics.db"
+DB = Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8.db"  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
 OUT = (
     Path(__file__).resolve().parent.parent.parent
     / "tasks"

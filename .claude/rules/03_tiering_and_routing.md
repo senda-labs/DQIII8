@@ -118,11 +118,19 @@ github  → groq → nim → pollinations
 
 Errores 429/500/502/503 en `stream_response()` triggean fallback automático al siguiente proveedor.
 
-**Realidad del código (audit 2026-07-05):** el wrapper hace UN intento por proveedor —
-no hay retry, backoff exponencial ni circuit breaker implementados (grep "circuit" = 0 hits).
-El "backoff en 429" de la sección NIM es una prescripción para el orquestador, no una feature
-del wrapper. `anthropic` no aparece en ningún valor de `FALLBACK_CHAIN`: si toda la cadena
-gratuita falla, el wrapper sale con exit 1 — NO escala a Sonnet/Opus automáticamente.
+**Realidad del código (remediación 2026-07-05):** el wrapper ahora implementa
+retry con backoff exponencial (hasta 3 intentos por proveedor en 429/408/5xx/red,
+1s→2s+jitter; errores auth/config 401/403/404 saltan al siguiente proveedor sin
+reintentar) y un circuit breaker por proveedor persistido en `var/circuit_breaker.json`
+(3 fallos consecutivos → abierto 120s → sonda half-open). Ver `_call_with_retry`,
+`_breaker_*` en `openrouter_wrapper.py` + tests `tests/test_wrapper_routing_guards.py`.
+
+`anthropic` sigue sin aparecer en ningún valor de `FALLBACK_CHAIN`: si toda la cadena
+gratuita falla, el wrapper sale con exit 1 — NO escala a Sonnet/Opus automáticamente
+(decisión deliberada, cost-first). En sentido inverso, los agentes Tier A/S
+(`_NO_DOWNGRADE`, derivado de `AGENT_ROUTING`) ya NO degradan silenciosamente a
+Groq/Llama si el CLI de claude falla: fallan alto con exit 2
+(`DQIII8_ALLOW_DOWNGRADE=1` para permitir la degradación explícitamente).
 Detalle completo del proveedor NIM → `.claude/rules_db/nim-provider.md`.
 
 ## Escalation to Opus (Plan Gate)

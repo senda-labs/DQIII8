@@ -1,0 +1,6 @@
+# Directories not tracked by git — skip in no-git scans
+venvs/
+.venv/
+__pycache__/
+node_modules/
+my-projects/

@@ -20,7 +20,7 @@ tmux split-window -v -p 50 -t "$SESSION":0.0 -c "$DQIII8"
 tmux split-window -v -p 50 -t "$SESSION":0.2 -c "$DQIII8"
 
 # Panel 0 (top-left): Token usage
-tmux send-keys -t "$SESSION":0.0 "watch -n 10 'cd $DQIII8 && python3 -c \"from bin.core.db import get_db; import sqlite3; db=sqlite3.connect(\\\"database/dqiii8_metrics.db\\\"); r=db.execute(\\\"SELECT model,SUM(input_tokens+output_tokens) FROM token_usage GROUP BY model ORDER BY 2 DESC LIMIT 8\\\").fetchall(); [print(f\\\"{m}: {t:,}\\\") for m,t in r]\" 2>/dev/null || echo No token data yet'" Enter
+tmux send-keys -t "$SESSION":0.0 "watch -n 10 'cd $DQIII8 && python3 -c \"from bin.core.db import get_db; import sqlite3; db=sqlite3.connect(\\\"database/dqiii8.db\\\"); r=db.execute(\\\"SELECT model,SUM(input_tokens+output_tokens) FROM token_usage GROUP BY model ORDER BY 2 DESC LIMIT 8\\\").fetchall(); [print(f\\\"{m}: {t:,}\\\") for m,t in r]\" 2>/dev/null || echo No token data yet'" Enter
 
 # Panel 1 (bottom-left): Bot logs live
 tmux send-keys -t "$SESSION":0.1 "journalctl -u dqiii8-bot -f --no-pager 2>/dev/null || echo 'dqiii8-bot inactive'" Enter

@@ -37,6 +37,11 @@ Goal: Haiku handles 70%+ of operations. Reserve Sonnet for reasoning.
 
 ## PAL MCP status
 ```
-Server: /tmp/pal-mcp-server/server.py  ✓ present
-Ollama backend: localhost:11434         (check: ollama ps)
+Server: /tmp/pal-mcp-server/server.py   — EPHEMERAL (/tmp): absent after reboot.
+                                          Verified ABSENT 2026-07-05. Check before use:
+                                          test -f /tmp/pal-mcp-server/server.py
+Ollama backend: localhost:11434          ✓ up 2026-07-05 (qwen2.5-coder:7b + bge-m3)
+                                          check: curl -s localhost:11434/api/tags
 ```
+If the PAL server is absent, CODE_GEN falls through to direct Ollama or Sonnet — do not
+assume `clink`/PAL is available without the check above.

@@ -7,16 +7,27 @@ paths:
 ---
 # Tiering & Routing — DQIII8
 
+## ⚠️ INVARIANTE NIM (leer antes que cualquier otra regla)
+NIM Tier B+ es $0 y calidad comparable/superior a Sonnet en planificación, análisis y código.
+**OBLIGATORIO intentar NIM antes de cualquier escalado a Tier A o S.**
+Ver regla completa en `.claude/rules/00_core_behavior.md` § INVARIANTE NIM.
+
+Modelos NIM prioritarios confirmados activos (sondeo 2026-06-26):
+- **Planificación/análisis** → `mistralai/mistral-large-3-675b-instruct-2512` (0.3s, agente: `software-specialist`)
+- **Código/web (1M ctx)** → `deepseek-ai/deepseek-v4-flash` (1.4s, agente: `web-specialist`)
+
+---
+
 ## Tier Table (Cost-First — STRICT)
 
 | Tier | Provider | Model | Cost | Default use |
 |---|---|---|---|---|
 | C | Ollama (local) | `qwen2.5-coder:7b` | $0 | Code, git, pipeline, applied_sciences |
 | B | Groq | `llama-3.3-70b-versatile` | $0 | Research, analysis, writing, domain knowledge |
-| B+ | NVIDIA NIM | `meta/llama-3.3-70b-instruct` | $0 | Long-context (1M), dominio médico/fin, fallback groq 429 |
+| **B+** | **NVIDIA NIM** | `mistral-large-3-675b` / `deepseek-v4-flash` | **$0** | **Prioridad sobre Sonnet — planificación, código, análisis** |
 | B++ | GitHub Models | `deepseek-v3-0324` / `codestral-2501` | $0 | Code review, fallback NIM |
-| A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Finance, orchestración, decisiones arquitectónicas |
-| S | Anthropic | `claude-opus-4-8` | ~$0.20/turn | Multi-agent coordination, system design ONLY |
+| A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Solo si NIM falla ≥3 veces. Orquestación, decisiones críticas |
+| S | Anthropic | `claude-opus-4-8` | ~$0.20/turn | SOLO revisión adversarial final. Nunca generación inicial |
 
 **NIM — sondeo completo 2026-06-26 (50/121 activos):**
 
@@ -106,6 +117,13 @@ github  → groq → nim → pollinations
 ```
 
 Errores 429/500/502/503 en `stream_response()` triggean fallback automático al siguiente proveedor.
+
+**Realidad del código (audit 2026-07-05):** el wrapper hace UN intento por proveedor —
+no hay retry, backoff exponencial ni circuit breaker implementados (grep "circuit" = 0 hits).
+El "backoff en 429" de la sección NIM es una prescripción para el orquestador, no una feature
+del wrapper. `anthropic` no aparece en ningún valor de `FALLBACK_CHAIN`: si toda la cadena
+gratuita falla, el wrapper sale con exit 1 — NO escala a Sonnet/Opus automáticamente.
+Detalle completo del proveedor NIM → `.claude/rules_db/nim-provider.md`.
 
 ## Escalation to Opus (Plan Gate)
 

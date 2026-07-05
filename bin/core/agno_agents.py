@@ -5,11 +5,13 @@ DQIII8 — Agno AgentOS Registry
 Wraps the dqiii8 ``AGENT_ROUTING`` table (SSOT in ``openrouter_wrapper.py``)
 into Agno ``Agent`` objects with SQLite-backed session memory.
 
-OpenAI-compatible providers (NIM / Groq / GitHub / OpenRouter) are driven
-directly through Agno's ``OpenAIChat`` model with a custom ``base_url``.
-Providers that are NOT OpenAI-compatible in this deployment — ``ollama``
-(no OpenAI URL wired up) and ``anthropic`` (OAuth via Claude CLI) — fall
-back to the existing ``dispatch()`` subprocess path.
+Provider routing:
+  - nim       → agno.models.nvidia.Nvidia   (NVIDIA_API_KEY, no OPENAI_API_KEY needed)
+  - groq      → agno.models.groq.Groq       (GROQ_API_KEY, no OPENAI_API_KEY needed)
+  - github    → agno.models.openai.OpenAIChat (GITHUB_TOKEN as api_key)
+  - openrouter→ agno.models.openai.OpenAIChat (OPENROUTER_API_KEY as api_key)
+  - ollama    → dispatch() subprocess (no Agno model)
+  - anthropic → dispatch() subprocess (OAuth via Claude CLI)
 
 Usage:
     from bin.core.agno_agents import AgentRegistry
@@ -33,29 +35,61 @@ log = _get_logger(__name__)
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 _DEFAULT_DB = str(DQIII8_ROOT / "database" / "dqiii8.db")
 
-# Providers that cannot be served via Agno OpenAIChat in this deployment.
+# Providers with no Agno model — always use dispatch() subprocess.
 _FALLBACK_PROVIDERS = frozenset({"ollama", "anthropic"})
+
+# Substrings that indicate a silent auth/config failure in Agno response text.
+_AGNO_ERROR_MARKERS = (
+    "OPENAI_API_KEY",
+    "api key",
+    "authentication",
+    "Unauthorized",
+    "401",
+    "invalid_api_key",
+)
+
+_ENV_LOADED = False
+
+
+def _load_env_once() -> None:
+    global _ENV_LOADED
+    if _ENV_LOADED:
+        return
+    env_file = DQIII8_ROOT / ".env"
+    if env_file.exists():
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(env_file, override=False)
+        except ImportError:
+            pass
+    _ENV_LOADED = True
+
+
+def _is_agno_error_response(text: str) -> bool:
+    """Return True if the response string signals an Agno auth/config failure."""
+    lo = text.lower()
+    return any(m.lower() in lo for m in _AGNO_ERROR_MARKERS)
 
 
 class DqAgentModel:
-    """Builds an Agno ``OpenAIChat`` model for any dqiii8 AGENT_ROUTING agent."""
+    """Builds a native Agno model for any dqiii8 AGENT_ROUTING agent.
 
-    # Documented base URLs (kept in sync with PROVIDERS, used as fallback).
+    Uses provider-native Agno classes (Nvidia, Groq) to avoid the silent
+    OPENAI_API_KEY failure bug when using OpenAIChat with a custom base_url.
+    Falls back to OpenAIChat only for providers without a native Agno class
+    (github, openrouter) where an explicit api_key is always available.
+    """
+
     _BASE_URLS = {
-        "nim": "https://integrate.api.nvidia.com/v1",
-        "groq": "https://api.groq.com/openai/v1",
         "github": "https://models.inference.ai.azure.com/v1",
         "openrouter": "https://openrouter.ai/api/v1",
     }
 
     @classmethod
     def for_agent(cls, agent_name: str, timeout: int = 120):
-        """
-        Create an ``OpenAIChat`` model for the given dqiii8 agent.
+        """Return a native Agno model, or None if dispatch() should be used."""
+        _load_env_once()
 
-        Returns ``None`` for ollama/anthropic (caller must use dispatch()
-        fallback) or when the provider is unknown / has no API key.
-        """
         from bin.core.openrouter_wrapper import AGENT_ROUTING, PROVIDERS
 
         provider, model_id = AGENT_ROUTING.get(
@@ -65,22 +99,29 @@ class DqAgentModel:
             return None
 
         cfg = PROVIDERS.get(provider, {})
-        base_url = cfg.get("base_url") or cls._BASE_URLS.get(provider)
-        if not base_url:
-            return None
-
         api_key_env = cfg.get("api_key_env")
         api_key = os.environ.get(api_key_env, "") if api_key_env else ""
 
         try:
-            from agno.models.openai import OpenAIChat
+            if provider == "nim":
+                from agno.models.nvidia import Nvidia
+                return Nvidia(id=model_id)
 
-            return OpenAIChat(
-                id=model_id,
-                base_url=base_url,
-                api_key=api_key,
-                timeout=timeout,
-            )
+            if provider == "groq":
+                from agno.models.groq import Groq
+                return Groq(id=model_id)
+
+            # github / openrouter: OpenAI-compatible, need explicit api_key.
+            base_url = cfg.get("base_url") or cls._BASE_URLS.get(provider)
+            if not base_url or not api_key:
+                log.warning(
+                    "DqAgentModel: missing base_url or api_key for provider=%s, falling back",
+                    provider,
+                )
+                return None
+            from agno.models.openai import OpenAIChat
+            return OpenAIChat(id=model_id, base_url=base_url, api_key=api_key, timeout=timeout)
+
         except Exception as _exc:
             log.warning("DqAgentModel.for_agent(%s) failed: %s", agent_name, _exc)
             return None
@@ -90,7 +131,8 @@ class AgentRegistry:
     """
     Registry that wraps AGENT_ROUTING into Agno Agents with SQLite sessions.
 
-    Falls back to ``dispatch()`` for ollama/anthropic providers.
+    Falls back to ``dispatch()`` for ollama/anthropic providers, model build
+    failures, and Agno responses that signal silent auth errors.
     """
 
     def __init__(self, db_path: str = _DEFAULT_DB):
@@ -135,18 +177,7 @@ class AgentRegistry:
 
         # Fallback path: ollama / anthropic / model build failure → dispatch()
         if model is None:
-            from bin.core.dispatch import dispatch
-
-            res = dispatch(agent_name, prompt, timeout=timeout)
-            return {
-                "response": res.get("response", ""),
-                "agent": agent_name,
-                "provider": res.get("provider", provider),
-                "model": res.get("model", model_id),
-                "latency_ms": res.get("latency_ms", 0),
-                "status": res.get("status", "ok"),
-                "backend": "dispatch",
-            }
+            return self._dispatch_fallback(agent_name, prompt, provider, model_id, timeout)
 
         # Agno path
         t0 = time.time()
@@ -164,30 +195,49 @@ class AgentRegistry:
             agent = Agent(**kwargs)
             output = agent.run(prompt)
             response = getattr(output, "content", None) or str(output)
-            status = "ok" if response else "error"
-        except Exception as _exc:
-            log.warning("Agno run(%s) failed, falling back to dispatch: %s", agent_name, _exc)
-            from bin.core.dispatch import dispatch
 
-            res = dispatch(agent_name, prompt, timeout=timeout)
+            # Health-check: detect silent auth errors returned as response text.
+            if not response or _is_agno_error_response(response):
+                log.warning(
+                    "Agno(%s) returned error response, falling back to dispatch: %.120s",
+                    agent_name,
+                    response,
+                )
+                return self._dispatch_fallback(agent_name, prompt, provider, model_id, timeout)
+
             return {
-                "response": res.get("response", ""),
+                "response": response,
                 "agent": agent_name,
-                "provider": res.get("provider", provider),
-                "model": res.get("model", model_id),
-                "latency_ms": res.get("latency_ms", 0),
-                "status": res.get("status", "ok"),
-                "backend": "dispatch",
+                "provider": provider,
+                "model": model_id,
+                "latency_ms": int((time.time() - t0) * 1000),
+                "status": "ok",
+                "backend": "agno",
             }
 
+        except Exception as _exc:
+            log.warning("Agno run(%s) failed, falling back to dispatch: %s", agent_name, _exc)
+            return self._dispatch_fallback(agent_name, prompt, provider, model_id, timeout)
+
+    def _dispatch_fallback(
+        self,
+        agent_name: str,
+        prompt: str,
+        provider: str,
+        model_id: str,
+        timeout: int,
+    ) -> dict:
+        from bin.core.dispatch import dispatch
+
+        res = dispatch(agent_name, prompt, timeout=timeout)
         return {
-            "response": response,
+            "response": res.get("response", ""),
             "agent": agent_name,
-            "provider": provider,
-            "model": model_id,
-            "latency_ms": int((time.time() - t0) * 1000),
-            "status": status,
-            "backend": "agno",
+            "provider": res.get("provider", provider),
+            "model": res.get("model", model_id),
+            "latency_ms": res.get("latency_ms", 0),
+            "status": res.get("status", "ok"),
+            "backend": "dispatch",
         }
 
     def run_parallel(self, tasks: list[dict], max_workers: int = 6) -> list[dict]:

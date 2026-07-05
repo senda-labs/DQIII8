@@ -20,3 +20,27 @@
 ## Cost-First Rule (absolute)
 Always start at the cheapest tier that can handle the task (C → B → B+ → A → S).
 NEVER use Tier A/S for tasks Tier B can handle. Full table: `.claude/rules/03_tiering_and_routing.md`
+
+## INVARIANTE NIM — Prioridad absoluta antes de Sonnet/Opus (non-negotiable)
+NVIDIA NIM (Tier B+) es $0, calidad comparable o superior a Sonnet 4.6 en la mayoría de tareas.
+ANTES de escalar a Tier A (Sonnet) o S (Opus), es OBLIGATORIO intentar NIM primero.
+
+**Modelos NIM preferidos por tipo de tarea:**
+| Tarea | Modelo NIM | Latencia | Agente dqiii8 |
+|-------|-----------|----------|---------------|
+| Planificación, análisis, arquitectura | `mistralai/mistral-large-3-675b-instruct-2512` | 0.3s | `software-specialist`, `research-analyst` |
+| Código, web, pseudocódigo (1M ctx) | `deepseek-ai/deepseek-v4-flash` | 1.4s | `web-specialist`, `python-specialist` |
+| Optimización, razonamiento | `mistralai/mistral-large-3-675b-instruct-2512` | 0.3s | `opt-analyst` |
+
+**Reglas de escalado:**
+1. Tarea de planificación / análisis / redacción → `software-specialist` (NIM Mistral 675B) PRIMERO
+2. Tarea de código / web / pseudocódigo → `web-specialist` (NIM DeepSeek V4 Flash) PRIMERO
+3. Solo si NIM devuelve 429 persistente (≥3 reintentos con backoff) → escalar a Tier A (Sonnet)
+4. Tier S (Opus) SOLO para revisión final de calidad adversarial, nunca para generación inicial
+5. Workflows Claude Code (Agent tool) consumen tokens Anthropic — usar Bash + dqiii8 wrapper para NIM real
+
+**Cómo llamar NIM correctamente:**
+```bash
+python3 /root/dqiii8/bin/core/openrouter_wrapper.py --agent <agente> --no-enrich "<prompt>"
+```
+NUNCA usar el Agent tool del Workflow para tareas que puede resolver NIM. El Agent tool es Sonnet por defecto.

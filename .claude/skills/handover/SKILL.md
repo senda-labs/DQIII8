@@ -1,6 +1,6 @@
 ---
 name: handover
-description: Generate a session handover note at the end of a work session. Saves to sessions/, updates project status, commits and pushes. Auto-invoked after long sessions (50+ turns).
+description: Generate a session handover note at the end of a work session. Saves to sessions/ locally only — never committed or pushed. Auto-invoked after long sessions (50+ turns).
 command: /handover
 allowed-tools: [Bash, AskUserQuestion, Edit]
 user-invocable: true
@@ -52,7 +52,7 @@ cd /root/dqiii8
 python3 bin/tools/handover.py
 ```
 
-The script generates `sessions/YYYY-MM-DD_session_N.md`, commits, and pushes.
+The script generates `sessions/YYYY-MM-DD_session_N.md` locally. `sessions/` is gitignored — this file is never committed or pushed.
 
 ### Step 4 — Inject real next steps
 
@@ -75,25 +75,16 @@ steps collected in Step 2. Format each step as a bullet:
 Do NOT invent steps. Only write what the user confirmed or what was clearly
 inferred from system state.
 
-### Step 5 — Commit the enriched file
-
-```bash
-cd /root/dqiii8
-git add sessions/
-git commit -m "docs: add real next steps to handover $(date +%Y-%m-%d)"
-git push origin main
-```
-
-### Step 6 — Confirm
+### Step 5 — Confirm
 
 Output:
 ```
-[HANDOVER] Saved · sessions/YYYY-MM-DD_session_N.md
+[HANDOVER] Saved locally · sessions/YYYY-MM-DD_session_N.md
 Next steps: [N items]
 ```
 
 ## Notes
 - NEVER invent next steps that weren't verified in system state or confirmed by user
-- If git push fails (network/auth), the .md file is saved locally — does not block
+- `sessions/` is gitignored and the handover note is NEVER committed or pushed — it is a local-only artifact
 - Never include sensitive information (API keys, passwords) in the handover
 - Variable `DQIII8_PROJECT` controls the active project (default: `dqiii8-core`)

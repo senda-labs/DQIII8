@@ -14,6 +14,8 @@ my-projects/
 ├── accounting-erp/        🟡 DISEÑADO — ERP PYMEs España (PGC 2007)
 ├── ouroboros-q-eml/       🟡 EN PROGRESO — motor trading EML, Fase 0A
 ├── pokemon-genesis-chaos/ 🟠 EN PAUSA — fangame Pokémon, mkxp-z
+├── nl-onion-market-study/ 🟡 SCAFFOLDING — estudio cebolla NL, consultoría japonesa (repo propio)
+│   └── CONTEXT.md         ← leer primero al reanudar sesión
 └── global-media-org/      🔵 DISEÑO — stalled, sin código
 ```
 

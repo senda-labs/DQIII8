@@ -94,15 +94,23 @@ try:
     _DB = os.path.join(DQIII8_ROOT, "database", "dqiii8.db")
     _model = os.environ.get("DQIII8_MODEL", agent)
     _tier = _model_tier(_model)
+    # Project resolution: NULL in the common case (CWD is usually the
+    # dqiii8 root, not a project subdir) — this is expected, not a bug.
+    _cwd = str(data.get("cwd", "") or "")
+    _project = None
+    _marker = "/my-projects/"
+    if _marker in _cwd:
+        _rest = _cwd.split(_marker, 1)[1]
+        _project = _rest.split("/", 1)[0] or None
     if os.path.exists(_DB):
         _conn = sqlite3.connect(_DB, timeout=10)
         _conn.execute(
             "INSERT INTO agent_actions "
-            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier,model_used) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier,model_used,project) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             (session, agent, tool,
              inp.get("file_path", inp.get("command", ""))[:120],
-             tool.lower(), int(time.time() * 1000), _tier, _model),
+             tool.lower(), int(time.time() * 1000), _tier, _model, _project),
         )
         _conn.commit()
         _conn.close()

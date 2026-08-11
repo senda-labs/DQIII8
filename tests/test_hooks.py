@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-JARVIS = Path("/root/dqiii8")
+JARVIS = Path(__file__).parent.parent  # Current worktree or repo root
 HOOKS = JARVIS / ".claude" / "hooks"
 
 
@@ -190,3 +190,64 @@ def test_claims_conflict_detected():
     assert len(conflicts) == 1, f"Expected 1 conflicted resource, got {len(conflicts)}"
     assert conflicts[0][0] == "scene_director.py"
     assert conflicts[0][1] == 2
+
+
+def test_pre_tool_use_resolves_project_from_cwd(tmp_path):
+    """When stdin cwd is under my-projects/<name>/, agent_actions.project is set."""
+    db_path = tmp_path / "dqiii8.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        """
+        CREATE TABLE agent_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT, agent_name TEXT, tool_used TEXT, file_path TEXT,
+            action_type TEXT, start_time_ms INTEGER, model_tier INTEGER,
+            model_used TEXT, project TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    db_path = tmp_path / "database" / "dqiii8.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        """
+        CREATE TABLE agent_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT, agent_name TEXT, tool_used TEXT, file_path TEXT,
+            action_type TEXT, start_time_ms INTEGER, model_tier INTEGER,
+            model_used TEXT, project TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    cwd = "/root/dqiii8/my-projects/intl-reports/scripts"
+    payload = json.dumps(
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls"},
+            "session_id": "test-cwd-01",
+            "agent_id": "test-agent",
+            "cwd": cwd,
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, str(HOOKS / "pre_tool_use.py")],
+        input=payload,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env={**os.environ, "DQIII8_ROOT": str(tmp_path)},
+    )
+    assert result.returncode == 0
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute(
+        "SELECT project FROM agent_actions WHERE session_id = 'test-cwd-01'"
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] == "intl-reports"

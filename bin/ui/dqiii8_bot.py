@@ -1337,6 +1337,7 @@ def _log_cc_command(
     success: bool,
     response_len: int,
     session_id: str = "",
+    project: str | None = None,
 ) -> None:
     """Log /cc command usage to dqiii8.db."""
     import time as _time
@@ -1346,8 +1347,8 @@ def _log_cc_command(
         conn = sqlite3.connect(DB, timeout=30)
         conn.execute(
             "INSERT INTO agent_actions "
-            "(session_id, agent_name, tool_used, action_type, input_tokens, output_tokens, notes) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "(session_id, agent_name, tool_used, action_type, input_tokens, output_tokens, notes, project) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 sid,
                 agent or "cc_direct",
@@ -1356,6 +1357,7 @@ def _log_cc_command(
                 len(prompt),
                 response_len,
                 f"success={success}",
+                project,
             ),
         )
         conn.commit()
@@ -1611,7 +1613,7 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     reason = _cc_check(prompt)
     if reason:
         await update.message.reply_text(f"Blocked: {reason}")
-        _log_cc_command("/cc", prompt, None, False, 0, f"tg_{chat_id}")
+        _log_cc_command("/cc", prompt, None, False, 0, f"tg_{chat_id}", project=None)
         return
     if not _cc_rate_ok(chat_id):
         await update.message.reply_text(
@@ -1691,7 +1693,7 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         pass
 
-    _log_cc_command("/cc", prompt, None, success, len(output), f"tg_{chat_id}")
+    _log_cc_command("/cc", prompt, None, success, len(output), f"tg_{chat_id}", project=label)
     await send_chunks(update, output)
 
     for fpath in files[:5]:
@@ -1805,7 +1807,7 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         pass
 
-    _log_cc_command("/auto", goal, None, success, len(output), f"tg_{chat_id}")
+    _log_cc_command("/auto", goal, None, success, len(output), f"tg_{chat_id}", project=label)
     await send_chunks(update, output)
 
     for fpath in files[:5]:
@@ -1930,6 +1932,7 @@ async def cmd_auth_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         success,
         len(output),
         f"tg_{update.effective_chat.id}",
+        project=None,
     )
 
 

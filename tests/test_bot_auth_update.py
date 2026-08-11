@@ -107,3 +107,32 @@ class TestCmdAuthUpdate:
                 await mod.cmd_auth_update(update, context)
         text = update.message.reply_text.call_args[0][0]
         assert "claude /login" in text
+
+
+def test_log_cc_command_writes_project(tmp_path, monkeypatch):
+    import sqlite3
+
+    db_path = tmp_path / "dqiii8.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        """
+        CREATE TABLE agent_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT, agent_name TEXT, tool_used TEXT, action_type TEXT,
+            input_tokens INTEGER, output_tokens INTEGER, notes TEXT, project TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(mod, "DB", db_path)
+
+    mod._log_cc_command(
+        "/cc", "prompt text", "cc_direct", True, 42,
+        session_id="test-sess", project="intl-reports",
+    )
+
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute("SELECT project FROM agent_actions").fetchone()
+    conn.close()
+    assert row[0] == "intl-reports"

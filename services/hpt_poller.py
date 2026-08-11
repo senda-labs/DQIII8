@@ -186,7 +186,6 @@ def _claim_and_notify(row) -> None:
 
 
 def run_once() -> None:
-    now = _now_iso()
     with get_db(busy_timeout_ms=_BUSY_TIMEOUT_MS) as conn:
         rows = conn.execute(
             "SELECT id, version, notify_count, project, blocking_type, description, "

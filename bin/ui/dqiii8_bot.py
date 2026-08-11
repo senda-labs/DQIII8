@@ -1496,7 +1496,6 @@ async def _run_cc_async(
             last_update = now
 
     await proc.wait()
-    elapsed = time.time() - t0
 
     stderr = ""
     if proc.stderr:

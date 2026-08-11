@@ -417,7 +417,6 @@ _RO_VERBS = frozenset(
         "search",
         "describe",
         "explain",
-        "explain",
         "explica",
         "que es",
         "how does",

@@ -18,7 +18,7 @@ import subprocess
 import sqlite3
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
@@ -63,7 +63,6 @@ def check_services() -> None:
 
 
 def check_crons() -> None:
-    threshold = NOW - timedelta(hours=48)
     log_checks = {
         "nightly.sh": DQIII8_ROOT / "tasks" / "nightly-report.md",
         "memory_decay": Path("/tmp/dqiii8_decay.log"),

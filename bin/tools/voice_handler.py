@@ -139,20 +139,35 @@ def synthesize_speech(text: str, output_path: str = None, language: str = None) 
     tmp_dir = JARVIS / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    if not output_path:
-        output_path = tempfile.mktemp(suffix=".mp3", dir=str(tmp_dir))
-
     if not language:
         language = _detect_language(text)
 
     engine = _detect_tts_engine()
 
+    owned_tmp = None
+    if not output_path:
+        # Engine decides the container: _tts_espeak rewrites .mp3 -> .wav, so
+        # picking the suffix before we know the engine would orphan the file we
+        # just created. mkstemp (not mktemp) creates it atomically — no TOCTOU
+        # window between name selection and write.
+        suffix = ".wav" if engine == "espeak" else ".mp3"
+        fd, output_path = tempfile.mkstemp(suffix=suffix, dir=str(tmp_dir))
+        os.close(fd)
+        owned_tmp = output_path
+
     if engine == "gtts":
-        return _tts_gtts(text, output_path, language)
+        result = _tts_gtts(text, output_path, language)
     elif engine == "espeak":
-        return _tts_espeak(text, output_path, language)
+        result = _tts_espeak(text, output_path, language)
     else:
-        return ""
+        result = ""
+
+    if not result and owned_tmp:
+        # Unlike mktemp, mkstemp already created the file — don't leave a 0-byte
+        # stub in tmp/ when synthesis failed.
+        Path(owned_tmp).unlink(missing_ok=True)
+
+    return result
 
 
 def _tts_gtts(text: str, output_path: str, language: str) -> str:

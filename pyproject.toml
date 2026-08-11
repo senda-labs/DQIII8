@@ -40,6 +40,19 @@ extend-exclude = ["bin/tools/_archived", "my-projects", "database/legacy"]
 select = ["E", "F", "B", "BLE", "W"]
 ignore = ["E501"]  # line length is advisory, not enforced
 
+# Black and isort have no exclusion config of their own, so they walked into
+# bin/tools/_archived (frozen historical copies) while ruff correctly skipped it.
+# Keep all three in agreement.
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+extend-exclude = "^/(bin/tools/_archived|my-projects|database/legacy)/"
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_glob = ["bin/tools/_archived/*", "my-projects/*", "database/legacy/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

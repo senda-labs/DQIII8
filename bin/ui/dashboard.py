@@ -478,6 +478,62 @@ async def recent_tasks(limit: int = 50, auth: bool = Depends(check_auth)):
     ]
 
 
+@app.get("/api/production")
+async def production_metrics(auth: bool = Depends(check_auth)):
+    """Per-project agent-compute and human-hours metrics for the Produccion tab."""
+    _my_projects = JARVIS / "my-projects"
+    known_projects = (
+        {p.name for p in _my_projects.iterdir() if p.is_dir()}
+        if _my_projects.is_dir()
+        else set()
+    )
+
+    with get_db() as conn:
+        agent_rows = conn.execute(
+            """
+            SELECT project,
+                   COUNT(*) as actions,
+                   SUM(CASE WHEN duration_ms IS NOT NULL THEN 1 ELSE 0 END) as duration_covered,
+                   ROUND(SUM(estimated_cost_usd), 6) as cost_usd,
+                   ROUND(AVG(success) * 100, 1) as success_rate
+            FROM agent_actions
+            WHERE project IS NOT NULL
+            GROUP BY project
+            """
+        ).fetchall()
+
+        human_rows = conn.execute(
+            """
+            SELECT project,
+                   SUM((julianday(COALESCE(ended_at, 'now')) - julianday(started_at)) * 1440) as minutes
+            FROM human_hours
+            GROUP BY project
+            """
+        ).fetchall()
+
+    projects: dict = {}
+    unrecognized: list = []
+
+    for row in agent_rows:
+        name = row[0]
+        actions = row[1]
+        covered_pct = round((row[2] / actions) * 100, 1) if actions else 0.0
+        projects.setdefault(name, {})["agent"] = {
+            "actions": actions,
+            "duration_ms_covered_pct": covered_pct,
+            "cost_usd": row[3] or 0.0,
+            "success_rate": row[4] or 0.0,
+        }
+
+    for row in human_rows:
+        name, minutes = row[0], row[1] or 0.0
+        if name not in known_projects:
+            unrecognized.append(name)
+        projects.setdefault(name, {})["human"] = {"minutes": round(minutes, 1)}
+
+    return {"projects": projects, "unrecognized_human_projects": unrecognized}
+
+
 @app.post("/api/amplify")
 async def amplify_intent(request: Request, auth: bool = Depends(check_auth)):
     """Real-time prompt analysis preview. Returns analysis without executing."""

@@ -42,38 +42,119 @@ BLOCKED_PATHS = [
     "context/proposito.md",
 ]
 
-# Paths where even READ is dangerous (credential exfiltration risk)
+# Paths where even READ is dangerous (credential exfiltration risk).
+# Literal fast-path tokens only; the authoritative matcher is _credential_hit()
+# below, which also covers suffix classes (.pem/.key/.p12/.pfx) and non-dotfile
+# env files (prod.env, config/app.env) that a literal substring cannot express.
 BASH_CREDENTIAL_PATHS = [
     ".credentials.json",
     ".env",
     "id_rsa",
     "id_ed25519",
     ".ssh/",
+    ".gnupg/",
 ]
 
-# Read-tool credential gate (v3.2).
+# ── Credential-path gate (v3.3) ─────────────────────────────────────────────
+# Single source of truth shared by the read family (Read/Grep/Glob, step 3d)
+# and by Bash (step 3c), so the three read-family tools and the shell can never
+# drift apart: a path blocked for one is blocked for all.
+#
 # Deliberately NOT BLOCKED_PATHS: that list is a *write* denylist and also
 # contains files that must stay readable (CLAUDE.md, dqiii8.db, schema.sql,
-# .claude/settings.json, context/proposito.md). This gate is the Read-side
-# mirror of BASH_CREDENTIAL_PATHS: genuine credential material only.
+# .claude/settings.json, context/proposito.md). This gate covers genuine
+# credential material only.
 #
 # Directory components — any path segment equal to one of these is credential
-# territory (covers the ".ssh/" entry of BASH_CREDENTIAL_PATHS).
-READ_CREDENTIAL_DIRS = {".ssh", ".secrets"}
+# territory (covers the ".ssh/" / ".gnupg/" entries of BASH_CREDENTIAL_PATHS).
+CREDENTIAL_DIRS = {".ssh", ".secrets", ".gnupg"}
+
+# Template files carry placeholders, never real values (13 committed
+# *.env.example files in this repo). Allowlisted so widening the env rule to
+# non-dotfile forms does not make routine setup work impossible.
+_CREDENTIAL_TEMPLATE_RE = re.compile(r"\.(?:example|sample|template|dist)$", re.IGNORECASE)
 
 # Basenames — matched against the file name, not the whole path, so that
 # source files that merely mention secrets (bin/core/human_pending/secrets.py,
 # alembic/022_wallet_pass_secrets.py, SECRETPOWER.yaml) stay readable.
-_READ_CREDENTIAL_BASENAME_RE = re.compile(
+_CREDENTIAL_BASENAME_RE = re.compile(
     r"^(?:"
-    r"\.env(?:\..+)?"          # .env, .env.local, .env.production
-    r"|\.credentials\.json"    # OAuth credential store
-    r"|id_rsa.*|id_ed25519.*"  # private keys (and their .pub siblings)
-    r"|\.secrets"              # dotfile secret store
-    r"|.*secrets?\.json"       # client_secret.json, youtube_client_secret.json
+    r".*\.env(?:\..+)?"          # .env, .env.local, prod.env, config/app.env
+    r"|\.credentials\.json"      # OAuth credential store
+    r"|id_rsa.*|id_ed25519.*"    # private keys (and their .pub siblings)
+    r"|\.secrets"                # dotfile secret store
+    r"|.*secrets?\.json"         # client_secret.json, youtube_client_secret.json
+    r"|.+\.(?:pem|key|p12|pfx)"  # X.509 / PKCS#12 key material
     r")$",
     re.IGNORECASE,
 )
+# The leading ".*\." on the env branch is mandatory, not optional: a bare
+# basename "env" (virtualenv dirs, /usr/bin/env) must stay accessible.
+# The ".+\." on the suffix branch likewise requires a non-empty stem.
+
+_GLOB_WILDCARD_RE = re.compile(r"[*?]+")
+
+# Shell metacharacters used to split a Bash command into path-like tokens.
+_BASH_TOKEN_SPLIT_RE = re.compile(r"""[\s'"();|&<>=`,]+""")
+
+
+def _credential_hit(path: str) -> str | None:
+    """Return the credential token a path touches, or None.
+
+    Both the literal path and its realpath are checked: the read-family tools
+    follow symlinks, so a link planted in an allowed directory
+    (ln -s /root/dqiii8/.env notes.txt) must not launder credential content.
+    The literal path is still checked as a fallback for broken/dangling links,
+    where realpath() cannot resolve the target.
+    """
+    if not path:
+        return None
+    candidates = {os.path.normpath(path)}
+    try:
+        candidates.add(os.path.realpath(path))
+    except OSError as _re:  # pragma: no cover — realpath rarely raises
+        log.warning("permission_analyzer: realpath failed for %r: %s", path, _re)
+
+    for cand in sorted(candidates):
+        parts = [p for p in cand.split(os.sep) if p]
+        if not parts:
+            continue
+        # Whole path, not just ancestors: a Grep/Glob target may itself be the
+        # credential directory (path="/root/.ssh").
+        seg_hit = CREDENTIAL_DIRS.intersection(parts)
+        if seg_hit:
+            return sorted(seg_hit)[0]
+        base = parts[-1]
+        if _CREDENTIAL_TEMPLATE_RE.search(base):
+            continue
+        if _CREDENTIAL_BASENAME_RE.match(base):
+            return base
+    return None
+
+
+def _glob_filter_hit(spec: str) -> str | None:
+    """Return the credential token a Grep --glob filter targets, or None.
+
+    The filter is a name pattern rather than a path, so wildcards are collapsed
+    before matching: '**/.env*' -> '.env', '*.pem' -> '.pem'. A non-targeting
+    filter collapses to something harmless ('*' -> '', '**/*.py' -> '.py'), so
+    ordinary filtered greps are unaffected. Without this, a Grep rooted at an
+    allowed directory could still funnel credential content back via the filter.
+    """
+    if not spec:
+        return None
+    base = spec.replace("\\", "/").rsplit("/", 1)[-1]
+    collapsed = _GLOB_WILDCARD_RE.sub("", base)
+    if not collapsed or collapsed == ".":
+        return None
+    if _CREDENTIAL_TEMPLATE_RE.search(collapsed):
+        return None
+    # "x" + collapsed supplies the stem that a suffix-only filter ('*.pem')
+    # loses when its wildcard is removed.
+    for probe in (collapsed, "x" + collapsed):
+        if _CREDENTIAL_BASENAME_RE.match(probe):
+            return collapsed
+    return None
 
 # Bash operators that indicate a WRITE to a file
 _BASH_WRITE_SIGNS = [">", ">>", "tee ", "sed -i", "truncate "]
@@ -234,6 +315,24 @@ class PermissionAnalyzer:
                     f"bash_credential_path:{cred}",
                     "Use os.environ.get() for secrets. Never reference credential files in Bash.",
                 )
+        # 1b. Widened credential match (v3.3). The literal loop above needs a
+        # boundary character immediately before the token, so 'cat prod.env',
+        # 'cat config/app.env' and 'base64 certs/server.pem' slipped through.
+        # Tokenize and reuse the same matcher the read family uses, so Bash and
+        # Read/Grep/Glob cannot disagree about what counts as a credential.
+        for tok in _BASH_TOKEN_SPLIT_RE.split(cmd):
+            tok = tok.strip().strip("'\"")
+            if not tok or tok.startswith("-"):
+                continue
+            hit = _credential_hit(tok)
+            if hit:
+                return self._deny(
+                    "Bash", cmd,
+                    f"Credential path '{tok}' referenced in Bash — access blocked ('{hit}').",
+                    "CRITICAL",
+                    f"bash_credential_path:{hit}",
+                    "Use os.environ.get() for secrets. Never reference credential files in Bash.",
+                )
         # 2. All BLOCKED_PATHS — block write operations
         is_write = any(sign in cmd for sign in _BASH_WRITE_SIGNS)
         if not is_write:
@@ -259,40 +358,47 @@ class PermissionAnalyzer:
         return None
 
     def _read_touches_credential(self, tool: str, path: str) -> dict | None:
-        """Block Read of genuine credential material (v3.2).
-
-        Both the literal path and its realpath are checked: the Read tool
-        follows symlinks, so a link planted in an allowed directory
-        (ln -s /root/dqiii8/.env notes.txt) must not launder the content.
-        The literal path is still checked as a fallback for broken/dangling
-        links, where realpath() cannot resolve the target.
-        """
-        if not path:
+        """Block a read-family tool from touching genuine credential material."""
+        hit = _credential_hit(path)
+        if not hit:
             return None
-        candidates = {os.path.normpath(path)}
-        try:
-            candidates.add(os.path.realpath(path))
-        except OSError as _re:  # pragma: no cover — realpath rarely raises
-            log.warning("permission_analyzer: realpath failed for %r: %s", path, _re)
+        return self._deny(
+            tool,
+            path,
+            f"{tool} blocked at '{path}': credential material ('{hit}').",
+            "CRITICAL",
+            f"read_credential_path:{hit}",
+            "Use os.environ.get() for secrets. Credential files are never read into context.",
+        )
 
-        for cand in candidates:
-            parts = [p for p in cand.split(os.sep) if p]
-            if not parts:
-                continue
-            if READ_CREDENTIAL_DIRS.intersection(parts[:-1]):
-                hit = sorted(READ_CREDENTIAL_DIRS.intersection(parts[:-1]))[0]
-            elif _READ_CREDENTIAL_BASENAME_RE.match(parts[-1]):
-                hit = parts[-1]
-            else:
-                continue
-            return self._deny(
-                tool,
-                path,
-                f"Read blocked at '{path}': credential material ('{hit}').",
-                "CRITICAL",
-                f"read_credential_path:{hit}",
-                "Use os.environ.get() for secrets. Credential files are never read into context.",
-            )
+    def _read_family_credential_block(self, tool: str, inp: dict) -> dict | None:
+        """Credential gate for Read / Grep / Glob (v3.3).
+
+        Read — file_path.
+        Grep — path (a file, a directory, or omitted meaning cwd) *and* the
+               --glob filter. Grep returns file content, and even in
+               files_with_matches mode it is a per-regex oracle over that
+               content, so both routes to a credential file must be closed.
+        Glob — path only. Glob returns file names, never content; gating the
+               search root stops enumeration inside .ssh/.secrets/.gnupg, which
+               is the part with recon value, while leaving a codebase-wide
+               '**/*.pem' sweep (itself a legitimate audit action) alone.
+        """
+        path = inp.get("file_path") or inp.get("path") or ""
+        blocked = self._read_touches_credential(tool, path)
+        if blocked:
+            return blocked
+        if tool == "Grep":
+            hit = _glob_filter_hit(inp.get("glob") or "")
+            if hit:
+                return self._deny(
+                    tool,
+                    str(inp.get("glob", "")),
+                    f"Grep blocked: --glob filter targets credential files ('{hit}').",
+                    "CRITICAL",
+                    f"read_credential_path:{hit}",
+                    "Narrow the glob to non-credential files. Secrets come from os.environ.get().",
+                )
         return None
 
     def evaluate(self, tool: str, inp: dict, session_id: str | None = None) -> dict:
@@ -303,7 +409,12 @@ class PermissionAnalyzer:
         session_id: Hook event session ID (takes priority over environment variable).
         """
         _session = session_id or SESSION_ID
-        detail = str(inp.get("file_path", inp.get("command", "")))
+        # Grep/Glob carry their target in "path", not "file_path"/"command";
+        # without it every Grep in a session would share the empty detail string
+        # and trip _check_repeat_rejections against each other.
+        detail = str(
+            inp.get("file_path") or inp.get("command") or inp.get("path") or ""
+        )
 
         # 0a. Safe project directories — fast-path (respects BLOCKED_PATHS)
         # Path is canonicalized (realpath + normpath) BEFORE the prefix check so
@@ -368,18 +479,16 @@ class PermissionAnalyzer:
             except Exception as _bte:
                 log.warning("permission_analyzer: _bash_touches_blocked failed: %s", _bte)
 
-        # 3d. Credential-read enforcement for Read (mirror of 3c for Bash).
+        # 3d. Credential enforcement for the read family (mirror of 3c for Bash).
         # Must run before 4a (learned_approvals) so a historically-seen path
         # can never whitelist a credential read.
-        if tool == "Read":
+        if tool in ("Read", "Grep", "Glob"):
             try:
-                _read_block = self._read_touches_credential(
-                    tool, inp.get("file_path", inp.get("path", "")) or ""
-                )
+                _read_block = self._read_family_credential_block(tool, inp)
                 if _read_block:
                     return _read_block
             except Exception as _rte:
-                log.warning("permission_analyzer: _read_touches_credential failed: %s", _rte)
+                log.warning("permission_analyzer: _read_family_credential_block failed: %s", _rte)
 
         # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
         if tool == "Bash":

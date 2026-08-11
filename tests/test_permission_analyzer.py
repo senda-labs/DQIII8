@@ -339,3 +339,138 @@ def test_read_credential_beats_learned_approval(monkeypatch):
     monkeypatch.setattr(PermissionAnalyzer, "_is_learned_safe", lambda self, t, d: True)
     r = analyzer.evaluate("Read", {"file_path": "/root/dqiii8/.env"})
     assert r["decision"] == "DENY"
+
+
+# ── v3.3 — Grep/Glob credential gate + widened env/key coverage ─────────────
+
+
+def test_grep_content_of_private_key_denied():
+    """Grep -A/-B/-C with output_mode=content is a full Read bypass."""
+    r = analyzer.evaluate(
+        "Grep",
+        {"pattern": "", "path": "/root/.ssh/id_rsa", "output_mode": "content", "-A": 5},
+    )
+    assert r["decision"] == "DENY"
+    assert r["rule_triggered"].startswith("read_credential_path:")
+
+
+def test_grep_env_file_denied():
+    r = analyzer.evaluate(
+        "Grep", {"pattern": "KEY", "path": "/root/dqiii8/.env", "output_mode": "content"}
+    )
+    assert r["decision"] == "DENY"
+
+
+def test_grep_credential_directory_denied():
+    """path may be a directory, not just a file — the whole tree is credential."""
+    r = analyzer.evaluate("Grep", {"pattern": "PRIVATE", "path": "/root/.ssh"})
+    assert r["decision"] == "DENY"
+
+
+def test_grep_glob_filter_targeting_credentials_denied():
+    """A safe root plus a credential --glob filter still funnels out content."""
+    for spec in ("**/.env", "**/.env*", "*.pem", "*.key", "**/id_rsa"):
+        r = analyzer.evaluate(
+            "Grep", {"pattern": "x", "path": "/root/dqiii8", "glob": spec}
+        )
+        assert r["decision"] == "DENY", spec
+
+
+def test_glob_credential_directory_denied():
+    for path in ("/root/.ssh", "/root/.gnupg", "/root/dqiii8/x/.secrets"):
+        r = analyzer.evaluate("Glob", {"pattern": "*", "path": path})
+        assert r["decision"] == "DENY", path
+
+
+def test_grep_glob_legitimate_usage_allowed():
+    """The gate must not break ordinary code search."""
+    cases = [
+        ("Grep", {"pattern": "TODO", "path": "/root/dqiii8/bin", "output_mode": "content"}),
+        ("Grep", {"pattern": "def ", "path": "/root/dqiii8", "glob": "**/*.py"}),
+        ("Grep", {"pattern": "def ", "path": "/root/dqiii8", "glob": "*"}),
+        ("Grep", {"pattern": "import os"}),
+        ("Glob", {"pattern": "**/*.py", "path": "/root/dqiii8/bin"}),
+        ("Glob", {"pattern": "**/*.md"}),
+    ]
+    for tool, inp in cases:
+        r = analyzer.evaluate(tool, inp)
+        assert r["decision"] == "APPROVE", (tool, inp)
+
+
+def test_grep_credential_beats_learned_approval(monkeypatch):
+    monkeypatch.setattr(PermissionAnalyzer, "_is_learned_safe", lambda self, t, d: True)
+    r = analyzer.evaluate("Grep", {"pattern": "x", "path": "/root/dqiii8/.env"})
+    assert r["decision"] == "DENY"
+
+
+# Gap 2 — non-dotfile env files
+
+
+def test_read_non_dotfile_env_denied():
+    for path in ("/root/dqiii8/prod.env", "/root/dqiii8/config/app.env",
+                 "/root/dqiii8/config/app.env.local"):
+        r = analyzer.evaluate("Read", {"file_path": path})
+        assert r["decision"] == "DENY", path
+
+
+def test_bash_non_dotfile_env_denied():
+    for cmd in ("cat prod.env", "cat config/app.env", "base64 secrets/hostkey.env"):
+        r = analyzer.evaluate("Bash", {"command": cmd})
+        assert r["decision"] == "DENY", cmd
+
+
+def test_env_templates_still_readable():
+    """*.env.example/.sample/.template hold placeholders — 13 live in this repo."""
+    for path in ("/root/dqiii8/config/.env.example",
+                 "/root/dqiii8/my-projects/intl-reports/.env.example",
+                 "/root/dqiii8/config/app.env.sample",
+                 "/root/dqiii8/config/.env.template"):
+        assert analyzer.evaluate("Read", {"file_path": path})["decision"] == "APPROVE", path
+    assert analyzer.evaluate(
+        "Bash", {"command": "cat config/.env.example"}
+    )["decision"] == "APPROVE"
+
+
+def test_bare_env_name_not_a_credential():
+    """A basename of exactly 'env' (virtualenv dir, /usr/bin/env) stays allowed."""
+    assert analyzer.evaluate("Grep", {"pattern": "x", "path": "/root/proj/env"})["decision"] == "APPROVE"
+    assert analyzer.evaluate(
+        "Bash", {"command": "/usr/bin/env python3 -c 'print(1)'"}
+    )["decision"] == "APPROVE"
+
+
+# Gap 3 — .pem / .key / .p12 / .pfx / .gnupg
+
+
+def test_read_key_material_suffixes_denied():
+    for path in ("/root/dqiii8/certs/server.pem", "/root/dqiii8/certs/private.key",
+                 "/root/certs/cert.p12", "/root/certs/cert.pfx"):
+        r = analyzer.evaluate("Read", {"file_path": path})
+        assert r["decision"] == "DENY", path
+
+
+def test_bash_key_material_suffixes_denied():
+    for cmd in ("base64 /root/certs/cert.p12", "cat certs/server.pem",
+                "openssl rsa -in certs/private.key"):
+        r = analyzer.evaluate("Bash", {"command": cmd})
+        assert r["decision"] == "DENY", cmd
+
+
+def test_gnupg_directory_denied_everywhere():
+    assert analyzer.evaluate(
+        "Read", {"file_path": "/root/.gnupg/secring.gpg"}
+    )["decision"] == "DENY"
+    assert analyzer.evaluate(
+        "Glob", {"pattern": "*", "path": "/root/.gnupg"}
+    )["decision"] == "DENY"
+    assert analyzer.evaluate(
+        "Bash", {"command": "tar czf - /root/.gnupg/"}
+    )["decision"] == "DENY"
+
+
+def test_key_material_suffix_needs_a_stem():
+    """'.key'/'.pem' as a whole basename is not key material; a stem is required."""
+    from permission_analyzer import _credential_hit
+    assert _credential_hit("/root/dqiii8/docs/.pem") is None
+    assert _credential_hit("/root/dqiii8/bin/monkey") is None
+    assert _credential_hit("/root/dqiii8/tests/test_pem.py") is None

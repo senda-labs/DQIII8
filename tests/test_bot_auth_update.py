@@ -136,3 +136,45 @@ def test_log_cc_command_writes_project(tmp_path, monkeypatch):
     row = conn.execute("SELECT project FROM agent_actions").fetchone()
     conn.close()
     assert row[0] == "intl-reports"
+
+
+def test_hora_inicio_then_fin_roundtrip(tmp_path, monkeypatch):
+    import sqlite3
+    import subprocess
+    from pathlib import Path
+
+    db_path = tmp_path / "dqiii8.db"
+    schema_path = Path(__file__).parent.parent / "database" / "schema_v2.sql"
+    subprocess.run(
+        ["sqlite3", str(db_path)],
+        input=schema_path.read_text(),
+        text=True,
+        check=True,
+    )
+    monkeypatch.setattr(mod, "DB", db_path)
+
+    inicio_msg = mod._hora_inicio("intl-reports", source="telegram")
+    assert "iniciada" in inicio_msg.lower()
+
+    conn = sqlite3.connect(str(db_path))
+    open_row = conn.execute(
+        "SELECT project, ended_at FROM human_hours WHERE project = 'intl-reports'"
+    ).fetchone()
+    conn.close()
+    assert open_row == ("intl-reports", None)
+
+    dup_msg = mod._hora_inicio("intl-reports", source="telegram")
+    assert "ya" in dup_msg.lower()  # friendly no-op, session already open
+
+    fin_msg = mod._hora_fin("intl-reports")
+    assert "cerrada" in fin_msg.lower() or "registrada" in fin_msg.lower()
+
+    conn = sqlite3.connect(str(db_path))
+    closed_row = conn.execute(
+        "SELECT ended_at FROM human_hours WHERE project = 'intl-reports'"
+    ).fetchone()
+    conn.close()
+    assert closed_row[0] is not None
+
+    noop_msg = mod._hora_fin("intl-reports")
+    assert "no hay" in noop_msg.lower() or "ninguna" in noop_msg.lower()

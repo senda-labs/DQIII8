@@ -1820,6 +1820,75 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             log.warning("Failed to send file %s: %s", fpath, exc)
 
 
+def _hora_inicio(project: str, source: str = "telegram") -> str:
+    """Open a human_hours session for `project`. Returns a user-facing message."""
+    import datetime as _dt
+    try:
+        conn = sqlite3.connect(DB, timeout=30)
+        try:
+            conn.execute(
+                "INSERT INTO human_hours (project, started_at, source) VALUES (?, ?, ?)",
+                (project, _dt.datetime.now(_dt.timezone.utc).isoformat(), source),
+            )
+            conn.commit()
+            return f"Sesion iniciada para '{project}'."
+        except sqlite3.IntegrityError:
+            return f"Ya hay una sesion abierta para '{project}'. Usa /hora fin primero."
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.warning("_hora_inicio DB error: %s", exc)
+        return "Error al iniciar la sesion. Revisa los logs."
+
+
+def _hora_fin(project: str) -> str:
+    """Close the open human_hours session for `project`, if any."""
+    import datetime as _dt
+    try:
+        conn = sqlite3.connect(DB, timeout=30)
+        try:
+            cur = conn.execute(
+                "UPDATE human_hours SET ended_at = ? "
+                "WHERE project = ? AND ended_at IS NULL",
+                (_dt.datetime.now(_dt.timezone.utc).isoformat(), project),
+            )
+            conn.commit()
+            if cur.rowcount == 0:
+                return f"No hay ninguna sesion abierta para '{project}'."
+            return f"Sesion cerrada para '{project}'."
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.warning("_hora_fin DB error: %s", exc)
+        return "Error al cerrar la sesion. Revisa los logs."
+
+
+async def cmd_hora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/hora inicio <proyecto> | /hora fin <proyecto> — human work-session tracking."""
+    if not authorized(update):
+        return
+    if update.message is None:
+        return
+    text = (update.message.text or "").strip()
+    # Strip an optional group-chat "@BotName" suffix on the command itself
+    # (e.g. "/hora@dqiii8_bot inicio x"), same edge case /cc and /auto don't
+    # need to handle since this bot is only used in a 1:1 chat, but /hora's
+    # exact command text is matched more literally below.
+    text = re.sub(r"^/hora(@\S+)?", "/hora", text, count=1)
+    args = text[len("/hora"):].strip().split(maxsplit=1)
+    if len(args) < 2 or args[0] not in ("inicio", "fin"):
+        await update.message.reply_text(
+            "Usage: /hora inicio <proyecto>\n/hora fin <proyecto>"
+        )
+        return
+    action, project = args[0], args[1].strip()
+    if action == "inicio":
+        msg = _hora_inicio(project, source="telegram")
+    else:
+        msg = _hora_fin(project)
+    await update.message.reply_text(msg)
+
+
 async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/tokens — Show today's token usage summary from token_usage_daily view."""
     if not authorized(update):
@@ -2005,6 +2074,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("auth_update", cmd_auth_update))
     APP.add_handler(CommandHandler("cc", cmd_cc))
     APP.add_handler(CommandHandler("auto", cmd_auto))
+    APP.add_handler(CommandHandler("hora", cmd_hora))
     APP.add_handler(CommandHandler("cc_status", cmd_cc_status))
     APP.add_handler(CommandHandler("auth_status", cmd_auth_status))
     APP.add_handler(CommandHandler("auth_test", cmd_auth_test))

@@ -1104,6 +1104,22 @@ BEGIN
   SELECT RAISE(ABORT, 'agent_actions is append-only: DELETE is not permitted');
 END;
 
+-- Blocks `INSERT OR REPLACE`/`INSERT ... ON CONFLICT(id) DO ...` targeting an
+-- existing id: SQLite's REPLACE conflict resolution deletes the old row and
+-- inserts the new one as a single INSERT statement, and (with the default
+-- recursive_triggers=0) that implicit delete does NOT fire trg_*_no_delete —
+-- so REPLACE was a full bypass of every append-only/immutability trigger
+-- below. A genuine autoincrement insert never supplies a colliding id, so
+-- this cannot reject legitimate writes (stress-reverify-and-gaps.md, 2026-08-11).
+CREATE TRIGGER IF NOT EXISTS trg_agent_actions_no_replace
+BEFORE INSERT ON agent_actions
+FOR EACH ROW
+WHEN NEW.id IS NOT NULL
+  AND EXISTS (SELECT 1 FROM agent_actions WHERE id = NEW.id)
+BEGIN
+  SELECT RAISE(ABORT, 'agent_actions is append-only: INSERT OR REPLACE over an existing id is not permitted');
+END;
+
 CREATE TRIGGER IF NOT EXISTS trg_agent_actions_close_once
 BEFORE UPDATE ON agent_actions
 FOR EACH ROW
@@ -1123,6 +1139,20 @@ WHEN OLD.end_time_ms IS NOT NULL
   OR NEW.worktree IS NOT OLD.worktree
   OR NEW.skills_active IS NOT OLD.skills_active
   OR NEW.blocked_by_hook IS NOT OLD.blocked_by_hook
+  OR NEW.cost_eur IS NOT OLD.cost_eur
+  OR NEW.model_tier IS NOT OLD.model_tier
+  OR NEW.tokens_input IS NOT OLD.tokens_input
+  OR NEW.tokens_output IS NOT OLD.tokens_output
+  OR NEW.estimated_cost_usd IS NOT OLD.estimated_cost_usd
+  OR NEW.tier IS NOT OLD.tier
+  OR NEW.domain_enriched IS NOT OLD.domain_enriched
+  OR NEW.domain IS NOT OLD.domain
+  OR NEW.knowledge_chunks_used IS NOT OLD.knowledge_chunks_used
+  OR NEW.energy_wh IS NOT OLD.energy_wh
+  OR NEW.cpu_percent IS NOT OLD.cpu_percent
+  OR NEW.input_tokens IS NOT OLD.input_tokens
+  OR NEW.output_tokens IS NOT OLD.output_tokens
+  OR NEW.notes IS NOT OLD.notes
 BEGIN
   SELECT RAISE(ABORT, 'agent_actions rows are immutable except a single close-out update (end_time_ms/duration_ms/success/error_message/bytes_written) while end_time_ms IS NULL');
 END;
@@ -1131,6 +1161,16 @@ CREATE TRIGGER IF NOT EXISTS trg_instincts_no_delete
 BEFORE DELETE ON instincts
 BEGIN
   SELECT RAISE(ABORT, 'instincts is append-only: DELETE is not permitted');
+END;
+
+-- Same REPLACE-bypass fix as trg_agent_actions_no_replace above.
+CREATE TRIGGER IF NOT EXISTS trg_instincts_no_replace
+BEFORE INSERT ON instincts
+FOR EACH ROW
+WHEN NEW.id IS NOT NULL
+  AND EXISTS (SELECT 1 FROM instincts WHERE id = NEW.id)
+BEGIN
+  SELECT RAISE(ABORT, 'instincts is append-only: INSERT OR REPLACE over an existing id is not permitted');
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_instincts_immutable_identity

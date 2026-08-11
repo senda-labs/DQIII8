@@ -51,6 +51,30 @@ BASH_CREDENTIAL_PATHS = [
     ".ssh/",
 ]
 
+# Read-tool credential gate (v3.2).
+# Deliberately NOT BLOCKED_PATHS: that list is a *write* denylist and also
+# contains files that must stay readable (CLAUDE.md, dqiii8.db, schema.sql,
+# .claude/settings.json, context/proposito.md). This gate is the Read-side
+# mirror of BASH_CREDENTIAL_PATHS: genuine credential material only.
+#
+# Directory components — any path segment equal to one of these is credential
+# territory (covers the ".ssh/" entry of BASH_CREDENTIAL_PATHS).
+READ_CREDENTIAL_DIRS = {".ssh", ".secrets"}
+
+# Basenames — matched against the file name, not the whole path, so that
+# source files that merely mention secrets (bin/core/human_pending/secrets.py,
+# alembic/022_wallet_pass_secrets.py, SECRETPOWER.yaml) stay readable.
+_READ_CREDENTIAL_BASENAME_RE = re.compile(
+    r"^(?:"
+    r"\.env(?:\..+)?"          # .env, .env.local, .env.production
+    r"|\.credentials\.json"    # OAuth credential store
+    r"|id_rsa.*|id_ed25519.*"  # private keys (and their .pub siblings)
+    r"|\.secrets"              # dotfile secret store
+    r"|.*secrets?\.json"       # client_secret.json, youtube_client_secret.json
+    r")$",
+    re.IGNORECASE,
+)
+
 # Bash operators that indicate a WRITE to a file
 _BASH_WRITE_SIGNS = [">", ">>", "tee ", "sed -i", "truncate "]
 
@@ -234,6 +258,43 @@ class PermissionAnalyzer:
                     )
         return None
 
+    def _read_touches_credential(self, tool: str, path: str) -> dict | None:
+        """Block Read of genuine credential material (v3.2).
+
+        Both the literal path and its realpath are checked: the Read tool
+        follows symlinks, so a link planted in an allowed directory
+        (ln -s /root/dqiii8/.env notes.txt) must not launder the content.
+        The literal path is still checked as a fallback for broken/dangling
+        links, where realpath() cannot resolve the target.
+        """
+        if not path:
+            return None
+        candidates = {os.path.normpath(path)}
+        try:
+            candidates.add(os.path.realpath(path))
+        except OSError as _re:  # pragma: no cover — realpath rarely raises
+            log.warning("permission_analyzer: realpath failed for %r: %s", path, _re)
+
+        for cand in candidates:
+            parts = [p for p in cand.split(os.sep) if p]
+            if not parts:
+                continue
+            if READ_CREDENTIAL_DIRS.intersection(parts[:-1]):
+                hit = sorted(READ_CREDENTIAL_DIRS.intersection(parts[:-1]))[0]
+            elif _READ_CREDENTIAL_BASENAME_RE.match(parts[-1]):
+                hit = parts[-1]
+            else:
+                continue
+            return self._deny(
+                tool,
+                path,
+                f"Read blocked at '{path}': credential material ('{hit}').",
+                "CRITICAL",
+                f"read_credential_path:{hit}",
+                "Use os.environ.get() for secrets. Credential files are never read into context.",
+            )
+        return None
+
     def evaluate(self, tool: str, inp: dict, session_id: str | None = None) -> dict:
         """
         Evaluates whether a tool can execute.
@@ -306,6 +367,19 @@ class PermissionAnalyzer:
                     return _bash_block
             except Exception as _bte:
                 log.warning("permission_analyzer: _bash_touches_blocked failed: %s", _bte)
+
+        # 3d. Credential-read enforcement for Read (mirror of 3c for Bash).
+        # Must run before 4a (learned_approvals) so a historically-seen path
+        # can never whitelist a credential read.
+        if tool == "Read":
+            try:
+                _read_block = self._read_touches_credential(
+                    tool, inp.get("file_path", inp.get("path", "")) or ""
+                )
+                if _read_block:
+                    return _read_block
+            except Exception as _rte:
+                log.warning("permission_analyzer: _read_touches_credential failed: %s", _rte)
 
         # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
         if tool == "Bash":

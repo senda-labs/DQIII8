@@ -259,3 +259,83 @@ def test_mixed_targets_denied():
 def test_safe_subpath_deletion_ok():
     r = analyzer.evaluate("Bash", {"command": "rm -rf ~/proj/node_modules"})
     assert r["decision"] == "APPROVE"
+
+
+# ── v3.2 — Read-tool credential gate ────────────────────────────────────────
+
+
+def test_read_env_denied():
+    r = analyzer.evaluate("Read", {"file_path": "/root/dqiii8/.env"})
+    assert r["decision"] == "DENY"
+    assert r["rule_triggered"].startswith("read_credential_path:")
+
+
+def test_read_env_variant_denied():
+    r = analyzer.evaluate("Read", {"file_path": "/root/dqiii8/.env.production"})
+    assert r["decision"] == "DENY"
+
+
+def test_read_ssh_private_keys_denied():
+    for key in ("id_rsa", "id_ed25519"):
+        r = analyzer.evaluate("Read", {"file_path": f"/root/.ssh/{key}"})
+        assert r["decision"] == "DENY", key
+
+
+def test_read_private_key_outside_ssh_denied():
+    r = analyzer.evaluate("Read", {"file_path": "/tmp/backup/id_rsa"})
+    assert r["decision"] == "DENY"
+
+
+def test_read_oauth_credentials_denied():
+    r = analyzer.evaluate("Read", {"file_path": "/root/.claude/.credentials.json"})
+    assert r["decision"] == "DENY"
+
+
+def test_read_client_secret_json_denied():
+    r = analyzer.evaluate("Read", {"file_path": "/root/dqiii8/x/youtube_client_secret.json"})
+    assert r["decision"] == "DENY"
+
+
+def test_read_symlink_to_env_denied(tmp_path):
+    """A symlink planted in an allowed dir must not launder credential content."""
+    link = tmp_path / "notes.txt"
+    link.symlink_to("/root/dqiii8/.env")
+    r = analyzer.evaluate("Read", {"file_path": str(link)})
+    assert r["decision"] == "DENY"
+
+
+def test_read_traversal_to_env_denied():
+    r = analyzer.evaluate("Read", {"file_path": "/root/dqiii8/docs/../.env"})
+    assert r["decision"] == "DENY"
+
+
+def test_read_write_protected_but_readable_files_allowed():
+    """BLOCKED_PATHS entries that are write-protected must stay readable."""
+    for path in (
+        "/root/dqiii8/CLAUDE.md",
+        "/root/dqiii8/database/dqiii8.db",
+        "/root/dqiii8/.claude/settings.json",
+        "/root/dqiii8/database/schema_v2.sql",
+        "/root/dqiii8/context/proposito.md",
+    ):
+        r = analyzer.evaluate("Read", {"file_path": path})
+        assert r["decision"] == "APPROVE", path
+
+
+def test_read_source_files_mentioning_secrets_allowed():
+    """Source files whose name merely contains 'secret' are not credentials."""
+    for path in (
+        "/root/dqiii8/bin/core/human_pending/secrets.py",
+        "/root/dqiii8/my-projects/jarvis-control3/architecture/08-allowlist-and-secrets.md",
+        "/root/dqiii8/x/SECRETPOWER.yaml",
+        "/root/dqiii8/bin/ui/dqiii8_bot.py",
+    ):
+        r = analyzer.evaluate("Read", {"file_path": path})
+        assert r["decision"] == "APPROVE", path
+
+
+def test_read_credential_beats_learned_approval(monkeypatch):
+    """A historically-seen path must never whitelist a credential read."""
+    monkeypatch.setattr(PermissionAnalyzer, "_is_learned_safe", lambda self, t, d: True)
+    r = analyzer.evaluate("Read", {"file_path": "/root/dqiii8/.env"})
+    assert r["decision"] == "DENY"

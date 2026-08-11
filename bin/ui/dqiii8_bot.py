@@ -56,6 +56,12 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout),
     ],
 )
+# httpx logs every request URL at INFO, and Telegram's API URL embeds the bot
+# token — that is how the token ended up in a log on 2026-08-06. Keep the
+# transport loggers at WARNING so the token never reaches the log file or
+# journald in the first place.
+for _noisy in ("httpx", "httpcore", "telegram.request", "telegram.ext.Updater"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 log = _get_logger(__name__)
 
 # ── Global app reference (set in main()) ───────────────────────────────────────
@@ -1432,22 +1438,27 @@ async def _run_cc_async(
     """Run claude -p as async subprocess with live Telegram progress edits.
 
     Safe: uses create_subprocess_exec (no shell). Prompt is internal.
+
+    Always launched from JARVIS (DQIII8 root) so Claude Code discovers
+    /root/dqiii8/.claude/settings.json — sub-projects are separate git repos
+    without their own settings.json, and Claude Code resolves settings from the
+    session cwd's git root, so launching there silently drops every telemetry
+    hook (agent_actions/error_log/skill_metrics went dark 2026-07-05..08-11).
+    The target project is exposed via --add-dir instead.
     """
     from orchestrator import detect_phase, format_progress, parse_output
 
-    cmd = ["claude", "-p", "--model", model, "--output-format", "text", prompt]
+    target = Path(cwd).resolve()
+    extra_dirs: list[str] = []
+    if target != JARVIS.resolve():
+        extra_dirs = ["--add-dir", str(target)]
+        scope_note = f"WORKING DIRECTORY FOR THIS TASK: {target}\n"
+        system_prompt = scope_note + (system_prompt or "")
+
+    cmd = ["claude", "-p", "--model", model, *extra_dirs]
     if system_prompt:
-        cmd = [
-            "claude",
-            "-p",
-            "--model",
-            model,
-            "--system-prompt",
-            system_prompt,
-            "--output-format",
-            "text",
-            prompt,
-        ]
+        cmd += ["--system-prompt", system_prompt]
+    cmd += ["--output-format", "text", prompt]
 
     env = _load_env_dict()
     env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
@@ -1460,7 +1471,7 @@ async def _run_cc_async(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        cwd=str(cwd),
+        cwd=str(JARVIS),
         env=env,
     )
 
@@ -1495,8 +1506,32 @@ async def _run_cc_async(
     if not full_output.strip() and stderr:
         full_output = stderr[:2000]
 
-    parsed = parse_output(full_output, cwd)
-    return proc.returncode == 0, full_output, parsed["files"]
+    # claude now runs from JARVIS, so relative paths in its output may be
+    # relative to either root; resolve against both and de-duplicate.
+    candidates = parse_output(full_output, target)["files"]
+    if extra_dirs:
+        seen = {str(p) for p in candidates}
+        candidates += [
+            p for p in parse_output(full_output, JARVIS)["files"] if str(p) not in seen
+        ]
+
+    # parse_output joins emitted relative paths onto a root without normalising,
+    # so "Created: ../../CLAUDE.md" escapes the project and cmd_cc would then
+    # upload it to Telegram. Keep only paths that really live under a root we
+    # granted this run, and de-duplicate again after normalisation.
+    roots = [JARVIS.resolve()] + ([target] if extra_dirs else [])
+    files: list = []
+    kept: set[str] = set()
+    for p in candidates:
+        rp = p.resolve()
+        if str(rp) in kept:
+            continue
+        if any(rp == r or r in rp.parents for r in roots):
+            files.append(rp)
+            kept.add(str(rp))
+        else:
+            log.warning("Dropped out-of-scope output path: %s", p)
+    return proc.returncode == 0, full_output, files
 
 
 async def _run_groq_direct(prompt: str, system_prompt: str = "") -> tuple[bool, str]:
@@ -1716,7 +1751,12 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
     # ── Ralph verification loop: run smoke tests, retry once on failure ──
-    max_retries = 2
+    # No sub-project ships tests/test_smoke.py, and pytest exits 4 ("file not
+    # found") for a missing path — indistinguishable from a real failure, so the
+    # loop used to fire two bogus "tests failed, fix them" reruns on every
+    # sub-project /auto. Only verify where the smoke test actually exists.
+    smoke_test = Path(project["path"]) / "tests" / "test_smoke.py"
+    max_retries = 2 if smoke_test.exists() else 0
     for attempt in range(1, max_retries + 1):
         if not success:
             break  # execution itself failed, no point testing
@@ -1974,18 +2014,11 @@ def main() -> None:
     APP.add_handler(CommandHandler("voice", cmd_voice))
     APP.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     APP.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
-    # intl-reports ConversationHandler (must come BEFORE generic text handler)
-    try:
-        _intl_path = str(JARVIS / "my-projects" / "intl-reports" / "core")
-        if _intl_path not in sys.path:
-            sys.path.insert(0, _intl_path)
-        from telegram_flow import build_intl_handler
-
-        APP.add_handler(build_intl_handler(allowed_chat_id=ALLOWED_CHAT_ID))
-        log.info("/intl handler registered")
-    except Exception as _exc:
-        log.warning("Failed to load intl-reports handler: %s", _exc)
-
+    # NOTE: the /intl ConversationHandler was removed 2026-08-11. It imported
+    # my-projects/intl-reports/core/telegram_flow.py, deleted in that sub-repo's
+    # v3 architecture reset (commit 19e70ad), so it only ever logged a warning at
+    # boot. It also sys.path.insert(0, ...)'d intl-reports/core ahead of the
+    # stdlib. intl-reports is driven from tmux via core.cli, not Telegram.
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     APP.add_handler(
         CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:")

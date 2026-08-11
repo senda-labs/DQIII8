@@ -6,7 +6,10 @@ Checks (weights):
   unresolved errors (7d) ..... 25  (0 → full; >=20 → 0; linear between)
   telemetry alive (7d) ....... 25  (share of amplification rows with confidence > 0)
   disk free >= 15% ............ 10
-  history db readonly ........ 10
+  history db owner-only ...... 10
+Penalty:
+  hook telemetry stale ...... -25  (no agent_actions row in 48h while
+                                    amplification_log shows 7d activity)
 Writes JSON to database/audit_reports/health_<date>.json.
 Exit code 0 always (cron-safe); alerting is the signal.
 """
@@ -66,10 +69,41 @@ def main():
     except Exception:
         detail["ollama_running"] = False
 
+    # Hook telemetry freshness. agent_actions is written only by the project
+    # PreToolUse/PostToolUse hooks; it went silent 2026-07-05..08-11 because
+    # sessions launched with cwd inside sub-project git repos never loaded
+    # /root/dqiii8/.claude/settings.json. Penalty (not a weighted check) so the
+    # existing 100-point split is unchanged. Only fires when the system is
+    # demonstrably active (amplification rows in 7d) yet agent_actions is stale.
+    # Degrades to "unknown" rather than raising: agent_actions is absent on a
+    # partial install and a concurrent writer can still surface a lock error, and
+    # this runs from cron where an exception means no report and no alert at all.
+    try:
+        last_action = conn.execute(
+            "SELECT MAX(timestamp) FROM agent_actions"
+        ).fetchone()[0]
+        recent_actions = conn.execute(
+            "SELECT COUNT(*) FROM agent_actions WHERE timestamp > datetime('now','-2 days')"
+        ).fetchone()[0]
+        detail["agent_actions_last"] = last_action
+        stale = recent_actions == 0
+        detail["hook_telemetry_stale"] = bool(stale and total)
+        if stale and total:
+            score = max(0, score - 25)
+    except sqlite3.Error as exc:
+        detail["agent_actions_last"] = None
+        detail["hook_telemetry_stale"] = None
+        detail["hook_telemetry_error"] = str(exc)
+
+    # dqiii8_history.db is the LIVE session_memory store (working_memory.py
+    # writes to it); the 2026-06-10 rename-to-readonly-archive ADR was reverted
+    # in openrouter_wrapper._enforce_sensitive_permissions. The old
+    # "not writable" test could therefore never pass and silently capped the
+    # score at 90. Check what is actually required: owner-only permissions.
     hist = ROOT / "database" / "dqiii8_history.db"
-    ro = hist.exists() and not (hist.stat().st_mode & 0o222)
-    detail["history_db_readonly"] = ro
-    score += 10 if ro else 0
+    secure = hist.exists() and (hist.stat().st_mode & 0o777) in (0o600, 0o640)
+    detail["history_db_owner_only"] = secure
+    score += 10 if secure else 0
 
     report = {"date": datetime.now().isoformat(), "score": score, "detail": detail}
     out = OUT / f"health_{datetime.now():%Y-%m-%d}.json"
@@ -86,4 +120,17 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # The module contract above is "exit code 0 always (cron-safe)": a crash here
+    # is itself a health signal and must not look like a silent success, but it
+    # also must not make cron treat the job as broken and stop reporting.
+    try:
+        main()
+    except Exception as exc:
+        print(f"health_check failed: {exc!r}", file=sys.stderr)
+        try:
+            sys.path.insert(0, str(ROOT / "bin" / "core"))
+            from notify import notify
+
+            notify(f"DQIII8 health_check crashed: {exc!r}")
+        except Exception as exc2:
+            print(f"alert dispatch failed: {exc2}", file=sys.stderr)

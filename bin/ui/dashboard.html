@@ -192,6 +192,10 @@
     <span class="nav-icon">&#9881;</span>
     <span class="nav-label">Settings</span>
   </div>
+  <div class="nav-item" onclick="nav('production',this)">
+    <span class="nav-icon">&#8862;</span>
+    <span class="nav-label">Produccion</span>
+  </div>
 </nav>
 
 <main id="main">
@@ -230,6 +234,21 @@
         <tbody id="t-actions"><tr><td colspan="5" style="color:var(--muted);text-align:center;padding:12px">Loading&#8230;</td></tr></tbody>
       </table>
     </div>
+  </section>
+
+  <!-- Production -->
+  <section id="s-production" class="sec">
+    <h2>Produccion</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Proyecto</th><th>Acciones</th><th>Coste (USD)</th><th>Exito</th>
+          <th>Cobertura duracion</th><th>Horas humanas</th>
+        </tr>
+      </thead>
+      <tbody id="t-production"><tr><td colspan="6" style="color:var(--muted);text-align:center;padding:12px">Loading&#8230;</td></tr></tbody>
+    </table>
+    <div id="production-orphans" style="margin-top:12px;font-size:11px;color:var(--muted)"></div>
   </section>
 
   <!-- Pipeline -->
@@ -366,6 +385,36 @@ function nav(id, el) {
   el.classList.add('active');
   if (id === 'overview') renderOverview();
   if (id === 'settings') renderSettings();
+  if (id === 'production') loadProduction();
+}
+
+async function loadProduction() {
+  const tbody = document.getElementById('t-production');
+  const orphanDiv = document.getElementById('production-orphans');
+  try {
+    const res = await api('/api/production');
+    const data = await res.json();
+    const rows = Object.entries(data.projects).map(([name, m]) => {
+      const agent = m.agent || null;
+      const human = m.human || null;
+      const actions = agent ? agent.actions : '&#8212;';
+      const cost = agent ? '$' + (agent.cost_usd || 0).toFixed(4) : '&#8212;';
+      const success = agent ? (agent.success_rate || 0) + '%' : '&#8212;';
+      const coverage = agent && agent.duration_ms_covered_pct != null ? agent.duration_ms_covered_pct.toFixed(1) + '%' : '&#8212;';
+      const hours = human ? (human.minutes / 60).toFixed(1) + 'h' : '&#8212;';
+      return `<tr><td>${name}</td><td>${actions}</td><td>${cost}</td>` +
+        `<td>${success}</td><td>${coverage}</td><td>${hours}</td></tr>`;
+    });
+    tbody.innerHTML = rows.length ? rows.join('') :
+      '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:12px">Sin datos</td></tr>';
+    if (data.unrecognized_human_projects && data.unrecognized_human_projects.length) {
+      orphanDiv.textContent = 'Proyectos no reconocidos (horas humanas sin proyecto real): ' + data.unrecognized_human_projects.join(', ');
+    } else {
+      orphanDiv.textContent = '';
+    }
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:12px">Error cargando datos</td></tr>';
+  }
 }
 
 // Helpers

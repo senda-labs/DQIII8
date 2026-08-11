@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS audit_reports (
 CREATE INDEX IF NOT EXISTS idx_actions_agent   ON agent_actions(agent_name, timestamp);
 CREATE INDEX IF NOT EXISTS idx_actions_session ON agent_actions(session_id);
 CREATE INDEX IF NOT EXISTS idx_actions_success ON agent_actions(success, timestamp);
+CREATE INDEX IF NOT EXISTS idx_actions_project ON agent_actions(project, timestamp);
 CREATE INDEX IF NOT EXISTS idx_errors_session  ON error_log(session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_proj   ON sessions(project, start_time);
 CREATE VIEW IF NOT EXISTS agent_performance AS

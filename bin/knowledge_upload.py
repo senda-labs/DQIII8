@@ -20,7 +20,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 sys.path.insert(0, str(JARVIS / "bin"))
 
 from domain_classifier import classify_domain

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import requests
 
-JARVIS = Path(os.environ.get("JARVIS_ROOT", "/root/jarvis"))
+JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 sys.path.insert(0, str(JARVIS / "bin"))
 KNOWLEDGE = JARVIS / "knowledge"
 

@@ -119,7 +119,7 @@ _wrap() {
 # ── Early flags — run before full env check ──────────────────────────────────
 case "${1:-}" in
     --voice-test)
-        exec python3 "$DQIII8_ROOT/bin/voice_handler.py" --test
+        exec python3 "$DQIII8_ROOT/bin/tools/voice_handler.py" --test
         ;;
     --setup)
         shift
@@ -270,11 +270,11 @@ Be specific and use the actual data."
             ;;
         --harvest)
             shift
-            exec python3 "$DQIII8_ROOT/bin/tools/paper_harvester.py" "$@"
+            exec python3 "$DQIII8_ROOT/bin/paper_harvester.py" "$@"
             ;;
         --upload|-u)
             shift
-            exec python3 "$DQIII8_ROOT/bin/agents/knowledge_upload.py" "$@"
+            exec python3 "$DQIII8_ROOT/bin/knowledge_upload.py" "$@"
             ;;
         --dashboard)
             shift

@@ -95,7 +95,7 @@ REPORT="${DQIII8_ROOT}/tasks/nightly-report.md"
 
 # ── 9. Paper harvester ──
 echo "## 9. Paper Harvest"
-python3 "$DQIII8_ROOT/bin/tools/paper_harvester.py" --all 2>&1 || echo "  Paper harvest failed"
+python3 "$DQIII8_ROOT/bin/paper_harvester.py" --all 2>&1 || echo "  Paper harvest failed"
 echo ""
 
 # ── 10. Working memory cleanup ──
@@ -105,7 +105,7 @@ echo ""
 
 # ── 11. Prune outdated papers ──
 echo "## 11. Prune Outdated Papers"
-python3 "$DQIII8_ROOT/bin/tools/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
+python3 "$DQIII8_ROOT/bin/paper_harvester.py" --prune --prune-days 180 2>&1 || echo "  Prune failed"
 echo ""
 
 # ── 12. Smoke tests ──

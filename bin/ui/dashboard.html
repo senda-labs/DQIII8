@@ -395,6 +395,7 @@ async function loadProduction() {
     const res = await api('/api/production');
     const data = await res.json();
     const rows = Object.entries(data.projects).map(([name, m]) => {
+      const safeName = String(name || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
       const agent = m.agent || null;
       const human = m.human || null;
       const actions = agent ? agent.actions : '&#8212;';
@@ -402,7 +403,7 @@ async function loadProduction() {
       const success = agent ? (agent.success_rate || 0) + '%' : '&#8212;';
       const coverage = agent && agent.duration_ms_covered_pct != null ? agent.duration_ms_covered_pct.toFixed(1) + '%' : '&#8212;';
       const hours = human ? (human.minutes / 60).toFixed(1) + 'h' : '&#8212;';
-      return `<tr><td>${name}</td><td>${actions}</td><td>${cost}</td>` +
+      return `<tr><td>${safeName}</td><td>${actions}</td><td>${cost}</td>` +
         `<td>${success}</td><td>${coverage}</td><td>${hours}</td></tr>`;
     });
     tbody.innerHTML = rows.length ? rows.join('') :

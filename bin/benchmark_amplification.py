@@ -29,8 +29,9 @@ from pathlib import Path
 
 BIN_DIR = Path(__file__).parent
 JARVIS = BIN_DIR.parent
-if str(BIN_DIR) not in sys.path:
-    sys.path.insert(0, str(BIN_DIR))
+for _d in (BIN_DIR, BIN_DIR / "core", BIN_DIR / "agents"):
+    if str(_d) not in sys.path:
+        sys.path.insert(0, str(_d))
 
 from jal_common import load_env
 

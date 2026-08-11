@@ -8,9 +8,16 @@ result["intent"], result["chunks_used"], result["tier"] (int 1/2/3), result["rou
 """
 
 import sys
+from pathlib import Path
+
 import pytest
 
-sys.path.insert(0, "bin")
+# Import the canonical subpackage copies explicitly. Inserting only bin/ made
+# resolution depend on sys.path order and on the process CWD (the old relative
+# "bin" string), which is why this file passed in-suite but failed standalone.
+DQIII8_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
+sys.path.insert(0, str(DQIII8_ROOT / "bin" / "agents"))
 
 # ── Pipeline tests ────────────────────────────────────────────────────────────
 

@@ -35,12 +35,19 @@ def client(tmp_path, monkeypatch):
     # reliable local failure — get the name right rather than relying on luck.
     monkeypatch.setenv("DQIII8_DASHBOARD_HOST", "127.0.0.1")
 
-    sys.path.insert(0, str(JARVIS / "bin" / "ui"))
+    # monkeypatch.syspath_prepend (not sys.path.insert) so these entries are
+    # popped automatically at teardown — a raw sys.path.insert here leaked
+    # bin/ui and bin/core to the front of sys.path for the rest of the pytest
+    # process, shadowing same-named modules in bin/agents for every test that
+    # ran afterward (e.g. hierarchical_router/intent_amplifier/embeddings
+    # resolving empty domain data — exactly what test_module_namespace.py
+    # exists to catch).
+    monkeypatch.syspath_prepend(str(JARVIS / "bin" / "ui"))
     # dashboard.py's own sys.path bootstrap uses DQIII8_ROOT (now tmp_path,
     # for DB isolation) to locate bin/core, so the real bin/core/db.py
     # wouldn't be found via that logic in this test. Add the real repo's
     # bin/core explicitly so "from db import get_db" resolves to actual code.
-    sys.path.insert(0, str(JARVIS / "bin" / "core"))
+    monkeypatch.syspath_prepend(str(JARVIS / "bin" / "core"))
     # Both dashboard.py AND bin/core/db.py compute their DB path from
     # DQIII8_ROOT at import time (db.py's get_db() reads a module-level
     # DB_PATH set once on import) — popping only "dashboard" from
@@ -76,6 +83,19 @@ def client(tmp_path, monkeypatch):
 
     with TestClient(dash_module.app) as tc:
         yield tc
+
+    # db.py caches DB_PATH as a module-level global read from DQIII8_ROOT at
+    # import time. Since we forced "db" to (re)import above while DQIII8_ROOT
+    # was monkeypatched to tmp_path, it's now poisoned in sys.modules with a
+    # DB_PATH under this (about-to-be-deleted) tmp_path. Every other module
+    # that does `from db import get_db` — hierarchical_router,
+    # intent_amplifier, domain_classifier, etc. — would silently inherit that
+    # broken path for the rest of the pytest process (empty domain-routing
+    # results, not crashes, since sqlite3 auto-creates a fresh empty db file
+    # rather than erroring). Pop again so the next import of any of these
+    # re-triggers under the real, monkeypatch-reverted DQIII8_ROOT.
+    for _mod_name in ("dashboard", "db", "dashboard_security"):
+        sys.modules.pop(_mod_name, None)
 
 
 def test_production_endpoint_returns_project_metrics(client):

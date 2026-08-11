@@ -512,12 +512,15 @@ async def production_metrics(auth: bool = Depends(check_auth)):
         ).fetchall()
 
     projects: dict = {}
-    unrecognized: list = []
+    unrecognized_agent: list = []
+    unrecognized_human: list = []
 
     for row in agent_rows:
         name = row[0]
         actions = row[1]
         covered_pct = round((row[2] / actions) * 100, 1) if actions else 0.0
+        if name not in known_projects:
+            unrecognized_agent.append(name)
         projects.setdefault(name, {})["agent"] = {
             "actions": actions,
             "duration_ms_covered_pct": covered_pct,
@@ -528,10 +531,14 @@ async def production_metrics(auth: bool = Depends(check_auth)):
     for row in human_rows:
         name, minutes = row[0], row[1] or 0.0
         if name not in known_projects:
-            unrecognized.append(name)
+            unrecognized_human.append(name)
         projects.setdefault(name, {})["human"] = {"minutes": round(minutes, 1)}
 
-    return {"projects": projects, "unrecognized_human_projects": unrecognized}
+    return {
+        "projects": projects,
+        "unrecognized_human_projects": unrecognized_human,
+        "unrecognized_agent_projects": unrecognized_agent,
+    }
 
 
 @app.post("/api/amplify")

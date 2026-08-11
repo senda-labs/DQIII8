@@ -408,8 +408,15 @@ async function loadProduction() {
     });
     tbody.innerHTML = rows.length ? rows.join('') :
       '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:12px">Sin datos</td></tr>';
+    const orphanLines = [];
     if (data.unrecognized_human_projects && data.unrecognized_human_projects.length) {
-      orphanDiv.textContent = 'Proyectos no reconocidos (horas humanas sin proyecto real): ' + data.unrecognized_human_projects.join(', ');
+      orphanLines.push('Horas humanas sin proyecto real: ' + data.unrecognized_human_projects.join(', '));
+    }
+    if (data.unrecognized_agent_projects && data.unrecognized_agent_projects.length) {
+      orphanLines.push('Acciones de agente sin proyecto real: ' + data.unrecognized_agent_projects.join(', '));
+    }
+    if (orphanLines.length) {
+      orphanDiv.textContent = 'Proyectos no reconocidos — ' + orphanLines.join(' | ');
     } else {
       orphanDiv.textContent = '';
     }

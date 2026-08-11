@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-JARVIS = Path("/root/dqiii8/.claude/worktrees/dashboard-production-tracking-v2")
+JARVIS = Path(__file__).parent.parent
 
 
 @pytest.fixture
@@ -65,6 +65,12 @@ def client(tmp_path, monkeypatch):
         "INSERT INTO human_hours (project, started_at, ended_at, source) "
         "VALUES ('orphan-typo', datetime('now','-1 hour'), datetime('now'), 'manual')"
     )
+    conn.execute(
+        "INSERT INTO agent_actions "
+        "(session_id, agent_name, tool_used, action_type, estimated_cost_usd, "
+        "duration_ms, success, project, timestamp) "
+        "VALUES ('s2','agent','tool','api_call',0.01,500,1,'dqiii8',datetime('now'))"
+    )
     conn.commit()
     conn.close()
 
@@ -87,3 +93,10 @@ def test_production_endpoint_surfaces_orphan_projects(client):
     resp = client.get("/api/production")
     data = resp.json()
     assert "orphan-typo" in data["unrecognized_human_projects"]
+
+
+def test_production_endpoint_surfaces_unrecognized_agent_projects(client):
+    resp = client.get("/api/production")
+    data = resp.json()
+    assert "dqiii8" in data["unrecognized_agent_projects"]
+    assert "intl-reports" not in data["unrecognized_agent_projects"]

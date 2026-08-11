@@ -824,6 +824,7 @@ def log_to_db(
     domain: str = "",
     prompt_hash: str = "",
     task_complexity: str | None = None,
+    project: str | None = None,
 ) -> None:
     """Registra la llamada en agent_actions con tokens reales y coste estimado."""
     if not DB_PATH.exists():
@@ -846,8 +847,8 @@ def log_to_db(
             "INSERT INTO agent_actions "
             "(session_id, agent_name, tool_used, action_type, model_used, "
             "tokens_used, tokens_input, tokens_output, estimated_cost_usd, tier, "
-            "duration_ms, success, error_message, start_time_ms) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "duration_ms, success, error_message, start_time_ms, project) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 agent,
@@ -863,6 +864,7 @@ def log_to_db(
                 1 if success else 0,
                 error_message[:500] if error_message else None,
                 int(time.time() * 1000) - duration_ms,
+                project or None,
             ),
         )
         conn.commit()
@@ -1235,16 +1237,10 @@ def main() -> None:
                 _spec2 = _ilu.spec_from_file_location("knowledge_enricher", _ke_path)
                 _ke = _ilu.module_from_spec(_spec2)
                 _spec2.loader.exec_module(_ke)
-                # B10: detect active project from --project arg or CWD
-                _project = getattr(args, "project", "") or ""
-                if not _project:
-                    _cwd = str(getattr(args, "cwd", "") or "")
-                    _proj_root = Path(__file__).parent.parent.parent / "my-projects"
-                    if _proj_root.is_dir() and "my-projects/" in _cwd:
-                        for _pdir in _proj_root.iterdir():
-                            if _pdir.is_dir() and _pdir.name in _cwd:
-                                _project = _pdir.name
-                                break
+                # B10: active project comes from the --project arg only —
+                # there is no --cwd arg, so CWD-based detection never ran
+                # (removed 2026-08-11, was dead code with UnboundLocalError risk).
+                _project = args.project or ""
                 _chunks = _ke.get_relevant_chunks(
                     prompt,
                     _domain,
@@ -1421,6 +1417,7 @@ def main() -> None:
             error_message=err_msg,
             domain=_routing_domain or "",
             prompt_hash=_phash,
+            project=args.project or None,
         )
 
         if ok:

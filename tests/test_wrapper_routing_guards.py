@@ -171,3 +171,35 @@ def test_stream_response_keeps_four_tuple(monkeypatch):
     )
     out = w.stream_response("groq", "m", "p")
     assert out == ("txt", 1, 2, True)
+
+
+# ── log_to_db project parameter ─────────────────────────────────────────────
+
+def test_log_to_db_writes_project(tmp_path, monkeypatch):
+    db_path = tmp_path / "dqiii8.db"
+    conn = __import__("sqlite3").connect(str(db_path))
+    conn.execute(
+        """
+        CREATE TABLE agent_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT, agent_name TEXT, tool_used TEXT, action_type TEXT,
+            model_used TEXT, tokens_used INTEGER, tokens_input INTEGER,
+            tokens_output INTEGER, estimated_cost_usd REAL, tier TEXT,
+            duration_ms INTEGER, success INTEGER, error_message TEXT,
+            start_time_ms INTEGER, project TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(w, "DB_PATH", db_path)
+
+    w.log_to_db(
+        "test-agent", "test-model", "groq", 10, 20, 100, True,
+        project="intl-reports",
+    )
+
+    conn = __import__("sqlite3").connect(str(db_path))
+    row = conn.execute("SELECT project FROM agent_actions").fetchone()
+    conn.close()
+    assert row[0] == "intl-reports"

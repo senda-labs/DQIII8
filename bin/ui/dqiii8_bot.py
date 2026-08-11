@@ -117,7 +117,7 @@ def authorized(update: Update) -> bool:
 
 def db_query(sql: str, params: tuple = ()) -> list:
     try:
-        conn = sqlite3.connect(DB)
+        conn = sqlite3.connect(DB, timeout=30)
         rows = conn.execute(sql, params).fetchall()
         conn.close()
         return rows
@@ -213,7 +213,7 @@ def _log_satisfaction(
     user_satisfaction: int | None = None,
 ) -> None:
     try:
-        conn = sqlite3.connect(str(DB), timeout=2)
+        conn = sqlite3.connect(str(DB), timeout=30)
         conn.execute(
             "INSERT INTO model_satisfaction "
             "(session_id, model_used, task_type, task_description, "
@@ -362,7 +362,7 @@ async def handle_satisfaction_callback(
         return
     # Update existing row (written immediately on task completion)
     try:
-        conn = sqlite3.connect(str(DB), timeout=2)
+        conn = sqlite3.connect(str(DB), timeout=30)
         conn.execute(
             "UPDATE model_satisfaction SET user_satisfaction=? "
             "WHERE id=(SELECT MAX(id) FROM model_satisfaction WHERE session_id=?)",
@@ -614,7 +614,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     project = args[0] if args else "math-image-generator"
 
     try:
-        conn = sqlite3.connect(DB)
+        conn = sqlite3.connect(DB, timeout=30)
         ranking = conn.execute(
             "SELECT * FROM tier_ranking WHERE model_tier='tier3'"
         ).fetchone()
@@ -1058,7 +1058,7 @@ async def cmd_research_status(
     if not authorized(update):
         await update.message.reply_text("Unauthorized.")
         return
-    conn = sqlite3.connect(str(DB), timeout=5)
+    conn = sqlite3.connect(str(DB), timeout=30)
     rows = conn.execute(
         "SELECT status, COUNT(*) FROM research_items GROUP BY status ORDER BY COUNT(*) DESC"
     ).fetchall()
@@ -1104,7 +1104,7 @@ async def _handle_integrar(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("Usage: /integrar_<id>")
         return
     item_id = int(m.group(1))
-    conn = sqlite3.connect(str(DB), timeout=5)
+    conn = sqlite3.connect(str(DB), timeout=30)
     conn.execute("UPDATE research_items SET status='INTEGRADO' WHERE id=?", (item_id,))
     conn.commit()
     conn.close()
@@ -1122,7 +1122,7 @@ async def _handle_rechazar(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("Usage: /rechazar_<id>")
         return
     item_id = int(m.group(1))
-    conn = sqlite3.connect(str(DB), timeout=5)
+    conn = sqlite3.connect(str(DB), timeout=30)
     conn.execute(
         "UPDATE research_items SET status='RECHAZADO_MANUAL' WHERE id=?", (item_id,)
     )
@@ -1216,7 +1216,7 @@ _CC_MAX_PER_HOUR = 10
 def _cc_ensure_table() -> None:
     """Create cc_rate_limit table if it doesn't exist; enable WAL mode."""
     try:
-        conn = sqlite3.connect(str(DB), timeout=10)
+        conn = sqlite3.connect(str(DB), timeout=30)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""CREATE TABLE IF NOT EXISTS cc_rate_limit (
                 chat_id TEXT NOT NULL,
@@ -1234,7 +1234,7 @@ _cc_ensure_table()
 def _cc_rate_count(chat_id: str) -> int:
     """Return number of /cc uses by chat_id in the last hour."""
     try:
-        conn = sqlite3.connect(str(DB), timeout=10)
+        conn = sqlite3.connect(str(DB), timeout=30)
         count = conn.execute(
             "SELECT COUNT(*) FROM cc_rate_limit WHERE chat_id = ? "
             "AND timestamp > datetime('now', '-1 hour')",
@@ -1283,7 +1283,7 @@ _CC_MAX_LENGTH = 500
 def _cc_rate_ok(chat_id: str) -> bool:
     """Returns True if chat_id is within rate limit (persistent SQLite store)."""
     try:
-        conn = sqlite3.connect(str(DB), timeout=10)
+        conn = sqlite3.connect(str(DB), timeout=30)
         conn.execute(
             "DELETE FROM cc_rate_limit WHERE timestamp < datetime('now', '-1 hour')"
         )
@@ -1343,7 +1343,7 @@ def _log_cc_command(
 
     sid = session_id or f"tg_bot_{int(_time.time())}"
     try:
-        conn = sqlite3.connect(DB)
+        conn = sqlite3.connect(DB, timeout=30)
         conn.execute(
             "INSERT INTO agent_actions "
             "(session_id, agent_name, tool_used, action_type, input_tokens, output_tokens, notes) "
@@ -1954,7 +1954,7 @@ async def _telegram_error_handler(
     log.error("Unhandled Telegram exception", exc_info=err)
     tb_str = "".join(_tb.format_exception(type(err), err, err.__traceback__))
     try:
-        conn = sqlite3.connect(str(DB), timeout=10)
+        conn = sqlite3.connect(str(DB), timeout=30)
         conn.execute(
             "INSERT INTO error_log "
             "(session_id, agent_name, error_type, error_message, cause, resolved) "
@@ -2062,7 +2062,7 @@ def send_morning_report() -> None:
     lessons_yesterday = 0
 
     try:
-        conn = sqlite3.connect(str(DB), timeout=5)
+        conn = sqlite3.connect(str(DB), timeout=30)
 
         row = conn.execute(
             "SELECT overall_score FROM audit_reports ORDER BY timestamp DESC LIMIT 1"

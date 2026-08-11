@@ -8,7 +8,12 @@ paths:
 ## Qué es NIM en dqiii8
 
 NVIDIA NIM es el Tier B+ del sistema de routing. API OpenAI-compatible en `integrate.api.nvidia.com/v1`.
-Clave: `NVIDIA_API_KEY` en `.env`. Sondeo completo: **52/121 modelos operativos** (2026-06-26).
+Clave: `NVIDIA_API_KEY` en `.env`. Sondeo completo: **50/121 modelos operativos** (2026-06-26).
+Fuente: `docs/research/2026-06-26-nvidia-nim-investigation.md` (reconciliado 2026-08-11 —
+"52/121" era drift de este fichero; el doc de investigación original y
+`03_tiering_and_routing.md` coinciden en 50/121). Nota: `NVIDIA_API_KEY` está actualmente
+rechazada (403, confirmado 2026-08-11) — la clave debe reemitirse en build.nvidia.com antes
+de poder re-sondear en vivo.
 
 ## Rate limits y comportamiento
 

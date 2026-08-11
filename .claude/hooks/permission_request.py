@@ -134,6 +134,7 @@ CRITICAL_PATTERNS = [
     "DROP TABLE",
     "DROP DATABASE",
     "DELETE FROM agent_actions",
+    "DELETE FROM instincts",
     "> /dev/sda",
     "mkfs",
     "dd if=",

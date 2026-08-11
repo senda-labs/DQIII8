@@ -13,6 +13,8 @@ my-projects/
 ├── mejorapoker-src/       🟡 MVP — analizador manos poker
 ├── accounting-erp/        🟡 DISEÑADO — ERP PYMEs España (PGC 2007)
 ├── ouroboros-q-eml/       🟡 EN PROGRESO — motor trading EML, Fase 0A
+├── cultive-game/          🟡 EN PROGRESO — idle cultivo 2D xianxia, Godot 4.7, sin pay-to-win
+│   └── CONTEXT.md         ← leer primero al reanudar sesión
 ├── pokemon-genesis-chaos/ 🟠 EN PAUSA — fangame Pokémon, mkxp-z
 ├── nl-onion-market-study/ 🟡 SCAFFOLDING — estudio cebolla NL, consultoría japonesa (repo propio)
 │   └── CONTEXT.md         ← leer primero al reanudar sesión

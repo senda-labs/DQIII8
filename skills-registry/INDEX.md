@@ -7,7 +7,6 @@
 | audit | Ops | Active | Full system health audit — DB, pipeline, agents, error log, scored report |
 | blue-team | Security | Active | Defensive security — patches red-team findings, hardens code and permissions |
 | checkpoint | Git | Active | Save session state via git commit before risky or significant changes |
-| gemini-review | Quality | Active | Efficiency audit on Python files via Aider + Gemini 2.0 Flash |
 | handover | Ops | Active | End-of-session handover note — saves to sessions/, commits and pushes |
 | instinct-status | Diagnostic | Internal | Shows learned instincts from dqiii8.db grouped by project and confidence |
 | intl-reports | Pipeline | Active | Generates internationalisation reports (Diagnóstico + Plan) for Spanish SMEs |

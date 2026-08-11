@@ -25,6 +25,8 @@ NEVER use Tier A/S for tasks Tier B can handle. Full table: `.claude/rules/03_ti
 NVIDIA NIM (Tier B+) es $0, calidad comparable o superior a Sonnet 4.6 en la mayoría de tareas.
 ANTES de escalar a Tier A (Sonnet) o S (Opus), es OBLIGATORIO intentar NIM primero.
 
+Nota: estos nombres de agente (`software-specialist`, `research-analyst`, `web-specialist`, `python-specialist`, `opt-analyst`) refieren al backend `AGENT_ROUTING` (NIM Tier B+), NO a los ficheros homónimos en `.claude/agents/*.md` (que están hardcodeados a Groq/Ollama) — son dos sistemas distintos que comparten nombre (drift confirmado 2026-08-11).
+
 **Modelos NIM preferidos por tipo de tarea:**
 | Tarea | Modelo NIM | Latencia | Agente dqiii8 |
 |-------|-----------|----------|---------------|

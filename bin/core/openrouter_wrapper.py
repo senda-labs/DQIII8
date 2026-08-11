@@ -5,7 +5,7 @@ Multi-provider routing with automatic fallback.
 
 Uso:
     python3 openrouter_wrapper.py --agent python-specialist "escribe hello world"
-    python3 openrouter_wrapper.py --model qwen/qwen3-coder:free "prompt"
+    python3 openrouter_wrapper.py --model qwen/qwen3-coder "prompt"
     python3 openrouter_wrapper.py --agent research-analyst        # stdin
     python3 openrouter_wrapper.py --list                          # muestra tabla
 """
@@ -79,6 +79,12 @@ PROVIDERS = {
     # 5 confirmed models: gpt-4o-mini, deepseek-r1, deepseek-v3-0324, llama-3.3-70b-instruct, codestral-2501
     # Rate limits: 20k req / 2M tokens. Short model IDs (no publisher prefix).
     # Direct wrapper: bin/core/github_models_wrapper.py --model <id> "<prompt>"
+    # CONFIRMADO CAÍDO 2026-08-11 (stress-routing.md #13): este endpoint (deprecado)
+    # da 404; el endpoint sucesor "https://models.github.ai/inference" da 410
+    # {"code":"github_models_retirement_brownout"} — GitHub está retirando el
+    # servicio a nivel de plataforma. No es un bug de token/endpoint local;
+    # no reparable en código. github ya es el último eslabón de FALLBACK_CHAIN
+    # salvo pollinations, así que su caída no bloquea nada aguas arriba.
     "github": {
         "base_url": "https://models.inference.ai.azure.com/v1",
         "api_key_env": "GITHUB_TOKEN",
@@ -198,11 +204,19 @@ _TIER_C_AGENTS = frozenset({"git-specialist", "content-automator"})
 
 # Fallback universal por proveedor (cuando el modelo primario falla)
 # Fallback models — llm7 removed (0% success rate over 40 calls in 7d audit)
+# Verificado en vivo 2026-08-11 (stress-routing.md #13):
+#   - "openrouter" con sufijo ":free" -> 404 (retirado); slug correcto es "qwen/qwen3-coder"
+#     PERO la cuenta no tiene créditos (402 "Insufficient credits") -> fallback
+#     openrouter sigue caído hasta que se recarguen créditos (acción del usuario, no de código).
+#   - "github" (models.inference.ai.azure.com) -> 404 (endpoint deprecado);
+#     el endpoint nuevo (models.github.ai/inference) responde 410
+#     "github_models_retirement_brownout" -> GitHub está retirando el servicio,
+#     no es un fallo de token ni de endpoint mal escrito. No reparable en código.
 _PROVIDER_DEFAULT_MODEL = {
     "ollama": "qwen2.5-coder:7b",
     "groq": "llama-3.3-70b-versatile",
     "github": "deepseek-v3-0324",
-    "openrouter": "qwen/qwen3-coder:free",
+    "openrouter": "qwen/qwen3-coder",
     "pollinations": "openai",
     "anthropic": "claude-sonnet-4-6",
     "nim": "mistralai/mistral-large-3-675b-instruct-2512",  # 675B, 0.3s, mejor disponible
@@ -581,12 +595,22 @@ def _stream_via_claude_cli(
         )
         raw = result.stdout.strip()
         text = raw
+        cli_reported_error = result.returncode != 0
         if raw.startswith("{"):
             try:
                 data = json.loads(raw)
+                if data.get("is_error") or data.get("subtype") not in (None, "success"):
+                    cli_reported_error = True
                 text = data.get("result") or data.get("content") or raw
             except json.JSONDecodeError:
                 pass
+        if cli_reported_error:
+            # The CLI ran and produced text, but flagged the call itself as
+            # failed (bad/retired model, auth issue, etc.) — treating that
+            # text as a real answer would silently defeat _NO_DOWNGRADE for
+            # Tier A/S agents (found by stress test, 2026-08-11).
+            log.warning("claude CLI reported failure (returncode=%s): %s", result.returncode, text[:200])
+            return "", 0, 0, False, False
         if text:
             if echo:
                 print(text, flush=True)
@@ -1400,6 +1424,14 @@ def main() -> None:
         )
 
         if ok:
+            # Machine-readable line on stderr with the provider/model that
+            # actually answered — dispatch.py's static AGENT_ROUTING lookup
+            # reported the *intended* provider even when a fallback served
+            # the request (found by stress test, 2026-08-11).
+            print(
+                f"__DQ_META__ {json.dumps({'provider': provider, 'model': model})}",
+                file=sys.stderr, flush=True,
+            )
             print(text, flush=True)
             if _wm and _session_id:
                 try:

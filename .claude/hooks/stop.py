@@ -711,34 +711,6 @@ duration: {_duration_str}
                     timeout=20,
                 )
 
-            # === GEMINI REVIEW ===
-            try:
-                _review_check = subprocess.run(
-                    [
-                        "python3",
-                        str(JARVIS / "bin" / "gemini_review.py"),
-                        "--check-only",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
-                if (
-                    "0 files" not in _review_check.stdout
-                    and _review_check.returncode == 0
-                ):
-                    _log = JARVIS / "database" / "audit_reports" / "gemini_last.log"
-                    subprocess.Popen(
-                        ["python3", str(JARVIS / "bin" / "gemini_review.py")],
-                        stdout=open(str(_log), "w", encoding="utf-8"),
-                        stderr=subprocess.STDOUT,
-                    )
-                    print(
-                        "[DQIII8] Gemini review started in background — report ready in ~5min"
-                    )
-            except Exception as _ge:
-                print(f"[DQIII8] Gemini review skip: {_ge}")
-
 except Exception as e:
     _log.warning("handover failed", exc_info=True)
 

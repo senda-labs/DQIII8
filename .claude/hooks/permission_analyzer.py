@@ -249,9 +249,17 @@ def _host_egress_risk(host: str) -> tuple[str, str] | None:
     for sink in _EXFIL_SINK_HOSTS:
         if host == sink or host.endswith("." + sink):
             return ("sink", sink)
-    # Integer / hex-encoded IPv4 (http://2130706433/ == http://127.0.0.1/)
-    if re.fullmatch(r"\d+|0x[0-9a-f]+", host):
-        return ("private", host)
+    # Integer / hex / octal-encoded IPv4 (http://2130706433/ == http://127.0.0.1/).
+    # Decode and classify like any other IP instead of short-circuiting to
+    # "private" — the short-circuit let http://2852039166/ (169.254.169.254,
+    # cloud metadata) downgrade from DENY to ESCALATE (found by stress test,
+    # 2026-08-11).
+    _int_base = 16 if host.startswith("0x") else (8 if re.fullmatch(r"0[0-7]+", host) else (10 if host.isdigit() else None))
+    if _int_base is not None:
+        try:
+            host = str(ipaddress.ip_address(int(host, _int_base)))
+        except (ValueError, OverflowError):
+            return ("private", host)
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
@@ -548,7 +556,22 @@ class PermissionAnalyzer:
             # Detect python/perl writing inline
             cmd_lower = cmd.lower()
             if ("python" in cmd_lower or "perl" in cmd_lower) and "open(" in cmd:
-                is_write = any(q in cmd for q in ("'w'", '"w"', "'a'", '"a"'))
+                is_write = any(q in cmd for q in ("'w'", '"w"', "'a'", '"a"', "'x'", '"x"'))
+        if not is_write:
+            # Detect cp/mv/rsync/install/ln/dd (incl. sudo/absolute-path prefixes,
+            # newline-separated commands) and shutil.copy*/shutil.move,
+            # os.replace/os.rename, Path.write_text/write_bytes — these overwrite
+            # a destination without any of the shell write operators above, so a
+            # blocked path was reachable via e.g. `cp x .claude/settings.json`,
+            # `sudo cp`, `/bin/cp`, a second line after `\n`, or `dd of=...`
+            # (found by stress test, 2026-08-11 — first pass covered only the
+            # bare unprefixed, single-line case).
+            if re.search(r'(?:^|[;&|\n]\s*)(?:sudo\s+)?(?:[\w./-]*/)?(?:cp|mv|rsync|install|ln)\b', cmd, re.MULTILINE) or \
+               re.search(r'\bdd\s+(?:\S+\s+)*of=', cmd) or \
+               re.search(r'\bshutil\.(?:copy\w*|move)\s*\(', cmd) or \
+               re.search(r'\bos\.(?:replace|rename)\s*\(', cmd) or \
+               re.search(r'\.write_(?:text|bytes)\s*\(', cmd):
+                is_write = True
         if is_write:
             for blocked in BLOCKED_PATHS:
                 if blocked in cmd:
@@ -805,7 +828,19 @@ class PermissionAnalyzer:
                 if _bash_block:
                     return _bash_block
             except Exception as _bte:
+                # A security check that was reached and threw must fail closed,
+                # not degrade to APPROVE — the "hooks degrade to APPROVE" doc
+                # convention covers hook-level/startup failure, not a check
+                # that ran and errored (mirrors block 4's handling, which
+                # already denies; 3c/3d/3e previously didn't — found by
+                # stress test, 2026-08-11).
                 log.warning("permission_analyzer: _bash_touches_blocked failed: %s", _bte)
+                return self._deny(
+                    tool, str(cmd)[:80],
+                    "Internal analyzer error during blocked-path check — denying as precaution.",
+                    "HIGH", "analyzer_internal_error",
+                    "Retry, or ask the user to run this command manually.",
+                )
 
         # 3d. Credential enforcement for the read family (mirror of 3c for Bash).
         # Must run before 4a (learned_approvals) so a historically-seen path
@@ -817,6 +852,12 @@ class PermissionAnalyzer:
                     return _read_block
             except Exception as _rte:
                 log.warning("permission_analyzer: _read_family_credential_block failed: %s", _rte)
+                return self._deny(
+                    tool, str(inp.get("file_path", inp.get("path", "")))[:80],
+                    "Internal analyzer error during credential check — denying as precaution.",
+                    "HIGH", "analyzer_internal_error",
+                    "Retry, or ask the user to check this file manually.",
+                )
 
         # 3e. Egress enforcement for the web family (v3.4). Same placement rule
         # as 3c/3d: BEFORE 4a (learned_approvals), so a repeatedly-attempted
@@ -834,6 +875,12 @@ class PermissionAnalyzer:
                     return _web_block
             except Exception as _wee:
                 log.warning("permission_analyzer: _web_egress_block failed: %s", _wee)
+                return self._deny(
+                    tool, str(inp.get("url", ""))[:80],
+                    "Internal analyzer error during web egress check — denying as precaution.",
+                    "HIGH", "analyzer_internal_error",
+                    "Retry, or ask the user to fetch this URL manually.",
+                )
 
         # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
         if tool == "Bash":

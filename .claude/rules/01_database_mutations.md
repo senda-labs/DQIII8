@@ -17,11 +17,20 @@ paths:
 
 | Table | Rule |
 |---|---|
-| `agent_actions` | **Audit log — append only.** `DELETE` requires a `WHERE` clause. NEVER mass-delete. |
-| `instincts` | **Append-only.** Managed by `bin/tools/auto_learner.py`. Confidence decay handles stale rows. |
-| `model_performance` | Written by `openrouter_wrapper.py` after each LLM call. Do NOT manually edit scores — they drive routing. |
+| `agent_actions` | **Audit log — append-only, DB-enforced** (`trg_agent_actions_no_delete` blocks all DELETE; `trg_agent_actions_close_once` allows exactly one UPDATE per row — filling `end_time_ms`/`duration_ms`/`success`/`error_message`/`bytes_written` while `end_time_ms IS NULL` — then the row is immutable. Fixed 2026-08-11, stress-db.md #6/#8.) |
+| `instincts` | **Append-only, DB-enforced** (`trg_instincts_no_delete` blocks all DELETE; `trg_instincts_immutable_identity` locks `keyword`/`pattern`/`source`/`project`/`created_at` after insert — only `times_applied`/`times_successful`/`confidence`/`last_applied` may change, via `stop.py`/`bin/agents/memory_decay.py`. Fixed 2026-08-11, stress-db.md #7/#8.) |
 | `error_log` | Columns: `id, timestamp, session_id, agent_name, error_type, error_message, keywords, cause, resolution, resolved, resolution_ms, lesson_added, action_id, severity`. Field `summary` does NOT exist. |
-| `session_events` | Read-only from application code. Budget checks read from here. |
+
+`model_performance` and `session_events` were documented here previously but do not exist in
+`schema_v2.sql` or the live DB — removed 2026-08-11 stress test. Real routing-feedback data
+lives in `routing_feedback` instead.
+
+`gemini_audits` was orphaned (0 rows, zero Python writers — confirmed 2026-08-11) and has
+been **removed** (schema_v2.sql + live DB, user-authorized 2026-08-11): the whole
+gemini-review feature (`bin/tools/gemini_review.py`, `.claude/commands/gemini-review.md`,
+`.claude/skills/gemini-review/`, and its trigger in `stop.py`) was unused and deleted along
+with it. `bin/tools/gemini_export.py` (manual context export for pasting into Gemini Pro)
+is a separate, still-used tool and was left untouched.
 
 ## SQLite Access Patterns
 - Use full path: `sqlite3 /root/dqiii8/database/dqiii8.db "…"` — no aliases in non-interactive shells.

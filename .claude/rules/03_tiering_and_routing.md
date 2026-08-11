@@ -133,6 +133,18 @@ Groq/Llama si el CLI de claude falla: fallan alto con exit 2
 (`DQIII8_ALLOW_DOWNGRADE=1` para permitir la degradación explícitamente).
 Detalle completo del proveedor NIM → `.claude/rules_db/nim-provider.md`.
 
+**Estado real de `openrouter` y `github` en la cadena (verificado en vivo 2026-08-11):**
+- `openrouter`: el slug `qwen/qwen3-coder:free` está retirado (404); el slug correcto
+  `qwen/qwen3-coder` (ya corregido en `_PROVIDER_DEFAULT_MODEL`) es de pago y la cuenta
+  no tiene créditos (402 "Insufficient credits") → fallback openrouter caído hasta que
+  el usuario recargue créditos en openrouter.ai/settings/credits.
+- `github`: ambos endpoints (el deprecado `models.inference.ai.azure.com` y el sucesor
+  `models.github.ai/inference`) responden 404/410 — GitHub está retirando el servicio
+  a nivel de plataforma (`github_models_retirement_brownout`). No reparable en código.
+- Impacto real: bajo. Ambos son los últimos eslabones de sus cadenas (antes de
+  `pollinations`), así que su caída no bloquea el flujo normal (`groq`/`nim` cubren
+  la inmensa mayoría de casos).
+
 ## Escalation to Opus (Plan Gate)
 
 Escalate to Opus ONLY when in `DQIII8_MODE=autonomous` AND plan meets ≥1 criterion:

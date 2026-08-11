@@ -595,20 +595,6 @@ CREATE TABLE IF NOT EXISTS morning_report (
     report_text TEXT,
     sent_to_telegram INTEGER DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS gemini_audits (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at       TEXT DEFAULT (datetime('now')),
-    module           TEXT NOT NULL,
-    metric           TEXT NOT NULL,
-    report_path      TEXT,
-    question         TEXT,
-    gemini_response  TEXT,
-    issues_found     INTEGER DEFAULT 0,
-    issues_resolved  INTEGER DEFAULT 0,
-    impact_score     REAL,
-    applied_to_code  INTEGER DEFAULT 0,
-    notes            TEXT
-);
 CREATE TABLE IF NOT EXISTS github_research (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at        TEXT DEFAULT (datetime('now')),
@@ -1103,6 +1089,61 @@ WHEN NEW.action_id IS NOT OLD.action_id
   OR NEW.payload_hash IS NOT OLD.payload_hash
 BEGIN
   SELECT RAISE(ABORT, 'execution fields are immutable after insert');
+END;
+
+-- agent_actions / instincts append-only enforcement (stress-db.md #6/#7/#8, 2026-08-11).
+-- Previously "append-only by convention" only — a bare DELETE/UPDATE from any process
+-- with filesystem access succeeded silently. agent_actions rows are write-once-then-closed
+-- (post_tool_use.py / post_tool_use_failure.py fill end_time_ms/duration_ms/success/
+-- error_message/bytes_written exactly once on an open row); instincts rows keep
+-- keyword/pattern/source/project/created_at fixed forever while times_applied/
+-- times_successful/confidence/last_applied evolve (stop.py, bin/agents/memory_decay.py).
+CREATE TRIGGER IF NOT EXISTS trg_agent_actions_no_delete
+BEFORE DELETE ON agent_actions
+BEGIN
+  SELECT RAISE(ABORT, 'agent_actions is append-only: DELETE is not permitted');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_agent_actions_close_once
+BEFORE UPDATE ON agent_actions
+FOR EACH ROW
+WHEN OLD.end_time_ms IS NOT NULL
+  OR NEW.id IS NOT OLD.id
+  OR NEW.timestamp IS NOT OLD.timestamp
+  OR NEW.session_id IS NOT OLD.session_id
+  OR NEW.agent_name IS NOT OLD.agent_name
+  OR NEW.project IS NOT OLD.project
+  OR NEW.tool_used IS NOT OLD.tool_used
+  OR NEW.file_path IS NOT OLD.file_path
+  OR NEW.action_type IS NOT OLD.action_type
+  OR NEW.start_time_ms IS NOT OLD.start_time_ms
+  OR NEW.model_used IS NOT OLD.model_used
+  OR NEW.tokens_used IS NOT OLD.tokens_used
+  OR NEW.files_modified IS NOT OLD.files_modified
+  OR NEW.worktree IS NOT OLD.worktree
+  OR NEW.skills_active IS NOT OLD.skills_active
+  OR NEW.blocked_by_hook IS NOT OLD.blocked_by_hook
+BEGIN
+  SELECT RAISE(ABORT, 'agent_actions rows are immutable except a single close-out update (end_time_ms/duration_ms/success/error_message/bytes_written) while end_time_ms IS NULL');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_instincts_no_delete
+BEFORE DELETE ON instincts
+BEGIN
+  SELECT RAISE(ABORT, 'instincts is append-only: DELETE is not permitted');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_instincts_immutable_identity
+BEFORE UPDATE ON instincts
+FOR EACH ROW
+WHEN NEW.id IS NOT OLD.id
+  OR NEW.keyword IS NOT OLD.keyword
+  OR NEW.pattern IS NOT OLD.pattern
+  OR NEW.source IS NOT OLD.source
+  OR NEW.project IS NOT OLD.project
+  OR NEW.created_at IS NOT OLD.created_at
+BEGIN
+  SELECT RAISE(ABORT, 'instincts identity fields (keyword/pattern/source/project/created_at) are immutable after insert');
 END;
 
 -- human_pending_events: append-only ledger (jarvis-control3 v2).

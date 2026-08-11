@@ -180,7 +180,7 @@ def dispatch(
     t0 = time.time()
     try:
         result = subprocess.run(
-            [sys.executable, str(WRAPPER), "--agent", agent, full_prompt],
+            [sys.executable, str(WRAPPER), "--agent", agent, "--no-enrich", full_prompt],
             capture_output=True, text=True,
             timeout=timeout,
             cwd=str(DQIII8_ROOT),
@@ -190,6 +190,19 @@ def dispatch(
         status = "ok" if result.returncode == 0 and response else "error"
         error = result.stderr.strip() if result.returncode != 0 else None
 
+        # The wrapper prints the provider/model that actually served the
+        # request on a stderr marker line — this can differ from `meta`
+        # (AGENT_ROUTING's static/intended assignment) whenever an internal
+        # fallback kicked in (found by stress test, 2026-08-11).
+        actual_meta = dict(meta)
+        for line in (result.stderr or "").splitlines():
+            if line.startswith("__DQ_META__ "):
+                try:
+                    actual_meta = json.loads(line[len("__DQ_META__ "):])
+                except json.JSONDecodeError:
+                    pass
+                break
+
         out = {
             "task_id": task_id,
             "agent": agent,
@@ -197,7 +210,9 @@ def dispatch(
             "latency_ms": latency_ms,
             "response": response,
             "error": error,
-            **meta,
+            "provider_intended": meta["provider"],
+            "model_intended": meta["model"],
+            **actual_meta,
         }
 
     except subprocess.TimeoutExpired:

@@ -134,6 +134,23 @@ Count:
 If `decisions/adr-compliance.json` does not exist or `bin/adr-check.py` is missing,
 set `adr_violations = 0` and note "ADR check not available" in the report.
 
+### 1.6. Check telemetry freshness
+
+A high score computed from stale telemetry is misleading — it reads as "healthy" when it
+may just mean nobody is writing to the DB anymore (a dead hook, a stopped service).
+
+```sql
+SELECT
+    (SELECT MAX(timestamp) FROM agent_actions) as last_agent_action,
+    (SELECT MAX(last_reviewed) FROM skill_metrics) as last_skill_review,
+    (julianday('now') - julianday((SELECT MAX(timestamp) FROM agent_actions))) * 24 as agent_actions_stale_hours;
+```
+
+If `agent_actions_stale_hours > 48` (i.e. no `agent_actions` row written in the last 48h):
+- Cap the final score at 60, regardless of what the formula in step 2 computes.
+- Tag the report STALE_TELEMETRY in addition to its normal HEALTHY/WARNING/CRITICAL status.
+- Add a CRITICAL recommendation: "No agent_actions written in Nh — verify post_tool_use.py hook and any service that should be producing telemetry are actually running before trusting this score."
+
 ### 2. Compute overall score
 
 **Methodology version: v1.1** (2026-03-19)
@@ -290,6 +307,7 @@ Report: database/audit_reports/audit-[timestamp].md
 - Always run ALL queries before writing the report -- never partial audits.
 - If `agent_name = 'unknown'`, note it in recommendations: hooks are not capturing agent identity.
 - Never delete records from the DB, only read and insert into `audit_reports`.
+- If `agent_actions` telemetry is >48h stale, cap score at 60 and tag STALE_TELEMETRY (see step 1.6) before applying the thresholds below.
 - If score < 60, tag report with CRITICAL and notify user immediately.
 - If score 60-80, tag with WARNING.
 - If score > 80, tag with HEALTHY.

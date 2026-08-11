@@ -12,9 +12,12 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 ## System Map
 - DQ Pipeline (7 steps): Classify → Retrieve → Gate → Amplify → Route → Execute → Memory
 - DB: `database/dqiii8.db` (schema_v2.sql — source of truth; siblings: `dqiii8_metrics.db` knowledge/vector, `dqiii8_history.db` session_memory)
-- Hooks (14): `.claude/hooks/` | Skills (22): `.claude/skills/` | Agents (17): `.claude/agents/`
+- Hooks (14): `.claude/hooks/` | Skills (21): `.claude/skills/` | Agents (17): `.claude/agents/`
+- Contextual rules (17): `.claude/rules_db/` — not read directly; injected 1-3 files at a time per tool call by `rules_dispatcher.py` (see `.claude/rules/02_hooks_and_permissions.md`).
 - Entry: `bin/core/openrouter_wrapper.py` | Director: `bin/director.py`
 - Dispatch (CC↔dqiii8): `bin/core/dispatch.py` — thin subprocess shim; sync + async (async fixed 2026-07-05 via detached worker + atomic JSON envelope — see `docs/audits/2026-07-fable5-remediation-report.md`)
+
+> **Not DQIII8-specific**: `.claude/architecture/` holds a generic reference book on Claude Code's own internals (agent loop, tool execution, etc.), unrelated to DQIII8's architecture. Don't confuse it with DQIII8 docs when orienting.
 
 ## Rule Engine
 

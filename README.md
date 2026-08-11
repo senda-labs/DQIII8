@@ -119,7 +119,8 @@ City-block decomposition pipeline:
 ### SQLite state engine — `database/schema_v2.sql`
 46 live tables + 20 views. `schema_v2.sql` is the idempotent source of truth — apply it
 for a fresh install; no migration scripts needed. Key tables: `instincts`, `agent_actions`,
-`model_performance`, `session_events`, `routing_feedback`.
+`routing_feedback`. (`model_performance` and `session_events` were documented here previously
+but do not exist in `schema_v2.sql` or the live DB — removed 2026-08-11 stress test.)
 
 ### Telegram UI — `bin/ui/dqiii8_bot.py`
 Primary external trigger. Commands: `/cc`, `/loop`, `/status`, `/audit`, `/dq`, `/score`,

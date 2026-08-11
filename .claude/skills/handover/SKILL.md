@@ -52,6 +52,10 @@ cd /root/dqiii8
 python3 bin/tools/handover.py
 ```
 
+El script añade automáticamente una sección `## Operador` derivada del
+usuario Linux real (`plglobal-isabel` → Isabel Vinagre, `plglobal-mario` →
+Mario Cabeza, `root` → Iker) — no requiere preguntar quién opera la sesión.
+
 The script generates `sessions/YYYY-MM-DD_session_N.md` locally. `sessions/` is gitignored — this file is never committed or pushed.
 
 ### Step 4 — Inject real next steps

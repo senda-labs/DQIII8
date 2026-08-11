@@ -9,10 +9,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
 log = _get_logger(__name__)
+
+load_dotenv(Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / ".env")
 
 
 @dataclass

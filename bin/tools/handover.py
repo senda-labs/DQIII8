@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Session handover — saves current session state to sessions/YYYY-MM-DD_session_N.md"""
 
+import os
 import subprocess
 import sys
 from datetime import date
@@ -8,6 +9,17 @@ from pathlib import Path
 
 DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
 SESSIONS_DIR = DQIII8_ROOT / "sessions"
+
+OPERATOR_MAP = {
+    "/root/.claude": "Iker",
+    "/home/plglobal-isabel/.claude": "Isabel Vinagre",
+    "/home/plglobal-mario/.claude": "Mario Cabeza",
+}
+
+
+def current_operator() -> str:
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "/root/.claude")
+    return OPERATOR_MAP.get(config_dir, config_dir)
 
 
 def run(cmd: str) -> str:
@@ -40,7 +52,11 @@ def main():
     )
 
     today = date.today().isoformat()
+    operator = current_operator()
     content = f"""# Session Handover — {today}
+
+## Operador
+{operator}
 
 ## Last 5 commits
 {git_log}

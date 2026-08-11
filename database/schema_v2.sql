@@ -1187,6 +1187,27 @@ BEGIN
   SELECT RAISE(ABORT, 'instincts identity fields (keyword/pattern/source/project/created_at) are immutable after insert');
 END;
 
+-- human_hours: human work-session log (dashboard production tracking,
+-- design: docs/superpowers/specs/2026-08-11-dashboard-production-tracking-design.md).
+-- Append-only by convention only (NOT DB-enforced via trigger, unlike agent_actions/
+-- instincts): corrections should be new rows with a note, never UPDATE of
+-- started_at/source, except the single UPDATE that closes an open session by
+-- setting ended_at (the app code in Task 6 is the only writer of that UPDATE).
+CREATE TABLE IF NOT EXISTS human_hours (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  project     TEXT NOT NULL,
+  started_at  TEXT NOT NULL,
+  ended_at    TEXT,
+  note        TEXT,
+  source      TEXT NOT NULL CHECK(source IN ('manual','telegram'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_human_hours_open
+  ON human_hours(project) WHERE ended_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_human_hours_project_started
+  ON human_hours(project, started_at);
+
 -- human_pending_events: append-only ledger (jarvis-control3 v2).
 -- SSOT copy for fresh installs. Must match database/migrations/2026-07-02_human_pending_events.up.sql
 -- (design: my-projects/jarvis-control3/architecture/07-durable-worker.md).

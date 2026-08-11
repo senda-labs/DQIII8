@@ -8,14 +8,17 @@ v3: Dual-channel rejections (DB + JSON inbox) + budget check +
     autonomous auto-approve + FIX ESCALATE count (DENY+ESCALATE)
 v3.1: BLOCKED_PATHS Bash enforcement, CLAUDE_MD_PLUGIN_EDIT bypass removal,
       in-process fallback counter, defensive pattern check wrapping
+v3.4: Web egress gate for WebFetch/WebSearch (exfiltration control)
 """
 
+import ipaddress
 import json
 import logging
 import os
 import re
 import sqlite3
 import threading as _threading
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
@@ -155,6 +158,207 @@ def _glob_filter_hit(spec: str) -> str | None:
         if _CREDENTIAL_BASENAME_RE.match(probe):
             return collapsed
     return None
+
+
+def _url_secret_hit(text: str) -> str | None:
+    """Return the name of the secret shape found in `text`, or None.
+
+    Checked against both the raw string and its percent-decoded form: a URL
+    carrying '?d=sk-ant-...' and one carrying '?d=sk%2Dant%2D...' are the same
+    egress event.
+    """
+    if not text:
+        return None
+    forms = {text}
+    try:
+        forms.add(urllib.parse.unquote(text))
+        forms.add(urllib.parse.unquote_plus(text))
+    except Exception as _ue:  # pragma: no cover — unquote is total in practice
+        log.warning("permission_analyzer: unquote failed for URL text: %s", _ue)
+    for form in forms:
+        for pattern, name in _URL_SECRET_PATTERNS:
+            if pattern.search(form):
+                return name
+    return None
+
+
+def _url_units(url: str) -> list[str]:
+    """Split a URL into the atomic strings an exfiltrated payload could occupy.
+
+    Host labels, path segments, query keys AND values, and the fragment. The
+    query is harvested twice: once via parse_qsl (which decodes '+' to a space,
+    the correct reading for a form-encoded value) and once by raw '&'/'=' split
+    (which preserves '+' as a base64 character). A payload is opaque under at
+    least one of those readings; a real sentence is opaque under neither.
+    """
+    try:
+        p = urllib.parse.urlparse(url)
+    except Exception:
+        return [url]
+    units: list[str] = []
+    host = p.hostname or ""
+    units.extend(lbl for lbl in host.split(".") if lbl)
+    units.extend(urllib.parse.unquote(seg) for seg in p.path.split("/") if seg)
+    try:
+        for key, val in urllib.parse.parse_qsl(p.query, keep_blank_values=True):
+            units.extend((key, val))
+    except Exception as _qe:  # pragma: no cover
+        log.warning("permission_analyzer: parse_qsl failed: %s", _qe)
+    for chunk in re.split(r"[&;]", p.query):
+        for part in chunk.split("=", 1):
+            if part:
+                units.append(urllib.parse.unquote(part))
+    if p.fragment:
+        units.append(urllib.parse.unquote(p.fragment))
+    return units
+
+
+def _opaque_blob_hit(url: str) -> str | None:
+    """Return an opaque high-volume token carried by the URL, or None.
+
+    Structure, not entropy, is the discriminator. Shannon entropy fails here:
+    hex digests score *below* Dutch agricultural URL slugs. What separates a
+    payload from a slug is that a slug is punctuated into words and a payload is
+    one unbroken token.
+    """
+    for unit in _url_units(url):
+        unit = unit.strip()
+        if len(unit) >= _BLOB_RAW_MIN and _BLOB_ALNUM_RE.match(unit):
+            return unit[:60]
+        # base64 alphabet: '+' and '/' are payload characters, not separators.
+        core = unit.replace("+", "").replace("/", "").rstrip("=")
+        if (
+            len(core) >= _BLOB_B64_MIN
+            and _BLOB_ALNUM_RE.match(core)
+            and any(c.islower() for c in core)
+            and any(c.isupper() for c in core)
+            and any(c.isdigit() for c in core)
+        ):
+            return unit[:60]
+    return None
+
+
+def _host_egress_risk(host: str) -> tuple[str, str] | None:
+    """Classify a URL host. Returns (severity_kind, token) or None.
+
+    severity_kind ∈ {"sink", "metadata", "private"}.
+    """
+    if not host:
+        return ("private", "<empty-host>")
+    host = host.lower().strip(".")
+    for sink in _EXFIL_SINK_HOSTS:
+        if host == sink or host.endswith("." + sink):
+            return ("sink", sink)
+    # Integer / hex-encoded IPv4 (http://2130706433/ == http://127.0.0.1/)
+    if re.fullmatch(r"\d+|0x[0-9a-f]+", host):
+        return ("private", host)
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        if host == "localhost" or host.endswith(
+            (".localhost", ".local", ".internal", ".localdomain")
+        ):
+            return ("private", host)
+        return None
+    if ip.is_link_local:
+        # 169.254.169.254 and friends: cloud instance metadata. Never a
+        # legitimate research target, always an SSRF credential grab.
+        return ("metadata", host)
+    if ip.is_loopback or ip.is_private or ip.is_reserved or ip.is_unspecified:
+        return ("private", host)
+    return None
+
+
+# ── Web egress gate (v3.4) ──────────────────────────────────────────────────
+# The credential gates above stop secrets *entering* context. This one is the
+# other half: WebFetch is the only tool that sends attacker-chosen bytes *out*
+# of the VPS, and it was auto-approved with zero inspection.
+#
+# Verified tool contract (not assumed):
+#   WebFetch(url, prompt) — GET only, http upgraded to https, cross-host
+#     redirects returned rather than followed, response cached 15 min. There is
+#     no request body and no header control, so the ONLY outbound channel an
+#     attacker controls is the URL itself (host + path + query + fragment).
+#     `prompt` is evaluated against the *fetched* content by an internal model;
+#     it never reaches the remote host, so it is deliberately not gated.
+#   WebSearch(query, allowed_domains, blocked_domains) — the query goes to the
+#     search backend, never to an attacker-chosen host, so there is no
+#     exfiltration channel; only the "secret pasted into a third-party search
+#     log" case is gated (see _web_egress_block).
+#
+# Design decision — NO host allowlist. Derived empirically from 444 real
+# WebFetch calls in this VPS's session history: 211 distinct hosts, 125 of them
+# fetched exactly once. This system's WebFetch usage *is* open-ended market
+# research (intl-reports, nl-onion study, job search). Any allowlist would deny
+# the majority of legitimate calls, and an ESCALATE-on-unknown-host policy would
+# fire on >50% of them — which trains the operator to rubber-stamp, i.e. makes
+# the control worse than useless. So the gate targets exfiltration *shape*
+# (where the data is) instead of host reputation (who the host is).
+#
+# Every threshold below was calibrated against that 444-URL corpus at 0 false
+# positives; see tests/test_permission_analyzer.py::TestWebEgressGate.
+
+_WEB_ALLOWED_SCHEMES = {"http", "https"}
+
+# Hosts whose entire product is "receive an arbitrary inbound request and show
+# it to whoever set me up". Zero research value, so a hit is unambiguous
+# exfiltration rather than an ambiguous lookup → DENY, not ESCALATE.
+_EXFIL_SINK_HOSTS = (
+    "webhook.site",
+    "requestbin.com",
+    "requestbin.net",
+    "requestcatcher.com",
+    "pipedream.net",
+    "beeceptor.com",
+    "mockbin.org",
+    "hookb.in",
+    "ngrok.io",
+    "ngrok.app",
+    "ngrok-free.app",
+    "loca.lt",
+    "trycloudflare.com",
+    "serveo.net",
+    "burpcollaborator.net",
+    "oast.fun",
+    "oast.pro",
+    "oast.live",
+    "oast.site",
+    "oast.online",
+    "oast.me",
+    "interact.sh",
+    "canarytokens.com",
+    "dnslog.cn",
+)
+
+# Secret shapes that must never appear in an outbound URL or a search query.
+# Prefix-anchored on the issuer's own format, so these cannot match prose.
+_URL_SECRET_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"sk-ant-[A-Za-z0-9_\-]{10,}"), "anthropic_api_key"),
+    (re.compile(r"\bsk-(?:proj-|or-v1-)?[A-Za-z0-9]{20,}"), "openai_style_api_key"),
+    (re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}"), "github_token"),
+    (re.compile(r"github_pat_[A-Za-z0-9_]{20,}"), "github_pat"),
+    (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}"), "aws_access_key_id"),
+    (re.compile(r"\bxox[baprs]-[A-Za-z0-9\-]{10,}"), "slack_token"),
+    (re.compile(r"\bAIza[A-Za-z0-9_\-]{35}"), "google_api_key"),
+    (re.compile(r"\bhf_[A-Za-z0-9]{30,}"), "huggingface_token"),
+    (re.compile(r"\bglpat-[A-Za-z0-9_\-]{20,}"), "gitlab_token"),
+    (re.compile(r"\bgsk_[A-Za-z0-9]{40,}"), "groq_api_key"),
+    (re.compile(r"\bnvapi-[A-Za-z0-9_\-]{20,}"), "nvidia_nim_key"),
+    # The exact shape of the token leaked to a public repo on 2026-08-06.
+    # {30,} not {35}: the canonical secret is 35 chars, but the length is not
+    # contractual and an off-by-a-few variant is the same disclosure.
+    (re.compile(r"\b\d{6,12}:[A-Za-z0-9_\-]{30,}"), "telegram_bot_token"),
+    (re.compile(r"-----BEGIN[ A-Z]*PRIVATE KEY"), "private_key_block"),
+]
+
+# Opaque-blob heuristic. Longest contiguous alphanumeric run in the 444-URL
+# legitimate corpus is 32 chars (an IMF dataset UUID); the next is 24. 48 for a
+# raw run and 40 for a base64 run with its '+'/'/' padding characters stripped
+# both clear that ceiling with margin, and catch 0 of 444 real URLs while
+# catching ~83% of randomly generated base64/hex payloads.
+_BLOB_RAW_MIN = 48
+_BLOB_B64_MIN = 40
+_BLOB_ALNUM_RE = re.compile(r"^[A-Za-z0-9]+$")
 
 # Bash operators that indicate a WRITE to a file
 _BASH_WRITE_SIGNS = [">", ">>", "tee ", "sed -i", "truncate "]
@@ -401,6 +605,124 @@ class PermissionAnalyzer:
                 )
         return None
 
+    def _web_egress_block(self, tool: str, inp: dict) -> dict | None:
+        """Egress gate for WebFetch / WebSearch (v3.4).
+
+        WebFetch — the URL is the payload channel. Denied when it names a
+            request-capture sink, a cloud metadata endpoint, a non-http scheme,
+            embedded userinfo credentials, or carries a recognised secret shape.
+            Escalated when it targets a private/loopback host or carries an
+            opaque high-volume token — both are heuristics, so a human decides.
+        WebSearch — no attacker-chosen destination exists, so only the secret
+            shape is checked: a key pasted into a third-party search backend's
+            logs is a disclosure even though nobody chose the recipient.
+        """
+        if tool == "WebSearch":
+            query = str(inp.get("query", "") or "")
+            secret = _url_secret_hit(query)
+            if secret:
+                return self._deny(
+                    tool,
+                    query[:80],
+                    f"WebSearch blocked: query carries credential material ('{secret}').",
+                    "CRITICAL",
+                    f"web_egress_secret:{secret}",
+                    "Never put keys or tokens in a search query — they land in "
+                    "third-party logs. Search for the error text instead.",
+                )
+            return None
+
+        url = str(inp.get("url", "") or "")
+        if not url:
+            return None
+
+        # A schemeless URL ("example.com/page") parses with an empty hostname
+        # and the whole thing in .path, which would misread a legitimate fetch
+        # as an empty-host one. The tool itself resolves these as https, so
+        # normalise the same way before any host reasoning. An explicit scheme
+        # (including file:) is left untouched so the scheme check still sees it.
+        raw = url.strip()
+        if raw.startswith("//"):
+            raw = "https:" + raw
+        elif not re.match(r"^[A-Za-z][A-Za-z0-9+.\-]*:", raw):
+            raw = "https://" + raw
+
+        try:
+            parsed = urllib.parse.urlparse(raw)
+        except Exception:
+            return self._deny(
+                tool, url[:80],
+                "WebFetch blocked: URL could not be parsed for egress review.",
+                "HIGH", "web_egress_unparseable",
+                "Supply a plain https:// URL.",
+            )
+
+        scheme = (parsed.scheme or "").lower()
+        if scheme and scheme not in _WEB_ALLOWED_SCHEMES:
+            return self._deny(
+                tool, url[:80],
+                f"WebFetch blocked: scheme '{scheme}' is not http/https.",
+                "CRITICAL", f"web_egress_scheme:{scheme}",
+                "Use Read for local files. WebFetch is for http(s) pages only.",
+            )
+
+        if parsed.username or parsed.password:
+            return self._deny(
+                tool, url[:80],
+                "WebFetch blocked: URL embeds userinfo credentials (user:pass@host).",
+                "CRITICAL", "web_egress_userinfo",
+                "Fetch the public URL. Authenticated URLs are not supported here.",
+            )
+
+        secret = _url_secret_hit(raw)
+        if secret:
+            return self._deny(
+                tool, url[:80],
+                f"WebFetch blocked: URL carries credential material ('{secret}') — "
+                "this is exfiltration, not a lookup.",
+                "CRITICAL", f"web_egress_secret:{secret}",
+                "Never place a key, token or private key in an outbound URL.",
+            )
+
+        risk = _host_egress_risk(parsed.hostname or "")
+        if risk:
+            kind, token = risk
+            if kind == "sink":
+                return self._deny(
+                    tool, url[:80],
+                    f"WebFetch blocked: '{token}' is a request-capture endpoint "
+                    "whose only purpose is receiving exfiltrated data.",
+                    "CRITICAL", f"web_egress_sink_host:{token}",
+                    "Fetch the real documentation or API host instead.",
+                )
+            if kind == "metadata":
+                return self._deny(
+                    tool, url[:80],
+                    f"WebFetch blocked: '{token}' is a link-local/cloud-metadata "
+                    "address (SSRF credential grab).",
+                    "CRITICAL", f"web_egress_metadata_host:{token}",
+                    "Instance metadata is never a legitimate research target.",
+                )
+            return self._escalate(
+                tool, url[:80],
+                f"WebFetch to private/loopback host '{token}' — needs human review.",
+                f"web_egress_private_host:{token}",
+                "Local services are reached with Bash curl, not WebFetch, so the "
+                "request is visible in the transcript.",
+            )
+
+        blob = _opaque_blob_hit(raw)
+        if blob:
+            return self._escalate(
+                tool, url[:80],
+                f"WebFetch carries an opaque {len(blob)}+ char token "
+                f"('{blob[:32]}…') — possible encoded payload. Human review required.",
+                "web_egress_opaque_blob",
+                "If this is a legitimate document/dataset id, fetch it via a "
+                "human-readable URL or ask the user to approve this one.",
+            )
+        return None
+
     def evaluate(self, tool: str, inp: dict, session_id: str | None = None) -> dict:
         """
         Evaluates whether a tool can execute.
@@ -411,9 +733,15 @@ class PermissionAnalyzer:
         _session = session_id or SESSION_ID
         # Grep/Glob carry their target in "path", not "file_path"/"command";
         # without it every Grep in a session would share the empty detail string
-        # and trip _check_repeat_rejections against each other.
+        # and trip _check_repeat_rejections against each other. WebFetch/
+        # WebSearch carry theirs in "url"/"query", for the same reason.
         detail = str(
-            inp.get("file_path") or inp.get("command") or inp.get("path") or ""
+            inp.get("file_path")
+            or inp.get("command")
+            or inp.get("path")
+            or inp.get("url")
+            or inp.get("query")
+            or ""
         )
 
         # 0a. Safe project directories — fast-path (respects BLOCKED_PATHS)
@@ -489,6 +817,23 @@ class PermissionAnalyzer:
                     return _read_block
             except Exception as _rte:
                 log.warning("permission_analyzer: _read_family_credential_block failed: %s", _rte)
+
+        # 3e. Egress enforcement for the web family (v3.4). Same placement rule
+        # as 3c/3d: BEFORE 4a (learned_approvals), so a repeatedly-attempted
+        # exfiltration URL can never be auto-whitelisted past the gate.
+        # Any MCP tool carrying a `url` is the same egress channel: `mcp__fetch`
+        # is settings.json-allowed via the `mcp__*` glob AND is this system's
+        # *documented default* fetcher (web-research-tools.md), so gating only
+        # the built-in WebFetch would leave the primary path wide open.
+        if tool in ("WebFetch", "WebSearch") or (
+            tool.startswith("mcp__") and inp.get("url")
+        ):
+            try:
+                _web_block = self._web_egress_block(tool, inp)
+                if _web_block:
+                    return _web_block
+            except Exception as _wee:
+                log.warning("permission_analyzer: _web_egress_block failed: %s", _wee)
 
         # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
         if tool == "Bash":
@@ -586,6 +931,29 @@ class PermissionAnalyzer:
             "decision": "DENY",
             "reason": enriched_reason,
             "risk_level": risk_level,
+            "rule_triggered": rule_triggered,
+            "suggested_fix": suggested_fix,
+        }
+
+    def _escalate(
+        self,
+        tool: str,
+        detail: str,
+        reason: str,
+        rule_triggered: str,
+        suggested_fix: str,
+    ) -> dict:
+        """Blocked pending a human decision.
+
+        Same wire effect as DENY (pre_tool_use.py maps both to a deny), but
+        recorded as ESCALATE so record_rejection routes it to the operator
+        instead of reading as a settled policy violation. Used for heuristics
+        that a legitimate action could plausibly trip.
+        """
+        return {
+            "decision": "ESCALATE",
+            "reason": reason,
+            "risk_level": "HIGH",
             "rule_triggered": rule_triggered,
             "suggested_fix": suggested_fix,
         }
@@ -848,7 +1216,17 @@ def record_rejection(tool: str, inp: dict, result: dict) -> None:
         "timestamp": datetime.now().isoformat(),
         "session_id": SESSION_ID,
         "tool_name": tool,
-        "action_detail": str(inp.get("file_path", inp.get("command", "")))[:200],
+        # url/query included so a blocked egress attempt reaches the operator
+        # with the actual destination instead of an empty string. Deliberately
+        # NOT mirrored into record_decision(): that path feeds learned_approvals,
+        # and approved research URLs must not accumulate as auto-approve rules.
+        "action_detail": str(
+            inp.get("file_path")
+            or inp.get("command")
+            or inp.get("url")
+            or inp.get("query")
+            or ""
+        )[:200],
         "decision": result["decision"],
         "reason": result.get("reason", ""),
         "risk_level": result.get("risk_level", ""),

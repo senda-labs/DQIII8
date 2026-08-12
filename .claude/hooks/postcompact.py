@@ -49,10 +49,21 @@ try:
 except Exception as e:
     _log.warning("pre-compact state unreadable: %s", e)
 
+# ── Session id (needed by project resolution below) ──────────────────
+session_id = pre_state.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))
+
 # ── Active project ───────────────────────────────────────────────────
-project = (
-    pre_state.get("project") or os.environ.get("DQIII8_PROJECT", "") or "dqiii8-core"
-)
+# Opus review P2-5: DQIII8_PROJECT env var had no writer left after Stage 7
+# cleanup — resolve via the DB-backed SSOT instead.
+try:
+    _bin_root = str(JARVIS / "bin")
+    if _bin_root not in sys.path:
+        sys.path.insert(0, _bin_root)
+    from core.action_log import resolve_project_safe
+
+    project = pre_state.get("project") or resolve_project_safe(session_id, cwd=data.get("cwd")) or "dqiii8-core"
+except Exception:
+    project = pre_state.get("project") or "dqiii8-core"
 
 # ── Active model ─────────────────────────────────────────────────────
 model = os.environ.get("DQIII8_MODEL", "claude-sonnet-4-6")
@@ -97,7 +108,6 @@ except Exception as e:
 
 # ── Session stats before compact ─────────────────────────────────────
 actions_before = pre_state.get("actions_count", "?")
-session_id = pre_state.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))
 
 # ── Compact hint heuristic ────────────────────────────────────────────
 compact_hint = ""
@@ -105,7 +115,7 @@ try:
     n = int(actions_before)
     if n > 100:
         compact_hint = (
-            f"\n⚠️  COMPACT: Sesión muy larga ({n} acciones) — /compact recomendado"
+            f"\n[COMPACT] Sesión muy larga ({n} acciones) — /compact recomendado"
         )
     elif n > 50:
         compact_hint = f"\n[COMPACT] Sesión larga ({n} acciones) — considerar /compact"

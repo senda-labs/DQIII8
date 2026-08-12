@@ -28,4 +28,4 @@ python3 bin/tools/handover.py
 ## Notes
 - If git push fails (network/auth), the .md file is saved locally — does not block
 - Never include sensitive information (API keys, passwords) in the handover
-- Variable `DQIII8_PROJECT` controls the active project (default: `dqiii8-core`)
+- The active project is resolved via `bin/core/project_context.py::resolve_project()` (DB-backed SSOT, default: `dqiii8-core`) — not an env var

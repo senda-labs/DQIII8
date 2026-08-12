@@ -20,7 +20,6 @@ import re
 import signal
 import sqlite3
 import sys
-import time
 from pathlib import Path
 
 log = logging.getLogger("dqiii8." + __name__)
@@ -283,8 +282,8 @@ def main() -> None:
 
     # ── NL project declaration (D2, two-layer) ───────────────────────────────
     # Write layer: a real match here declares the project (project_context,
-    # scope=session_id) and refreshes DQIII8_PROJECT for this process so a
-    # mid-session declaration doesn't require a DB read on every hot-path call.
+    # scope=session_id) so later resolve_project() calls for this session
+    # pick it up via the DB-backed SSOT (bin/core/project_context.py).
     try:
         nl_match = _nl_match_project(prompt)
         if nl_match:
@@ -293,8 +292,6 @@ def main() -> None:
             session_id = data.get("session_id", "")
             if session_id:
                 set_project(nl_match, scope=session_id, declared_by="prompt", validate=False)
-            os.environ["DQIII8_PROJECT"] = nl_match
-            os.environ["DQIII8_PROJECT_SET_AT"] = str(time.time())
         # Shadow layer: independent fuzzy tag matcher, log-only, never writes
         # project_context — measures recall the strict write-layer above misses.
         _projects_for_shadow = _load_all_projects()

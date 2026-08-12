@@ -20,7 +20,6 @@ from pathlib import Path
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = JARVIS / "database" / "dqiii8.db"
 STATE_FILE = JARVIS / "tasks" / "precompact_state.json"
-SESSION_ID = os.environ.get("CLAUDE_SESSION_ID", "unknown")
 
 _log = logging.getLogger("dqiii8.precompact")
 if not _log.handlers:
@@ -40,6 +39,12 @@ try:
 except Exception:
     data = {}
 
+# Opus red-team review (2026-08-13, P2): Claude Code passes session_id in the
+# hook's stdin JSON, not a CLAUDE_SESSION_ID env var — the old env-var read
+# was always "unknown", which silently broke the DB lookup below and the
+# session-scoped project resolution postcompact.py now depends on.
+SESSION_ID = data.get("session_id", "unknown")
+
 state: dict = {
     "timestamp": datetime.now().isoformat(),
     "session_id": SESSION_ID,
@@ -50,7 +55,7 @@ state: dict = {
 try:
     conn = sqlite3.connect(str(DB), timeout=3)
     row = conn.execute(
-        "SELECT project, started_at FROM sessions WHERE session_id=? LIMIT 1",
+        "SELECT project, start_time FROM sessions WHERE session_id=? LIMIT 1",
         (SESSION_ID,),
     ).fetchone()
     if row:

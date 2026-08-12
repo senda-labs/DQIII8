@@ -45,9 +45,18 @@ database/dqiii8.db.bak-*
 # references it; gitignored rather than committed blind
 .astro/
 
-# Benchmark results and incremental migrations (use schema_v2.sql for fresh installs)
+# Benchmark results (use schema_v2.sql for fresh installs)
 database/benchmarks/*.json
-database/migrations/*.sql
+
+# database/migrations/*.sql WAS gitignored here — reverted 2026-08-13 (Opus
+# red-team review P1): schema_v2.sql is the fresh-install SSOT, but a changed
+# VIEW needs a migration to actually apply to an existing DB (CREATE VIEW IF
+# NOT EXISTS no-ops otherwise, see 01_database_mutations.md P3-9) — an
+# ignored migrations/ dir made every such fix uncommittable and untracked.
+
+# Plaintext SQL dumps of the production DB (e.g. database/legacy/*.sql) can
+# contain secrets/PII from agent_actions rows — never commit them un-audited.
+database/legacy/*.sql
 
 # Config with real keys (example file IS committed, real file is NOT)
 config/.env

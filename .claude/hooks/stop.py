@@ -34,6 +34,20 @@ LESSONS = JARVIS / "tasks" / "lessons.md"
 PROJECTS = JARVIS / "projects"
 NOW = datetime.now().isoformat()
 
+
+def _resolve_project() -> str:
+    """DB-backed project resolution (Opus review P2-5 fix — replaces the
+    dead DQIII8_PROJECT env var, which no writer has set since Stage 7)."""
+    try:
+        _bin_root = str(JARVIS / "bin")
+        if _bin_root not in sys.path:
+            sys.path.insert(0, _bin_root)
+        from core.action_log import resolve_project_safe
+
+        return resolve_project_safe(session, cwd=data.get("cwd")) or "dqiii8-core"
+    except Exception:
+        return "dqiii8-core"
+
 # ── 0. Count lessons added this session ───────────────────────────
 lessons_added = 0
 result = None  # kept for instinct extraction in step 0b
@@ -234,7 +248,7 @@ try:
                         _kw,
                         _pat,
                         "lessons.md",
-                        os.environ.get("DQIII8_PROJECT", "dqiii8-core"),
+                        _resolve_project(),
                         NOW,
                         NOW,
                     ),
@@ -317,7 +331,7 @@ try:
                     _ve = _vraw.rfind("]")
                     if _vs != -1 and _ve != -1:
                         _vfacts = _vjson.loads(_vraw[_vs : _ve + 1])
-                        _vproject = os.environ.get("DQIII8_PROJECT", "dqiii8-core")
+                        _vproject = _resolve_project()
                         _vic = _vsl3.connect(str(DB), timeout=5)
                         _vcnt = 0
                         for _vf in _vfacts[:5]:
@@ -412,7 +426,7 @@ try:
                 " FROM agent_actions WHERE session_id=?",
                 (session,),
             ).fetchone()
-            _proj = os.environ.get("DQIII8_PROJECT", "dqiii8-core")
+            _proj = _resolve_project()
             _model = os.environ.get("DQIII8_MODEL", "claude-sonnet-4-6")
             _total_actions = row[0] or 0
             _start_time = row[4] or NOW  # earliest action timestamp
@@ -749,7 +763,7 @@ try:
             ]
 
             # Determine active project
-            _project = os.environ.get("DQIII8_PROJECT", "dqiii8-core")
+            _project = _resolve_project()
 
             # Next step from project file
             _next = "Ver projects/{}.md".format(_project)
@@ -806,6 +820,14 @@ duration: {_duration_str}
             _session_path.write_text(_session_md, encoding="utf-8")
 
             # Git add + commit + push (maximum 1 handover commit per day)
+            # Opus red-team review (2026-08-13, P2): `_pm` is JARVIS/"projects"/f"{project}.md",
+            # a directory that doesn't exist (Correction C — real docs are under
+            # my-projects/<slug>/PROJECT.md), so `_pm.exists()` was always False and
+            # this silently fell through to "." — staging the ENTIRE working tree
+            # (including database/legacy/*.sql and any uncommitted in-progress work)
+            # into an unreviewed auto-commit that a later `git push` could publish.
+            # sessions/ is gitignored by design (handover notes are local-only, see
+            # .claude/skills/handover/SKILL.md) — only stage that path.
             subprocess.run(
                 [
                     "git",
@@ -813,7 +835,6 @@ duration: {_duration_str}
                     str(JARVIS),
                     "add",
                     str(_sessions_dir),
-                    str(_pm) if _pm.exists() else ".",
                 ],
                 capture_output=True,
                 timeout=10,

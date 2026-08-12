@@ -166,14 +166,18 @@ try:
             # same-tool calls on different files/commands. file_path here is
             # never truncated (matches pre_tool_use.py's INSERT, also fixed to
             # stop truncating at [:120] — a truncated-vs-full mismatch would
-            # silently defeat this exact match). Oldest-open (id ASC) within the
-            # narrowed key is used as the tie-break — no per-row tool_use_id
-            # column exists yet (would require a schema migration outside this
+            # silently defeat this exact match). Most-recent-open (id DESC)
+            # within the narrowed key is the tie-break: any row left open by an
+            # interrupted/rejected/crashed prior call must not be able to
+            # silently absorb today's close-out and duration — that row stays
+            # open (and is a Stage 6 B2-style reconciliation candidate) rather
+            # than accumulating a permanent lag. No per-row tool_use_id column
+            # exists yet (would require a schema migration outside this
             # stage's scope); this is a documented residual gap, not a full fix.
             _action_row = conn.execute(
                 "SELECT id FROM agent_actions "
                 "WHERE session_id=? AND tool_used=? AND file_path=? AND end_time_ms IS NULL "
-                "ORDER BY id ASC LIMIT 1",
+                "ORDER BY id DESC LIMIT 1",
                 (session, tool, _fp_match),
             ).fetchone()
             _action_id = _action_row[0] if _action_row else None
@@ -278,7 +282,15 @@ try:
             )
             if os.path.exists(_db_path):
                 _vc = _ics.connect(_db_path, timeout=10)
-                _proj = os.environ.get("DQIII8_PROJECT", "dqiii8-core")
+                try:
+                    _bin_root = str(_dqiii8_root_path / "bin")
+                    if _bin_root not in sys.path:
+                        sys.path.insert(0, _bin_root)
+                    from core.action_log import resolve_project_safe as _rps
+
+                    _proj = _rps(session, cwd=data.get("cwd")) or "dqiii8-core"
+                except Exception:
+                    _proj = "dqiii8-core"
                 _vc.execute(
                     "INSERT INTO vault_memory"
                     " (subject,predicate,object,project,confidence,entry_type,source,created_at,last_seen)"

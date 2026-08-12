@@ -9,7 +9,6 @@ import logging
 import logging.handlers
 import os
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -49,12 +48,6 @@ except Exception as e:
     _log.warning("resolve_project failed, defaulting to dqiii8-core: %s", e, exc_info=True)
     project = "dqiii8-core"
 
-# Export a process-local cache for this session's hooks (pre_tool_use.py etc.)
-# to consume without a DB round-trip on every tool call — Correction I.1: this
-# is a same-process CACHE with a TTL, not a durable precedence step, so a
-# cross-process /proyecto declaration still takes effect once it goes stale.
-os.environ["DQIII8_PROJECT"] = project
-os.environ["DQIII8_PROJECT_SET_AT"] = str(time.time())
 
 # Seed project_context(scope=session_id) when cwd is under my-projects/, so
 # later resolve_project() calls with only a session_id (no cwd) still resolve.

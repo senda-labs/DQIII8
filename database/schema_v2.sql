@@ -972,6 +972,27 @@ SELECT
     END AS intent
 FROM agent_actions a
 /* v_action_category(id,timestamp,session_id,agent_name,tool_used,action_type,work_kind,intent) */;
+-- Fixed post-Stage-7 (Opus adversarial review P1-1/P1-2, see
+-- database/migrations/2026-08-13_fix_project_cost_weekly.up.sql): added
+-- cost_usd_listprice_equivalent from Stage 5's token_usage transcript rows
+-- (previously disconnected — cost_usd alone is real spend, ~$0 lifetime on
+-- free NIM tiers, and never included the flat-rate Claude Code proxy).
+-- iso_week is deliberately still strftime('%Y-%W'), not true ISO (%G-%V):
+-- this VPS's SQLite 3.45.1 predates %G/%V (added 3.46.0) and returns '' for
+-- them (confirmed live) — worse than the mis-bucketing (Opus P3-8).
+-- human_agg joins on human_hours.project = agent_agg.project as free text
+-- (no FK/validation on that column) — a typo'd human-hours entry silently
+-- fails to join rather than erroring (Opus P3-12). Not fixed here: would
+-- need normalizing human_hours.project at insert time, out of scope for a
+-- view-only fix.
+-- transcript_agg's project namespace fixed (Opus P3 minor, addressed
+-- 2026-08-13, see database/migrations/2026-08-13_fix_project_cost_weekly_namespace.up.sql):
+-- previously kept raw sessions.project only, while agent_agg's project came
+-- from v_action_project's 4-step fallback chain — a session with
+-- sessions.project IS NULL but attributable via the open project_context
+-- global row resolved to different literal strings on each side of the
+-- LEFT JOIN, silently dropping real transcript cost to 0. transcript_agg
+-- now applies the same project_context global-row fallback.
 CREATE VIEW IF NOT EXISTS v_project_cost_weekly AS
 WITH agent_agg AS (
     SELECT
@@ -986,6 +1007,24 @@ WITH agent_agg AS (
     JOIN v_action_project vap ON vap.id = a.id
     WHERE (a.error_message IS NULL OR a.error_message NOT LIKE 'reconciled:%')
     GROUP BY vap.resolved_project, iso_week
+),
+transcript_agg AS (
+    SELECT
+        COALESCE(
+            s.project,
+            (SELECT pc.project FROM project_context pc
+             WHERE pc.scope = 'global'
+               AND pc.declared_at <= tu.timestamp
+               AND (pc.ended_at IS NULL OR pc.ended_at > tu.timestamp)
+             ORDER BY pc.declared_at DESC LIMIT 1),
+            'unattributed'
+        ) AS project,
+        strftime('%Y-%W', tu.timestamp) AS iso_week,
+        ROUND(SUM(tu.cost_estimate), 4) AS cost_usd_listprice_equivalent
+    FROM token_usage tu
+    JOIN sessions s ON s.session_id = tu.session_id
+    WHERE tu.source = 'claude_code_transcript'
+    GROUP BY project, iso_week
 ),
 human_agg AS (
     SELECT
@@ -1003,15 +1042,18 @@ SELECT
     agent_agg.distinct_sessions,
     agent_agg.agent_hours,
     agent_agg.cost_usd,
+    COALESCE(transcript_agg.cost_usd_listprice_equivalent, 0) AS cost_usd_listprice_equivalent,
     COALESCE(human_agg.human_hours, 0) AS human_hours,
     CASE WHEN COALESCE(human_agg.human_hours, 0) > 0
          THEN ROUND(agent_agg.cost_usd / human_agg.human_hours, 4)
          ELSE NULL END AS usd_per_human_hour
 FROM agent_agg
+LEFT JOIN transcript_agg
+  ON transcript_agg.project = agent_agg.project AND transcript_agg.iso_week = agent_agg.iso_week
 LEFT JOIN human_agg
   ON human_agg.project = agent_agg.project AND human_agg.iso_week = agent_agg.iso_week
 ORDER BY agent_agg.iso_week DESC, agent_agg.cost_usd DESC
-/* v_project_cost_weekly(project,iso_week,actions,distinct_agents,distinct_sessions,agent_hours,cost_usd,human_hours,usd_per_human_hour) */;
+/* v_project_cost_weekly(project,iso_week,actions,distinct_agents,distinct_sessions,agent_hours,cost_usd,cost_usd_listprice_equivalent,human_hours,usd_per_human_hour) */;
 CREATE VIEW IF NOT EXISTS v_agent_efficiency AS
 WITH per_request AS (
     SELECT

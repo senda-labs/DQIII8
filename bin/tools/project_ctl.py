@@ -8,7 +8,6 @@ Usage:
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -41,8 +40,6 @@ def main() -> int:
             print(f"known projects: {', '.join(sorted(known_projects()))}", file=sys.stderr)
             return 1
         print(f"project set to '{args.project}' for scope '{args.scope}'.")
-        if args.scope == "global":
-            os.environ["DQIII8_PROJECT"] = args.project
         return 0
 
     if args.action == "get":

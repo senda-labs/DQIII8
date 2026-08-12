@@ -6,33 +6,34 @@ user_prompt_submit.py (both targeted /root/dqiii8/projects/, which does not
 exist — Correction C) and the ad-hoc cwd-sniffing duplicated across
 pre_tool_use.py, openrouter_wrapper.py and pal/engine.py.
 
-Precedence (Correction I.1 — DQIII8_PROJECT is a process-local CACHE, not a
-durable precedence step; a stale/foreign env var must not shadow a real DB
-declaration made from a different process, e.g. a Telegram /proyecto sent
-while a long-running CC session is open):
+Precedence:
   1. explicit `project=` arg from the caller
-  2. DQIII8_PROJECT env var, but ONLY if set less than ENV_CACHE_TTL_S ago
-     (stamped alongside it as DQIII8_PROJECT_SET_AT) — otherwise re-checked
-     against the DB below
-  3. open project_context row for this session_id
-  4. open project_context row for scope='global' (the user's declaration)
-  5. cwd match on /my-projects/<x>/ (preserves pre_tool_use.py's prior behavior)
-  6. literal 'dqiii8-core' (matches session_start.py/post_tool_use.py's
+  2. open project_context row for this session_id
+  3. open project_context row for scope='global' (the user's declaration)
+  4. cwd match on /my-projects/<x>/ (preserves pre_tool_use.py's prior behavior)
+  5. literal 'dqiii8-core' (matches session_start.py/post_tool_use.py's
      existing hardcoded fallback — project can never be NULL on a new row)
+
+A DQIII8_PROJECT env var was tried as a process-local cache to skip the DB
+round-trip on the hot pre_tool_use.py path (Correction I.1), then removed
+post-Stage-7 (Opus adversarial review P2-5): each Claude Code hook fires as
+its own fresh subprocess, not a parent of the next hook's process, so nothing
+one hook writes to os.environ is ever visible to another — the env var was
+silently dead code, never actually read back. A real fix would need a
+cross-process cache (e.g. a file keyed by session_id), which is deferred as
+a separate, deliberately-scoped change rather than added under this review.
 """
 
 from __future__ import annotations
 
 import os
 import sqlite3
-import time
 from pathlib import Path
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
 MY_PROJECTS_DIR = DQIII8_ROOT / "my-projects"
 CORE_PROJECT = "dqiii8-core"
-ENV_CACHE_TTL_S = 300  # env var trusted for 5 minutes without a DB re-check
 
 _VALID_DECLARED_BY = {"telegram", "cli", "session_start", "prompt", "api"}
 
@@ -67,22 +68,12 @@ def resolve_project(
 ) -> str:
     """Resolve the project a caller's action should attribute to.
 
-    Fails open on any DB error (steps 3/4): log at DEBUG, skip DB resolution,
+    Fails open on any DB error (steps 2/3): log at DEBUG, skip DB resolution,
     fall through to the cwd/default steps rather than blocking the hot INSERT
     path a caller is usually on (Stage 2 panel-pass-2 concern re: SQLITE_BUSY).
     """
     if project:
         return project
-
-    env_project = os.environ.get("DQIII8_PROJECT", "")
-    if env_project:
-        set_at = os.environ.get("DQIII8_PROJECT_SET_AT", "")
-        try:
-            fresh = set_at and (time.time() - float(set_at)) < ENV_CACHE_TTL_S
-        except ValueError:
-            fresh = False
-        if fresh:
-            return env_project
 
     if session_id:
         try:
@@ -104,7 +95,11 @@ def resolve_project(
     if marker in _cwd:
         rest = _cwd.split(marker, 1)[1]
         slug = rest.split("/", 1)[0]
-        if slug:
+        # Opus review P3-13: an unvalidated cwd slug (typo, stray dir under
+        # my-projects/ with no PROJECT.md) would otherwise get written straight
+        # to agent_actions.project, bypassing the validation set_project()
+        # enforces. known_projects() already fails open to {CORE_PROJECT}.
+        if slug and slug in known_projects():
             return slug
 
     return CORE_PROJECT
@@ -128,7 +123,14 @@ def set_project(
 
     import datetime as _dt
 
-    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    # Stored in the same 'YYYY-MM-DD HH:MM:SS' shape as SQLite's own
+    # datetime('now') (agent_actions.timestamp's default) — not
+    # .isoformat()'s 'T'-separated/offset-suffixed form. schema_v2.sql's
+    # v_action_project compares declared_at/ended_at against
+    # agent_actions.timestamp as plain strings; at the 'T' vs ' ' byte the
+    # ISO form always sorts after, so every same-day action was silently
+    # falling through to 'unattributed' before this fix.
+    now = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn = sqlite3.connect(str(DB_PATH), timeout=10)
     try:
         conn.execute(
@@ -149,7 +151,7 @@ def end_project(scope: str) -> bool:
     """Close the open project_context row for `scope`. Returns True if a row was closed."""
     import datetime as _dt
 
-    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    now = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     conn = sqlite3.connect(str(DB_PATH), timeout=10)
     try:
         cur = conn.execute(
@@ -164,4 +166,4 @@ def end_project(scope: str) -> bool:
 
 def get_project(scope: str) -> str | None:
     """Return the currently open project for `scope`, or None if none is open."""
-    return _open_context_row(scope, db_timeout=10)
+    return _open_context_row(scope, timeout=10)

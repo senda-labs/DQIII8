@@ -7,9 +7,9 @@ allowed_tools: ["Bash"]
 # /proyecto — Declarar Proyecto Activo
 
 Escribe una fila abierta en `project_context` (scope `global`), fuente de verdad
-que `resolve_project()` consulta desde los 3 puntos de escritura de
+que `resolve_project()` consulta desde los puntos de escritura de
 `agent_actions` (`pre_tool_use.py`, `openrouter_wrapper.log_to_db()`,
-`pal/engine.py`) cuando no hay `project=` explicito ni cache de entorno vigente.
+`pal/engine.py`, y los hooks de sesion) cuando no hay `project=` explicito.
 
 ## Uso
 
@@ -42,5 +42,8 @@ esac
 
 - Version Telegram equivalente: `/proyecto` en `dqiii8_bot.py` (mismo `project_context`, `declared_by='telegram'`).
 - Declarar via CLI en una sesion Claude Code no persiste automaticamente para
-  otras sesiones/procesos hasta que estos re-consulten la DB (el cache de
-  entorno `DQIII8_PROJECT` es solo del proceso que lo exporto — ver Correction I.1).
+  otras sesiones/procesos hasta que estos re-consulten la DB via
+  `resolve_project()` (`bin/core/project_context.py`) — no existe cache de
+  entorno entre hooks: cada hook corre en su propio subproceso, asi que un
+  `os.environ` escrito por uno nunca es visible para otro (Opus review
+  P2-5, 2026-08-13, elimino el intento previo de cache via `DQIII8_PROJECT`).

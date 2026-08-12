@@ -91,4 +91,4 @@ Next steps: [N items]
 - NEVER invent next steps that weren't verified in system state or confirmed by user
 - `sessions/` is gitignored and the handover note is NEVER committed or pushed — it is a local-only artifact
 - Never include sensitive information (API keys, passwords) in the handover
-- Variable `DQIII8_PROJECT` controls the active project (default: `dqiii8-core`)
+- The active project is resolved via `bin/core/project_context.py::resolve_project()` (DB-backed SSOT, default: `dqiii8-core`) — not an env var

@@ -1940,31 +1940,51 @@ async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     """/tokens — Show today's token usage summary from token_usage_daily view."""
     if not authorized(update):
         return
+    # Real spend and Stage-5 transcript-derived list-price-equivalent (flat-rate
+    # OAuth, not billed) are kept separate here, not blended into one $ figure —
+    # see docs/audits/2026-08-13-db-attribution-rebuild.md and Opus P1-1. The
+    # per-model breakdown used to read from token_usage_daily, whose total_cost
+    # sums cost_estimate across both sources — same conflation as the totals had
+    # (Opus red-team review, 2026-08-13, P3) — so it now queries token_usage
+    # directly with the same source-aware split as the totals below.
     rows = db_query(
-        "SELECT model, tier, calls, total_input, total_output, total_tokens, "
-        "total_cost FROM token_usage_daily WHERE day = date('now') "
-        "ORDER BY total_tokens DESC"
+        "SELECT model, tier, COUNT(*) as calls, SUM(total_tokens) as total, "
+        "  SUM(CASE WHEN source = 'claude_code_transcript' THEN 0 ELSE cost_estimate END) as real_cost, "
+        "  SUM(CASE WHEN source = 'claude_code_transcript' THEN cost_estimate ELSE 0 END) as listprice_cost "
+        "FROM token_usage WHERE date(timestamp) = date('now') "
+        "GROUP BY model, tier ORDER BY total DESC"
     )
     if not rows:
         await update.message.reply_text("No token usage recorded today.")
         return
     totals = db_query(
-        "SELECT SUM(calls), SUM(total_input), SUM(total_output), "
-        "SUM(total_tokens), SUM(total_cost) FROM token_usage_daily "
-        "WHERE day = date('now')"
+        "SELECT SUM(calls), SUM(total_input), SUM(total_output), SUM(total_tokens) "
+        "FROM token_usage_daily WHERE day = date('now')"
+    )
+    cost_split = db_query(
+        "SELECT "
+        "  SUM(CASE WHEN source = 'claude_code_transcript' THEN 0 ELSE cost_estimate END), "
+        "  SUM(CASE WHEN source = 'claude_code_transcript' THEN cost_estimate ELSE 0 END) "
+        "FROM token_usage WHERE date(timestamp) = date('now')"
     )
     lines = ["**Token Usage — Today**", ""]
-    for model, tier, calls, inp, out, total, cost in rows:
+    for model, tier, calls, total, real_cost, listprice_cost in rows:
         short_model = model.split("/")[-1] if "/" in model else model
+        cost_str = f"${real_cost:.4f}" + (
+            f" (+${listprice_cost:.4f} list-price)" if listprice_cost else ""
+        )
         lines.append(
-            f"`[{tier}] {short_model}` — {total:,} tok ({calls} calls) ${cost:.4f}"
+            f"`[{tier}] {short_model}` — {total:,} tok ({calls} calls) {cost_str}"
         )
     if totals and totals[0][0]:
         t = totals[0]
+        real_cost = (cost_split[0][0] or 0.0) if cost_split else 0.0
+        listprice_cost = (cost_split[0][1] or 0.0) if cost_split else 0.0
         lines += [
             "",
             f"**Total:** {t[3]:,} tokens ({t[1]:,} in / {t[2]:,} out)",
-            f"**Cost:** ${t[4]:.4f} USD",
+            f"**Real spend:** ${real_cost:.4f} USD",
+            f"**Claude Code list-price equivalent:** ${listprice_cost:.4f} USD (flat-rate OAuth — not billed)",
         ]
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 

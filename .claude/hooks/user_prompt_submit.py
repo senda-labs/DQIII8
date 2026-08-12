@@ -20,14 +20,27 @@ import re
 import signal
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 log = logging.getLogger("dqiii8." + __name__)
 
 DQIII8 = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-PROJECTS_DIR = DQIII8 / "projects"
+sys.path.insert(0, str(DQIII8 / "bin"))
+# Correction C fix: the old projects/ dir doesn't exist — real project docs
+# live at my-projects/<slug>/PROJECT.md, one level deeper.
+PROJECTS_DIR = DQIII8 / "my-projects"
 LESSONS_FILE = DQIII8 / "tasks" / "lessons.md"
 DB = DQIII8 / "database" / "dqiii8.db"
+
+# ── NL project-declaration matcher (D2, two-layer design) ────────────────────
+# Write layer: narrow, high-precision. An explicit verb immediately followed
+# by a token that exactly matches a known project name. No match -> no write.
+_NL_VERB_RE = re.compile(
+    r"\b(?:trabaj\w+\s+(?:sobre|en|con)|estamos\s+con|cambio\s+a|switch(?:ing)?\s+to|working\s+on)\s+"
+    r"([a-zA-Z0-9_-]+)",
+    re.IGNORECASE,
+)
 
 # ── Timeout guard ─────────────────────────────────────────────────────────────
 
@@ -44,57 +57,76 @@ signal.alarm(1)  # hard 1-second limit
 
 
 def _parse_project_file(md_path) -> dict | None:
-    """Parse a project .md file and return its metadata dict, or None if not active."""
+    """Parse a my-projects/<slug>/PROJECT.md file into a metadata dict.
+
+    These files have no status:/tags: frontmatter (that format belonged to
+    the old, nonexistent projects/*.md layout — Correction C); every dir
+    under my-projects/ with a PROJECT.md is a real, known project.
+    """
     try:
         text = md_path.read_text(encoding="utf-8")
     except Exception:
         return None
-    if not re.search(r"^status:\s*active", text, re.MULTILINE):
-        return None
-    m = re.search(r"^last_updated:\s*(.+)$", text, re.MULTILINE)
-    last_updated = m.group(1).strip() if m else "0000-00-00"
-    m_model = re.search(r"^model:\s*(.+)$", text, re.MULTILINE)
-    model = m_model.group(1).strip() if m_model else "unknown"
     m_next = re.search(r"##\s*(?:[Nn]ext step|[Pp]r[oó]ximo paso)[^\n]*\n\s*\n*\**(.+)", text, re.IGNORECASE)
-    next_step = m_next.group(1).strip().strip("*").strip() if m_next else ""
+    next_step = m_next.group(1).strip().strip("*").strip("|").strip() if m_next else ""
     if len(next_step) > 120:
         next_step = next_step[:117] + "..."
-    # Extract tags for keyword detection: tags: [a, b, c] or tags:\n  - a
-    tags = set()
-    tags.add(md_path.stem)
-    m_tags = re.search(r"^tags:\s*\[([^\]]+)\]", text, re.MULTILINE)
-    if m_tags:
-        for t in re.split(r"[,\s]+", m_tags.group(1)):
-            t = t.strip().strip('"').strip("'")
-            if t:
-                tags.add(t)
-    else:
-        for t in re.findall(r"^\s*-\s+(.+)", text[text.find("tags:"):text.find("tags:")+200] if "tags:" in text else "", re.MULTILINE):
-            tags.add(t.strip())
-    # cwd_match alias
-    m_cwd = re.search(r"^cwd_match:\s*(.+)$", text, re.MULTILINE)
-    if m_cwd:
-        tags.add(m_cwd.group(1).strip())
     return {
-        "name": md_path.stem,
-        "model": model,
+        "name": md_path.parent.name,
+        "model": "unknown",
         "next_step": next_step,
-        "last_updated": last_updated,
-        "tags": tags,
+        "last_updated": md_path.stat().st_mtime,
+        "tags": {md_path.parent.name},
     }
 
 
 def _load_all_projects() -> list[dict]:
-    """Return all active projects from projects/ dir, sorted by last_updated desc."""
+    """Return all known projects from my-projects/<slug>/PROJECT.md, newest mtime first."""
     if not PROJECTS_DIR.exists():
         return []
     projects = []
-    for md in PROJECTS_DIR.glob("*.md"):
+    for md in PROJECTS_DIR.glob("*/PROJECT.md"):
         p = _parse_project_file(md)
         if p:
             projects.append(p)
     projects.sort(key=lambda x: x["last_updated"], reverse=True)
     return projects
+
+
+def _nl_match_project(prompt: str) -> str | None:
+    """Write-layer NL matcher: explicit verb + exact known-project token. No match -> None."""
+    m = _NL_VERB_RE.search(prompt)
+    if not m:
+        return None
+    candidate = m.group(1).lower()
+    for name in _known_project_names():
+        if name.lower() == candidate:
+            return name
+    return None
+
+
+def _known_project_names() -> set[str]:
+    if not PROJECTS_DIR.exists():
+        return {"dqiii8-core"}
+    return {p.name for p in PROJECTS_DIR.iterdir() if p.is_dir()} | {"dqiii8-core"}
+
+
+def _log_nl_shadow_candidate(prompt: str, matched_project: str, confidence: float, agreed: bool) -> None:
+    """Shadow layer: log fuzzy-match candidates for recall measurement, never used for attribution."""
+    if not DB.exists():
+        return
+    try:
+        conn = sqlite3.connect(str(DB), timeout=0.5)
+        conn.execute(
+            "INSERT INTO nl_match_candidates "
+            "(prompt_excerpt, matched_project, confidence, matched_at, precision_matcher_agreed) "
+            "VALUES (?, ?, ?, datetime('now'), ?)",
+            (prompt[:200], matched_project, confidence, 1 if agreed else 0),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log.debug("nl_match_candidates shadow write skipped: %s", e)
 
 
 def _detect_project_from_prompt(prompt: str, projects: list[dict]) -> dict | None:
@@ -248,6 +280,32 @@ def main() -> None:
     skill_m = re.match(r"^/([a-zA-Z0-9_:/-]+)", prompt.strip())
     if skill_m:
         _log_skill_invocation(skill_m.group(1).lower())
+
+    # ── NL project declaration (D2, two-layer) ───────────────────────────────
+    # Write layer: a real match here declares the project (project_context,
+    # scope=session_id) and refreshes DQIII8_PROJECT for this process so a
+    # mid-session declaration doesn't require a DB read on every hot-path call.
+    try:
+        nl_match = _nl_match_project(prompt)
+        if nl_match:
+            from core.project_context import set_project
+
+            session_id = data.get("session_id", "")
+            if session_id:
+                set_project(nl_match, scope=session_id, declared_by="prompt", validate=False)
+            os.environ["DQIII8_PROJECT"] = nl_match
+            os.environ["DQIII8_PROJECT_SET_AT"] = str(time.time())
+        # Shadow layer: independent fuzzy tag matcher, log-only, never writes
+        # project_context — measures recall the strict write-layer above misses.
+        _projects_for_shadow = _load_all_projects()
+        shadow_match = _detect_project_from_prompt(prompt, _projects_for_shadow)
+        if shadow_match:
+            _log_nl_shadow_candidate(
+                prompt, shadow_match["name"], confidence=0.5,
+                agreed=(nl_match == shadow_match["name"]),
+            )
+    except Exception as e:
+        log.debug("NL project matcher skipped: %s", e)
 
     # ── Find active project (keyword match first, then most-recent fallback) ──
     project = _read_active_project(prompt=prompt)

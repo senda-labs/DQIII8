@@ -135,14 +135,15 @@ try:
     _DB = os.path.join(DQIII8_ROOT, "database", "dqiii8.db")
     _model = os.environ.get("DQIII8_MODEL", agent)
     _tier = _model_tier(_model)
-    # Project resolution: NULL in the common case (CWD is usually the
-    # dqiii8 root, not a project subdir) — this is expected, not a bug.
     _cwd = str(data.get("cwd", "") or "")
-    _project = None
-    _marker = "/my-projects/"
-    if _marker in _cwd:
-        _rest = _cwd.split(_marker, 1)[1]
-        _project = _rest.split("/", 1)[0] or None
+    try:
+        sys.path.insert(0, os.path.join(DQIII8_ROOT, "bin"))
+        from core.project_context import resolve_project as _resolve_project
+
+        _project = _resolve_project(session_id=session, cwd=_cwd)
+    except Exception as e:
+        log.debug("pre_tool_use: resolve_project failed (best-effort): %s", e)
+        _project = None
     if os.path.exists(_DB):
         _conn = sqlite3.connect(_DB, timeout=10)
         _conn.execute(

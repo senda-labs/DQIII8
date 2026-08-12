@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
 from bin.core import human_pending
 from bin.core.human_pending import events
+from bin.core.project_context import end_project, get_project, known_projects, set_project
 from voice_handler import transcribe_audio, synthesize_speech
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -1866,7 +1867,8 @@ def _hora_fin(project: str) -> str:
 
 
 async def cmd_hora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/hora inicio <proyecto> | /hora fin <proyecto> — human work-session tracking."""
+    """/hora inicio [proyecto] | /hora fin <proyecto> — human work-session tracking.
+    inicio with no argument defaults to the resolved project_context (/proyecto)."""
     if not authorized(update):
         return
     if update.message is None:
@@ -1878,17 +1880,60 @@ async def cmd_hora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # exact command text is matched more literally below.
     text = re.sub(r"^/hora(@\S+)?", "/hora", text, count=1)
     args = text[len("/hora"):].strip().split(maxsplit=1)
-    if len(args) < 2 or args[0] not in ("inicio", "fin"):
+    if not args or args[0] not in ("inicio", "fin"):
         await update.message.reply_text(
-            "Usage: /hora inicio <proyecto>\n/hora fin <proyecto>"
+            "Usage: /hora inicio [proyecto]\n/hora fin <proyecto>"
         )
         return
-    action, project = args[0], args[1].strip()
+    action = args[0]
+    project = args[1].strip() if len(args) > 1 else ""
+    if not project:
+        if action == "fin":
+            await update.message.reply_text("Usage: /hora fin <proyecto>")
+            return
+        project = get_project("global") or ""
+        if not project:
+            await update.message.reply_text(
+                "No hay proyecto activo. Usa /proyecto <nombre> o /hora inicio <proyecto>."
+            )
+            return
     if action == "inicio":
         msg = _hora_inicio(project, source="telegram")
     else:
         msg = _hora_fin(project)
     await update.message.reply_text(msg)
+
+
+async def cmd_proyecto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/proyecto [nombre|fin] — declare/show/close the active project (scope global)."""
+    if not authorized(update):
+        return
+    if update.message is None:
+        return
+    text = (update.message.text or "").strip()
+    text = re.sub(r"^/proyecto(@\S+)?", "/proyecto", text, count=1)
+    arg = text[len("/proyecto"):].strip()
+
+    if not arg:
+        current = get_project("global")
+        msg = f"Proyecto activo: {current}" if current else "No hay proyecto activo."
+        await update.message.reply_text(msg)
+        return
+
+    if arg == "fin":
+        closed = end_project("global")
+        msg = "Proyecto cerrado." if closed else "No habia proyecto activo."
+        await update.message.reply_text(msg)
+        return
+
+    try:
+        set_project(arg, scope="global", declared_by="telegram")
+    except ValueError:
+        await update.message.reply_text(
+            f"Proyecto invalido: {arg!r}\nProyectos conocidos: {', '.join(sorted(known_projects()))}"
+        )
+        return
+    await update.message.reply_text(f"Proyecto activo: {arg}")
 
 
 async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2077,6 +2122,7 @@ def main() -> None:
     APP.add_handler(CommandHandler("cc", cmd_cc))
     APP.add_handler(CommandHandler("auto", cmd_auto))
     APP.add_handler(CommandHandler("hora", cmd_hora))
+    APP.add_handler(CommandHandler("proyecto", cmd_proyecto))
     APP.add_handler(CommandHandler("cc_status", cmd_cc_status))
     APP.add_handler(CommandHandler("auth_status", cmd_auth_status))
     APP.add_handler(CommandHandler("auth_test", cmd_auth_test))

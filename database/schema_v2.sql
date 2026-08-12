@@ -1208,6 +1208,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_human_hours_open
 CREATE INDEX IF NOT EXISTS idx_human_hours_project_started
   ON human_hours(project, started_at);
 
+-- project_context: single source of truth for "current project" (Stage 2,
+-- DB attribution rebuild). Mirrors human_hours' shape. SSOT copy for fresh
+-- installs — must match database/migrations/2026-08-13_project_context.up.sql.
+CREATE TABLE IF NOT EXISTS project_context (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope       TEXT NOT NULL,
+  project     TEXT NOT NULL,
+  declared_at TEXT NOT NULL,
+  declared_by TEXT NOT NULL CHECK(declared_by IN ('telegram','cli','session_start','prompt','api')),
+  source_detail TEXT,
+  ended_at    TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_project_context_open
+  ON project_context(scope) WHERE ended_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_project_context_project
+  ON project_context(project, declared_at);
+
+-- nl_match_candidates: shadow-layer observability for the NL project matcher
+-- (D2). Never read by resolve_project() or attribution.
+CREATE TABLE IF NOT EXISTS nl_match_candidates (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  prompt_excerpt           TEXT NOT NULL,
+  matched_project           TEXT NOT NULL,
+  confidence                REAL NOT NULL,
+  matched_at                TEXT NOT NULL,
+  precision_matcher_agreed  INTEGER NOT NULL DEFAULT 0
+);
+
 -- human_pending_events: append-only ledger (jarvis-control3 v2).
 -- SSOT copy for fresh installs. Must match database/migrations/2026-07-02_human_pending_events.up.sql
 -- (design: my-projects/jarvis-control3/architecture/07-durable-worker.md).

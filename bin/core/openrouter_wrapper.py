@@ -458,6 +458,19 @@ TIMEOUT = 180
 DB_PATH = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "database" / "dqiii8.db"
 
 
+def _resolve_project_for_log(project: str | None, session_id: str) -> str | None:
+    """Stage 2: prefer an explicit project= arg, else consult the project_context
+    SSOT via resolve_project(); fail open to None if the module can't be loaded."""
+    if project:
+        return project
+    try:
+        from core.project_context import resolve_project
+
+        return resolve_project(session_id=session_id)
+    except Exception:
+        return None
+
+
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 
@@ -869,7 +882,7 @@ def log_to_db(
                 error_message[:500] if error_message else None,
                 _start_time_ms,
                 _end_time_ms,
-                project or None,
+                _resolve_project_for_log(project, session_id),
                 domain or None,
             ),
         )

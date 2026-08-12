@@ -9,10 +9,12 @@ import logging
 import logging.handlers
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+sys.path.insert(0, str(JARVIS / "bin"))
 
 _log = logging.getLogger("dqiii8.session_start")
 if not _log.handlers:
@@ -35,19 +37,35 @@ DB = JARVIS / "database" / "dqiii8.db"
 LESSONS = JARVIS / "tasks" / "lessons.md"
 FLAG = JARVIS / "tasks" / "audit_pending.flag"
 
-# ── Active project ─────────────────────────────────────────────────
-project = os.environ.get("DQIII8_PROJECT", "")
-if not project:
-    cwd = Path(data.get("cwd", "."))
-    # Detect project from CWD path parts — check known projects dir
-    _projects_dir = JARVIS / "projects"
-    _known = {p.stem for p in _projects_dir.glob("*.md")} if _projects_dir.exists() else set()
-    for part in cwd.parts:
-        if part in _known or part in ("content",):
-            project = part
-            break
-    if not project:
-        project = "dqiii8-core"
+# ── Active project (Correction C fix: the old resolver globbed the
+# nonexistent JARVIS/projects/ dir and always fell through to dqiii8-core) ──
+_cwd_str = str(Path(data.get("cwd", ".")))
+try:
+    from core.project_context import resolve_project
+
+    _session_id = data.get("session_id", "")
+    project = resolve_project(session_id=_session_id, cwd=_cwd_str)
+except Exception as e:
+    _log.warning("resolve_project failed, defaulting to dqiii8-core: %s", e, exc_info=True)
+    project = "dqiii8-core"
+
+# Export a process-local cache for this session's hooks (pre_tool_use.py etc.)
+# to consume without a DB round-trip on every tool call — Correction I.1: this
+# is a same-process CACHE with a TTL, not a durable precedence step, so a
+# cross-process /proyecto declaration still takes effect once it goes stale.
+os.environ["DQIII8_PROJECT"] = project
+os.environ["DQIII8_PROJECT_SET_AT"] = str(time.time())
+
+# Seed project_context(scope=session_id) when cwd is under my-projects/, so
+# later resolve_project() calls with only a session_id (no cwd) still resolve.
+_session_id_for_seed = data.get("session_id", "")
+if _session_id_for_seed and "/my-projects/" in _cwd_str:
+    try:
+        from core.project_context import set_project
+
+        set_project(project, scope=_session_id_for_seed, declared_by="session_start", validate=False)
+    except Exception as e:
+        _log.debug("project_context session seed skipped: %s", e)
 
 # Save session start time so stop.py Fallback 2 can scope to this session
 try:
@@ -94,7 +112,7 @@ except Exception as e:
 # ── Pending audit alert ────────────────────────────────────────────
 audit_alert = ""
 if FLAG.exists():
-    audit_alert = "\n⚠️  AUDIT PENDING — run /audit now."
+    audit_alert = "\n⚠  AUDIT PENDING — run /audit now."
     try:
         FLAG.unlink()
     except Exception as e:

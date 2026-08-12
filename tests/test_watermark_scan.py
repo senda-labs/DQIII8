@@ -93,7 +93,7 @@ def test_scan_file_skips_utf16_bom(tmp_path):
 def test_regression_emoji_zwj_sequence_not_fixed(tmp_path):
     """Family emoji ZWJ sequence — legitimate, must survive --fix untouched."""
     p = tmp_path / "bot_message.py"
-    family = f"\U0001F468{ZWJ}\U0001F469{ZWJ}\U0001F467"
+    family = f"\U0001f468{ZWJ}\U0001f469{ZWJ}\U0001f467"
     original = f'msg = "{family}"\n'
     p.write_text(original, encoding="utf-8")
     findings = ws.scan_file(p)

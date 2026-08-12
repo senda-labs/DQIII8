@@ -119,8 +119,14 @@ def _run_seat(agent: str, prompt: str, timeout: int) -> dict:
         return dispatch(agent=agent, prompt=prompt, timeout=timeout)
     except Exception as exc:
         return {
-            "task_id": None, "agent": agent, "provider": "unknown", "model": "unknown",
-            "status": "error", "response": "", "error": str(exc), "latency_ms": None,
+            "task_id": None,
+            "agent": agent,
+            "provider": "unknown",
+            "model": "unknown",
+            "status": "error",
+            "response": "",
+            "error": str(exc),
+            "latency_ms": None,
         }
 
 
@@ -151,11 +157,14 @@ def _parse_findings(response_text: str) -> tuple[list[dict], list[dict]]:
         real = [m for m in matches if _citation_exists(m)]
 
         if real:
-            verified.append({
-                "text": block, "citation": real[0],
-                "category": cat_m.group(1) if cat_m else None,
-                "severity": sev_m.group(1).upper() if sev_m else None,
-            })
+            verified.append(
+                {
+                    "text": block,
+                    "citation": real[0],
+                    "category": cat_m.group(1) if cat_m else None,
+                    "severity": sev_m.group(1).upper() if sev_m else None,
+                }
+            )
         elif matches:
             dropped.append({"text": block, "reason": "fake_path"})
         elif looks_like_finding:
@@ -245,16 +254,22 @@ def render_report(result: dict) -> str:
         else:
             lines.append("")
             for f in verified:
-                tag = " ".join(t for t in (
-                    f"[{f['category']}]" if f["category"] else None,
-                    f"[{f['severity']}]" if f["severity"] else None,
-                ) if t)
+                tag = " ".join(
+                    t
+                    for t in (
+                        f"[{f['category']}]" if f["category"] else None,
+                        f"[{f['severity']}]" if f["severity"] else None,
+                    )
+                    if t
+                )
                 prefix = f"{tag} " if tag else ""
                 lines.append(f"- {prefix}{f['text']}")
         dropped = seat.get("dropped_findings", [])
         if dropped:
-            lines.append(f"\n<details><summary>{len(dropped)} dropped finding(s) "
-                          "(unverifiable citation — shown, not deleted)</summary>\n")
+            lines.append(
+                f"\n<details><summary>{len(dropped)} dropped finding(s) "
+                "(unverifiable citation — shown, not deleted)</summary>\n"
+            )
             for d in dropped:
                 lines.append(f"- [{d['reason']}] {d['text']}")
             lines.append("</details>")

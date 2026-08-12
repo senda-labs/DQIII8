@@ -26,8 +26,16 @@ MAX_FILE_SIZE = 1 * 1024 * 1024  # 1MB
 # Always hard-block, never auto-fixable: silent repair would destroy the
 # only evidence of an active attack.
 BIDI_BLOCK = {
-    0x202A: "LRE", 0x202B: "RLE", 0x202C: "PDF", 0x202D: "LRO", 0x202E: "RLO",
-    0x2066: "LRI", 0x2067: "RLI", 0x2068: "FSI", 0x2069: "PDI", 0x061C: "ALM",
+    0x202A: "LRE",
+    0x202B: "RLE",
+    0x202C: "PDF",
+    0x202D: "LRO",
+    0x202E: "RLO",
+    0x2066: "LRI",
+    0x2067: "RLI",
+    0x2068: "FSI",
+    0x2069: "PDI",
+    0x061C: "ALM",
 }
 
 # Zero-width space: only real category safe to auto-fix, and only manually.
@@ -49,7 +57,9 @@ BOM_FIXABLE_EXTENSIONS = {".py", ".js", ".ts"}
 def staged_files() -> list[Path]:
     out = subprocess.run(
         ["git", "diff", "--cached", "--diff-filter=d", "--name-only"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return [Path(p) for p in out.stdout.splitlines() if p]
 
@@ -92,11 +102,17 @@ def scan_file(path: Path) -> list[dict]:
                 continue
             category, label = result
             context = line[max(0, col - 6) : col + 5]
-            findings.append({
-                "file": str(path), "line": line_no, "col": col,
-                "codepoint": f"U+{cp:04X}", "label": label,
-                "category": category, "context": context,
-            })
+            findings.append(
+                {
+                    "file": str(path),
+                    "line": line_no,
+                    "col": col,
+                    "codepoint": f"U+{cp:04X}",
+                    "label": label,
+                    "category": category,
+                    "context": context,
+                }
+            )
     return findings
 
 
@@ -126,9 +142,12 @@ def apply_fix(path: Path, findings: list[dict]) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fix", action="store_true",
-                         help="Manually strip zero-width-space/BOM findings (never bidi, "
-                              "never ZWNJ/ZWJ/VS, never non-.py/.js/.ts for BOM).")
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Manually strip zero-width-space/BOM findings (never bidi, "
+        "never ZWNJ/ZWJ/VS, never non-.py/.js/.ts for BOM).",
+    )
     args = parser.parse_args()
 
     files = staged_files()
@@ -155,14 +174,18 @@ def main() -> int:
             marker = " [BLOCKING]" if f["category"] == "bidi" else ""
             if f["category"] == "bidi":
                 hard_block = True
-            print(f"  {f['line']}:{f['col']}  {f['codepoint']} ({f['label']})"
-                  f"  ctx={f['context']!r}{marker}")
+            print(
+                f"  {f['line']}:{f['col']}  {f['codepoint']} ({f['label']})"
+                f"  ctx={f['context']!r}{marker}"
+            )
         if args.fix:
             apply_fix(Path(file_str), findings)
 
     if hard_block:
-        print("\nBidi/directional override characters found — this is the Trojan Source "
-              "(CVE-2021-42574) attack signature. Never auto-fixed. Investigate manually.")
+        print(
+            "\nBidi/directional override characters found — this is the Trojan Source "
+            "(CVE-2021-42574) attack signature. Never auto-fixed. Investigate manually."
+        )
 
     if args.fix:
         return 0

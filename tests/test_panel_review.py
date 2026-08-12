@@ -15,7 +15,7 @@ def test_verified_finding_survives_with_real_citation():
         f"[CATEGORY: Security] [SEVERITY: P0]\n"
         f"{REAL_FILE}:1\n"
         f"SQL injection via f-string.\n"
-        f"Exploit/failure scenario: attacker sends amount=\"0; DROP TABLE users\""
+        f'Exploit/failure scenario: attacker sends amount="0; DROP TABLE users"'
     )
     verified, dropped = pr._parse_findings(block)
     assert len(verified) == 1
@@ -79,15 +79,23 @@ def test_citation_exists_checks_real_repo_path():
 
 
 def test_mark_degradation_flags_provider_mismatch():
-    seat = {"provider_intended": "nim", "model_intended": "deepseek-ai/deepseek-v4-flash",
-             "provider": "groq", "model": "llama-3.3-70b-versatile"}
+    seat = {
+        "provider_intended": "nim",
+        "model_intended": "deepseek-ai/deepseek-v4-flash",
+        "provider": "groq",
+        "model": "llama-3.3-70b-versatile",
+    }
     pr._mark_degradation(seat)
     assert seat["degraded"] is True
 
 
 def test_mark_degradation_clean_when_intended_matches_actual():
-    seat = {"provider_intended": "nim", "model_intended": "deepseek-ai/deepseek-v4-flash",
-            "provider": "nim", "model": "deepseek-ai/deepseek-v4-flash"}
+    seat = {
+        "provider_intended": "nim",
+        "model_intended": "deepseek-ai/deepseek-v4-flash",
+        "provider": "nim",
+        "model": "deepseek-ai/deepseek-v4-flash",
+    }
     pr._mark_degradation(seat)
     assert seat["degraded"] is False
 

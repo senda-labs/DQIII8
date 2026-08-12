@@ -12,6 +12,7 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 ## System Map
 - DQ Pipeline (7 steps): Classify → Retrieve → Gate → Amplify → Route → Execute → Memory
 - DB: `database/dqiii8.db` (schema_v2.sql — source of truth; siblings: `dqiii8_metrics.db` knowledge/vector, `dqiii8_history.db` session_memory)
+- Writing to `agent_actions`: use `bin/core/action_log.py`'s shared helpers (`resolve_project_safe()`, `generate_request_id()`) — see `docs/audits/2026-08-13-db-attribution-rebuild.md`
 - Hooks (14): `.claude/hooks/` | Skills (22): `.claude/skills/` | Agents (17): `.claude/agents/`
 - Contextual rules (17): `.claude/rules_db/` — not read directly; injected 1-3 files at a time per tool call by `rules_dispatcher.py` (see `.claude/rules/02_hooks_and_permissions.md`).
 - Entry: `bin/core/openrouter_wrapper.py` | Director: `bin/director.py`

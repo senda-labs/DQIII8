@@ -2,9 +2,10 @@
 """
 DQIII8 Health Watchdog — daily preventive maintenance check.
 
-12 checks covering services, crons, core modules, DB integrity, disk space,
+13 checks covering services, crons, core modules, DB integrity, disk space,
 import paths, backup freshness/log, the health_check.py dead-man's-switch,
-and abandoned human_hours sessions. Sends Telegram alert if any check fails.
+abandoned human_hours sessions, and dependency version pins. Sends Telegram
+alert if any check fails.
 Silent on full success (only logs).
 
 Usage:
@@ -376,6 +377,29 @@ def check_human_hours() -> None:
             check("human_hours", False, str(e)[:80])
 
 
+# ── Check: dependency pins ──────────────────────────────────────────────────
+
+EXPECTED_SQLITE_VEC_VERSION = "0.1.7"
+
+
+def check_dependency_pins() -> None:
+    try:
+        from importlib.metadata import version
+
+        installed = version("sqlite-vec")
+        check(
+            "dependency_pins",
+            installed == EXPECTED_SQLITE_VEC_VERSION,
+            (
+                f"sqlite-vec {installed} != expected {EXPECTED_SQLITE_VEC_VERSION}"
+                if installed != EXPECTED_SQLITE_VEC_VERSION
+                else ""
+            ),
+        )
+    except Exception as e:
+        check("dependency_pins", False, str(e)[:80])
+
+
 # ── Main ──────────────────────────────────────────────────────────────────
 
 
@@ -392,6 +416,7 @@ CHECKS = [
     ("backup_log", check_backup_log),
     ("health_check_output", check_health_check_output),
     ("human_hours", check_human_hours),
+    ("dependency_pins", check_dependency_pins),
 ]
 
 

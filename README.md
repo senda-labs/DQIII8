@@ -166,7 +166,11 @@ bash install.sh
 ```
 
 The installer:
-1. Installs Python dependencies
+1. Installs Python dependencies (hash-verified from `requirements.lock` if
+   present, via `pip install --require-hashes`; falls back to unpinned
+   `requirements.txt` otherwise). Regenerate the lock after editing
+   `requirements.txt` with:
+   `pip install pip-tools && pip-compile --generate-hashes --output-file=requirements.lock requirements.txt`
 2. Prompts to install Ollama (optional — skip to start with Tier B only)
 3. Pulls `qwen2.5-coder:7b` if Ollama is installed
 4. Copies `config/.env.example` → `.env` if not present

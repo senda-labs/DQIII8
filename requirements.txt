@@ -2,11 +2,10 @@
 
 # Core (used by most scripts)
 requests>=2.31.0
-sqlite-vec>=0.1.7
+sqlite-vec==0.1.7
 python-dotenv>=1.0.0
 httpx>=0.27.0
 PyYAML>=6.0.1
-pytest>=7.0.0
 
 # Telegram bot (optional — only for remote control)
 python-telegram-bot>=21.0
@@ -22,3 +21,7 @@ Pillow>=10.0.0
 # Orchestration — StateGraph director, Agno AgentOS, MetaGPT-pattern pipeline
 langgraph>=1.1.3
 agno>=2.6.19
+typing_extensions>=4.15.0
+
+# Dev-only (test tooling — install via pyproject.toml's [project.optional-dependencies].dev)
+pytest>=7.0.0

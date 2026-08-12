@@ -167,3 +167,166 @@ def end_project(scope: str) -> bool:
 def get_project(scope: str) -> str | None:
     """Return the currently open project for `scope`, or None if none is open."""
     return _open_context_row(scope, timeout=10)
+
+
+# Stage 8 (ROI/Tiempos/Costes/Performance addendum, see
+# /root/.claude/plans/distributed-wobbling-gem.md).
+
+REWORK_WINDOW_HOURS = 24.0  # mirrors the hardcoded literal in v_rework_signal (SQL)
+
+_VALID_VALUE_TIPO = {"fee_cobrado", "hito_entregado", "valor_estimado"}
+_VALID_STATUS = {"activo", "pausado", "entregado", "abandonado"}
+
+
+def record_project_value(
+    project: str, tipo: str, importe_eur: float, nota: str | None = None
+) -> None:
+    """Insert a project_value row (revenue/milestone/estimate)."""
+    if project not in known_projects():
+        raise ValueError(f"unknown project: {project!r}")
+    if tipo not in _VALID_VALUE_TIPO:
+        raise ValueError(f"tipo must be one of {_VALID_VALUE_TIPO}")
+
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    try:
+        conn.execute(
+            "INSERT INTO project_value (project, tipo, importe_eur, nota) VALUES (?, ?, ?, ?)",
+            (project, tipo, importe_eur, nota),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_project_status(project: str, status: str) -> None:
+    """Set `status` on the open project_context row for `project` (ended_at IS NULL).
+
+    Falls back to the most recent row (open or closed) when none is open:
+    terminal statuses ('entregado'/'abandonado') are set precisely when a
+    project is finished, by which point end_project() has usually already
+    closed its row — without the fallback that update silently affects 0
+    rows and reports success (Opus panel-review P2, 2026-08-12).
+    """
+    if project not in known_projects():
+        raise ValueError(f"unknown project: {project!r}")
+    if status not in _VALID_STATUS:
+        raise ValueError(f"status must be one of {_VALID_STATUS}")
+
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    try:
+        cur = conn.execute(
+            "UPDATE project_context SET status=? WHERE project=? AND ended_at IS NULL",
+            (status, project),
+        )
+        if cur.rowcount == 0:
+            cur = conn.execute(
+                "UPDATE project_context SET status=? WHERE id = ("
+                "  SELECT id FROM project_context WHERE project=? "
+                "  ORDER BY declared_at DESC, id DESC LIMIT 1)",
+                (status, project),
+            )
+        if cur.rowcount == 0:
+            raise ValueError(f"no project_context row exists for {project!r}")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_project_status(project: str) -> str | None:
+    """Return the status of the most recent project_context row for `project`, or None.
+
+    Not filtered to ended_at IS NULL — mirrors set_project_status's fallback so a
+    terminal status set on an already-closed row is still readable back.
+    """
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    try:
+        row = conn.execute(
+            "SELECT status FROM project_context WHERE project=? "
+            "ORDER BY declared_at DESC, id DESC LIMIT 1",
+            (project,),
+        ).fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def set_project_budget(project: str, presupuesto_eur: float) -> None:
+    """Upsert the budget target for `project`."""
+    if project not in known_projects():
+        raise ValueError(f"unknown project: {project!r}")
+    if presupuesto_eur <= 0:
+        raise ValueError("presupuesto_eur must be positive")
+
+    import datetime as _dt
+
+    now = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    try:
+        conn.execute(
+            "INSERT INTO project_budget (project, presupuesto_eur, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(project) DO UPDATE SET presupuesto_eur=excluded.presupuesto_eur, updated_at=excluded.updated_at",
+            (project, presupuesto_eur, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_labor_rate(rate_eur_hour: float, basis: str | None = None) -> None:
+    """Insert a new labor_rates row (the latest row is what the views use)."""
+    if rate_eur_hour <= 0:
+        raise ValueError("rate_eur_hour must be positive")
+
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    try:
+        conn.execute(
+            "INSERT INTO labor_rates (rate_eur_hour, basis) VALUES (?, ?)",
+            (rate_eur_hour, basis),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_labor_rate() -> float:
+    """Return the latest labor_rates.rate_eur_hour, mirroring the views' ORDER BY."""
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    try:
+        row = conn.execute(
+            "SELECT rate_eur_hour FROM labor_rates ORDER BY effective_date DESC, id DESC LIMIT 1"
+        ).fetchone()
+        return row[0] if row else 0.0
+    finally:
+        conn.close()
+
+
+def get_budget_status(project: str | None = None) -> list[dict]:
+    """Query v_budget_deviation, optionally filtered to a single project."""
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    conn.row_factory = sqlite3.Row
+    try:
+        if project:
+            rows = conn.execute(
+                "SELECT * FROM v_budget_deviation WHERE project=?", (project,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM v_budget_deviation").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_project_roi(project: str | None = None) -> list[dict]:
+    """Query v_project_roi, optionally filtered to a single project."""
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    conn.row_factory = sqlite3.Row
+    try:
+        if project:
+            rows = conn.execute(
+                "SELECT * FROM v_project_roi WHERE project=?", (project,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM v_project_roi").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()

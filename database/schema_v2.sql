@@ -1054,6 +1054,149 @@ LEFT JOIN human_agg
   ON human_agg.project = agent_agg.project AND human_agg.iso_week = agent_agg.iso_week
 ORDER BY agent_agg.iso_week DESC, agent_agg.cost_usd DESC
 /* v_project_cost_weekly(project,iso_week,actions,distinct_agents,distinct_sessions,agent_hours,cost_usd,cost_usd_listprice_equivalent,human_hours,usd_per_human_hour) */;
+
+-- Stage 8 (ROI/Tiempos/Costes/Performance addendum, see
+-- /root/.claude/plans/distributed-wobbling-gem.md): infra cost allocation, ROI,
+-- budget deviation, context fragmentation and rework-proxy views. Human-hour cost
+-- uses the latest labor_rates.rate_eur_hour (revisable via project_ctl.py rate set,
+-- no view migration needed); technical LLM cost (v_project_cost_weekly.cost_usd) is
+-- near-zero on flat-rate/free tiers and kept informational-only, not summed into EUR.
+CREATE VIEW IF NOT EXISTS v_infra_cost_weekly AS
+WITH weekly_pool AS (
+    -- COALESCE guards SUM() of zero rows (all infra_costs retired/none seeded
+    -- yet): without it pool_eur is NULL, propagating to a NULL infra_cost_eur
+    -- (not 0) below — a disaster-scenario edge case found 2026-08-12.
+    SELECT ROUND(COALESCE(SUM(importe_eur_mes), 0) / 4.345, 4) AS pool_eur
+    FROM infra_costs
+    WHERE activo_hasta IS NULL
+),
+project_hours AS (
+    SELECT project, iso_week, agent_hours,
+           SUM(agent_hours) OVER (PARTITION BY iso_week) AS total_hours_week
+    FROM v_project_cost_weekly
+)
+SELECT
+    ph.project,
+    ph.iso_week,
+    ROUND(CASE WHEN ph.total_hours_week > 0
+               THEN (ph.agent_hours / ph.total_hours_week) * wp.pool_eur
+               ELSE 0 END, 4) AS infra_cost_eur
+FROM project_hours ph
+CROSS JOIN weekly_pool wp
+/* v_infra_cost_weekly(project,iso_week,infra_cost_eur) — allocates the current active
+   infra_costs monthly pool proportionally by each project's agent_hours share that week;
+   only reflects currently-active cost rows, not historical infra changes. */;
+
+CREATE VIEW IF NOT EXISTS v_project_roi AS
+WITH value_agg AS (
+    SELECT project,
+           ROUND(SUM(CASE WHEN tipo IN ('fee_cobrado','hito_entregado') THEN importe_eur ELSE 0 END), 2) AS ingresos_eur
+    FROM project_value GROUP BY project
+),
+tech_agg AS (
+    SELECT project, ROUND(SUM(cost_usd), 4) AS cost_usd_technical
+    FROM v_project_cost_weekly GROUP BY project
+),
+human_agg AS (
+    -- Sourced directly from human_hours, NOT via v_project_cost_weekly.human_hours:
+    -- that view's FROM agent_agg LEFT JOIN human_agg drops any (project, iso_week)
+    -- with logged human hours but zero agent_actions that week, silently
+    -- understating coste_humano_eur (Opus panel-review P1, 2026-08-12).
+    SELECT project,
+           ROUND(SUM((julianday(COALESCE(ended_at, datetime('now'))) - julianday(started_at)) * 24.0), 2) AS human_hours
+    FROM human_hours GROUP BY project
+),
+infra_agg AS (
+    SELECT project, ROUND(SUM(infra_cost_eur), 2) AS infra_cost_eur
+    FROM v_infra_cost_weekly GROUP BY project
+),
+rate AS (
+    SELECT rate_eur_hour FROM labor_rates ORDER BY effective_date DESC, id DESC LIMIT 1
+),
+all_projects AS (
+    -- Union of every source a cost/value can come from, not just value_agg:
+    -- a project with real costs but no logged project_value row must still
+    -- surface here (Opus panel-review P2, 2026-08-12) — invisible unbilled
+    -- work is exactly the failure mode ROI reporting exists to catch.
+    SELECT project FROM value_agg
+    UNION SELECT project FROM human_agg
+    UNION SELECT project FROM infra_agg
+)
+SELECT
+    all_projects.project,
+    COALESCE(value_agg.ingresos_eur, 0) AS ingresos_eur,
+    COALESCE(tech_agg.cost_usd_technical, 0) AS coste_tecnico_usd_informativo,
+    COALESCE(human_agg.human_hours, 0) AS human_hours,
+    ROUND(COALESCE(human_agg.human_hours, 0) * (SELECT rate_eur_hour FROM rate), 2) AS coste_humano_eur,
+    COALESCE(infra_agg.infra_cost_eur, 0) AS coste_infra_eur,
+    ROUND(COALESCE(value_agg.ingresos_eur, 0)
+          - (COALESCE(human_agg.human_hours, 0) * (SELECT rate_eur_hour FROM rate))
+          - COALESCE(infra_agg.infra_cost_eur, 0), 2) AS roi_eur
+FROM all_projects
+LEFT JOIN value_agg ON value_agg.project = all_projects.project
+LEFT JOIN tech_agg ON tech_agg.project = all_projects.project
+LEFT JOIN human_agg ON human_agg.project = all_projects.project
+LEFT JOIN infra_agg ON infra_agg.project = all_projects.project
+/* v_project_roi(project,ingresos_eur,coste_tecnico_usd_informativo,human_hours,coste_humano_eur,coste_infra_eur,roi_eur) — includes projects with costs but no project_value row (ingresos_eur=0); human_hours summed directly from human_hours, independent of agent_actions presence. */;
+
+CREATE VIEW IF NOT EXISTS v_context_fragmentation AS
+WITH gaps AS (
+    SELECT vap.resolved_project AS project, a.session_id,
+           (julianday(a.timestamp) - julianday(
+               LAG(a.timestamp) OVER (PARTITION BY a.session_id ORDER BY a.timestamp)
+           )) * 86400.0 AS gap_seconds
+    FROM agent_actions a
+    JOIN v_action_project vap ON vap.id = a.id
+)
+SELECT project, COUNT(*) AS gap_samples, ROUND(AVG(gap_seconds), 1) AS mean_gap_s, ROUND(MAX(gap_seconds), 1) AS max_gap_s
+FROM gaps WHERE gap_seconds IS NOT NULL GROUP BY project
+/* v_context_fragmentation(project,gap_samples,mean_gap_s,max_gap_s) */;
+
+CREATE VIEW IF NOT EXISTS v_budget_deviation AS
+WITH cost_agg AS (
+    -- Sourced directly from human_hours, see v_project_roi's human_agg comment
+    -- (Opus panel-review P1, 2026-08-12) — same drop-on-agent_actions-absent bug.
+    SELECT project,
+           ROUND(SUM((julianday(COALESCE(ended_at, datetime('now'))) - julianday(started_at)) * 24.0), 2) AS human_hours
+    FROM human_hours GROUP BY project
+),
+infra_agg AS (
+    SELECT project, ROUND(SUM(infra_cost_eur), 2) AS infra_cost_eur
+    FROM v_infra_cost_weekly GROUP BY project
+),
+rate AS (
+    SELECT rate_eur_hour FROM labor_rates ORDER BY effective_date DESC, id DESC LIMIT 1
+)
+SELECT
+    pb.project,
+    pb.presupuesto_eur,
+    COALESCE(cost_agg.human_hours, 0) AS human_hours,
+    ROUND(COALESCE(cost_agg.human_hours, 0) * (SELECT rate_eur_hour FROM rate), 2) AS coste_humano_eur,
+    COALESCE(infra_agg.infra_cost_eur, 0) AS coste_infra_eur,
+    ROUND((COALESCE(cost_agg.human_hours, 0) * (SELECT rate_eur_hour FROM rate)) + COALESCE(infra_agg.infra_cost_eur, 0), 2) AS coste_total_eur,
+    CASE WHEN pb.presupuesto_eur > 0
+         THEN ROUND((((COALESCE(cost_agg.human_hours, 0) * (SELECT rate_eur_hour FROM rate)) + COALESCE(infra_agg.infra_cost_eur, 0)) / pb.presupuesto_eur - 1) * 100.0, 1)
+         ELSE NULL END AS desviacion_pct
+FROM project_budget pb
+LEFT JOIN cost_agg ON cost_agg.project = pb.project
+LEFT JOIN infra_agg ON infra_agg.project = pb.project
+/* v_budget_deviation(project,presupuesto_eur,human_hours,coste_humano_eur,coste_infra_eur,coste_total_eur,desviacion_pct) */;
+
+CREATE VIEW IF NOT EXISTS v_rework_signal AS
+SELECT
+    a1.id AS first_action_id, a2.id AS rework_action_id,
+    vap1.resolved_project AS project, a1.file_path,
+    a1.timestamp AS first_edit_at, a2.timestamp AS reedit_at,
+    ROUND((julianday(a2.timestamp) - julianday(a1.timestamp)) * 24.0, 2) AS hours_between
+FROM agent_actions a1
+JOIN v_action_project vap1 ON vap1.id = a1.id
+JOIN agent_actions a2
+  ON a2.file_path = a1.file_path AND a2.id != a1.id AND a2.timestamp > a1.timestamp
+ AND (julianday(a2.timestamp) - julianday(a1.timestamp)) * 24.0 <= 24.0
+WHERE a1.tool_used IN ('Edit','Write','MultiEdit') AND a2.tool_used IN ('Edit','Write','MultiEdit')
+  AND a1.file_path IS NOT NULL
+/* v_rework_signal(first_action_id,rework_action_id,project,file_path,first_edit_at,reedit_at,hours_between) — REWORK_WINDOW_HOURS=24.0 hardcoded from bin/core/project_context.py; heuristic proxy only (same file re-touched within the window), not a quality measure. */;
+
 CREATE VIEW IF NOT EXISTS v_agent_efficiency AS
 WITH per_request AS (
     SELECT
@@ -1406,7 +1549,8 @@ CREATE TABLE IF NOT EXISTS project_context (
   declared_at TEXT NOT NULL,
   declared_by TEXT NOT NULL CHECK(declared_by IN ('telegram','cli','session_start','prompt','api')),
   source_detail TEXT,
-  ended_at    TEXT
+  ended_at    TEXT,
+  status      TEXT NOT NULL DEFAULT 'activo' CHECK (status IN ('activo','pausado','entregado','abandonado'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_project_context_open
@@ -1414,6 +1558,45 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_project_context_open
 
 CREATE INDEX IF NOT EXISTS idx_project_context_project
   ON project_context(project, declared_at);
+
+-- Stage 8 (ROI/Tiempos/Costes/Performance addendum, see
+-- /root/.claude/plans/distributed-wobbling-gem.md): project revenue, budget targets,
+-- real infra costs, and the revisable labor rate used to price human hours in
+-- v_project_roi / v_budget_deviation. Live DB: applied via
+-- database/migrations/2026-08-13_project_value_and_budget.up.sql
+-- (status column above: database/migrations/2026-08-13_project_context_status.up.sql).
+CREATE TABLE IF NOT EXISTS project_value (
+  id INTEGER PRIMARY KEY,
+  project TEXT NOT NULL,
+  fecha TEXT NOT NULL DEFAULT (datetime('now')),
+  tipo TEXT NOT NULL CHECK (tipo IN ('fee_cobrado','hito_entregado','valor_estimado')),
+  importe_eur REAL NOT NULL,
+  nota TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_value_project ON project_value(project, fecha);
+
+CREATE TABLE IF NOT EXISTS project_budget (
+  project TEXT PRIMARY KEY,
+  presupuesto_eur REAL NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS infra_costs (
+  id INTEGER PRIMARY KEY,
+  item TEXT NOT NULL,
+  importe_eur_mes REAL NOT NULL,
+  activo_desde TEXT NOT NULL DEFAULT (date('now')),
+  activo_hasta TEXT,
+  nota TEXT
+);
+
+CREATE TABLE IF NOT EXISTS labor_rates (
+  id INTEGER PRIMARY KEY,
+  rate_eur_hour REAL NOT NULL,
+  basis TEXT,
+  effective_date TEXT NOT NULL DEFAULT (date('now'))
+);
 
 -- nl_match_candidates: shadow-layer observability for the NL project matcher
 -- (D2). Never read by resolve_project() or attribution.

@@ -32,7 +32,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
 from bin.core import human_pending
 from bin.core.human_pending import events
-from bin.core.project_context import end_project, get_project, known_projects, set_project
+from bin.core.project_context import (
+    end_project,
+    get_budget_status,
+    get_project,
+    known_projects,
+    set_project,
+)
 from voice_handler import transcribe_audio, synthesize_speech
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -1924,6 +1930,32 @@ async def cmd_proyecto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         closed = end_project("global")
         msg = "Proyecto cerrado." if closed else "No habia proyecto activo."
         await update.message.reply_text(msg)
+        return
+
+    if arg == "status":
+        current = get_project("global")
+        if not current:
+            await update.message.reply_text("No hay proyecto activo.")
+            return
+        rows = get_budget_status(current)
+        if not rows:
+            await update.message.reply_text(f"Sin datos de presupuesto para '{current}'.")
+            return
+        r = rows[0]
+        # coste_humano_eur/coste_total_eur/desviacion_pct come back NULL (not 0)
+        # when labor_rates has no row yet — show "N/D" instead of a literal
+        # "None" leaking into the reply (disaster-scenario fix, 2026-08-12).
+        nd = lambda v, suffix="": f"{v}{suffix}" if v is not None else "N/D"
+        lines = [
+            f"**Presupuesto — {r['project']}**",
+            "",
+            f"**Presupuesto:** {r['presupuesto_eur']} EUR",
+            f"**Coste humano:** {nd(r['coste_humano_eur'], ' EUR')} ({r['human_hours']}h)",
+            f"**Coste infra:** {r['coste_infra_eur']} EUR",
+            f"**Coste total:** {nd(r['coste_total_eur'], ' EUR')}",
+            f"**Desviacion:** {nd(r['desviacion_pct'], '%')}",
+        ]
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
         return
 
     try:

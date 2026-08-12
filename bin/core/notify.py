@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Notification utilities for DQIII8. Uses direct API calls to avoid bot daemon conflicts."""
 
-import logging
 import os
 import sys
 import time
@@ -13,6 +12,7 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 load_dotenv(Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / ".env")
@@ -56,8 +56,15 @@ def send_document(file_path: str | Path, caption: str = "") -> bool:
 # Alias for backwards compatibility
 send_telegram_document = send_document
 
-def send_telegram(message: str, *, parse_mode: str = None, reply_markup: dict = None,
-                   chat_id: str = None, retries: int = 3) -> SendResult:
+
+def send_telegram(
+    message: str,
+    *,
+    parse_mode: str = None,
+    reply_markup: dict = None,
+    chat_id: str = None,
+    retries: int = 3,
+) -> SendResult:
     """Send a message via Telegram API directly (no bot daemon needed).
 
     `chat_id` overrides the global TELEGRAM_CHAT_ID (needed for human_pending_tasks
@@ -108,15 +115,32 @@ def send_telegram(message: str, *, parse_mode: str = None, reply_markup: dict = 
         except Exception as e:
             last_error = str(e)
         if attempt < retries - 1:
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
 
     return SendResult(ok=False, error=last_error)
 
 
-def notify(message: str, parse_mode: str = None):
-    """Best-effort notification. Tries Telegram, falls back to print."""
-    if not send_telegram(message, parse_mode=parse_mode):
+def notify(message: str, parse_mode: str = None) -> SendResult:
+    """Best-effort notification. Tries Telegram, falls back to print.
+
+    Returns the SendResult so callers on rails that must not fail silently
+    (health_check.py's alert/heartbeat paths) can detect and record delivery
+    failure instead of only a log line nothing reads in production.
+    """
+    result = send_telegram(message, parse_mode=parse_mode)
+    breadcrumb = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "var" / "last_notify_failure"
+    if not result:
         log.warning("notify fallback (Telegram unavailable): %s", message)
+        try:
+            breadcrumb.parent.mkdir(parents=True, exist_ok=True)
+            breadcrumb.write_text(
+                f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {result.error}\n"
+            )
+        except OSError:
+            pass
+    else:
+        breadcrumb.unlink(missing_ok=True)
+    return result
 
 
 if __name__ == "__main__":

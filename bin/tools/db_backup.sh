@@ -4,7 +4,7 @@
 # Cron: 0 5 * * *  /root/dqiii8/bin/tools/db_backup.sh >> /tmp/dqiii8_db_backup.log 2>&1
 set -euo pipefail
 
-ROOT="${DQIII8_ROOT:-/root/dqiii8}"
+ROOT="${DQIII8_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 DB_DIR="$ROOT/database"
 OUT_DIR="$DB_DIR/backups"
 KEEP=7

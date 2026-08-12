@@ -122,22 +122,35 @@ def main():
             sys.path.insert(0, str(ROOT / "bin" / "core"))
             from notify import notify
 
-            notify(f"DQIII8 health {score}/100 < 70 — {out.name}")
+            res = notify(f"DQIII8 health {score}/100 < 70 — {out.name}")
+            if not res:
+                print(f"alert delivery failed: {res.error}", file=sys.stderr)
         except Exception as exc:
             print(f"alert dispatch failed: {exc}", file=sys.stderr)
 
-    # Dead-man's-switch, unscored so it can't be masked by the 100-point
-    # system (that trap is exactly what the stale-floor fix above closes for
-    # the other check). Compared aware-to-aware: health_watchdog.py writes
-    # the heartbeat via datetime.now(timezone.utc), not this module's naive
-    # datetime.now() used elsewhere above — mixing them raises TypeError.
+    check_heartbeat()
+
+
+def check_heartbeat():
+    """Dead-man's-switch, unscored so it can't be masked by the 100-point
+    system (that trap is exactly what the stale-floor fix above closes for
+    the other check). Compared aware-to-aware: health_watchdog.py writes
+    the heartbeat via datetime.now(timezone.utc), not this module's naive
+    datetime.now() used elsewhere above — mixing them raises TypeError.
+
+    Called from both main()'s success path and __main__'s crash handler, so
+    a DB-open/integrity exception earlier in main() can't skip the one check
+    built specifically to catch silent failures.
+    """
     try:
         heartbeat_path = ROOT / "var" / "watchdog_heartbeat"
-        if not heartbeat_path.exists():
-            sys.path.insert(0, str(ROOT / "bin" / "core"))
-            from notify import notify
+        sys.path.insert(0, str(ROOT / "bin" / "core"))
+        from notify import notify
 
-            notify("DQIII8 watchdog heartbeat missing (never written)")
+        if not heartbeat_path.exists():
+            res = notify("DQIII8 watchdog heartbeat missing (never written)")
+            if not res:
+                print(f"heartbeat alert delivery failed: {res.error}", file=sys.stderr)
         else:
             raw = heartbeat_path.read_text().strip()
             try:
@@ -148,10 +161,9 @@ def main():
                 hb_time = datetime.fromtimestamp(heartbeat_path.stat().st_mtime, tz=timezone.utc)
             age_h = (datetime.now(timezone.utc) - hb_time).total_seconds() / 3600
             if age_h > 24:
-                sys.path.insert(0, str(ROOT / "bin" / "core"))
-                from notify import notify
-
-                notify(f"DQIII8 watchdog heartbeat stale since {hb_time.isoformat()}")
+                res = notify(f"DQIII8 watchdog heartbeat stale since {hb_time.isoformat()}")
+                if not res:
+                    print(f"heartbeat alert delivery failed: {res.error}", file=sys.stderr)
     except Exception as exc:
         print(f"heartbeat check failed: {exc!r}", file=sys.stderr)
 
@@ -168,6 +180,12 @@ if __name__ == "__main__":
             sys.path.insert(0, str(ROOT / "bin" / "core"))
             from notify import notify
 
-            notify(f"DQIII8 health_check crashed: {exc!r}")
+            res = notify(f"DQIII8 health_check crashed: {exc!r}")
+            if not res:
+                print(f"alert delivery failed: {res.error}", file=sys.stderr)
         except Exception as exc2:
             print(f"alert dispatch failed: {exc2}", file=sys.stderr)
+        # main() crashed before reaching the heartbeat check (e.g. DB open/
+        # integrity failure) — run it anyway so the dead-man's-switch still
+        # fires on the exact failure class most likely to cause one.
+        check_heartbeat()

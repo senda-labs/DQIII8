@@ -22,7 +22,11 @@ import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DQIII8_ROOT = (
+    Path(os.environ["DQIII8_ROOT"])
+    if os.environ.get("DQIII8_ROOT")
+    else Path(__file__).resolve().parents[2]
+)
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
 sys.path.insert(0, str(DQIII8_ROOT / "bin" / "agents"))
 
@@ -140,7 +144,7 @@ def check_db_integrity() -> None:
         check("db_integrity", False, f"DB not found: {DB}")
         return
     try:
-        conn = sqlite3.connect(str(DB), timeout=5)
+        conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30)
         row = conn.execute("PRAGMA integrity_check").fetchone()
         conn.close()
         check("db_integrity", row and row[0] == "ok", row[0] if row else "no result")
@@ -240,6 +244,7 @@ def check_backup_freshness() -> None:
             check(f"backup_freshness:{db}", False, "no parseable backups")
             continue
         newest_ts = max(ts for _, ts in valid)
+        oldest_ts = min(ts for _, ts in valid)
         age_h = (NOW - newest_ts).total_seconds() / 3600
         count = len(valid)
         ok = age_h <= 24 and count >= BACKUP_MIN_RETAIN
@@ -248,6 +253,22 @@ def check_backup_freshness() -> None:
             ok,
             f"newest {age_h:.0f}h old, count={count} (min {BACKUP_MIN_RETAIN})",
         )
+        # A burst restore/reseed can create `count` backups all near the same
+        # timestamp, passing the count/newest checks above identically to
+        # `count` genuine daily backups. 20h not 24h: cron-jitter/day-boundary
+        # tolerance, mirrors the 24h-vs-25h reasoning above.
+        if count >= BACKUP_MIN_RETAIN:
+            span_h = (newest_ts - oldest_ts).total_seconds() / 3600
+            spread_ok = span_h >= (count - 1) * 20
+            check(
+                f"backup_span:{db}",
+                spread_ok,
+                (
+                    "backups present but not aged — possible burst restore"
+                    if not spread_ok
+                    else f"span {span_h:.0f}h across {count} backups"
+                ),
+            )
 
 
 # ── Check 10: Backup log ──────────────────────────────────────────────────
@@ -329,7 +350,7 @@ def check_health_check_output() -> None:
 
 def check_human_hours() -> None:
     try:
-        conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=5)
+        conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30)
         n = conn.execute(
             "SELECT COUNT(*) FROM human_hours WHERE ended_at IS NULL "
             "AND (julianday('now') - julianday(started_at)) > 16.0/24.0"

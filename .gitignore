@@ -265,3 +265,12 @@ secrets_to_purge.txt
 
 # Gitleaks runtime state (keep local)
 .stfolder
+
+# === Client/vendor material — intentionally untracked (never publish) ===
+# Confirmed 2026-08-12: NOT previously gitignored, so nightly.sh's unattended
+# `git add -A && git commit` would have staged all of this into the public
+# senda-labs/DQIII8 repo at its next scheduled run (03:05 UTC).
+assets/branding/
+docs/plglobal/
+ops/plglobal/
+docs/reference/fable5-world-demo/

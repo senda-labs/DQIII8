@@ -120,7 +120,7 @@ log_to_db()
 | `bin/core/` | Wrappers (openrouter, ollama), db.py, auth/security, pipeline core |
 | `bin/agents/` | 21 pipeline + routing + RAG + memory modules (see Key Files) |
 | `bin/monitoring/` | analytics_collector, audit_trigger, health_watchdog, ml_selector, routing_analyzer, cost_tracker, weekly_audit, subscription |
-| `bin/tools/` | gemini_review, knowledge_harvester, benchmark_*, health_check, pal/, github_researcher, db_init, sqlite_mcp, etc. (+ `_archived/` for legacy) |
+| `bin/tools/` | knowledge_harvester, benchmark_*, health_check, pal/, github_researcher, db_init, sqlite_mcp, panel_review, watermark_scan, etc. (+ `_archived/` for legacy) |
 | `bin/workspace/` | launch scripts: launch_swarm.sh, launch_beeswarm.sh, launch_monitor.sh |
 | `bin/ui/` | Telegram bot (`dqiii8_bot.py`) — see [[zone_D_infrastructure]] |
 | `bin/` (root) | director.py, orchestrator.py, bee_swarm.py, j.sh, nightly.sh, autonomous_loop.sh, plugin_manager.py |

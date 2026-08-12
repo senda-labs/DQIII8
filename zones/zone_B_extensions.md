@@ -40,7 +40,6 @@ All Claude Code extensions: agents, skills, hooks, rules, and the permission/rul
 | blue-team | — | Security defensive review |
 | checkpoint | `/checkpoint` | Save session state |
 | drive-upload | `/drive-upload` | Upload intl-reports DOCXs to Google Drive via rclone |
-| gemini-review | `/gemini-review` | Gemini-based code review |
 | handover | `/handover` | Session handover note |
 | instinct-status | `/instinct-status` | Instinct system check |
 | intl-reports | `/intl-reports` | intl-reports batch pipeline |

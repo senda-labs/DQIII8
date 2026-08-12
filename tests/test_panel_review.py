@@ -148,3 +148,13 @@ def test_mark_degradation_no_flag_when_intended_missing():
     seat = {"provider": "groq", "model": "llama-3.3-70b-versatile"}
     pr._mark_degradation(seat)
     assert seat["degraded"] is False
+
+
+def test_run_panel_raises_on_non_utf8_plan_file(tmp_path):
+    p = tmp_path / "bad_encoding.md"
+    p.write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+    try:
+        pr.run_panel(p)
+        assert False, "expected UnicodeDecodeError"
+    except UnicodeDecodeError:
+        pass

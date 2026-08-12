@@ -68,8 +68,11 @@ def staged_files() -> list[Path]:
         ["git", "diff", "--cached", "--diff-filter=d", "--name-only", "-z"],
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
+    if out.returncode != 0:
+        print(f"watermark-scan: not a git repository: {out.stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
     return [Path(p) for p in out.stdout.split("\0") if p]
 
 

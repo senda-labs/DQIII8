@@ -345,12 +345,16 @@ def main() -> int:
         print(f"panel-review: plan file not found: {args.plan_file}", file=sys.stderr)
         return 1
 
-    result = run_panel(args.plan_file)
+    try:
+        result = run_panel(args.plan_file)
+    except UnicodeDecodeError as e:
+        print(f"panel-review: {args.plan_file} is not valid UTF-8 ({e})", file=sys.stderr)
+        return 1
     report = render_report(result)
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     slug = re.sub(r"[^a-z0-9]+", "-", args.plan_file.stem.lower()).strip("-")
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
     out_path = REPORT_DIR / f"panel-review-{stamp}-{slug}.md"
     tmp = out_path.with_suffix(".md.tmp")
     tmp.write_text(report, encoding="utf-8")

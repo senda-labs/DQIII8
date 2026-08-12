@@ -209,6 +209,19 @@ def test_regression_staged_symlink_is_skipped_not_followed(tmp_path, monkeypatch
     assert findings == []
 
 
+def test_staged_files_exits_clean_outside_git_repo(tmp_path, monkeypatch, capsys):
+    """subprocess.run(..., check=True) previously raised a raw CalledProcessError
+    when run outside a git repo; now it prints a clear message and exits 1."""
+    monkeypatch.chdir(tmp_path)  # not a git repo
+    try:
+        ws.staged_files()
+        assert False, "expected SystemExit"
+    except SystemExit as e:
+        assert e.code == 1
+    captured = capsys.readouterr()
+    assert "not a git repository" in captured.err
+
+
 def test_regression_non_ascii_filename_is_still_scanned(tmp_path, monkeypatch):
     """git C-quotes non-ASCII filenames by default in `--name-only` output; without
     -z that quoted literal doesn't match a real path on disk and the file was

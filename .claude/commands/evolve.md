@@ -4,6 +4,9 @@ description: Agrupa instincts consolidados en skills accionables y las registra 
 allowed_tools: ["Bash"]
 ---
 
+> **DESHABILITADO**: `bin/evolve.py` no existe. Este comando fallará si se invoca.
+> Documentado tal cual (no implementado), no eliminado — ver TODO abajo.
+
 # /evolve — Convertir Instincts en Skills
 
 Lee instincts con alta confianza o alta frecuencia de aplicacion de `dqiii8.db`,

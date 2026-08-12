@@ -463,12 +463,9 @@ def _resolve_project_for_log(project: str | None, session_id: str) -> str | None
     SSOT via resolve_project(); fail open to None if the module can't be loaded."""
     if project:
         return project
-    try:
-        from core.project_context import resolve_project
+    from core.action_log import resolve_project_safe
 
-        return resolve_project(session_id=session_id)
-    except Exception:
-        return None
+    return resolve_project_safe(session_id)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -837,6 +834,7 @@ def log_to_db(
     domain: str = "",
     prompt_hash: str = "",
     project: str | None = None,
+    request_id: str | None = None,
 ) -> None:
     """Registra la llamada en agent_actions con tokens reales y coste estimado."""
     if not DB_PATH.exists():
@@ -864,8 +862,8 @@ def log_to_db(
             "INSERT INTO agent_actions "
             "(session_id, agent_name, tool_used, action_type, model_used, "
             "tokens_used, tokens_input, tokens_output, estimated_cost_usd, tier, "
-            "duration_ms, success, error_message, start_time_ms, end_time_ms, project, domain) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "duration_ms, success, error_message, start_time_ms, end_time_ms, project, domain, request_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 agent,
@@ -884,6 +882,7 @@ def log_to_db(
                 _end_time_ms,
                 _resolve_project_for_log(project, session_id),
                 domain or None,
+                request_id,
             ),
         )
         conn.commit()
@@ -1414,6 +1413,13 @@ def main() -> None:
     # Intentar cada proveedor en orden (con retry/backoff + circuit breaker).
     # La salida se bufferiza por intento y solo se emite tras éxito — un intento
     # fallido nunca contamina stdout con respuesta parcial.
+    # Stage 3: one request_id shared by every attempt in this cascade, so
+    # agent_actions rows from a failed primary + successful fallback can be
+    # grouped as one logical request afterward.
+    from core.action_log import generate_request_id
+
+    _request_id = generate_request_id()
+
     for provider, model in chain:
         log.info("%s | %s | %s", agent_name, provider, model)
         t0 = int(time.time() * 1000)
@@ -1437,6 +1443,7 @@ def main() -> None:
             domain=_routing_domain or "",
             prompt_hash=_phash,
             project=args.project or None,
+            request_id=_request_id,
         )
 
         if ok:

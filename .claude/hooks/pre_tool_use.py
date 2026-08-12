@@ -136,14 +136,10 @@ try:
     _model = os.environ.get("DQIII8_MODEL", agent)
     _tier = _model_tier(_model)
     _cwd = str(data.get("cwd", "") or "")
-    try:
-        sys.path.insert(0, os.path.join(DQIII8_ROOT, "bin"))
-        from core.project_context import resolve_project as _resolve_project
+    sys.path.insert(0, os.path.join(DQIII8_ROOT, "bin"))
+    from core.action_log import resolve_project_safe
 
-        _project = _resolve_project(session_id=session, cwd=_cwd)
-    except Exception as e:
-        log.debug("pre_tool_use: resolve_project failed (best-effort): %s", e)
-        _project = None
+    _project = resolve_project_safe(session, cwd=_cwd)
     if os.path.exists(_DB):
         _conn = sqlite3.connect(_DB, timeout=10)
         _conn.execute(

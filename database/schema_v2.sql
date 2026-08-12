@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS agent_actions (
     worktree        TEXT,
     skills_active   TEXT,               -- JSON array
     blocked_by_hook INTEGER DEFAULT 0
-, cost_eur REAL DEFAULT 0.0, model_tier INTEGER DEFAULT 0, tokens_input INTEGER DEFAULT 0, tokens_output INTEGER DEFAULT 0, estimated_cost_usd REAL DEFAULT 0.0, tier TEXT DEFAULT 'unknown', domain_enriched BOOLEAN DEFAULT 0, domain TEXT, knowledge_chunks_used INTEGER DEFAULT 0, energy_wh REAL DEFAULT 0, cpu_percent REAL DEFAULT 0, input_tokens INTEGER, output_tokens INTEGER, notes TEXT);
+, cost_eur REAL DEFAULT 0.0, model_tier INTEGER DEFAULT 0, tokens_input INTEGER DEFAULT 0, tokens_output INTEGER DEFAULT 0, estimated_cost_usd REAL DEFAULT 0.0, tier TEXT DEFAULT 'unknown', domain_enriched BOOLEAN DEFAULT 0, domain TEXT, knowledge_chunks_used INTEGER DEFAULT 0, energy_wh REAL DEFAULT 0, cpu_percent REAL DEFAULT 0, input_tokens INTEGER, output_tokens INTEGER, notes TEXT, request_id TEXT);
+CREATE INDEX IF NOT EXISTS idx_agent_actions_request_id ON agent_actions(request_id);
 CREATE TABLE IF NOT EXISTS error_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -1160,6 +1161,7 @@ WHEN OLD.end_time_ms IS NOT NULL
   OR NEW.input_tokens IS NOT OLD.input_tokens
   OR NEW.output_tokens IS NOT OLD.output_tokens
   OR NEW.notes IS NOT OLD.notes
+  OR NEW.request_id IS NOT OLD.request_id
 BEGIN
   SELECT RAISE(ABORT, 'agent_actions rows are immutable except a single close-out update (end_time_ms/duration_ms/success/error_message/bytes_written) while end_time_ms IS NULL');
 END;

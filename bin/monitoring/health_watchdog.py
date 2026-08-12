@@ -17,7 +17,6 @@ import os
 import subprocess
 import sqlite3
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,9 +26,11 @@ sys.path.insert(0, str(DQIII8_ROOT / "bin" / "agents"))
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
-DB = DQIII8_ROOT / "database" / "dqiii8.db"  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
+DB = DQIII8_ROOT / "database" / "dqiii8.db"
+# repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
 NOW = datetime.now(timezone.utc)
 QUIET = "--quiet" in sys.argv
 
@@ -50,13 +51,11 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 
 def check_services() -> None:
-    for svc in ["autoreporte", "dqiii8-bot", "dq-dashboard", "ollama"]:
-        result = subprocess.run(
-            ["systemctl", "is-active", svc], capture_output=True, text=True
-        )
-        check(
-            f"service:{svc}", result.stdout.strip() == "active", result.stdout.strip()
-        )
+    # "autoreporte" removed 2026-08-12: no systemd unit or script by that name
+    # exists anywhere in the tree — a phantom entry that always reported "down".
+    for svc in ["dqiii8-bot", "dq-dashboard", "ollama"]:
+        result = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True)
+        check(f"service:{svc}", result.stdout.strip() == "active", result.stdout.strip())
 
 
 # ── Check 2: Crons executed in last 48h ───────────────────────────────────
@@ -186,7 +185,7 @@ def check_imports() -> None:
 
 def check_working_memory() -> None:
     code = (
-        "import sys; sys.path.insert(0,'bin/core');"
+        "import sys; sys.path.insert(0,'bin/agents'); sys.path.insert(0,'bin/core');"
         "from working_memory import save_exchange, get_session_context;"
         "sid='watchdog_test_001';"
         "save_exchange(sid,'ping','pong','general');"
@@ -219,7 +218,7 @@ def main() -> None:
 
     if failures:
         msg = f"DQIII8 WATCHDOG ALERT\n{NOW.strftime('%Y-%m-%d %H:%M UTC')}\n"
-        msg += f"Failed checks ({len(failures)}/{8}):\n"
+        msg += f"Failed checks ({len(failures)}):\n"
         msg += "\n".join(f"- {f}" for f in failures)
         log.error("ALERT — %d check(s) failed", len(failures))
         try:

@@ -16,7 +16,7 @@ from pathlib import Path
 
 DISPATCH = Path(__file__).resolve().parents[1] / "bin" / "core" / "dispatch.py"
 
-STUB_WRAPPER = '''\
+STUB_WRAPPER = """\
 import argparse, sys
 
 AGENT_ROUTING = {"default": ("stub", "stub-model")}
@@ -25,12 +25,13 @@ _PROVIDER_DEFAULT_MODEL = {"stub": "stub-model"}
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--agent", default="default")
+    p.add_argument("--no-enrich", action="store_true")
     p.add_argument("prompt", nargs="?", default="")
     args = p.parse_args()
     if args.prompt == "FAIL":
         sys.exit(1)
     print(f"STUB-RESPONSE:{args.prompt}")
-'''
+"""
 
 
 def _make_fake_root(tmp_path: Path) -> Path:
@@ -50,9 +51,11 @@ def _dispatch_env(root: Path) -> dict:
 
 def _run_async(root: Path, prompt: str) -> dict:
     r = subprocess.run(
-        [sys.executable, str(DISPATCH), "--agent", "default",
-         "--prompt", prompt, "--async"],
-        capture_output=True, text=True, timeout=60, env=_dispatch_env(root),
+        [sys.executable, str(DISPATCH), "--agent", "default", "--prompt", prompt, "--async"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=_dispatch_env(root),
     )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
@@ -99,7 +102,10 @@ def test_read_result_cli_round_trip(tmp_path):
 
     r = subprocess.run(
         [sys.executable, str(DISPATCH), "--read", out["task_id"]],
-        capture_output=True, text=True, timeout=30, env=_dispatch_env(root),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=_dispatch_env(root),
     )
     assert r.returncode == 0, r.stderr
     data = json.loads(r.stdout)
@@ -110,9 +116,11 @@ def test_read_result_cli_round_trip(tmp_path):
 def test_sync_mode_unchanged(tmp_path):
     root = _make_fake_root(tmp_path)
     r = subprocess.run(
-        [sys.executable, str(DISPATCH), "--agent", "default",
-         "--prompt", "sync hello"],
-        capture_output=True, text=True, timeout=60, env=_dispatch_env(root),
+        [sys.executable, str(DISPATCH), "--agent", "default", "--prompt", "sync hello"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=_dispatch_env(root),
     )
     assert r.returncode == 0, r.stderr
     data = json.loads(r.stdout)

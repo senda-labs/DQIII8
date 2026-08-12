@@ -8,7 +8,8 @@
 
 ## Autonomous Execution Rules
 - Plans ≤5 steps, no destructive actions → execute autonomously, notify after.
-- Plan touches ≥3 modules OR has ambiguous scope → enter plan mode first, wait for confirmation.
+- Plan touches ≥3 modules OR has ambiguous scope → enter plan mode first, wait for
+  confirmation, then run `/panel-review <plan-file>` before implementation.
 - Destructive / irreversible actions (rm -rf, DROP, force-push, schema change) → STOP, notify user, wait.
 - Bug in production → fix immediately: read logs, isolate cause, resolve, verify. No hand-holding.
 

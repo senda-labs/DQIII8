@@ -36,5 +36,6 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 - NEVER hardcode API keys — all keys via `os.environ.get("VAR")` only.
 - NEVER commit `*.db` files — gitignored. Use `database/schema_v2.sql` for fresh installs.
 - `ANTHROPIC_API_KEY` must be `""` in subprocess env when using Claude Code OAuth.
-- Plans touching ≥3 modules OR with ambiguous scope → enter plan mode first.
+- Plans touching ≥3 modules OR with ambiguous scope → enter plan mode first, then
+  run `/panel-review <plan-file>` before implementation (see `.claude/skills/panel-review/`).
 - Destructive / irreversible actions (rm -rf, DROP, force-push) → STOP, notify, wait.

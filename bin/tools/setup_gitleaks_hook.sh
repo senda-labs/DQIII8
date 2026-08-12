@@ -27,6 +27,12 @@ cat > "${HOOK_PATH}" <<'EOF'
 #!/usr/bin/env bash
 # gitleaks pre-commit: blocks commits that contain secrets
 gitleaks protect --staged --redact --exit-code 1
+
+# watermark-scan pre-commit: blocks commits with hidden/invisible Unicode
+# characters in staged files (Trojan Source, zero-width, BOM). Report-only
+# by default — never auto-fixes. Run `python3 bin/tools/watermark_scan.py --fix`
+# manually to clean flagged files.
+python3 bin/tools/watermark_scan.py
 EOF
 chmod +x "${HOOK_PATH}"
 

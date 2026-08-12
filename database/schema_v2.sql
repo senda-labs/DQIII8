@@ -933,6 +933,12 @@ CREATE TABLE IF NOT EXISTS chunk_health (
     reviewed_at TEXT    DEFAULT (datetime('now')),
     FOREIGN KEY (chunk_id) REFERENCES vector_chunks(id)
 );
+-- Stage 5 (2026-08-13): rows with source='claude_code_transcript' are written
+-- by stop.py from the Claude Code transcript JSONL. cost_estimate there is
+-- LIST-PRICE-EQUIVALENT, not billed spend — this VPS runs Claude Max OAuth
+-- (flat-rate subscription), so the figure is a relative cost-efficiency proxy
+-- across projects/agents/models, not what is actually paid. No project column:
+-- join on session_id -> sessions.project.
 CREATE TABLE IF NOT EXISTS token_usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

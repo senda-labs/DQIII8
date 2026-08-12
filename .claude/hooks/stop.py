@@ -464,6 +464,133 @@ try:
 except Exception as e:
     _log.warning("session-close DB failed", exc_info=True)
 
+# ── 1a2. Real cost capture from Claude Code transcript (Stage 5) ──
+# NOTE (Correction E): this VPS runs Claude Max OAuth (flat-rate subscription),
+# so the cost computed here is LIST-PRICE-EQUIVALENT, not billed spend — a
+# relative cost-efficiency proxy across projects/agents/models, not what Iker
+# actually pays. See schema_v2.sql's comment on token_usage for the same note.
+_ANTHROPIC_PRICING_PER_MTOK = {
+    # model substring -> (input, output, cache_write, cache_read) USD / 1M tokens
+    "opus": (15.0, 75.0, 18.75, 1.50),
+    "sonnet": (3.0, 15.0, 3.75, 0.30),
+    "haiku": (1.0, 5.0, 1.25, 0.10),
+}
+
+
+def _pricing_for_model(model_id: str):
+    m = (model_id or "").lower()
+    if "opus" in m:
+        return _ANTHROPIC_PRICING_PER_MTOK["opus"]
+    if "haiku" in m:
+        return _ANTHROPIC_PRICING_PER_MTOK["haiku"]
+    return _ANTHROPIC_PRICING_PER_MTOK["sonnet"]  # default: sonnet is the common case
+
+
+def _tier_for_model(model_id: str) -> str | None:
+    m = (model_id or "").lower()
+    if "opus" in m:
+        return "S"
+    if "sonnet" in m:
+        return "A"
+    if "haiku" in m:
+        return "B"
+    return None
+
+
+try:
+    _transcript_path = data.get("transcript_path", "")
+    if not _transcript_path:
+        _cwd_str = str(Path(data.get("cwd", str(JARVIS))).resolve())
+        _slug = _cwd_str.replace("/", "-")
+        _cand = Path.home() / ".claude" / "projects" / _slug / f"{session}.jsonl"
+        _transcript_path = str(_cand) if _cand.exists() else ""
+
+    if _transcript_path and Path(_transcript_path).exists() and DB.exists():
+        _per_model: dict[str, dict[str, int]] = {}
+        _seen_msg_ids: set[str] = set()
+        with open(_transcript_path, encoding="utf-8") as _tf:
+            for _line in _tf:
+                _line = _line.strip()
+                if not _line:
+                    continue
+                try:
+                    _entry = json.loads(_line)
+                except Exception:
+                    continue
+                _msg = _entry.get("message")
+                if not isinstance(_msg, dict):
+                    continue
+                _usage = _msg.get("usage")
+                if not _usage:
+                    continue
+                # Streaming transcripts repeat the same message id (and its
+                # cumulative usage) across multiple JSONL lines — dedupe or
+                # every re-run/parse would multiply-count the same tokens.
+                _mid = _msg.get("id")
+                if _mid:
+                    if _mid in _seen_msg_ids:
+                        continue
+                    _seen_msg_ids.add(_mid)
+                _model = _msg.get("model", "unknown")
+                _acc = _per_model.setdefault(
+                    _model, {"input": 0, "output": 0, "cache_creation": 0, "cache_read": 0}
+                )
+                _acc["input"] += _usage.get("input_tokens", 0) or 0
+                _acc["output"] += _usage.get("output_tokens", 0) or 0
+                _acc["cache_creation"] += _usage.get("cache_creation_input_tokens", 0) or 0
+                _acc["cache_read"] += _usage.get("cache_read_input_tokens", 0) or 0
+
+        if _per_model:
+            import sqlite3 as _tsl3
+
+            _tconn = _tsl3.connect(str(DB), timeout=5)
+            # Idempotence: this session's transcript-derived rows are fully
+            # recomputed on every stop.py run, never accumulated across runs.
+            _tconn.execute(
+                "DELETE FROM token_usage WHERE session_id=? AND source='claude_code_transcript'",
+                (session,),
+            )
+            _grand_total = 0
+            for _model, _acc in _per_model.items():
+                _pin, _pout, _pcw, _pcr = _pricing_for_model(_model)
+                _cost = (
+                    _acc["input"] / 1_000_000 * _pin
+                    + _acc["output"] / 1_000_000 * _pout
+                    + _acc["cache_creation"] / 1_000_000 * _pcw
+                    + _acc["cache_read"] / 1_000_000 * _pcr
+                )
+                _model_total = (
+                    _acc["input"] + _acc["output"] + _acc["cache_creation"] + _acc["cache_read"]
+                )
+                _grand_total += _model_total
+                _tconn.execute(
+                    "INSERT INTO token_usage "
+                    "(session_id, model, tier, operation, input_tokens, output_tokens, "
+                    "total_tokens, cost_estimate, source, task_complexity) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        session,
+                        _model,
+                        _tier_for_model(_model),
+                        "interactive",
+                        _acc["input"] + _acc["cache_creation"] + _acc["cache_read"],
+                        _acc["output"],
+                        _model_total,
+                        round(_cost, 6),
+                        "claude_code_transcript",
+                        None,
+                    ),
+                )
+            _tconn.execute(
+                "UPDATE sessions SET total_tokens=? WHERE session_id=?",
+                (_grand_total, session),
+            )
+            _tconn.commit()
+            _tconn.close()
+            print(f"[DQIII8] transcript cost capture: {_grand_total} tokens across {len(_per_model)} model(s)")
+except Exception as e:
+    _log.warning("transcript cost capture failed", exc_info=True)
+
 # ── 1b. Reconcile error_log with agent_actions ────────────────────
 try:
     import subprocess as _rec_sub

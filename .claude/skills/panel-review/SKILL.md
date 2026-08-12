@@ -78,6 +78,55 @@ seat that has already fabricated a citation once (observed live: invented
 `src/db.py:15` in a repo with no `src/` directory), a quota is a fabrication
 incentive, not a rigor increase.
 
+## Hardening from enterprise-grade stress testing (2026-08-12)
+
+Live adversarial testing of `panel_review.py` (and the sibling `watermark_scan.py`
+pre-commit check) against real crafted payloads, not hypothetical ones, found and
+fixed 4 real bugs in the citation/parsing path:
+
+- **Citation path escaped `REPO_ROOT`**: `/etc/passwd:1` and
+  `../../../etc/passwd:1` both resolved and "verified" — `Path`'s `/` operator
+  discards the left operand entirely for an absolute right-hand operand, so the
+  intended repo-scoping silently didn't happen. Fixed: `_citation_exists()`
+  rejects any path starting with `/` or `~` outright, then requires
+  `candidate.is_relative_to(REPO_ROOT.resolve())` before treating a match as real.
+- **ReDoS in `CITATION_RE`**: a ~200KB adversarial non-matching block hung the
+  parser >120s (confirmed quadratic backtracking, not exponential, via a
+  doubling-input timing sweep). Fixed with `MAX_BLOCK_LEN = 3000`: blocks past
+  that length can't be a legitimate finding anyway (real findings are short,
+  ~4-line structured blocks) and are dropped with reason `block_too_long`
+  *before* ever reaching the regex — never silently discarded, still shown in
+  the dropped-findings appendix.
+- **Markdown/HTML structure injection**: finding text originates from an LLM
+  response, itself shaped by the plan-under-review (untrusted input). Unsanitized
+  text could forge a fake `## Verdict` heading or close the report's `<details>`
+  block early, visually spoofing the real verdict for whoever reads the report.
+  Fixed with `_sanitize_for_report()`, applied at parse time: escapes leading
+  `#` headings, `</details>`, `<details`, `<summary`, `<script`.
+- **Hook exit-code swallowing**: `.git/hooks/pre-commit` had no `set -e`, so a
+  failing `gitleaks protect` followed by a passing `watermark_scan.py` returned
+  exit 0 overall — silently defeating the secret-blocking gate. Fixed by adding
+  `set -e` to both the live hook and `bin/tools/setup_gitleaks_hook.sh` (so
+  re-provisioning doesn't reintroduce it).
+
+`watermark_scan.py` got 3 companion fixes in the same pass: it now scans the
+**staged git index blob** (`git cat-file -p :<path>`) instead of the working-tree
+file (closes a stage-then-revert-without-restaging bypass), skips staged
+symlinks entirely (a symlink's blob content is the target path string, not the
+target file's content — following it would scan the wrong thing), and reads
+staged filenames via `git diff --cached ... -z` instead of the default
+C-quoted output (closes a silent skip of any staged file with a non-ASCII name).
+
+**Known residual limitation, disclosed rather than fixed**: `_citation_exists()`
+only proves the cited `file:line` exists in this repo — it does not verify the
+finding's actual *claim* is really about that file/line. A seat could cite a
+real, unrelated file to make a fabricated defect look verified. Judged
+disproportionate to fix (would require semantic verification of claim-to-code
+correspondence, a much heavier mechanism) relative to the residual risk, given
+Opus's findings are weighted highest and a human (the calling CC session) reads
+every verified finding before acting on it. Not silently assumed safe — recorded
+here as an open gap.
+
 ## Why this design (history)
 
 An earlier draft used 10 NIM seats with forced-dissent iteration and treated the

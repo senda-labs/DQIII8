@@ -25,6 +25,7 @@ fi
 echo "[gitleaks-setup] Writing pre-commit hook..."
 cat > "${HOOK_PATH}" <<'EOF'
 #!/usr/bin/env bash
+set -e
 # gitleaks pre-commit: blocks commits that contain secrets
 gitleaks protect --staged --redact --exit-code 1
 

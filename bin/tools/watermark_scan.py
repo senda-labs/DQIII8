@@ -2,9 +2,14 @@
 """Scan staged files for invisible/hidden Unicode characters (watermark-style artifacts).
 
 Scope is deliberately narrow: only files staged for commit
-(`git diff --cached --diff-filter=d --name-only`). Never walks directories, never
+(`git diff --cached --diff-filter=d --name-only -z`). Never walks directories, never
 touches untracked or gitignored paths — this by construction excludes client data
-under my-projects/ and any large research datasets.
+under my-projects/ and any large research datasets. Detection reads each file's
+STAGED git index blob (`git cat-file -p :<path>`), not the working-tree copy —
+the two can diverge (stage malicious content, then revert the working tree without
+re-staging) and only the index content is what actually gets committed. Staged
+symlinks are skipped: a symlink's blob content is the target path string, not the
+target file's content, so following it would scan the wrong thing entirely.
 
 Default mode is report-only and blocking (exit 1 if anything found). --fix is a
 manual, opt-in, human-run flag — never wired into an automated hook.
@@ -55,13 +60,44 @@ BOM_FIXABLE_EXTENSIONS = {".py", ".js", ".ts"}
 
 
 def staged_files() -> list[Path]:
+    # -z: NUL-separated, unquoted paths. Without it, git C-quotes any non-ASCII
+    # filename (e.g. "café.py" -> "\"caf\\303\\251.py\""); that quoted literal
+    # then fails Path.exists() downstream and the file is silently skipped —
+    # a real bypass for any staged file with a non-ASCII name.
     out = subprocess.run(
-        ["git", "diff", "--cached", "--diff-filter=d", "--name-only"],
+        ["git", "diff", "--cached", "--diff-filter=d", "--name-only", "-z"],
         capture_output=True,
         text=True,
         check=True,
     )
-    return [Path(p) for p in out.stdout.splitlines() if p]
+    return [Path(p) for p in out.stdout.split("\0") if p]
+
+
+def staged_is_symlink(path: Path) -> bool:
+    """True if the staged (index) entry for this path is a symlink (mode 120000)."""
+    out = subprocess.run(
+        ["git", "ls-files", "-s", "--", path.as_posix()],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return out.stdout.startswith("120000 ")
+
+
+def staged_blob_bytes(path: Path) -> bytes | None:
+    """Read the file's content as it will actually be committed (the git index
+    blob), not the working-tree file. These can diverge: a file can be staged
+    with malicious content, then the working-tree copy reverted to something
+    clean WITHOUT re-staging — scanning the working tree would report "clean"
+    while `git commit` still commits the original malicious staged blob."""
+    result = subprocess.run(
+        ["git", "cat-file", "-p", f":{path.as_posix()}"],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout
 
 
 def classify(cp: int) -> tuple[str, str] | None:
@@ -81,11 +117,22 @@ def classify(cp: int) -> tuple[str, str] | None:
 
 
 def scan_file(path: Path) -> list[dict]:
-    findings = []
-    try:
-        raw = path.read_bytes()
-    except OSError:
+    findings: list[dict] = []
+    if staged_is_symlink(path):
+        # A staged symlink's blob content is just the target path string, not
+        # the target file's content — scan_bytes() would read the wrong thing
+        # entirely if we followed it (either via read_bytes() on the working
+        # tree, or by treating the resolved target as this file's content).
+        # The target path text itself is not a realistic watermark vector.
         return findings
+    raw = staged_blob_bytes(path)
+    if raw is None:
+        return findings
+    return scan_bytes(path, raw)
+
+
+def scan_bytes(path: Path, raw: bytes) -> list[dict]:
+    findings = []
     if len(raw) > MAX_FILE_SIZE:
         return findings
     if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
@@ -124,7 +171,10 @@ def apply_fix(path: Path, findings: list[dict]) -> bool:
     to_strip = {f["codepoint"] for f in findings if f["category"] in fixable_categories}
     if not to_strip:
         return False
-    raw = path.read_bytes()
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return False
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -136,7 +186,7 @@ def apply_fix(path: Path, findings: list[dict]) -> bool:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(new_text, encoding="utf-8")
     tmp.replace(path)
-    print(f"  fixed: {path}  (undo: git checkout -- {path})")
+    print(f"  fixed: {path}  (undo: git checkout -- {path}; re-stage: git add {path})")
     return True
 
 
@@ -153,8 +203,9 @@ def main() -> int:
     files = staged_files()
     all_findings: list[dict] = []
     for f in files:
-        if not f.exists():
-            continue
+        # No f.exists() gate here: detection reads the staged git blob (via
+        # scan_file -> staged_blob_bytes), which exists independently of the
+        # working-tree file. --fix still needs the working-tree file present.
         findings = scan_file(f)
         all_findings.extend(findings)
 

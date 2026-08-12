@@ -74,6 +74,14 @@ CITATION_RE = re.compile(r"[\w./\-]+\.\w+:\d+")
 CATEGORY_RE = re.compile(r"\[CATEGORY:\s*(\w+)\]", re.IGNORECASE)
 SEVERITY_RE = re.compile(r"\[SEVERITY:\s*(P[0-3])\]", re.IGNORECASE)
 
+# CITATION_RE has quadratic-time backtracking on long non-matching input
+# (confirmed live 2026-08-12: a ~200KB adversarial payload hung >120s). Real
+# findings are short, structured blocks (~4 lines) per FORMAT_INSTRUCTIONS —
+# a block far past this length cannot be a legitimate finding anyway, so it's
+# never regex-matched at all; it's dropped with an honest reason instead of
+# silently risking a hang.
+MAX_BLOCK_LEN = 3000
+
 FORMAT_INSTRUCTIONS = (
     "\nAnalysis procedure — be exact and concise, not exhaustive-for-its-own-sake:\n"
     f"1. Consider each of these categories in turn: {', '.join(CATEGORIES)} "
@@ -131,9 +139,31 @@ def _run_seat(agent: str, prompt: str, timeout: int) -> dict:
 
 
 def _citation_exists(match: str) -> bool:
-    """A file:line citation only counts if the file is real, relative to repo root."""
+    """A file:line citation only counts if it resolves to a real file INSIDE this
+    repo. Absolute paths and `..` segments are rejected outright — confirmed live
+    2026-08-12 that without this, '/etc/passwd:1' and '../../../etc/passwd:1' both
+    resolved and passed verification (Path's `/` operator discards the left side
+    entirely for an absolute right-hand operand)."""
     path_str = match.rsplit(":", 1)[0]
-    return (REPO_ROOT / path_str).is_file()
+    if path_str.startswith("/") or path_str.startswith("~"):
+        return False
+    candidate = (REPO_ROOT / path_str).resolve()
+    if not candidate.is_relative_to(REPO_ROOT.resolve()):
+        return False
+    return candidate.is_file()
+
+
+def _sanitize_for_report(text: str) -> str:
+    """Finding text originates from an LLM response, which can itself be shaped
+    by the plan-under-review (explicitly untrusted data, see UNTRUSTED_WRAPPER).
+    Confirmed live 2026-08-12: unsanitized finding text can forge a fake '##
+    Verdict' heading or close the report's <details> block early, visually
+    spoofing the real verdict for whoever reads the report. Neutralize markdown/
+    HTML structural tokens without altering the substance of the finding."""
+    text = text.replace("</details>", "<\\/details>")
+    text = text.replace("<details", "&lt;details").replace("<summary", "&lt;summary")
+    text = text.replace("<script", "&lt;script")
+    return re.sub(r"(?m)^(#+)", r"\\\1", text)
 
 
 def _parse_findings(response_text: str) -> tuple[list[dict], list[dict]]:
@@ -150,6 +180,18 @@ def _parse_findings(response_text: str) -> tuple[list[dict], list[dict]]:
     verified, dropped = [], []
     blocks = [b.strip() for b in re.split(r"\n\s*\n", response_text) if b.strip()]
     for block in blocks:
+        if len(block) > MAX_BLOCK_LEN:
+            # Cannot be a legitimate finding per FORMAT_INSTRUCTIONS (short,
+            # structured); also the input CITATION_RE is unsafe to run against
+            # at this length. Shown, not silently discarded, same as any other
+            # drop reason.
+            dropped.append(
+                {
+                    "text": _sanitize_for_report(block[:MAX_BLOCK_LEN]) + " […]",
+                    "reason": "block_too_long",
+                }
+            )
+            continue
         cat_m = CATEGORY_RE.search(block)
         sev_m = SEVERITY_RE.search(block)
         looks_like_finding = bool(cat_m or sev_m or re.search(r"exploit", block, re.I))
@@ -159,16 +201,16 @@ def _parse_findings(response_text: str) -> tuple[list[dict], list[dict]]:
         if real:
             verified.append(
                 {
-                    "text": block,
+                    "text": _sanitize_for_report(block),
                     "citation": real[0],
                     "category": cat_m.group(1) if cat_m else None,
                     "severity": sev_m.group(1).upper() if sev_m else None,
                 }
             )
         elif matches:
-            dropped.append({"text": block, "reason": "fake_path"})
+            dropped.append({"text": _sanitize_for_report(block), "reason": "fake_path"})
         elif looks_like_finding:
-            dropped.append({"text": block, "reason": "no_citation"})
+            dropped.append({"text": _sanitize_for_report(block), "reason": "no_citation"})
         # else: not a finding block at all (prose, "Category: considered" line) — skip
     return verified, dropped
 

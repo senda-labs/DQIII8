@@ -70,15 +70,27 @@ def check_services() -> None:
 
 
 def check_crons() -> None:
+    # (log path, tmp_backed) — tmp_backed marks logs under the real /tmp,
+    # wiped at boot (tmpfiles.d 30d rule). Recorded explicitly rather than
+    # inferred from the path string: nightly.sh's log is DQIII8_ROOT-relative,
+    # and DQIII8_ROOT itself can be redirected under /tmp during testing,
+    # which would make a string-prefix check misclassify it.
     log_checks = {
-        "nightly.sh": DQIII8_ROOT / "tasks" / "nightly-report.md",
-        "memory_decay": Path("/tmp/dqiii8_decay.log"),
-        "sandbox_tester": Path("/tmp/dqiii8_sandbox.log"),
-        "auto_researcher": Path("/tmp/dqiii8_researcher.log"),
+        "nightly.sh": (DQIII8_ROOT / "tasks" / "nightly-report.md", False),
+        "memory_decay": (Path("/tmp/dqiii8_decay.log"), True),
+        "sandbox_tester": (Path("/tmp/dqiii8_sandbox.log"), True),
+        "auto_researcher": (Path("/tmp/dqiii8_researcher.log"), True),
     }
-    for name, log_path in log_checks.items():
+    for name, (log_path, tmp_backed) in log_checks.items():
         if not log_path.exists():
-            check(f"cron:{name}", False, "log file missing")
+            # A missing /tmp-backed log right after a reboot is expected, not
+            # a failure, until the cron next runs (same reasoning as
+            # check_backup_log). nightly.sh's log survives reboots, so its
+            # absence is still a real failure.
+            if tmp_backed:
+                check(f"cron:{name}", True, "log absent (likely post-reboot /tmp wipe)")
+            else:
+                check(f"cron:{name}", False, "log file missing")
             continue
         mtime = datetime.fromtimestamp(log_path.stat().st_mtime, tz=timezone.utc)
         age_h = (NOW - mtime).total_seconds() / 3600

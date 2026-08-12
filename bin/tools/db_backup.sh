@@ -67,8 +67,13 @@ for db in dqiii8.db dqiii8_metrics.db dqiii8_history.db; do
     # rotate: keep newest $KEEP real backups per db, ordered by the timestamp
     # embedded in the filename — not mtime (2026-08-12: production mtimes were
     # already blanket-stamped by an unrelated restore, decoupling eviction order
-    # from real backup age). Exclude leftover -wal/-shm sidecars and .partial files.
-    find "$OUT_DIR" -maxdepth 1 -name "${db}.bak-*" ! -name '*-wal' ! -name '*-shm' ! -name '*.partial' \
+    # from real backup age). Match the exact %Y%m%dT%H%M%SZ shape (not a bare
+    # `*` glob): a non-timestamp name like "dqiii8.db.bak-manual" sorts ahead
+    # of every real backup under lexical `sort -r` (2026-08-12, panel-review
+    # caught this) and would be treated as newest and permanently kept,
+    # silently eating a KEEP=7 retention slot from a real daily backup.
+    find "$OUT_DIR" -maxdepth 1 \
+        -name "${db}.bak-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z" \
         | sort -r | tail -n "+$((KEEP + 1))" | xargs -r rm -f
 done
 

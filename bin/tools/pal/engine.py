@@ -10,6 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeout
 from typing import Any
 
+from core.action_log import generate_request_id
 from core.openrouter_wrapper import (
     AGENT_ROUTING,
     FALLBACK_CHAIN,
@@ -125,6 +126,7 @@ def generate(
         session_id="pal-mcp",
         domain=task_type or "",
         project=project,
+        request_id=generate_request_id(),
     )
 
     return {

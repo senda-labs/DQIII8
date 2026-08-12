@@ -137,22 +137,26 @@ try:
     _tier = _model_tier(_model)
     _cwd = str(data.get("cwd", "") or "")
     sys.path.insert(0, os.path.join(DQIII8_ROOT, "bin"))
-    from core.action_log import resolve_project_safe
+    from core.action_log import resolve_project_safe, generate_request_id
 
     _project = resolve_project_safe(session, cwd=_cwd)
+    # D7 corrected scope: every INSERT gets its own request_id (cardinality 1
+    # for single-attempt rows like this one) so v_agent_efficiency's
+    # request-level success rate covers the whole table, not just wrapper rows.
+    _request_id = generate_request_id()
     if os.path.exists(_DB):
         _conn = sqlite3.connect(_DB, timeout=10)
         _conn.execute(
             "INSERT INTO agent_actions "
-            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier,model_used,project,worktree,tier) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier,model_used,project,worktree,tier,request_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (session, agent, tool,
              # Correction I.2: no longer truncated to 120 chars — post_tool_use.py's
              # Stage 0 close-out matches on the untruncated file_path; a truncated
              # INSERT vs untruncated read silently defeated that matching key.
              inp.get("file_path", inp.get("command", "")),
              tool.lower(), int(time.time() * 1000), _tier, _model, _project,
-             _worktree or None, _tier_text(_model)),
+             _worktree or None, _tier_text(_model), _request_id),
         )
         _conn.commit()
         _conn.close()

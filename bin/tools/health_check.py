@@ -8,16 +8,20 @@ Checks (weights):
   disk free >= 15% ............ 10
   history db owner-only ...... 10
 Penalty:
-  hook telemetry stale ...... -25  (no agent_actions row in 48h while
-                                    amplification_log shows 7d activity)
+  hook telemetry stale ...... floor score at 55 (no agent_actions row in 48h
+                                    while amplification_log shows 7d activity)
+Separately, unscored: alerts if bin/monitoring/health_watchdog.py's own
+heartbeat (var/watchdog_heartbeat) is missing or >24h stale — the two rails'
+mutual dead-man's-switch.
 Writes JSON to database/audit_reports/health_<date>.json.
 Exit code 0 always (cron-safe); alerting is the signal.
 """
+
 import json
 import shutil
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -79,9 +83,7 @@ def main():
     # partial install and a concurrent writer can still surface a lock error, and
     # this runs from cron where an exception means no report and no alert at all.
     try:
-        last_action = conn.execute(
-            "SELECT MAX(timestamp) FROM agent_actions"
-        ).fetchone()[0]
+        last_action = conn.execute("SELECT MAX(timestamp) FROM agent_actions").fetchone()[0]
         recent_actions = conn.execute(
             "SELECT COUNT(*) FROM agent_actions WHERE timestamp > datetime('now','-2 days')"
         ).fetchone()[0]
@@ -89,7 +91,12 @@ def main():
         stale = recent_actions == 0
         detail["hook_telemetry_stale"] = bool(stale and total)
         if stale and total:
-            score = max(0, score - 25)
+            # Absolute floor, not a subtraction: a plain -25 lands a clean
+            # 100 baseline on 75, which never crosses the <70 alert line —
+            # the exact scenario (total hook-telemetry outage) this penalty
+            # exists to catch. min(score, 55) always crosses it.
+            detail["score_before_stale_floor"] = score
+            score = min(score, 55)
     except sqlite3.Error as exc:
         detail["agent_actions_last"] = None
         detail["hook_telemetry_stale"] = None
@@ -114,9 +121,39 @@ def main():
         try:
             sys.path.insert(0, str(ROOT / "bin" / "core"))
             from notify import notify
+
             notify(f"DQIII8 health {score}/100 < 70 — {out.name}")
         except Exception as exc:
             print(f"alert dispatch failed: {exc}", file=sys.stderr)
+
+    # Dead-man's-switch, unscored so it can't be masked by the 100-point
+    # system (that trap is exactly what the stale-floor fix above closes for
+    # the other check). Compared aware-to-aware: health_watchdog.py writes
+    # the heartbeat via datetime.now(timezone.utc), not this module's naive
+    # datetime.now() used elsewhere above — mixing them raises TypeError.
+    try:
+        heartbeat_path = ROOT / "var" / "watchdog_heartbeat"
+        if not heartbeat_path.exists():
+            sys.path.insert(0, str(ROOT / "bin" / "core"))
+            from notify import notify
+
+            notify("DQIII8 watchdog heartbeat missing (never written)")
+        else:
+            raw = heartbeat_path.read_text().strip()
+            try:
+                hb_time = datetime.fromisoformat(raw)
+                if hb_time.tzinfo is None:
+                    hb_time = hb_time.replace(tzinfo=timezone.utc)
+            except ValueError:
+                hb_time = datetime.fromtimestamp(heartbeat_path.stat().st_mtime, tz=timezone.utc)
+            age_h = (datetime.now(timezone.utc) - hb_time).total_seconds() / 3600
+            if age_h > 24:
+                sys.path.insert(0, str(ROOT / "bin" / "core"))
+                from notify import notify
+
+                notify(f"DQIII8 watchdog heartbeat stale since {hb_time.isoformat()}")
+    except Exception as exc:
+        print(f"heartbeat check failed: {exc!r}", file=sys.stderr)
 
 
 if __name__ == "__main__":

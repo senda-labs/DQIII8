@@ -2,8 +2,9 @@
 """
 DQIII8 Health Watchdog — daily preventive maintenance check.
 
-8 checks covering services, crons, core modules, DB integrity,
-disk space, and import paths. Sends Telegram alert if any check fails.
+12 checks covering services, crons, core modules, DB integrity, disk space,
+import paths, backup freshness/log, the health_check.py dead-man's-switch,
+and abandoned human_hours sessions. Sends Telegram alert if any check fails.
 Silent on full success (only logs).
 
 Usage:
@@ -14,10 +15,11 @@ Usage:
 from __future__ import annotations
 
 import os
-import subprocess
+import re
 import sqlite3
+import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
@@ -54,7 +56,9 @@ def check_services() -> None:
     # "autoreporte" removed 2026-08-12: no systemd unit or script by that name
     # exists anywhere in the tree — a phantom entry that always reported "down".
     for svc in ["dqiii8-bot", "dq-dashboard", "ollama"]:
-        result = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True)
+        result = subprocess.run(
+            ["systemctl", "is-active", svc], capture_output=True, text=True, timeout=30
+        )
         check(f"service:{svc}", result.stdout.strip() == "active", result.stdout.strip())
 
 
@@ -98,6 +102,7 @@ def check_auto_learner() -> None:
         capture_output=True,
         text=True,
         cwd=str(DQIII8_ROOT),
+        timeout=120,
     )
     check(
         "auto_learner",
@@ -121,6 +126,7 @@ def check_knowledge_enricher() -> None:
         capture_output=True,
         text=True,
         cwd=str(DQIII8_ROOT),
+        timeout=60,
     )
     ok = result.returncode == 0 and "OK" in result.stdout
     check("knowledge_enricher", ok, result.stderr.strip()[:80] if not ok else "")
@@ -146,7 +152,7 @@ def check_db_integrity() -> None:
 
 
 def check_disk_space() -> None:
-    result = subprocess.run(["df", "-h", "/"], capture_output=True, text=True)
+    result = subprocess.run(["df", "-h", "/"], capture_output=True, text=True, timeout=30)
     try:
         pct_str = result.stdout.splitlines()[1].split()[4].rstrip("%")
         pct = int(pct_str)
@@ -172,6 +178,7 @@ def check_imports() -> None:
             capture_output=True,
             text=True,
             cwd=str(DQIII8_ROOT),
+            timeout=30,
         )
         check(
             f"syntax:{Path(target).name}",
@@ -197,24 +204,176 @@ def check_working_memory() -> None:
         capture_output=True,
         text=True,
         cwd=str(DQIII8_ROOT),
+        timeout=60,
     )
     ok = result.returncode == 0 and "OK" in result.stdout
     check("working_memory", ok, result.stderr.strip()[:80] if not ok else "")
 
 
+# ── Check 9: Backup freshness ─────────────────────────────────────────────
+
+BACKUP_DIR = DQIII8_ROOT / "database" / "backups"
+BACKUP_DBS = ["dqiii8.db", "dqiii8_metrics.db", "dqiii8_history.db"]
+# Live counts 2026-08-12 (4/5/7 per DB) are still refilling at +1/DB/day after
+# the Stage-0.1 rotation fix; a flat >=7 floor would fire on deploy. Ramps to
+# the script's real KEEP=7 target by the date they're expected to reach it.
+BACKUP_MIN_RETAIN = 7 if date.today() >= date(2026, 8, 19) else 3
+
+
+def _parse_backup_ts(name: str, prefix: str) -> datetime | None:
+    try:
+        return datetime.strptime(name[len(prefix) :], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def check_backup_freshness() -> None:
+    for db in BACKUP_DBS:
+        prefix = f"{db}.bak-"
+        candidates = [
+            p
+            for p in BACKUP_DIR.glob(f"{prefix}*")
+            if not p.name.endswith(("-wal", "-shm", ".partial"))
+        ]
+        valid = [(p, ts) for p in candidates if (ts := _parse_backup_ts(p.name, prefix))]
+        if not valid:
+            check(f"backup_freshness:{db}", False, "no parseable backups")
+            continue
+        newest_ts = max(ts for _, ts in valid)
+        age_h = (NOW - newest_ts).total_seconds() / 3600
+        count = len(valid)
+        ok = age_h <= 24 and count >= BACKUP_MIN_RETAIN
+        check(
+            f"backup_freshness:{db}",
+            ok,
+            f"newest {age_h:.0f}h old, count={count} (min {BACKUP_MIN_RETAIN})",
+        )
+
+
+# ── Check 10: Backup log ──────────────────────────────────────────────────
+
+BACKUP_LOG = Path("/tmp/dqiii8_db_backup.log")
+_BACKUP_OK_RE = re.compile(r"^\[db_backup\] (\S+) ok: (\S+) \(")
+
+
+def check_backup_log() -> None:
+    if not BACKUP_LOG.exists():
+        # /tmp is wiped at boot (tmpfiles.d 30d rule) — a missing log right
+        # after a reboot is expected, not a failure. check_backup_freshness
+        # is the real signal for backup health; this log is a secondary one.
+        check(
+            "backup_log",
+            True,
+            "log absent (likely post-reboot /tmp wipe) — see backup_freshness",
+        )
+        return
+    lines = BACKUP_LOG.read_text(errors="replace").splitlines()[-20:]
+    parsed = []
+    for line in lines:
+        m = _BACKUP_OK_RE.match(line)
+        if not m:
+            continue
+        ts_str, dst = m.groups()
+        try:
+            ts = datetime.strptime(ts_str, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        db_name = Path(dst).name.split(".bak-")[0]
+        parsed.append((ts, db_name))
+    if not parsed:
+        check("backup_log", False, "no parseable 'ok:' line in last 20 lines")
+        return
+    newest_ts = max(ts for ts, _ in parsed)
+    dbs_at_newest = {db for ts, db in parsed if ts == newest_ts}
+    missing = set(BACKUP_DBS) - dbs_at_newest
+    age_h = (NOW - newest_ts).total_seconds() / 3600
+    detail = f"newest run {age_h:.0f}h ago"
+    if missing:
+        detail += f", missing at that run: {', '.join(sorted(missing))}"
+    check("backup_log", age_h <= 24 and not missing, detail)
+
+
+# ── Check 11: health_check.py dead-man's-switch (mutual with the heartbeat) ─
+
+VAR_DIR = DQIII8_ROOT / "var"
+HEARTBEAT_PATH = VAR_DIR / "watchdog_heartbeat"
+AUDIT_REPORTS_DIR = DQIII8_ROOT / "database" / "audit_reports"
+_HEALTH_JSON_RE = re.compile(r"^health_(\d{4}-\d{2}-\d{2})\.json$")
+
+
+def write_heartbeat() -> None:
+    VAR_DIR.mkdir(parents=True, exist_ok=True)
+    HEARTBEAT_PATH.write_text(NOW.isoformat())
+
+
+def check_health_check_output() -> None:
+    dates = []
+    for p in AUDIT_REPORTS_DIR.glob("health_*.json"):
+        m = _HEALTH_JSON_RE.match(p.name)
+        if not m:
+            continue
+        try:
+            dates.append(datetime.strptime(m.group(1), "%Y-%m-%d").date())
+        except ValueError:
+            continue
+    if not dates:
+        check("health_check_output", False, "no health_*.json found")
+        return
+    newest = max(dates)
+    age_days = (NOW.date() - newest).days
+    check("health_check_output", age_days <= 1, f"newest report is {age_days}d old")
+
+
+# ── Check 12: Abandoned human_hours sessions ──────────────────────────────
+
+
+def check_human_hours() -> None:
+    try:
+        conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=5)
+        n = conn.execute(
+            "SELECT COUNT(*) FROM human_hours WHERE ended_at IS NULL "
+            "AND (julianday('now') - julianday(started_at)) > 16.0/24.0"
+        ).fetchone()[0]
+        conn.close()
+        check("human_hours", n == 0, f"{n} open session(s) >16h" if n else "")
+    except sqlite3.OperationalError as e:
+        if "no such table" in str(e):
+            check("human_hours", True, "table absent")
+        else:
+            check("human_hours", False, str(e)[:80])
+
+
 # ── Main ──────────────────────────────────────────────────────────────────
+
+
+CHECKS = [
+    ("services", check_services),
+    ("crons", check_crons),
+    ("auto_learner", check_auto_learner),
+    ("knowledge_enricher", check_knowledge_enricher),
+    ("db_integrity", check_db_integrity),
+    ("disk_space", check_disk_space),
+    ("imports", check_imports),
+    ("working_memory", check_working_memory),
+    ("backup_freshness", check_backup_freshness),
+    ("backup_log", check_backup_log),
+    ("health_check_output", check_health_check_output),
+    ("human_hours", check_human_hours),
+]
 
 
 def main() -> None:
     log.info("Starting — %s", NOW.strftime("%Y-%m-%d %H:%M UTC"))
-    check_services()
-    check_crons()
-    check_auto_learner()
-    check_knowledge_enricher()
-    check_db_integrity()
-    check_disk_space()
-    check_imports()
-    check_working_memory()
+    for name, func in CHECKS:
+        try:
+            func()
+        except Exception as e:
+            check(f"{name}:exception", False, str(e)[:80])
+
+    try:
+        write_heartbeat()
+    except Exception as e:
+        check("heartbeat_write", False, str(e)[:80])
 
     if failures:
         msg = f"DQIII8 WATCHDOG ALERT\n{NOW.strftime('%Y-%m-%d %H:%M UTC')}\n"
@@ -224,7 +383,9 @@ def main() -> None:
         try:
             from notify import send_telegram
 
-            send_telegram(msg)
+            res = send_telegram(msg)
+            if not res.ok:
+                log.error("ALERT DELIVERY FAILED: %s", res.error)
         except Exception as e:
             log.error("notify failed: %s", e, exc_info=True)
     else:

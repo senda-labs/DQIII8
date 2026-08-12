@@ -36,14 +36,41 @@ tool = data.get("tool_name", "")
 inp = data.get("tool_input", {})
 resp = data.get("tool_response", {}) or {}
 session = data.get("session_id", "unknown")
+_dqiii8_root_path = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 agent = data.get("agent_id", data.get("agent_name", ""))
 if not agent:
+    # Stage 0 / Correction G: the lookup file subagent_start.py writes is keyed
+    # by agent_id, not session_id — resolve session_id -> agent_id via
+    # agent_registry first, then build the correct filename. Try a direct
+    # session-keyed match first too (harmless, cheap, covers any future case
+    # where session_id and agent_id happen to coincide).
+    agent = "claude-sonnet-4-6"
     try:
-        with open(f"/tmp/dqiii8_agent_{session}.json", encoding="utf-8") as _af:
-            agent = json.load(_af).get("agent_type", "claude-sonnet-4-6")
+        _direct = _dqiii8_root_path / "tmp" / f"dqiii8_agent_{session}.json"
+        if _direct.exists():
+            with open(_direct, encoding="utf-8") as _af:
+                agent = json.load(_af).get("agent_type", "claude-sonnet-4-6")
+        else:
+            import sqlite3 as _rics
+
+            _reg_db = _dqiii8_root_path / "database" / "dqiii8.db"
+            _resolved_agent_id = None
+            if _reg_db.exists():
+                _rconn = _rics.connect(str(_reg_db), timeout=2)
+                _rrow = _rconn.execute(
+                    "SELECT agent_id FROM agent_registry WHERE parent_session=? "
+                    "ORDER BY start_time DESC LIMIT 1",
+                    (session,),
+                ).fetchone()
+                _rconn.close()
+                _resolved_agent_id = _rrow[0] if _rrow else None
+            if _resolved_agent_id:
+                _lookup = _dqiii8_root_path / "tmp" / f"dqiii8_agent_{_resolved_agent_id}.json"
+                if _lookup.exists():
+                    with open(_lookup, encoding="utf-8") as _af:
+                        agent = json.load(_af).get("agent_type", "claude-sonnet-4-6")
     except Exception as e:
         _log.debug("agent-file read skipped: %s", e)
-        agent = "claude-sonnet-4-6"
 # Infer from tool+path if agent looks like a UUID (17 hex chars starting with 'a')
 if (
     len(agent) == 17
@@ -70,14 +97,26 @@ if tool in ("Edit", "Write", "MultiEdit"):
         except Exception as e:
             _log.debug("black format skipped: %s", e)
 
-# ── Patch 5: metrics in try/except — never block real work ──
+# ── Patch 5 / Stage 0 (Correction A): metrics in try/except — never block real work ──
+# sys.path must point at bin/core, where db.py actually lives (matches stop.py's
+# convention since the bin/ reorg in 24129d7) — the old `bin/` insert made this
+# `from db import ...` raise ModuleNotFoundError on every call since mid-June.
 try:
-    _bin = os.path.join(os.environ.get("DQIII8_ROOT", "/root/dqiii8"), "bin")
-    if _bin not in sys.path:
-        sys.path.insert(0, _bin)
-    from db import get_db as _get_db, DB_PATH as _DB_PATH
+    _bin_core = str(_dqiii8_root_path / "bin" / "core")
+    if _bin_core not in sys.path:
+        sys.path.insert(0, _bin_core)
+except Exception as e:
+    _log.error("metrics DB import path setup failed: %s", e, exc_info=True)
 
-    if _DB_PATH.exists():
+try:
+    from db import get_db as _get_db, DB_PATH as _DB_PATH
+except Exception as e:
+    _log.error("metrics DB import failed (db.py not found on sys.path): %s", e, exc_info=True)
+    _DB_PATH = None
+    _get_db = None
+
+try:
+    if _get_db is not None and _DB_PATH is not None and _DB_PATH.exists():
         # Detect failure via exit_code (Bash) OR type/is_error/error (other tools)
         _exit_code = resp.get("exit_code")
         if _exit_code is not None:
@@ -113,19 +152,43 @@ try:
         stored_error = error_msg or (
             f"{tool} failed (no stderr)" if not success else None
         )
+        _fp_match = inp.get("file_path", inp.get("command", ""))
 
         _action_id = None
-        with _get_db(timeout=2) as conn:
-            # Find the open action row first (to get its id for error_log FK)
+        # Stage 0 / Correction H: raise the close-out timeout to match the INSERT
+        # side (was timeout=2, tighter than pre_tool_use.py's timeout=10) — the
+        # 2s connection was the second, independent SQLITE_BUSY loss source under
+        # parallel dispatch (Correction I.3), on top of the matching-key bug below.
+        with _get_db(timeout=10) as conn:
+            # Stage 0 / Correction H + I.2: match by (session_id, tool_used,
+            # file_path) — not the old (session_id, tool_used) LIFO-only key,
+            # which cross-attributes duration/success between concurrent
+            # same-tool calls on different files/commands. file_path here is
+            # never truncated (matches pre_tool_use.py's INSERT, also fixed to
+            # stop truncating at [:120] — a truncated-vs-full mismatch would
+            # silently defeat this exact match). Oldest-open (id ASC) within the
+            # narrowed key is used as the tie-break — no per-row tool_use_id
+            # column exists yet (would require a schema migration outside this
+            # stage's scope); this is a documented residual gap, not a full fix.
             _action_row = conn.execute(
                 "SELECT id FROM agent_actions "
-                "WHERE session_id=? AND tool_used=? AND end_time_ms IS NULL "
-                "ORDER BY id DESC LIMIT 1",
-                (session, tool),
+                "WHERE session_id=? AND tool_used=? AND file_path=? AND end_time_ms IS NULL "
+                "ORDER BY id ASC LIMIT 1",
+                (session, tool, _fp_match),
             ).fetchone()
             _action_id = _action_row[0] if _action_row else None
+            if _action_id is None:
+                # Fallback: file_path mismatch (e.g. legacy row from before this
+                # fix) — fall back to the old, looser (session, tool) LIFO match
+                # rather than leaving the row permanently open.
+                _action_row = conn.execute(
+                    "SELECT id FROM agent_actions "
+                    "WHERE session_id=? AND tool_used=? AND end_time_ms IS NULL "
+                    "ORDER BY id DESC LIMIT 1",
+                    (session, tool),
+                ).fetchone()
+                _action_id = _action_row[0] if _action_row else None
 
-            # Close the open action from pre_tool_use
             if _action_id:
                 conn.execute(
                     "UPDATE agent_actions "
@@ -142,36 +205,6 @@ try:
                         _action_id,
                     ),
                 )
-            else:
-                conn.execute(
-                    """
-                    UPDATE agent_actions
-                    SET end_time_ms=?, duration_ms=?-COALESCE(start_time_ms,?),
-                        success=?, error_message=?, bytes_written=?
-                    WHERE id=(
-                        SELECT id FROM agent_actions
-                        WHERE session_id=? AND tool_used=? AND end_time_ms IS NULL
-                        ORDER BY id DESC LIMIT 1)
-                """,
-                    (
-                        now_ms,
-                        now_ms,
-                        now_ms,
-                        success,
-                        stored_error,
-                        bytes_wr,
-                        session,
-                        tool,
-                    ),
-                )
-                # Recover action_id FK after fallback update so error_log links correctly
-                _refetch = conn.execute(
-                    "SELECT id FROM agent_actions "
-                    "WHERE session_id=? AND tool_used=? AND end_time_ms=? "
-                    "ORDER BY id DESC LIMIT 1",
-                    (session, tool, now_ms),
-                ).fetchone()
-                _action_id = _refetch[0] if _refetch else None
 
         # Separate transaction: error_log INSERT must not share a transaction with
         # agent_actions UPDATE — a failed INSERT caught inside the same with-block
@@ -179,7 +212,7 @@ try:
         # success=0 row with no error_log counterpart (audit component_2 = 0).
         if not success:
             try:
-                with _get_db(timeout=5) as _el_conn:
+                with _get_db(timeout=10) as _el_conn:
                     _el_conn.execute(
                         "INSERT INTO error_log "
                         "(timestamp, session_id, agent_name, error_type, error_message, keywords, resolved, action_id) "
@@ -244,7 +277,7 @@ try:
                 os.environ.get("DQIII8_ROOT", "/root/dqiii8"), "database", "dqiii8.db"
             )
             if os.path.exists(_db_path):
-                _vc = _ics.connect(_db_path, timeout=2)
+                _vc = _ics.connect(_db_path, timeout=10)
                 _proj = os.environ.get("DQIII8_PROJECT", "dqiii8-core")
                 _vc.execute(
                     "INSERT INTO vault_memory"
@@ -263,7 +296,7 @@ try:
                 _vc.close()
                 # Mark matching error_log entry as resolved (separate connection so vault commit is safe)
                 try:
-                    _vc2 = _ics.connect(_db_path, timeout=2)
+                    _vc2 = _ics.connect(_db_path, timeout=10)
                     _vc2.execute(
                         "UPDATE error_log SET resolved=1, resolution=?"
                         " WHERE id=(SELECT id FROM error_log"

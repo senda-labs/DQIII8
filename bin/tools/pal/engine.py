@@ -89,6 +89,7 @@ def generate(
     max_tokens: int = 2048,
     allow_fallback: bool = True,
     strip_fences: bool = False,
+    project: str | None = None,
 ) -> dict[str, Any]:
     provider, mdl = _resolve_provider_model(model, task_type)
     t0 = time.time()
@@ -122,6 +123,8 @@ def generate(
         duration_ms=latency_ms,
         success=ok,
         session_id="pal-mcp",
+        domain=task_type or "",
+        project=project,
     )
 
     return {

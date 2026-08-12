@@ -823,7 +823,6 @@ def log_to_db(
     error_message: str = "",
     domain: str = "",
     prompt_hash: str = "",
-    task_complexity: str | None = None,
     project: str | None = None,
 ) -> None:
     """Registra la llamada en agent_actions con tokens reales y coste estimado."""
@@ -843,12 +842,17 @@ def log_to_db(
         else:
             tier = _provider_tier.get(provider, "C")
         conn = sqlite3.connect(str(DB_PATH), timeout=30)
+        # Stage 1: this is a single-shot log written after the call already
+        # completed — end_time_ms is derivable directly, not left NULL like the
+        # hook-driven rows that close asynchronously.
+        _end_time_ms = int(time.time() * 1000)
+        _start_time_ms = _end_time_ms - duration_ms
         cur = conn.execute(
             "INSERT INTO agent_actions "
             "(session_id, agent_name, tool_used, action_type, model_used, "
             "tokens_used, tokens_input, tokens_output, estimated_cost_usd, tier, "
-            "duration_ms, success, error_message, start_time_ms, project) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "duration_ms, success, error_message, start_time_ms, end_time_ms, project, domain) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 agent,
@@ -863,8 +867,10 @@ def log_to_db(
                 duration_ms,
                 1 if success else 0,
                 error_message[:500] if error_message else None,
-                int(time.time() * 1000) - duration_ms,
+                _start_time_ms,
+                _end_time_ms,
                 project or None,
+                domain or None,
             ),
         )
         conn.commit()
@@ -937,7 +943,6 @@ def log_to_db(
             tokens_in,
             tokens_out,
             cost_usd,
-            task_complexity=task_complexity,
         )
     except Exception as _exc:
         log.warning("DB logging block failed: %s", _exc)
@@ -1414,6 +1419,7 @@ def main() -> None:
             tokens_out,
             duration_ms,
             ok,
+            session_id=_session_id or "cli",
             error_message=err_msg,
             domain=_routing_domain or "",
             prompt_hash=_phash,

@@ -637,7 +637,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         renderers_text = (
             "\n".join(
                 [
-                    f"  {'✅' if r[5] else '⚠️'} {r[0]}: "
+                    f"  {'✅' if r[5] else '⚠'} {r[0]}: "
                     f"{r[1]} LOC | {r[2]:.1f}s | "
                     f"SSIM {f'{r[4]:.3f}' if r[4] else 'N/A'}"
                     for r in metrics
@@ -799,7 +799,7 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except asyncio.TimeoutError:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"⚠️ *Loop timeout* (>2h) — {project}\nVerifica el VPS manualmente.",
+                text=f"⚠ *Loop timeout* (>2h) — {project}\nVerifica el VPS manualmente.",
                 parse_mode="Markdown",
             )
         except Exception as e:
@@ -1347,16 +1347,18 @@ def _log_cc_command(
         conn = sqlite3.connect(DB, timeout=30)
         conn.execute(
             "INSERT INTO agent_actions "
-            "(session_id, agent_name, tool_used, action_type, input_tokens, output_tokens, notes, project) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(session_id, agent_name, tool_used, action_type, notes, project) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 sid,
                 agent or "cc_direct",
                 command,
                 "telegram_command",
-                len(prompt),
-                response_len,
-                f"success={success}",
+                # D4: input_tokens/output_tokens are real-token-count columns —
+                # this bot only knows prompt/response character counts, not real
+                # tokens, so those go in notes instead of corrupting the token
+                # columns other writers rely on for real cost analytics.
+                f"success={success} prompt_chars={len(prompt)} response_chars={response_len}",
                 project,
             ),
         )
@@ -2201,7 +2203,7 @@ def send_morning_report() -> None:
 
     spc_line = "\n   • ".join(spc_alerts) if spc_alerts else "none"
     msg = (
-        f"☀️ DQIII8 Morning Report — {today_str}\n"
+        f"☀ DQIII8 Morning Report — {today_str}\n"
         f"Score: {score:.0f}/100 | Sessions yesterday: {sessions_yesterday}\n"
         f"SPC alerts: {spc_line}\n"
         f"Research queue: {research_pending} pending items\n"

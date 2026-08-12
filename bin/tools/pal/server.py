@@ -46,6 +46,10 @@ TOOLS = [
                     "default": False,
                     "description": "Strip markdown code fences (```lang```) from output. Useful for code generation.",
                 },
+                "project": {
+                    "type": "string",
+                    "description": "Project slug (my-projects/<slug>) this call should attribute cost/hours to. Omit if not project-scoped.",
+                },
             },
             "required": ["prompt"],
         },
@@ -161,6 +165,7 @@ def _dispatch(tool: str, args: dict):
             max_tokens=args.get("max_tokens", 2048),
             allow_fallback=args.get("allow_fallback", True),
             strip_fences=args.get("strip_fences", False),
+            project=args.get("project"),
         )
     elif tool == "pal_benchmark":
         return engine.benchmark(

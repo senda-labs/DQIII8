@@ -29,19 +29,47 @@ except Exception:
 tool = data.get("tool_name", "")
 inp = data.get("tool_input", {})
 session = data.get("session_id", "unknown")
-agent = data.get("agent_id", data.get("agent_name", ""))
-
-if not agent:
-    try:
-        with open(f"/tmp/dqiii8_agent_{session}.json", encoding="utf-8") as _f:
-            agent = json.load(_f).get("agent_type", "claude-sonnet-4-6")
-    except Exception:
-        agent = "claude-sonnet-4-6"
-
 _HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HOOKS_DIR)
 DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/dqiii8")
 TRUNCATE_SCRIPT = os.path.join(DQIII8_ROOT, "bin", "tools", "truncate_output.py")
+
+agent = data.get("agent_id", data.get("agent_name", ""))
+_worktree = ""
+if not agent or (
+    len(agent) == 17 and agent[0] == "a" and all(c in "0123456789abcdef" for c in agent[1:])
+):
+    # Stage 1 / Correction G: subagent_start.py's lookup file is keyed by
+    # agent_id, not session_id — resolve session_id -> agent_id via
+    # agent_registry before building the filename (mirrors post_tool_use.py's
+    # Stage 0 fix). A raw hex agent_id is not a usable agent name either, so
+    # it takes the same resolution path as the "no agent" case.
+    agent = "claude-sonnet-4-6"
+    try:
+        _direct = os.path.join(DQIII8_ROOT, "tmp", f"dqiii8_agent_{session}.json")
+        _lookup_path = _direct if os.path.exists(_direct) else None
+        if _lookup_path is None:
+            import sqlite3 as _rics
+            _reg_db = os.path.join(DQIII8_ROOT, "database", "dqiii8.db")
+            if os.path.exists(_reg_db):
+                _rconn = _rics.connect(_reg_db, timeout=2)
+                _rrow = _rconn.execute(
+                    "SELECT agent_id FROM agent_registry WHERE parent_session=? "
+                    "ORDER BY start_time DESC LIMIT 1",
+                    (session,),
+                ).fetchone()
+                _rconn.close()
+                if _rrow:
+                    _cand = os.path.join(DQIII8_ROOT, "tmp", f"dqiii8_agent_{_rrow[0]}.json")
+                    if os.path.exists(_cand):
+                        _lookup_path = _cand
+        if _lookup_path:
+            with open(_lookup_path, encoding="utf-8") as _f:
+                _lookup = json.load(_f)
+                agent = _lookup.get("agent_type", "claude-sonnet-4-6")
+                _worktree = _lookup.get("worktree_path", "") or ""
+    except Exception as e:
+        log.debug("pre_tool_use: agent lookup failed (best-effort): %s", e)
 
 # ── PermissionAnalyzer ────────────────────────────────────────────────────────
 try:
@@ -89,6 +117,19 @@ def _model_tier(model_id: str) -> int:
     return 0
 
 
+def _tier_text(model_id: str) -> str:
+    m = model_id.lower()
+    if "opus" in m:
+        return "S"
+    if "sonnet" in m:
+        return "A"
+    if any(x in m for x in ("groq", "openrouter", "haiku", "nemotron", "qwen3")):
+        return "B"
+    if "ollama" in m or "qwen2.5-coder" in m:
+        return "C"
+    return "unknown"
+
+
 try:
     import sqlite3
     _DB = os.path.join(DQIII8_ROOT, "database", "dqiii8.db")
@@ -106,14 +147,15 @@ try:
         _conn = sqlite3.connect(_DB, timeout=10)
         _conn.execute(
             "INSERT INTO agent_actions "
-            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier,model_used,project) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier,model_used,project,worktree,tier) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (session, agent, tool,
              # Correction I.2: no longer truncated to 120 chars — post_tool_use.py's
              # Stage 0 close-out matches on the untruncated file_path; a truncated
              # INSERT vs untruncated read silently defeated that matching key.
              inp.get("file_path", inp.get("command", "")),
-             tool.lower(), int(time.time() * 1000), _tier, _model, _project),
+             tool.lower(), int(time.time() * 1000), _tier, _model, _project,
+             _worktree or None, _tier_text(_model)),
         )
         _conn.commit()
         _conn.close()

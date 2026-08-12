@@ -36,6 +36,15 @@ database/*.db
 database/*.db-wal
 database/*.db-shm
 
+# Backup/dump chain — wholesale, not a narrow pattern (plaintext SQL dumps of the
+# production DB live here and don't match any *.db* pattern above)
+database/backups/
+database/dqiii8.db.bak-*
+
+# Astro artifact of unknown provenance — no astro.config/package.json anywhere
+# references it; gitignored rather than committed blind
+.astro/
+
 # Benchmark results and incremental migrations (use schema_v2.sql for fresh installs)
 database/benchmarks/*.json
 database/migrations/*.sql

@@ -21,6 +21,17 @@ Triggers the **auditor** agent to analyze `database/dqiii8.db` and produce a str
 /audit --agent python-specialist   # scope to one agent
 ```
 
+## Scope note — `sessions` / `morning_report` / `loop_effectiveness`
+
+`sessions` and `morning_report` are written **only** by `bin/ui/dqiii8_bot.py`
+(the Telegram bot UI), not by Claude Code CLI sessions — near-empty row counts
+there reflect low Telegram-bot usage, not broken CLI telemetry (that's
+`agent_actions`, covered separately). `loop_effectiveness` is a VIEW over
+`objectives`, which has 0 rows as of 2026-08-13 because the autonomous-loop
+execution flow (`bin/director.py` loop mode) isn't in active use yet — an
+empty result there is expected, not a symptom to chase. Verified live
+2026-08-13, see `[[project_dqiii8_20260813_stress_test]]`.
+
 ## What it does
 
 1. Queries all metric tables: `agent_actions`, `error_log`, `sessions`, `skill_metrics`

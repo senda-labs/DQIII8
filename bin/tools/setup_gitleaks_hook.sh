@@ -40,6 +40,13 @@ gitleaks protect --staged --redact --exit-code 1
 # by default — never auto-fixes. Run `python3 bin/tools/watermark_scan.py --fix`
 # manually to clean flagged files.
 python3 bin/tools/watermark_scan.py
+
+# hooks-config pre-commit: blocks commits that break .claude/settings.json's
+# hooks block (invalid JSON or a dangling script path) — that file is a
+# single point of failure for all hook-driven telemetry (agent_actions,
+# error_log), so a break there must be caught before it lands, not discovered
+# later via silence.
+python3 bin/tools/validate_hooks_config.py
 EOF
 chmod +x "${HOOK_PATH}"
 

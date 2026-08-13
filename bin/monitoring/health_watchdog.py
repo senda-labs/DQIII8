@@ -400,6 +400,17 @@ def check_dependency_pins() -> None:
         check("dependency_pins", False, str(e)[:80])
 
 
+def check_hooks_config() -> None:
+    try:
+        sys.path.insert(0, str(DQIII8_ROOT / "bin" / "tools"))
+        from validate_hooks_config import validate, DEFAULT_SETTINGS
+
+        problems = validate(DEFAULT_SETTINGS)
+        check("hooks_config", not problems, "; ".join(problems)[:200] if problems else "")
+    except Exception as e:
+        check("hooks_config", False, str(e)[:80])
+
+
 # ── Main ──────────────────────────────────────────────────────────────────
 
 
@@ -417,6 +428,7 @@ CHECKS = [
     ("health_check_output", check_health_check_output),
     ("human_hours", check_human_hours),
     ("dependency_pins", check_dependency_pins),
+    ("hooks_config", check_hooks_config),
 ]
 
 

@@ -77,7 +77,7 @@ def check_command(command: str) -> tuple[list[str], list[str]]:
             # "/root/dqiii8/../dqiii8-premium/hook.py" token still tested
             # relative-to ROOT and slipped through as in-repo.
             is_out_of_repo = os.path.isabs(tok) and not Path(tok).resolve().is_relative_to(ROOT.resolve())
-            path = Path(tok) if os.path.isabs(tok) else (ROOT / tok)
+            path = (Path(tok) if os.path.isabs(tok) else (ROOT / tok)).resolve()
             if not path.exists():
                 msg = f"referenced path not found: {path} (via {command!r})"
                 (warnings if is_out_of_repo else problems).append(msg)

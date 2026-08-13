@@ -59,6 +59,23 @@ resolution note (not `severity='transient'`, so purge_transient_errors.py
 never deletes them — the audit trail survives) instead of accumulating in
 `error_log` without bound.
 
+Round 3's fix above had two of its own regressions, both fixed here (Opus
+red-team review, 2026-08-13, round 5): (1) the age-out UPDATE never actually
+set a non-'transient' severity — rows are inserted with severity='transient'
+from day one (openrouter_wrapper.py), so the "audit trail survives purge"
+claim was false the moment it was written; the UPDATE now sets
+severity='aged_review' explicitly. (2) `_check_spike`'s `median > 0` guard,
+harmless against the old ever-growing cumulative series, is fatal against
+the new rate series: a 14-entry rolling median of a mostly-zero real series
+is itself 0 almost always, permanently blocking the alert (replayed against
+135 days of real data: 0 alerts fired, 6 real bursts up to 479/day
+suppressed) — fixed by treating a zero baseline as "any burst at/above
+SPIKE_MIN_HELD is a spike" instead of a reason to never fire. (3) age-out is
+now also gated on the row having appeared in a *previous* run's held
+snapshot — a row backfilled by reconcile_errors.py with an old historical
+timestamp was getting aged out on the very first triage run that ever saw
+it, before it had been held for review even once.
+
 Usage:
     python3 bin/tools/triage_error_log.py --dry-run   # show counts, no writes
     python3 bin/tools/triage_error_log.py --apply      # perform the UPDATE
@@ -190,7 +207,7 @@ def _check_spike(newly_held: int) -> str | None:
     if len(history) >= 3 and newly_held >= SPIKE_MIN_HELD:
         sorted_hist = sorted(history)
         median = sorted_hist[len(sorted_hist) // 2]
-        if median > 0 and newly_held > median * SPIKE_MULTIPLIER:
+        if newly_held > median * SPIKE_MULTIPLIER or median == 0:
             alert = (
                 f"triage held {newly_held} newly-uncorrelated rows this run, "
                 f">{SPIKE_MULTIPLIER}x the recent median ({median}) — "
@@ -224,11 +241,22 @@ def main():
     # Rows held past HELD_REVIEW_DAYS with still no correlation evidence are
     # aged out (round 3 P1-2) — resolved with a distinct note, kept out of
     # 'transient' severity so purge_transient_errors.py never deletes them.
+    #
+    # Age-out also requires the row to have appeared in a PREVIOUS run's held
+    # snapshot (round 5 P2 fix): reconcile_errors.py backfills orphaned
+    # failures with their original historical timestamp, which can already be
+    # older than HELD_REVIEW_DAYS at insert time. Gating on ts alone would age
+    # those out on the very first triage run that ever sees them — a row that
+    # was never actually held for review even once gets a resolution note
+    # falsely claiming a multi-day held period. Requiring prior-run membership
+    # means a row must survive at least one real triage cycle as genuinely
+    # held before it's eligible to age out.
+    prev_held = _load_prev_held_ids()
     aged_cutoff_days = f"-{HELD_REVIEW_DAYS} days"
     aged_row = conn.execute("SELECT datetime('now', ?)", (aged_cutoff_days,)).fetchone()
     aged_cutoff = aged_row[0]
-    aged_ids = [row_id for row_id, ts in held if ts <= aged_cutoff]
-    held_fresh_ids = [row_id for row_id, ts in held if ts > aged_cutoff]
+    aged_ids = [row_id for row_id, ts in held if ts <= aged_cutoff and row_id in prev_held]
+    held_fresh_ids = [row_id for row_id, ts in held if not (ts <= aged_cutoff and row_id in prev_held)]
 
     print(f"[triage] unresolved total: {total_unresolved}")
     print(f"[triage] whitelist match: {matched} (correlated-resolvable: {len(resolvable_ids)}, "
@@ -263,8 +291,16 @@ def main():
         )
     if aged_ids:
         id_placeholders = ",".join("?" for _ in aged_ids)
+        # severity='aged_review' (round 5 P1 fix), not left untouched: rows are
+        # inserted with severity='transient' from day one (openrouter_wrapper.py),
+        # and purge_transient_errors.py deletes WHERE severity='transient' AND
+        # resolved=1 AND timestamp<-48h — leaving severity alone here meant the
+        # "audit trail survives purge" claim below was false the moment this
+        # UPDATE ran; these rows (already >=HELD_REVIEW_DAYS old) would be
+        # deleted on the very next purge cron.
         conn.execute(
-            f"UPDATE error_log SET resolved=1, resolution=? WHERE id IN ({id_placeholders})",
+            f"UPDATE error_log SET resolved=1, severity='aged_review', resolution=? "
+            f"WHERE id IN ({id_placeholders})",
             [RESOLUTION_NOTE_AGED] + aged_ids,
         )
     if resolvable_ids or aged_ids:
@@ -276,7 +312,6 @@ def main():
     # already held as of the previous run — not the cumulative held backlog,
     # which just grows every day since a held row stays resolved=0 until it
     # ages out and would desensitize the check into never firing.
-    prev_held = _load_prev_held_ids()
     newly_held = [i for i in held_fresh_ids if i not in prev_held]
     _save_held_ids(held_fresh_ids)
     spike_alert = _check_spike(len(newly_held))

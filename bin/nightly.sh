@@ -81,13 +81,20 @@ python3 "$DQIII8_ROOT/bin/monitoring/telemetry.py" --send 2>&1 || echo "  Teleme
 echo ""
 
 # ── 8. Git commit (no push) ──
+# `|| true` (Opus red-team review, 2026-08-13, P2-4): a pre-commit hook
+# rejecting the commit (e.g. validate_hooks_config.py tripping on a
+# relocated out-of-repo path) must not `set -e`-abort the rest of this
+# script — stages 9-12 (paper harvest, working-memory cleanup, prune, smoke
+# tests) would silently stop running with the watchdog still reporting OK,
+# since it only checks this report file's mtime, not its content.
 echo "## 8. Git status"
 git add -A
 if git diff --cached --quiet; then
     echo "  No changes to commit"
-else
-    git commit -m "chore: nightly maintenance — $(date -u '+%Y-%m-%d')" 2>&1
+elif git commit -m "chore: nightly maintenance — $(date -u '+%Y-%m-%d')" 2>&1; then
     echo "  ✓ Changes committed (push pending)"
+else
+    echo "  ✗ Commit failed (pre-commit hook rejected it) — continuing remaining stages"
 fi
 echo ""
 

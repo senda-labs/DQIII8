@@ -7,16 +7,27 @@ event (SessionStart, PreToolUse, PostToolUse, ...) under a single top-level
 in it can silently take down all hook-driven telemetry (agent_actions,
 error_log) with no error at commit time. This script can't split the schema
 (Claude Code owns it), so it makes a break *detectable* instead: valid JSON +
-every referenced hook script actually exists and is executable.
+every referenced hook script actually exists. It does NOT check executability
+(most commands are invoked as `bash run.sh <script>` or `python3 <script>`,
+where the interpreter reads the file regardless of the x-bit, so an x-bit
+check would be noise, not signal).
+
+A path outside the repo root (e.g. a globally-installed npm hook) is reported
+as a WARNING, not a hard failure — Opus red-team review, 2026-08-13, P2-4:
+treating it as fatal would couple every commit in this repo to the lifecycle
+of an out-of-repo package (an `npm -g` prune or Node upgrade can relocate it
+with no DQIII8 change at all), and the pre-commit caller exits 1 only on
+`problems`, not `warnings`.
 
 Usage:
     python3 bin/tools/validate_hooks_config.py [--settings PATH]
-Exit code 0 = valid, 1 = invalid (JSON error or missing/non-executable script).
+Exit code 0 = valid, 1 = invalid (JSON error or missing in-repo script).
 """
 
 import json
 import os
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -30,56 +41,86 @@ def _resolve_run_sh_target(run_sh: Path, script_arg: str) -> Path:
     return run_sh.parent / script_arg
 
 
-def check_command(command: str) -> list[str]:
-    """Return a list of problems found for a single hook `command` string."""
-    problems = []
+def check_command(command: str) -> tuple[list[str], list[str]]:
+    """Return (problems, warnings) for a single hook `command` string."""
+    problems, warnings = [], []
     try:
         tokens = shlex.split(command)
     except ValueError as exc:
-        return [f"unparseable command ({exc}): {command!r}"]
+        return [f"unparseable command ({exc}): {command!r}"], warnings
     if not tokens:
-        return [f"empty command: {command!r}"]
+        return [f"empty command: {command!r}"], warnings
 
     # bash .claude/hooks/run.sh <script> — the dominant pattern in this repo.
     if len(tokens) >= 2 and tokens[0] == "bash" and tokens[1].endswith("run.sh"):
-        # Invoked as `bash run.sh` — bash reads the file regardless of the
-        # x-bit, so only existence matters here, not executability.
         run_sh = (ROOT / tokens[1]) if not os.path.isabs(tokens[1]) else Path(tokens[1])
         if not run_sh.exists():
             problems.append(f"run.sh not found: {run_sh}")
-            return problems
-        if len(tokens) >= 3:
-            target = _resolve_run_sh_target(run_sh, tokens[2])
-            if not target.exists():
-                problems.append(f"hook script not found: {target} (via {command!r})")
-        return problems
+            return problems, warnings
+        if len(tokens) < 3:
+            problems.append(f"run.sh invoked with no script argument: {command!r}")
+            return problems, warnings
+        target = _resolve_run_sh_target(run_sh, tokens[2])
+        if not target.exists():
+            problems.append(f"hook script not found: {target} (via {command!r})")
+        return problems, warnings
 
     # Generic case: first path-like token (contains '/' or a known script
     # extension) is resolved relative to ROOT if not already absolute.
     for tok in tokens[1:] if len(tokens) > 1 else tokens:
         if "/" in tok or tok.endswith((".py", ".sh", ".mjs", ".js")):
+            is_out_of_repo = os.path.isabs(tok) and not str(Path(tok)).startswith(str(ROOT))
             path = Path(tok) if os.path.isabs(tok) else (ROOT / tok)
             if not path.exists():
-                problems.append(f"referenced path not found: {path} (via {command!r})")
+                msg = f"referenced path not found: {path} (via {command!r})"
+                (warnings if is_out_of_repo else problems).append(msg)
             break  # only the first path-like token is the target; rest are args
-    return problems
+    return problems, warnings
+
+
+def _staged_or_worktree_text(settings_path: Path) -> str:
+    """Prefer the staged (index) content over the working-tree copy — a
+    pre-commit hook must validate what's about to be committed, not whatever
+    happens to be sitting in the worktree (Opus red-team review, 2026-08-13,
+    P2-3). Falls back to the worktree file when the path isn't staged (e.g.
+    a direct CLI run outside a commit, or the file has no pending changes)."""
+    try:
+        rel = settings_path.resolve().relative_to(ROOT)
+    except ValueError:
+        rel = None
+    if rel is not None:
+        result = subprocess.run(
+            ["git", "show", f":{rel.as_posix()}"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return result.stdout
+    return settings_path.read_text()
 
 
 def validate(settings_path: Path) -> list[str]:
-    problems = []
+    problems, _warnings = _validate(settings_path)
+    return problems
+
+
+def _validate(settings_path: Path) -> tuple[list[str], list[str]]:
+    problems, warnings = [], []
     try:
-        raw = settings_path.read_text()
+        raw = _staged_or_worktree_text(settings_path)
     except OSError as exc:
-        return [f"cannot read {settings_path}: {exc}"]
+        return [f"cannot read {settings_path}: {exc}"], warnings
 
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        return [f"invalid JSON in {settings_path}: {exc}"]
+        return [f"invalid JSON in {settings_path}: {exc}"], warnings
 
     hooks = data.get("hooks", {})
     if not isinstance(hooks, dict):
-        return [f"'hooks' key is not an object in {settings_path}"]
+        return [f"'hooks' key is not an object in {settings_path}"], warnings
 
     for event_name, entries in hooks.items():
         if not isinstance(entries, list):
@@ -90,18 +131,27 @@ def validate(settings_path: Path) -> list[str]:
                 if not isinstance(hook, dict) or hook.get("type") != "command":
                     continue
                 command = hook.get("command", "")
-                for problem in check_command(command):
+                cmd_problems, cmd_warnings = check_command(command)
+                for problem in cmd_problems:
                     problems.append(f"{event_name}[{i}].hooks[{j}]: {problem}")
+                for warning in cmd_warnings:
+                    warnings.append(f"{event_name}[{i}].hooks[{j}]: {warning}")
 
-    return problems
+    return problems, warnings
 
 
 def main() -> int:
     settings_path = DEFAULT_SETTINGS
     if "--settings" in sys.argv:
-        settings_path = Path(sys.argv[sys.argv.index("--settings") + 1])
+        idx = sys.argv.index("--settings") + 1
+        if idx >= len(sys.argv):
+            print("[validate-hooks] --settings requires a PATH argument", file=sys.stderr)
+            return 2
+        settings_path = Path(sys.argv[idx])
 
-    problems = validate(settings_path)
+    problems, warnings = _validate(settings_path)
+    for w in warnings:
+        print(f"[validate-hooks] WARNING: {w}")
     if problems:
         print(f"[validate-hooks] {len(problems)} problem(s) in {settings_path}:")
         for p in problems:

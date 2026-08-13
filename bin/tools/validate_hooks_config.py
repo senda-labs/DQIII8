@@ -72,8 +72,11 @@ def check_command(command: str) -> tuple[list[str], list[str]]:
             # is_relative_to, not a string prefix (round 2 P2-3): a sibling
             # directory like /root/dqiii8-premium/... starts with the string
             # "/root/dqiii8" and was misclassified as in-repo (hard failure)
-            # by the old `.startswith()` check.
-            is_out_of_repo = os.path.isabs(tok) and not Path(tok).is_relative_to(ROOT)
+            # by the old `.startswith()` check. .resolve() both sides (round 3
+            # P3-1): is_relative_to is purely lexical, so an unresolved
+            # "/root/dqiii8/../dqiii8-premium/hook.py" token still tested
+            # relative-to ROOT and slipped through as in-repo.
+            is_out_of_repo = os.path.isabs(tok) and not Path(tok).resolve().is_relative_to(ROOT.resolve())
             path = Path(tok) if os.path.isabs(tok) else (ROOT / tok)
             if not path.exists():
                 msg = f"referenced path not found: {path} (via {command!r})"

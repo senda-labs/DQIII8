@@ -2,10 +2,12 @@
 """
 DQIII8 Health Watchdog — daily preventive maintenance check.
 
-13 checks covering services, crons, core modules, DB integrity, disk space,
-import paths, backup freshness/log, the health_check.py dead-man's-switch,
-abandoned human_hours sessions, and dependency version pins. Sends Telegram
-alert if any check fails.
+13+ checks (count varies: one per configured service/cron/backup-DB, plus a
+conditional hooks_config_warnings when out-of-repo hook paths exist) covering
+services, crons, core modules, DB integrity, disk space, import paths, backup
+freshness/log, the health_check.py dead-man's-switch, abandoned human_hours
+sessions, hooks config, and dependency version pins. Sends Telegram alert if
+any check fails.
 Silent on full success (only logs).
 
 Usage:

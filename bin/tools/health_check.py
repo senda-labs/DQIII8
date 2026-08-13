@@ -122,10 +122,13 @@ def main():
     now = datetime.now()
     report = {"date": now.isoformat(), "score": score, "detail": detail}
     report_json = json.dumps(report, indent=2)
-    # %H%M%S not %H%M (P3-5): two runs inside the same minute previously
-    # collided and the second silently overwrote the first — the exact
-    # "never overwritten" property this per-run design exists to guarantee.
-    out = OUT / f"health_{now:%Y-%m-%d_%H%M%S}.json"
+    # %H%M%S%f (microseconds), not just %H%M%S: two back-to-back manual runs
+    # measured live 2026-08-13 landed in the same wall-clock second and the
+    # second run silently overwrote the first under seconds-only granularity
+    # — the exact "never overwritten" property this per-run design exists to
+    # guarantee (round 2 follow-up to P3-5). Cron only fires this once a day,
+    # but the guarantee should hold for manual/debugging invocations too.
+    out = OUT / f"health_{now:%Y-%m-%d_%H%M%S%f}.json"
     out.write_text(report_json)
     # write-temp-then-replace: a concurrent reader of health_latest.json must
     # never observe a truncated/partial write (plain write_text is not atomic).

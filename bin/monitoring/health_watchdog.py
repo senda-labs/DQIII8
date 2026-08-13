@@ -332,7 +332,7 @@ def check_backup_log() -> None:
 VAR_DIR = DQIII8_ROOT / "var"
 HEARTBEAT_PATH = VAR_DIR / "watchdog_heartbeat"
 AUDIT_REPORTS_DIR = DQIII8_ROOT / "database" / "audit_reports"
-_HEALTH_JSON_RE = re.compile(r"^health_(\d{4}-\d{2}-\d{2})\.json$")
+_HEALTH_JSON_RE = re.compile(r"^health_(\d{4}-\d{2}-\d{2})(?:_\d{4})?\.json$")
 
 
 def write_heartbeat() -> None:

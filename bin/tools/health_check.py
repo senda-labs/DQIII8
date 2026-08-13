@@ -13,7 +13,10 @@ Penalty:
 Separately, unscored: alerts if bin/monitoring/health_watchdog.py's own
 heartbeat (var/watchdog_heartbeat) is missing or >24h stale — the two rails'
 mutual dead-man's-switch.
-Writes JSON to database/audit_reports/health_<date>.json.
+Writes JSON to database/audit_reports/health_<date>_<HHMM>.json (one file per
+run — never overwritten, so a wrong/stale run stays visible instead of being
+silently replaced by the next run's numbers) plus health_latest.json (copy of
+the most recent run, for callers that just want "now").
 Exit code 0 always (cron-safe); alerting is the signal.
 """
 
@@ -113,8 +116,10 @@ def main():
     score += 10 if secure else 0
 
     report = {"date": datetime.now().isoformat(), "score": score, "detail": detail}
-    out = OUT / f"health_{datetime.now():%Y-%m-%d}.json"
+    now = datetime.now()
+    out = OUT / f"health_{now:%Y-%m-%d_%H%M}.json"
     out.write_text(json.dumps(report, indent=2))
+    (OUT / "health_latest.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 
     if score < 70:

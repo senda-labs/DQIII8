@@ -93,8 +93,14 @@ echo "## 8. Git status"
 # repo has a documented history of untracked DB/log artifacts landing near
 # the root (e.g. dqiii8_history.db.pre-fix-* snapshots) — one unignored
 # artifact away from a 32MB DB commit to a public repo. Nightly's own scope
-# is docs/tasks/skills/rules churn, so scope the add to match.
-git add -A -- docs/ tasks/ .claude/ knowledge/
+# is docs/.claude/knowledge churn, so scope the add to match.
+# `tasks/` dropped and `|| true` added (Opus red-team review, 2026-08-13,
+# round 3 P1-1): tasks/ is entirely .gitignore'd with zero tracked files —
+# `git add -A -- ... tasks/ ...` resolves to an all-ignored pathspec, which
+# `git add` treats as an error (exit 1), which `set -e` (line 6) turned into
+# an abort of stages 9-12 every night since this line landed — reproduced
+# live, first real cron failure would have been 2026-08-14 03:05.
+git add -A -- docs/ .claude/ knowledge/ || true
 if git diff --cached --quiet; then
     echo "  No changes to commit"
 elif git commit -m "chore: nightly maintenance — $(date -u '+%Y-%m-%d')" 2>&1; then

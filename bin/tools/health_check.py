@@ -32,6 +32,20 @@ DB = ROOT / "database" / "dqiii8.db"
 OUT = ROOT / "database" / "audit_reports"
 OUT.mkdir(parents=True, exist_ok=True)
 
+# Mirrors bin/tools/triage_error_log.py's WHITELIST_ERROR_TYPES/MESSAGE_PATTERNS
+# — keep in sync. Rows matching this are known free-tier fallback noise sitting
+# in triage's held-for-review queue (resolved=0 by design until correlated or
+# aged out, see HELD_REVIEW_DAYS), not actionable incidents. Without this
+# exclusion they permanently saturate unresolved_errors_7d: live-quantified at
+# ~59/day held, which alone exceeds the score's n_err>=20 -> 0-points floor
+# within a single day, regardless of any real incident (Opus red-team review,
+# 2026-08-13, round 4 consequence of round 3 P1-2's correlation tightening).
+_TRIAGE_WHITELIST_TYPES = (
+    "openrouter_wrapperError", "ESCALATION", "nimError", "openrouterError",
+    "githubError", "groqError", "pollinationsError",
+)
+_TRIAGE_MESSAGE_PATTERNS = ("%failed — no response or HTTP error%", "%Escalated from%")
+
 
 def main():
     score, detail = 0, {}
@@ -41,8 +55,12 @@ def main():
     detail["db_integrity"] = ok
     score += 30 if ok else 0
 
+    type_ph = ",".join("?" for _ in _TRIAGE_WHITELIST_TYPES)
+    msg_clause = " OR ".join("error_message LIKE ?" for _ in _TRIAGE_MESSAGE_PATTERNS)
     n_err = conn.execute(
-        "SELECT COUNT(*) FROM error_log WHERE resolved=0 AND timestamp > datetime('now','-7 days')"
+        "SELECT COUNT(*) FROM error_log WHERE resolved=0 AND timestamp > datetime('now','-7 days') "
+        f"AND NOT (error_type IN ({type_ph}) AND ({msg_clause}))",
+        list(_TRIAGE_WHITELIST_TYPES) + list(_TRIAGE_MESSAGE_PATTERNS),
     ).fetchone()[0]
     detail["unresolved_errors_7d"] = n_err
     score += max(0, round(25 * (1 - min(n_err, 20) / 20)))

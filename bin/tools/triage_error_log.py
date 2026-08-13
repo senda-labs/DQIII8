@@ -69,8 +69,16 @@ harmless against the old ever-growing cumulative series, is fatal against
 the new rate series: a 14-entry rolling median of a mostly-zero real series
 is itself 0 almost always, permanently blocking the alert (replayed against
 135 days of real data: 0 alerts fired, 6 real bursts up to 479/day
-suppressed) — fixed by treating a zero baseline as "any burst at/above
-SPIKE_MIN_HELD is a spike" instead of a reason to never fire. (3) age-out is
+suppressed) — fixed by dropping the `median > 0` requirement so the
+multiplier check alone gates the alert (round 6 review: with the outer
+`newly_held >= SPIKE_MIN_HELD` gate already in place, `newly_held > median *
+SPIKE_MULTIPLIER` is trivially true whenever median is 0, so no extra
+zero-baseline clause is needed — brute-forced over median∈[0,9] x
+newly_held∈[10,60) with zero divergence). Known residual (P3, not yet
+reproduced on real data): a strictly periodic pattern like [0,0,12]*N can
+keep the rolling median at/near 0 indefinitely, over-alerting on a routine
+rhythm rather than a real spike — revisit with a mean-based or non-zero
+baseline if this shows up live. (3) age-out is
 now also gated on the row having appeared in a *previous* run's held
 snapshot — a row backfilled by reconcile_errors.py with an old historical
 timestamp was getting aged out on the very first triage run that ever saw
@@ -207,7 +215,7 @@ def _check_spike(newly_held: int) -> str | None:
     if len(history) >= 3 and newly_held >= SPIKE_MIN_HELD:
         sorted_hist = sorted(history)
         median = sorted_hist[len(sorted_hist) // 2]
-        if newly_held > median * SPIKE_MULTIPLIER or median == 0:
+        if newly_held > median * SPIKE_MULTIPLIER:
             alert = (
                 f"triage held {newly_held} newly-uncorrelated rows this run, "
                 f">{SPIKE_MULTIPLIER}x the recent median ({median}) — "
@@ -237,7 +245,6 @@ def main():
     ).fetchall()
     matched = len(candidates)
     resolvable_ids, held = _correlated_ids(conn, candidates)
-    held_ids = [row_id for row_id, _ts in held]
     # Rows held past HELD_REVIEW_DAYS with still no correlation evidence are
     # aged out (round 3 P1-2) — resolved with a distinct note, kept out of
     # 'transient' severity so purge_transient_errors.py never deletes them.

@@ -115,12 +115,24 @@ def main():
     detail["history_db_owner_only"] = secure
     score += 10 if secure else 0
 
-    report = {"date": datetime.now().isoformat(), "score": score, "detail": detail}
+    # Single now() for both the report's own "date" field and the filename —
+    # two separate calls could straddle a minute/midnight boundary and
+    # disagree, and check_health_check_output() derives freshness from the
+    # filename (Opus red-team review, 2026-08-13, P3-6).
     now = datetime.now()
-    out = OUT / f"health_{now:%Y-%m-%d_%H%M}.json"
-    out.write_text(json.dumps(report, indent=2))
-    (OUT / "health_latest.json").write_text(json.dumps(report, indent=2))
-    print(json.dumps(report, indent=2))
+    report = {"date": now.isoformat(), "score": score, "detail": detail}
+    report_json = json.dumps(report, indent=2)
+    # %H%M%S not %H%M (P3-5): two runs inside the same minute previously
+    # collided and the second silently overwrote the first — the exact
+    # "never overwritten" property this per-run design exists to guarantee.
+    out = OUT / f"health_{now:%Y-%m-%d_%H%M%S}.json"
+    out.write_text(report_json)
+    # write-temp-then-replace: a concurrent reader of health_latest.json must
+    # never observe a truncated/partial write (plain write_text is not atomic).
+    latest_tmp = OUT / "health_latest.json.tmp"
+    latest_tmp.write_text(report_json)
+    latest_tmp.replace(OUT / "health_latest.json")
+    print(report_json)
 
     if score < 70:
         try:

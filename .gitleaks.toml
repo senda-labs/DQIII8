@@ -47,6 +47,20 @@ description = "Known VPS IP — must not appear in committed files"
 regex = '''159\.195\.149\.\d{1,3}'''
 tags = ["infra", "ip"]
 
+[[rules]]
+id = "generic-credential-literal"
+description = "Human-readable password/credential literal near a password/contraseña keyword"
+# Catches cases like: `password admin Mautic (`JanusKeys2026!` -> nueva)` — missed by
+# entropy-based detectors because the literal isn't high-entropy, just a real word+digits+symbol.
+regex = '''(?i)(?:password|contraseñ\w*|passwd).{0,40}[`'"]([A-Za-z0-9]{6,}[!@#$%^&*][A-Za-z0-9!@#$%^&*]*|[A-Za-z0-9!@#$%^&*]*[!@#$%^&*][A-Za-z0-9]{6,})[`'"]'''
+tags = ["credential", "password"]
+
+[[rules]]
+id = "generic-vps-ip-literal"
+description = "Bare public IPv4 adjacent to an ssh/root/vps context keyword"
+regex = '''(?i)(?:ssh\s+root@|ssh\s+\S+@|vps\s+ip|servidor\s+ip)\s*[:=]?\s*((?:\d{1,3}\.){3}\d{1,3})'''
+tags = ["infra", "ip"]
+
 # ── Global allowlist ──────────────────────────────────────────────────────────
 
 [allowlist]

@@ -33,6 +33,17 @@ before. As a second, cheaper safety net independent of correlation: the daily
 matched count is compared against a rolling history file, and an anomalous
 spike still alerts even for the uncorrelatable rows.
 
+Correlation tightened (Opus red-team review of the above, 2026-08-13, round 2
+P1-1): session_id alone was too coarse — `session_id='cli'` is a shared bucket
+across unrelated invocations (1000+ agent_actions rows), and a long CLI
+session logs successful Reads/Edits constantly regardless of whether the
+*specific failing agent* recovered, so "any successful action in this
+session" matched ~99% of candidates and would have papered over a real
+outage. The successful sibling must now also match error_log.agent_name (the
+actual failing component), and `session_id='cli'` is excluded from the
+session-window fallback entirely — a shared-bucket session can never supply
+correlation evidence, so its rows are always held for review.
+
 Usage:
     python3 bin/tools/triage_error_log.py --dry-run   # show counts, no writes
     python3 bin/tools/triage_error_log.py --apply      # perform the UPDATE
@@ -51,7 +62,9 @@ HISTORY_FILE = ROOT / "var" / "triage_history.json"
 CORRELATION_WINDOW_MIN = 10
 HISTORY_KEEP = 14
 SPIKE_MULTIPLIER = 3
-SPIKE_MIN_MATCHED = 30
+# Threshold is against held_ids (uncorrelated rows), which run far smaller than
+# raw whitelist matches did — lowered from the pre-round-2 30 accordingly.
+SPIKE_MIN_HELD = 10
 
 WHITELIST_ERROR_TYPES = (
     "openrouter_wrapperError",
@@ -81,28 +94,41 @@ def _correlated_ids(conn, candidates):
 
     A row with no action_id can't be correlated — falls back to whitelist-only
     (resolvable). A row with an action_id is only resolvable if agent_actions
-    shows a successful row in the same session within CORRELATION_WINDOW_MIN —
-    proof the cascade it belongs to actually recovered, not a total outage.
+    shows a successful row for the SAME agent_name in the same session within
+    CORRELATION_WINDOW_MIN — proof the specific cascade it belongs to actually
+    recovered, not just that unrelated work happened to succeed nearby.
+    `session_id='cli'` is a shared bucket, not a real session — never treated
+    as correlation evidence.
     """
     resolvable, held = [], []
     window_days = CORRELATION_WINDOW_MIN / 1440.0
-    for row_id, action_id, session_id, timestamp in candidates:
+    # Cache per (session_id, agent_name, timestamp) — rows sharing a burst tend
+    # to share these, so this avoids re-querying the identical pair repeatedly
+    # (round 2 P3-4: was one query per row with no reuse at all).
+    cache = {}
+    for row_id, action_id, session_id, agent_name, timestamp in candidates:
         if action_id is None:
             resolvable.append(row_id)
             continue
-        hit = conn.execute(
-            "SELECT 1 FROM agent_actions WHERE session_id=? AND success=1 "
-            "AND ABS(julianday(timestamp) - julianday(?)) <= ? LIMIT 1",
-            (session_id, timestamp, window_days),
-        ).fetchone()
-        (resolvable if hit else held).append(row_id)
+        if session_id == "cli":
+            held.append(row_id)
+            continue
+        key = (session_id, agent_name, timestamp)
+        if key not in cache:
+            cache[key] = conn.execute(
+                "SELECT 1 FROM agent_actions WHERE session_id=? AND agent_name=? AND success=1 "
+                "AND ABS(julianday(timestamp) - julianday(?)) <= ? LIMIT 1",
+                (session_id, agent_name, timestamp, window_days),
+            ).fetchone()
+        (resolvable if cache[key] else held).append(row_id)
     return resolvable, held
 
 
-def _check_spike(matched: int) -> str | None:
-    """Volume safety net independent of correlation — a sustained per-run
-    spike still surfaces an outage even for rows that fall back to
-    whitelist-only (no action_id to correlate against)."""
+def _check_spike(held: int) -> str | None:
+    """Volume safety net independent of correlation — tracks held_ids (rows
+    that did NOT correlate to a recovered sibling), not raw whitelist matches,
+    since matches already correlated away as routine would otherwise inflate
+    the median and desensitize this check (round 2 P3-3)."""
     history = []
     if HISTORY_FILE.exists():
         try:
@@ -111,17 +137,17 @@ def _check_spike(matched: int) -> str | None:
             history = []
 
     alert = None
-    if len(history) >= 3 and matched >= SPIKE_MIN_MATCHED:
+    if len(history) >= 3 and held >= SPIKE_MIN_HELD:
         sorted_hist = sorted(history)
         median = sorted_hist[len(sorted_hist) // 2]
-        if median > 0 and matched > median * SPIKE_MULTIPLIER:
+        if median > 0 and held > median * SPIKE_MULTIPLIER:
             alert = (
-                f"triage matched {matched} rows this run, "
+                f"triage held {held} uncorrelated rows this run, "
                 f">{SPIKE_MULTIPLIER}x the recent median ({median}) — "
                 f"possible sustained provider outage, not routine fallback"
             )
 
-    history.append(matched)
+    history.append(held)
     history = history[-HISTORY_KEEP:]
     HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
     HISTORY_FILE.write_text(json.dumps(history))
@@ -140,7 +166,7 @@ def main():
 
     total_unresolved = conn.execute("SELECT COUNT(*) FROM error_log WHERE resolved=0").fetchone()[0]
     candidates = conn.execute(
-        f"SELECT id, action_id, session_id, timestamp FROM error_log WHERE {where}", params
+        f"SELECT id, action_id, session_id, agent_name, timestamp FROM error_log WHERE {where}", params
     ).fetchall()
     matched = len(candidates)
     resolvable_ids, held_ids = _correlated_ids(conn, candidates)
@@ -157,18 +183,14 @@ def main():
     for error_type, n in breakdown:
         print(f"  {error_type}: {n}")
 
-    spike_alert = _check_spike(matched)
-    if spike_alert:
-        print(f"[triage] ALERT: {spike_alert}")
-        try:
-            sys.path.insert(0, str(ROOT / "bin" / "core"))
-            from notify import notify
-
-            notify(f"DQIII8 triage_error_log: {spike_alert}")
-        except Exception as exc:
-            print(f"[triage] alert dispatch failed: {exc}", file=sys.stderr)
-
     if args.dry_run:
+        # No history/marker write here (Opus red-team review, round 2 P2-1):
+        # a --dry-run previously still wrote HISTORY_FILE, which (a) let repeated
+        # manual dry-runs flush real daily medians out of the 14-entry rolling
+        # window, corrupting the spike baseline, and (b) refreshed the file's
+        # mtime, which health_watchdog.check_triage_ran() reads as "the --apply
+        # cron is alive" — a dry-run (or a crash before commit) could mask a
+        # dead cron for another 48h.
         conn.close()
         return
 
@@ -181,6 +203,22 @@ def main():
         )
         conn.commit()
     applied = len(resolvable_ids)
+
+    # Spike check + history/marker write happen only after a successful apply
+    # (round 2 P2-1) and compare held_ids — the rows an outage would actually
+    # inflate — not raw whitelist matches (round 2 P3-3), which include rows
+    # already correlated away as routine.
+    spike_alert = _check_spike(len(held_ids))
+    if spike_alert:
+        print(f"[triage] ALERT: {spike_alert}")
+        try:
+            sys.path.insert(0, str(ROOT / "bin" / "core"))
+            from notify import notify
+
+            notify(f"DQIII8 triage_error_log: {spike_alert}")
+        except Exception as exc:
+            print(f"[triage] alert dispatch failed: {exc}", file=sys.stderr)
+
     conn.close()
     print(f"[triage] applied: {applied} row(s) updated")
 

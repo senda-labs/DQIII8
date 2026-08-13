@@ -88,7 +88,13 @@ echo ""
 # tests) would silently stop running with the watchdog still reporting OK,
 # since it only checks this report file's mtime, not its content.
 echo "## 8. Git status"
-git add -A
+# Explicit pathspec, not `git add -A` (Opus red-team review, 2026-08-13,
+# round 2 P1-2): -A stages anything untracked anywhere in the tree, and this
+# repo has a documented history of untracked DB/log artifacts landing near
+# the root (e.g. dqiii8_history.db.pre-fix-* snapshots) — one unignored
+# artifact away from a 32MB DB commit to a public repo. Nightly's own scope
+# is docs/tasks/skills/rules churn, so scope the add to match.
+git add -A -- docs/ tasks/ .claude/ knowledge/
 if git diff --cached --quiet; then
     echo "  No changes to commit"
 elif git commit -m "chore: nightly maintenance — $(date -u '+%Y-%m-%d')" 2>&1; then

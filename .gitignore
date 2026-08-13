@@ -40,6 +40,13 @@ database/*.db-shm
 # production DB live here and don't match any *.db* pattern above)
 database/backups/
 database/dqiii8.db.bak-*
+# Ad-hoc pre-fix snapshots (e.g. dqiii8_history.db.pre-fix-<timestamp>) don't
+# end in .db so *.db/database/*.db above miss them — real gap found live
+# 2026-08-13 (Opus red-team review, round 2 P1-2): a 32MB untracked snapshot
+# of this file sat unignored, one `git add -A` away from landing in a public
+# repo with two prior secret-leak incidents.
+database/*.db.pre-fix-*
+database/*_history.db*
 
 # Astro artifact of unknown provenance — no astro.config/package.json anywhere
 # references it; gitignored rather than committed blind

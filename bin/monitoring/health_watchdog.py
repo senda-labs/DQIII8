@@ -76,11 +76,17 @@ def check_crons() -> None:
     # inferred from the path string: nightly.sh's log is DQIII8_ROOT-relative,
     # and DQIII8_ROOT itself can be redirected under /tmp during testing,
     # which would make a string-prefix check misclassify it.
+    #
+    # memory_decay/sandbox_tester/auto_researcher logs moved /tmp -> var/logs
+    # 2026-08-13 (Opus red-team review, P3-8): a /tmp-backed marker made a
+    # post-reboot absence structurally indistinguishable from a dead cron,
+    # silently converting these three checks into permanent no-ops after any
+    # /tmp sweep. var/ survives reboots, so tmp_backed=False now applies.
     log_checks = {
         "nightly.sh": (DQIII8_ROOT / "tasks" / "nightly-report.md", False),
-        "memory_decay": (Path("/tmp/dqiii8_decay.log"), True),
-        "sandbox_tester": (Path("/tmp/dqiii8_sandbox.log"), True),
-        "auto_researcher": (Path("/tmp/dqiii8_researcher.log"), True),
+        "memory_decay": (DQIII8_ROOT / "var" / "logs" / "decay.log", False),
+        "sandbox_tester": (DQIII8_ROOT / "var" / "logs" / "sandbox.log", False),
+        "auto_researcher": (DQIII8_ROOT / "var" / "logs" / "researcher.log", False),
     }
     for name, (log_path, tmp_backed) in log_checks.items():
         if not log_path.exists():
@@ -286,19 +292,20 @@ def check_backup_freshness() -> None:
 
 # ── Check 10: Backup log ──────────────────────────────────────────────────
 
-BACKUP_LOG = Path("/tmp/dqiii8_db_backup.log")
+BACKUP_LOG = DQIII8_ROOT / "var" / "logs" / "db_backup.log"
+# moved /tmp -> var/logs 2026-08-13 (Opus red-team review, P3-8) — see check_crons
 _BACKUP_OK_RE = re.compile(r"^\[db_backup\] (\S+) ok: (\S+) \(")
 
 
 def check_backup_log() -> None:
     if not BACKUP_LOG.exists():
-        # /tmp is wiped at boot (tmpfiles.d 30d rule) — a missing log right
-        # after a reboot is expected, not a failure. check_backup_freshness
-        # is the real signal for backup health; this log is a secondary one.
+        # A missing log before the cron's first run on a fresh install is
+        # expected, not a failure. check_backup_freshness is the real signal
+        # for backup health; this log is a secondary one.
         check(
             "backup_log",
             True,
-            "log absent (likely post-reboot /tmp wipe) — see backup_freshness",
+            "log absent (not yet run) — see backup_freshness",
         )
         return
     lines = BACKUP_LOG.read_text(errors="replace").splitlines()[-20:]
@@ -332,7 +339,7 @@ def check_backup_log() -> None:
 VAR_DIR = DQIII8_ROOT / "var"
 HEARTBEAT_PATH = VAR_DIR / "watchdog_heartbeat"
 AUDIT_REPORTS_DIR = DQIII8_ROOT / "database" / "audit_reports"
-_HEALTH_JSON_RE = re.compile(r"^health_(\d{4}-\d{2}-\d{2})(?:_\d{4})?\.json$")
+_HEALTH_JSON_RE = re.compile(r"^health_(\d{4}-\d{2}-\d{2})(?:_\d{4,6})?\.json$")
 
 
 def write_heartbeat() -> None:
@@ -403,12 +410,31 @@ def check_dependency_pins() -> None:
 def check_hooks_config() -> None:
     try:
         sys.path.insert(0, str(DQIII8_ROOT / "bin" / "tools"))
-        from validate_hooks_config import validate, DEFAULT_SETTINGS
+        from validate_hooks_config import validate
 
-        problems = validate(DEFAULT_SETTINGS)
+        # Pass DQIII8_ROOT-derived path explicitly rather than importing
+        # DEFAULT_SETTINGS — that constant is computed from the imported
+        # module's own __file__, not DQIII8_ROOT, so under a redirected root
+        # (testing) this check would silently validate the production file
+        # instead (Opus red-team review, 2026-08-13, P3-4).
+        settings_path = DQIII8_ROOT / ".claude" / "settings.json"
+        problems = validate(settings_path)
         check("hooks_config", not problems, "; ".join(problems)[:200] if problems else "")
     except Exception as e:
         check("hooks_config", False, str(e)[:80])
+
+
+def check_triage_ran() -> None:
+    """error_log triage (bin/tools/triage_error_log.py --apply, cron 03:50)
+    has no failure signal of its own — a locked DB or crash there is silent
+    otherwise (Opus red-team review, 2026-08-13, P2-1). Its own history file
+    doubles as a liveness marker."""
+    marker = DQIII8_ROOT / "var" / "triage_history.json"
+    if not marker.exists():
+        check("triage_ran", True, "history file absent (likely post-reboot or never run yet)")
+        return
+    age_h = (NOW - datetime.fromtimestamp(marker.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
+    check("triage_ran", age_h <= 48, f"last successful run {age_h:.0f}h ago (limit 48h)")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
@@ -429,6 +455,7 @@ CHECKS = [
     ("human_hours", check_human_hours),
     ("dependency_pins", check_dependency_pins),
     ("hooks_config", check_hooks_config),
+    ("triage_ran", check_triage_ran),
 ]
 
 

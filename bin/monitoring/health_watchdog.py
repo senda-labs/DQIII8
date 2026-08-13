@@ -300,14 +300,17 @@ _BACKUP_OK_RE = re.compile(r"^\[db_backup\] (\S+) ok: (\S+) \(")
 
 
 def check_backup_log() -> None:
-    if not BACKUP_LOG.exists():
-        # A missing log before the cron's first run on a fresh install is
-        # expected, not a failure. check_backup_freshness is the real signal
-        # for backup health; this log is a secondary one.
+    # Empty, not just absent: the log path moved /tmp -> var/logs 2026-08-13,
+    # so a freshly-created empty file at the new path means the 02:50 cron
+    # hasn't fired since the move yet — same "not yet run" case as absent, not
+    # a failure. A real failed run always writes something (db_backup.sh's own
+    # error echoes go to the same fd via `2>&1`), so an empty file can't hide
+    # a genuine failure — only "never invoked since this file was created".
+    if not BACKUP_LOG.exists() or not BACKUP_LOG.read_text(errors="replace").strip():
         check(
             "backup_log",
             True,
-            "log absent (not yet run) — see backup_freshness",
+            "log absent or empty (not yet run since var/logs move) — see backup_freshness",
         )
         return
     lines = BACKUP_LOG.read_text(errors="replace").splitlines()[-20:]

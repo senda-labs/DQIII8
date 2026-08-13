@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # db_backup.sh — daily backup of the DQIII8 databases (added 2026-07-05 remediation).
 # Uses sqlite3 .backup (safe on a live WAL database), keeps the last 7 per DB.
-# Cron: 0 5 * * *  /root/dqiii8/bin/tools/db_backup.sh >> /tmp/dqiii8_db_backup.log 2>&1
+# Cron: 50 2 * * *  /root/dqiii8/bin/tools/db_backup.sh >> /root/dqiii8/var/logs/db_backup.log 2>&1
 set -euo pipefail
 
 ROOT="${DQIII8_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"

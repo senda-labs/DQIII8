@@ -339,7 +339,7 @@ def check_backup_log() -> None:
 VAR_DIR = DQIII8_ROOT / "var"
 HEARTBEAT_PATH = VAR_DIR / "watchdog_heartbeat"
 AUDIT_REPORTS_DIR = DQIII8_ROOT / "database" / "audit_reports"
-_HEALTH_JSON_RE = re.compile(r"^health_(\d{4}-\d{2}-\d{2})(?:_\d{4,6})?\.json$")
+_HEALTH_JSON_RE = re.compile(r"^health_(\d{4}-\d{2}-\d{2})(?:_\d{4}|_\d{6}|_\d{12})?\.json$")
 
 
 def write_heartbeat() -> None:
@@ -410,7 +410,7 @@ def check_dependency_pins() -> None:
 def check_hooks_config() -> None:
     try:
         sys.path.insert(0, str(DQIII8_ROOT / "bin" / "tools"))
-        from validate_hooks_config import validate
+        from validate_hooks_config import _validate
 
         # Pass DQIII8_ROOT-derived path explicitly rather than importing
         # DEFAULT_SETTINGS — that constant is computed from the imported
@@ -418,8 +418,17 @@ def check_hooks_config() -> None:
         # (testing) this check would silently validate the production file
         # instead (Opus red-team review, 2026-08-13, P3-4).
         settings_path = DQIII8_ROOT / ".claude" / "settings.json"
-        problems = validate(settings_path)
+        # source="worktree" (the default) — this check's whole purpose is "is
+        # the live runtime config broken right now", so it must read the
+        # worktree file, never staged/committed content (round 2 P1-3).
+        problems, warnings = _validate(settings_path)
         check("hooks_config", not problems, "; ".join(problems)[:200] if problems else "")
+        # Surfaced, not dropped (round 2 P2-2): an out-of-repo dangling hook
+        # path is a non-fatal warning by design (P2-4 below), but silently
+        # discarding it here made a relocated/stale hook path undetectable
+        # anywhere, not just non-blocking at commit time.
+        if warnings:
+            check("hooks_config_warnings", True, "; ".join(warnings)[:200])
     except Exception as e:
         check("hooks_config", False, str(e)[:80])
 
@@ -428,10 +437,36 @@ def check_triage_ran() -> None:
     """error_log triage (bin/tools/triage_error_log.py --apply, cron 03:50)
     has no failure signal of its own — a locked DB or crash there is silent
     otherwise (Opus red-team review, 2026-08-13, P2-1). Its own history file
-    doubles as a liveness marker."""
+    doubles as a liveness marker: it's now only written after a successful
+    --apply run (dry-runs and pre-commit crashes no longer touch it), and it
+    lives in var/ (survives reboot), unlike the old /tmp-backed cron logs."""
     marker = DQIII8_ROOT / "var" / "triage_history.json"
     if not marker.exists():
-        check("triage_ran", True, "history file absent (likely post-reboot or never run yet)")
+        # "Absence is OK" is bounded by install age (round 2 P2-4) — the
+        # marker survives reboots now, so unlike the /tmp-backed logs this
+        # check replaced, absence past one grace period means the cron never
+        # ran once, not that the box rebooted recently. Repo's first-commit
+        # timestamp, not `.git`'s own mtime — the latter is rewritten by
+        # every git operation (new loose objects, refs) and doesn't reflect
+        # when the repo was actually set up.
+        try:
+            first_commit_ts = int(
+                subprocess.run(
+                    ["git", "log", "--reverse", "--format=%at"],
+                    cwd=DQIII8_ROOT, capture_output=True, text=True, timeout=10,
+                ).stdout.splitlines()[0]
+            )
+            install_age_h = (NOW - datetime.fromtimestamp(first_commit_ts, tz=timezone.utc)).total_seconds() / 3600
+        except (IndexError, ValueError, subprocess.SubprocessError):
+            install_age_h = 0  # can't determine — don't false-alarm on a fresh/odd checkout
+        check(
+            "triage_ran",
+            install_age_h <= 48,
+            "history file absent" + (
+                " (fresh install, no run yet)" if install_age_h <= 48
+                else f" and install is {install_age_h:.0f}h old — triage cron may never have run"
+            ),
+        )
         return
     age_h = (NOW - datetime.fromtimestamp(marker.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
     check("triage_ran", age_h <= 48, f"last successful run {age_h:.0f}h ago (limit 48h)")

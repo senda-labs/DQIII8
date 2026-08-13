@@ -69,7 +69,11 @@ def check_command(command: str) -> tuple[list[str], list[str]]:
     # extension) is resolved relative to ROOT if not already absolute.
     for tok in tokens[1:] if len(tokens) > 1 else tokens:
         if "/" in tok or tok.endswith((".py", ".sh", ".mjs", ".js")):
-            is_out_of_repo = os.path.isabs(tok) and not str(Path(tok)).startswith(str(ROOT))
+            # is_relative_to, not a string prefix (round 2 P2-3): a sibling
+            # directory like /root/dqiii8-premium/... starts with the string
+            # "/root/dqiii8" and was misclassified as in-repo (hard failure)
+            # by the old `.startswith()` check.
+            is_out_of_repo = os.path.isabs(tok) and not Path(tok).is_relative_to(ROOT)
             path = Path(tok) if os.path.isabs(tok) else (ROOT / tok)
             if not path.exists():
                 msg = f"referenced path not found: {path} (via {command!r})"
@@ -79,11 +83,11 @@ def check_command(command: str) -> tuple[list[str], list[str]]:
 
 
 def _staged_or_worktree_text(settings_path: Path) -> str:
-    """Prefer the staged (index) content over the working-tree copy — a
-    pre-commit hook must validate what's about to be committed, not whatever
-    happens to be sitting in the worktree (Opus red-team review, 2026-08-13,
-    P2-3). Falls back to the worktree file when the path isn't staged (e.g.
-    a direct CLI run outside a commit, or the file has no pending changes)."""
+    """Read the staged (index) content — only for the pre-commit CLI path,
+    which must validate what's about to be committed, not whatever happens to
+    be sitting in the worktree (Opus red-team review, 2026-08-13, P2-3).
+    Falls back to the worktree file when the path isn't staged (e.g. a direct
+    CLI run outside a commit, or the file has no pending changes)."""
     try:
         rel = settings_path.resolve().relative_to(ROOT)
     except ValueError:
@@ -102,14 +106,21 @@ def _staged_or_worktree_text(settings_path: Path) -> str:
 
 
 def validate(settings_path: Path) -> list[str]:
-    problems, _warnings = _validate(settings_path)
+    problems, _warnings = _validate(settings_path, source="worktree")
     return problems
 
 
-def _validate(settings_path: Path) -> tuple[list[str], list[str]]:
+def _validate(settings_path: Path, source: str = "worktree") -> tuple[list[str], list[str]]:
+    """source='worktree' (default, used by health_watchdog.py and any direct
+    caller) reads the live file — the runtime is what's actually executing,
+    so that's what must be checked. source='staged' (pre-commit CLI only)
+    reads the git index instead. Round 2 P1-3: these were conflated behind
+    one always-staged path, so the watchdog — built specifically to catch a
+    broken *live* settings.json — silently validated yesterday's committed
+    blob instead and could never detect an unstaged break."""
     problems, warnings = [], []
     try:
-        raw = _staged_or_worktree_text(settings_path)
+        raw = _staged_or_worktree_text(settings_path) if source == "staged" else settings_path.read_text()
     except OSError as exc:
         return [f"cannot read {settings_path}: {exc}"], warnings
 
@@ -149,7 +160,7 @@ def main() -> int:
             return 2
         settings_path = Path(sys.argv[idx])
 
-    problems, warnings = _validate(settings_path)
+    problems, warnings = _validate(settings_path, source="staged")
     for w in warnings:
         print(f"[validate-hooks] WARNING: {w}")
     if problems:

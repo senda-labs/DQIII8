@@ -18,6 +18,13 @@ uvicorn>=0.29.0
 numpy>=1.26.0
 Pillow>=10.0.0
 
+# Bot voice + dashboard features (deferred imports — missed by P2.1's dry-import
+# gate, 2026-08-13 red-team review F3; must be present for real runtime, not just
+# module-level import checks)
+groq>=1.1.1
+gTTS>=2.5.4
+openpyxl>=3.1.5
+
 # Orchestration — StateGraph director, Agno AgentOS, MetaGPT-pattern pipeline
 langgraph>=1.1.3
 agno>=2.6.19

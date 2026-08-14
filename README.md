@@ -14,7 +14,7 @@
 Every request flows through a cost-first routing pipeline that always tries the cheapest
 capable model first — local → free cloud → paid frontier — escalating only when the task
 demands it. It is deeply integrated with [Claude Code](https://claude.com/claude-code)
-through 14 lifecycle hooks, 21 skills, and 17 specialist agents.
+through 14 lifecycle hooks, 22 skills, and 17 specialist agents.
 
 This repository is a **reference implementation**. It shows the architecture, routing
 logic, hook system, and agent patterns so you can build a similar system with your own
@@ -29,7 +29,7 @@ locally — see [Installation](#installation).
 - **Deterministic permissions** — every tool call is evaluated by `PermissionAnalyzer` (APPROVE / DENY / ESCALATE) inside a `pre_tool_use` hook before execution.
 - **State in SQLite** — instincts, agent actions, model performance, and session events live in a local SQLite database. No external state store.
 - **Knowledge injection (optional)** — domain knowledge retrieved via hybrid search (vector + FTS5) before the model sees the prompt. Off by default for a clean install.
-- **Composable agents** — 17 specialist agents + 14 hooks + 21 skills form a layered permission and routing system, all configurable.
+- **Composable agents** — 17 specialist agents + 14 hooks + 22 skills form a layered permission and routing system, all configurable.
 
 ---
 
@@ -70,7 +70,7 @@ Fallback chain is **sequential** (not round-robin): `ollama → groq → nim →
                                   ▼
          Claude Code  ←──dispatch.py──→  NIM / Groq / GitHub workers
               │
-    14 hooks · 21 skills · 17 agents · PermissionAnalyzer
+    14 hooks · 22 skills · 17 agents · PermissionAnalyzer
 ```
 
 ---
@@ -140,7 +140,7 @@ dqiii8/
 │   └── orchestrator.py   /cc and /loop command handling
 ├── .claude/
 │   ├── hooks/            14 lifecycle hooks
-│   ├── skills/           21 slash-command skills
+│   ├── skills/           22 slash-command skills
 │   ├── agents/           17 specialist agent definitions
 │   └── rules/            core behavior · tiering · database · hooks rules
 ├── config/               .env.example · domain_agent_map.json · claude_settings_template.json

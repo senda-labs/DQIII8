@@ -1,5 +1,9 @@
 # Changelog
 
+> **Historical.** Last updated for v0.1.0-beta (2026-03-23) and not maintained
+> since — the system has diverged substantially (7-step pipeline, 17 agents,
+> different DB layout). For current state see `CLAUDE.md` and `zones/000_INDEX.md`.
+
 ## v0.1.0-beta (2026-03-23)
 
 ### Features

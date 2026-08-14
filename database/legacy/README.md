@@ -9,4 +9,4 @@ These files are historical references only. **Do not use for fresh installs or m
 
 ## Canonical source
 
-`database/schema_v2.sql` — 47KB, 79 tables, includes metrics, audit, agent_actions, token_usage, error_log, vault_memory. Apply via `bin/tools/db_init.py`.
+`database/schema_v2.sql` — 75KB, 58 tables + 29 views, includes metrics, audit, agent_actions, token_usage, error_log, vault_memory. Apply via `sqlite3 database/dqiii8.db < database/schema_v2.sql` (see `.claude/rules/01_database_mutations.md` — `bin/tools/db_init.py` does not exist).

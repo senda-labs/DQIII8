@@ -16,7 +16,7 @@
 | Hooks | 14 · Skills: 22 · Agents: 17 |
 | Repos | public: `senda-labs/DQIII8` · premium: `senda-labs/DQIII8-premium` |
 
-**Active projects:** intl-reports (tanda5 pendiente) · content-automation · football-value (WC2026 live) · accounting-erp · ouroboros-q-eml
+**Active projects** (full detail: `my-projects/PROJECT.md`): job-search 🔴 (deadline 2026-09-01) · intl-reports 🟢 (tanda5 pendiente) · content-automation 🟢 · football-value 🟢 (WC2026 live) · market-intel 🟢 · automatic-nutrition 🟡 (5 clientes) · cultive-game 🟡 · ouroboros-q-eml 🟡 · accounting-erp 🟡 (diseñado) · mejorapoker-src 🟡 (bloqueado, invariante II-3) · pokemon-genesis-chaos 🟠 (en pausa)
 
 ---
 

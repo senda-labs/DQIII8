@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Scan staged files for invisible/hidden Unicode characters (watermark-style artifacts):
-bidi overrides, Unicode Tag block (ASCII smuggling), zero-width space, invisible math
-operators, BOM. Report-only for ZWNJ/ZWJ/variation selectors (legitimate in some scripts
-and emoji sequences, no reliable way to distinguish from misuse).
+bidi overrides, Unicode Tag block (ASCII smuggling), line/paragraph separators, zero-width
+space, invisible math operators, deprecated invisible format chars, soft hyphen, BOM.
+Report-only for ZWNJ/ZWJ/variation selectors (legitimate in some scripts and emoji
+sequences) — a ZWJ/VS immediately following an emoji-range codepoint is treated as a
+legitimate emoji sequence and not flagged at all, since that is the overwhelming majority
+of real-world occurrences and flagging it trains `--no-verify` into muscle memory.
 
 Scope is deliberately narrow: only files staged for commit
 (`git diff --cached --diff-filter=d --name-only -z`). Never walks directories, never
@@ -14,8 +17,18 @@ re-staging) and only the index content is what actually gets committed. Staged
 symlinks are skipped: a symlink's blob content is the target path string, not the
 target file's content, so following it would scan the wrong thing entirely.
 
-Default mode is report-only and blocking (exit 1 if anything found). --fix is a
-manual, opt-in, human-run flag — never wired into an automated hook.
+Every skip (oversized file, symlink, unreadable blob, undecodable text) is counted
+and reported in the summary line — never silent, since a silent skip is a trivial
+bypass (pad a file past the size ceiling, or save it non-UTF-8/UTF-16). UTF-16
+(BOM-prefixed) content is decoded and scanned like any other text, not skipped —
+bidi/tag characters carry through UTF-16 fine, so blind-skipping it was itself a
+bypass.
+
+Default mode is report-only and blocking (exit 1 if anything unresolved remains).
+--fix is a manual, opt-in, human-run flag that strips only the categories it can
+safely strip; anything it can't (bidi, tag, linesep, report_only) still exits 1
+even under --fix — it was previously possible for --fix to exit 0 while a bidi
+override was still sitting in the file untouched.
 
 Usage:
     python3 bin/tools/watermark_scan.py [--fix]
@@ -24,6 +37,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -44,6 +58,8 @@ BIDI_BLOCK = {
     0x2068: "FSI",
     0x2069: "PDI",
     0x061C: "ALM",
+    0x200E: "LRM",
+    0x200F: "RLM",
 }
 
 # Unicode Tag block — payload-carrying invisible characters (each tag codepoint
@@ -53,8 +69,13 @@ BIDI_BLOCK = {
 # since silently stripping would destroy evidence of an active payload.
 TAG_BLOCK_RANGES = [(0xE0000, 0xE007F, "TAG")]
 
-# Invisible math operators — no legitimate use in source code or prose; a
-# gap in prior coverage next to the existing invisible-char categories below.
+# Line/paragraph separator — can desync line-based tooling (including this
+# scanner's own line numbering) from git's, and hides content from casual
+# line-oriented review. Structural risk profile like bidi: hard-block, never
+# auto-fixable (semantics of removal are ambiguous — could be a real line break).
+LINE_SEP_BLOCK = {0x2028: "LSEP", 0x2029: "PSEP"}
+
+# Invisible math operators — no legitimate use in source code or prose.
 INVISIBLE_MATH_FIXABLE = {
     0x2060: "WJ",
     0x2061: "FUNC-APP",
@@ -63,20 +84,67 @@ INVISIBLE_MATH_FIXABLE = {
     0x2064: "INVIS-PLUS",
 }
 
+# Deprecated invisible format characters + soft hyphen — no legitimate rendered
+# use in code/docs, and soft hyphen in particular is one of the most common
+# real-world invisible carriers (invisible unless the line wraps at that point).
+INVISIBLE_CTRL_FIXABLE = {
+    0x00AD: "SHY",
+    0x206A: "ISS",
+    0x206B: "ASS",
+    0x206C: "IAFS",
+    0x206D: "AAFS",
+    0x206E: "NADS",
+    0x206F: "NODS",
+}
+
 # Zero-width space: only real category safe to auto-fix, and only manually.
 ZWSP_FIXABLE = {0x200B: "ZWSP"}
 
-# Legitimate in Persian/Hindi text (ZWNJ/ZWJ) and emoji presentation/ZWJ
-# sequences (VS16, ideographic variation selectors). No reliable way to tell
-# "watermark" from "correct use" — report only, never touched by --fix.
-REPORT_ONLY_NEVER_FIX = {0x200C: "ZWNJ", 0x200D: "ZWJ"}
+# Legitimate in Persian/Hindi text (ZWNJ) and emoji presentation/ZWJ sequences
+# (ZWJ, VS16, ideographic variation selectors) — but ZWJ/VS immediately after
+# an emoji-range codepoint is suppressed entirely (see _is_emoji_context below)
+# rather than reported, since that covers the overwhelming majority of real
+# occurrences. What's left here still fires for non-emoji-context uses, where
+# there is no reliable way to tell "watermark" from "correct use" — report
+# only, never touched by --fix.
+REPORT_ONLY_NEVER_FIX = {
+    0x200C: "ZWNJ",
+    0x200D: "ZWJ",
+    0x180E: "MVS",
+    0x3164: "HANGUL-FILLER",
+    0x115F: "HANGUL-CHOSEONG-FILLER",
+    0xFFF9: "IAA-START",
+    0xFFFA: "IAA-SEP",
+    0xFFFB: "IAA-END",
+    0x2800: "BRAILLE-BLANK",
+}
 REPORT_ONLY_NEVER_FIX_RANGES = [
     (0xFE00, 0xFE0F, "VS1-16"),
     (0xE0100, 0xE01EF, "VS17-256"),
 ]
 
+# Codepoint ranges treated as a plausible "emoji base" for context suppression:
+# a ZWJ or variation selector immediately following one of these is assumed to
+# be a legitimate emoji sequence, not a watermark carrier. Heuristic, not a
+# full emoji-property table — false negatives here just mean "still reported",
+# never "silently stripped".
+_EMOJI_BASE_RANGES = [
+    (0x1F1E6, 0x1F1FF),  # regional indicators
+    (0x1F300, 0x1FAFF),  # misc pictographs / emoticons / transport / symbols
+    (0x2100, 0x27BF),    # letterlike symbols through dingbats (incl. info/check marks)
+    (0x2B00, 0x2BFF),    # misc symbols and arrows
+    (0x0023, 0x0023),    # '#'  (keycap base)
+    (0x002A, 0x002A),    # '*'  (keycap base)
+    (0x0030, 0x0039),    # '0'-'9' (keycap base)
+]
+_EMOJI_CONTEXT_LABELS = {"ZWJ", "VS1-16", "VS17-256"}
+
 BOM = 0xFEFF
 BOM_FIXABLE_EXTENSIONS = {".py", ".js", ".ts"}
+
+
+def _is_emoji_base(cp: int) -> bool:
+    return any(lo <= cp <= hi for lo, hi in _EMOJI_BASE_RANGES)
 
 
 def staged_files() -> list[Path]:
@@ -96,15 +164,34 @@ def staged_files() -> list[Path]:
     return [Path(p) for p in out.stdout.split("\0") if p]
 
 
-def staged_is_symlink(path: Path) -> bool:
-    """True if the staged (index) entry for this path is a symlink (mode 120000)."""
+def staged_symlinks(files: list[Path]) -> set[str]:
+    """Batched symlink check (one `git ls-files` call for all staged files,
+    instead of one subprocess per file)."""
+    if not files:
+        return set()
     out = subprocess.run(
-        ["git", "ls-files", "-s", "--", path.as_posix()],
+        ["git", "ls-files", "-s", "-z", "--"] + [f.as_posix() for f in files],
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
-    return out.stdout.startswith("120000 ")
+    if out.returncode != 0:
+        print(f"watermark-scan: warning: git ls-files failed: {out.stderr.strip()}", file=sys.stderr)
+        return set()
+    symlinks = set()
+    for entry in out.stdout.split("\0"):
+        if not entry:
+            continue
+        mode_part, _, path_part = entry.partition("\t")
+        if mode_part.startswith("120000"):
+            symlinks.add(path_part)
+    return symlinks
+
+
+def staged_is_symlink(path: Path) -> bool:
+    """True if the staged (index) entry for this path is a symlink (mode 120000).
+    Kept for single-file/library callers; `main()` uses the batched staged_symlinks()."""
+    return path.as_posix() in staged_symlinks([path])
 
 
 def staged_blob_bytes(path: Path) -> bytes | None:
@@ -130,10 +217,14 @@ def classify(cp: int) -> tuple[str, str] | None:
     for lo, hi, label in TAG_BLOCK_RANGES:
         if lo <= cp <= hi:
             return ("tag", label)
+    if cp in LINE_SEP_BLOCK:
+        return ("linesep", LINE_SEP_BLOCK[cp])
     if cp in ZWSP_FIXABLE:
         return ("zwsp", ZWSP_FIXABLE[cp])
     if cp in INVISIBLE_MATH_FIXABLE:
         return ("invis_math", INVISIBLE_MATH_FIXABLE[cp])
+    if cp in INVISIBLE_CTRL_FIXABLE:
+        return ("invisible_ctrl", INVISIBLE_CTRL_FIXABLE[cp])
     if cp in REPORT_ONLY_NEVER_FIX:
         return ("report_only", REPORT_ONLY_NEVER_FIX[cp])
     for lo, hi, label in REPORT_ONLY_NEVER_FIX_RANGES:
@@ -144,14 +235,31 @@ def classify(cp: int) -> tuple[str, str] | None:
     return None
 
 
+def _decode(raw: bytes) -> tuple[str | None, str]:
+    """Returns (text, reason). text is None iff the file was skipped; reason is
+    'ok' | 'too-large' | 'utf16-decode-error' | 'non-utf8'. UTF-16 (BOM-prefixed)
+    content is decoded and scanned, not blind-skipped — bidi/tag chars survive
+    UTF-16 fine, so skipping it was a real bypass."""
+    if len(raw) > MAX_FILE_SIZE:
+        return None, "too-large"
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        try:
+            return raw.decode("utf-16"), "ok"
+        except UnicodeDecodeError:
+            return None, "utf16-decode-error"
+    try:
+        return raw.decode("utf-8"), "ok"
+    except UnicodeDecodeError:
+        return None, "non-utf8"
+
+
 def scan_file(path: Path) -> list[dict]:
     findings: list[dict] = []
     if staged_is_symlink(path):
         # A staged symlink's blob content is just the target path string, not
         # the target file's content — scan_bytes() would read the wrong thing
-        # entirely if we followed it (either via read_bytes() on the working
-        # tree, or by treating the resolved target as this file's content).
-        # The target path text itself is not a realistic watermark vector.
+        # entirely if we followed it. The target path text itself is not a
+        # realistic watermark vector.
         return findings
     raw = staged_blob_bytes(path)
     if raw is None:
@@ -160,22 +268,25 @@ def scan_file(path: Path) -> list[dict]:
 
 
 def scan_bytes(path: Path, raw: bytes) -> list[dict]:
-    findings = []
-    if len(raw) > MAX_FILE_SIZE:
+    findings: list[dict] = []
+    text, reason = _decode(raw)
+    if text is None:
         return findings
-    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
-        return findings  # UTF-16 BOM — not our target, skip entirely
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return findings  # not UTF-8 text, not in scope
-    for line_no, line in enumerate(text.splitlines(), start=1):
+    # Split on '\n' only — NOT str.splitlines(), which also breaks on
+    # \x1c-\x1e/\x85/U+2028/U+2029 and would silently swallow the very
+    # line/paragraph-separator characters this scanner needs to detect,
+    # desyncing reported line numbers from git's in the process.
+    for line_no, line in enumerate(text.split("\n"), start=1):
         for col, ch in enumerate(line, start=1):
             cp = ord(ch)
             result = classify(cp)
             if result is None:
                 continue
             category, label = result
+            if category == "report_only" and label in _EMOJI_CONTEXT_LABELS:
+                prev_ch = line[col - 2] if col - 2 >= 0 else None
+                if prev_ch is not None and _is_emoji_base(ord(prev_ch)):
+                    continue  # legitimate emoji sequence, not a watermark carrier
             context = line[max(0, col - 6) : col + 5]
             findings.append(
                 {
@@ -191,11 +302,18 @@ def scan_bytes(path: Path, raw: bytes) -> list[dict]:
     return findings
 
 
-def apply_fix(path: Path, findings: list[dict]) -> bool:
-    """Strip only zwsp/bom findings that are safe per policy. Atomic write."""
-    fixable_categories = {"zwsp", "invis_math"}
+def _fixable_categories(path: Path) -> set[str]:
+    cats = {"zwsp", "invis_math", "invisible_ctrl"}
     if path.suffix in BOM_FIXABLE_EXTENSIONS:
-        fixable_categories.add("bom")
+        cats.add("bom")
+    return cats
+
+
+def apply_fix(path: Path, findings: list[dict]) -> bool:
+    """Strip only findings in a safe-to-strip category (see _fixable_categories).
+    Atomic write; preserves the original file mode (a previous version silently
+    dropped e.g. 0755 -> 0644 on every fix)."""
+    fixable_categories = _fixable_categories(path)
     to_strip = {f["codepoint"] for f in findings if f["category"] in fixable_categories}
     if not to_strip:
         return False
@@ -211,8 +329,14 @@ def apply_fix(path: Path, findings: list[dict]) -> bool:
     new_text = "".join(ch for ch in text if ord(ch) not in strip_chars)
     if new_text == text:
         return False
+    try:
+        mode = path.stat().st_mode
+    except OSError:
+        mode = None
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(new_text, encoding="utf-8")
+    if mode is not None:
+        os.chmod(tmp, mode)
     tmp.replace(path)
     print(f"  fixed: {path}  (undo: git checkout -- {path}; re-stage: git add {path})")
     return True
@@ -223,35 +347,52 @@ def main() -> int:
     parser.add_argument(
         "--fix",
         action="store_true",
-        help="Manually strip zero-width-space/BOM findings (never bidi, "
-        "never ZWNJ/ZWJ/VS, never non-.py/.js/.ts for BOM).",
+        help="Manually strip zero-width-space/invisible-math/invisible-ctrl/BOM "
+        "findings (never bidi, tag, linesep, ZWNJ/ZWJ/VS, never non-.py/.js/.ts "
+        "for BOM). Still exits 1 if anything outside those categories remains.",
     )
     args = parser.parse_args()
 
     files = staged_files()
+    symlinks = staged_symlinks(files)
+
+    skip_counts: dict[str, int] = {}
+    file_findings: dict[str, list[dict]] = {}
     all_findings: list[dict] = []
+
     for f in files:
-        # No f.exists() gate here: detection reads the staged git blob (via
-        # scan_file -> staged_blob_bytes), which exists independently of the
-        # working-tree file. --fix still needs the working-tree file present.
-        findings = scan_file(f)
-        all_findings.extend(findings)
+        if f.as_posix() in symlinks:
+            skip_counts["symlink"] = skip_counts.get("symlink", 0) + 1
+            continue
+        raw = staged_blob_bytes(f)
+        if raw is None:
+            skip_counts["unreadable"] = skip_counts.get("unreadable", 0) + 1
+            continue
+        text, reason = _decode(raw)
+        if text is None:
+            skip_counts[reason] = skip_counts.get(reason, 0) + 1
+            continue
+        findings = scan_bytes(f, raw)
+        if findings:
+            file_findings[str(f)] = findings
+            all_findings.extend(findings)
+
+    if skip_counts:
+        parts = ", ".join(f"{k}={v}" for k, v in sorted(skip_counts.items()))
+        print(f"watermark-scan: skipped {sum(skip_counts.values())} file(s): {parts}")
 
     if not all_findings:
         print("watermark-scan: no hidden/invisible characters found in staged files.")
         return 0
 
-    by_file: dict[str, list[dict]] = {}
-    for finding in all_findings:
-        by_file.setdefault(finding["file"], []).append(finding)
-
-    print(f"watermark-scan: {len(all_findings)} finding(s) in {len(by_file)} file(s)")
+    print(f"watermark-scan: {len(all_findings)} finding(s) in {len(file_findings)} file(s)")
     hard_block = False
-    for file_str, findings in by_file.items():
+    unresolved = False
+    for file_str, findings in file_findings.items():
         print(f"\n{file_str}")
         for f in findings:
-            marker = " [BLOCKING]" if f["category"] in ("bidi", "tag") else ""
-            if f["category"] in ("bidi", "tag"):
+            marker = " [BLOCKING]" if f["category"] in ("bidi", "tag", "linesep") else ""
+            if f["category"] in ("bidi", "tag", "linesep"):
                 hard_block = True
             print(
                 f"  {f['line']}:{f['col']}  {f['codepoint']} ({f['label']})"
@@ -259,17 +400,20 @@ def main() -> int:
             )
         if args.fix:
             apply_fix(Path(file_str), findings)
+            fixable = _fixable_categories(Path(file_str))
+            if any(f["category"] not in fixable for f in findings):
+                unresolved = True
+        else:
+            unresolved = True  # nothing was fixed — every finding is still live
 
     if hard_block:
         print(
-            "\nBidi/directional-override or Unicode Tag characters found — Trojan Source "
-            "(CVE-2021-42574) and ASCII-smuggling attack signatures. Never auto-fixed. "
-            "Investigate manually."
+            "\nBidi/directional-override, Unicode Tag, or line/paragraph-separator "
+            "characters found — Trojan Source (CVE-2021-42574), ASCII-smuggling, and "
+            "line-desync attack signatures. Never auto-fixed. Investigate manually."
         )
 
-    if args.fix:
-        return 0
-    return 1
+    return 1 if unresolved else 0
 
 
 if __name__ == "__main__":

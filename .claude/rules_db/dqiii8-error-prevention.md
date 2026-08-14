@@ -21,8 +21,8 @@ injected. Every rule below traces to a real, documented recurring error.
   the wrong file — `routing_feedback` already exists forked in two DBs (known debt).
 
 ## Dispatch / wrapper
-- `dispatch.py` async mode does NOT return usable results (result file truncated by
-  design bug, audit 2026-07-05) — use sync mode or tmux until fixed.
+- `dispatch.py` async mode FIXED 2026-07-05 (detached worker + atomic `os.replace()`
+  JSON envelope) — `tests/test_dispatch_async.py` covers it. Sync and async both usable.
 - Provider fallback prints partial output from a failed stream BEFORE the fallback
   provider's full answer — never parse dispatch stdout as a clean single response
   for critical flows; prefer checking `agent_actions` for the authoritative record.

@@ -8,8 +8,8 @@ pointed at a missing file.
 - **Interactive orchestration** → this CC session (Sonnet). Subagents via Agent tool
   consume Anthropic tokens — for NIM/Groq work use the wrapper instead:
   `python3 /root/dqiii8/bin/core/openrouter_wrapper.py --agent <agente> --no-enrich "<prompt>"`
-- **Fire-and-forget agent task** → `/dispatch-agent` skill (sync mode). Async mode is
-  currently broken (see dqiii8-error-prevention.md §Dispatch).
+- **Fire-and-forget agent task** → `/dispatch-agent` skill. Async mode fixed 2026-07-05,
+  both sync and async usable (see dqiii8-error-prevention.md §Dispatch).
 - **Long batch jobs** (intl-reports generate, stress tests) → external tmux, never
   inline in the session. `claude -p` non-interactive cannot spawn subagents — routing
   falls to `AGENT_ROUTING` in the wrapper (03_tiering §scope note).

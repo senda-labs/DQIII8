@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8_knowledge.db"
 ENV_FILE = DQIII8_ROOT / "my-projects" / "auto-report" / ".env"
 
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"

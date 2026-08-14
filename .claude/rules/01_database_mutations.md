@@ -36,7 +36,7 @@ is a separate, still-used tool and was left untouched.
 
 ## SQLite Access Patterns
 - Use full path: `sqlite3 /root/dqiii8/database/dqiii8.db "…"` — no aliases in non-interactive shells.
-- `error_log` lives in `dqiii8.db` ONLY — not in `dqiii8_metrics.db`.
+- `error_log` lives in `dqiii8.db` ONLY — not in `dqiii8_knowledge.db`.
 - Use `timeout=30` for batch/background/one-off scripts that mutate the production DB (migrations, backfills, `bin/tools/*`). **Hooks and other hot-path callers deliberately use shorter timeouts (0.5–10s, tiered by call frequency/criticality)** to fail open fast under lock contention rather than block a tool call — confirmed as intentional design (Opus review P3-11, 2026-08-13: audited ~96 call sites, all short timeouts pair with a `try/except` that degrades gracefully). Don't "fix" a short hook timeout to 30 without checking it isn't this pattern.
 - WAL mode is enabled on per-company `orchestrator_state.db` files — writes must use `asyncio.to_thread()`.
 

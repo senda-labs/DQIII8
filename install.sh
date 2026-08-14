@@ -141,12 +141,6 @@ if sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_v2.
 else
     warn "schema_v2.sql had errors — check database/ directory"
 fi
-# dqiii8_metrics.db — working memory + session events (required by smoke tests)
-if sqlite3 "$DQIII8_ROOT/database/dqiii8_metrics.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null; then
-    ok "dqiii8_metrics.db: schema applied"
-else
-    warn "dqiii8_metrics.db schema failed — smoke tests may be affected"
-fi
 _INSTALLED+=("Database schema (schema_v2.sql)")
 
 # 5b-5d. Knowledge indexing — only with --with-knowledge flag

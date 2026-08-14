@@ -1628,3 +1628,14 @@ CREATE INDEX IF NOT EXISTS ix_hpt_events_task ON human_pending_events(task_id, t
 CREATE INDEX IF NOT EXISTS idx_error_log_action_id ON error_log(action_id);
 CREATE INDEX IF NOT EXISTS idx_amplification_log_created_at ON amplification_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
+
+
+-- Added 2026-08-14: DB consolidation (session_memory from dqiii8_history.db)
+CREATE TABLE IF NOT EXISTS session_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+            content TEXT NOT NULL,
+            domain TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );

@@ -16,9 +16,11 @@ injected. Every rule below traces to a real, documented recurring error.
   hook default (10s) produce `SQLITE_BUSY` under parallel dispatch. (rule 01)
 - WAL mode is set persistently; never disable it. Check `-wal` size before assuming
   a write landed.
-- `database/dqiii8.db` = live state; `database/dqiii8_metrics.db` = knowledge/vector
-  side; `database/dqiii8_history.db` = session_memory only. Do NOT create tables in
-  the wrong file — `routing_feedback` already exists forked in two DBs (known debt).
+- `database/dqiii8.db` = live state, now also `session_memory` (migrated 2026-08-14);
+  `database/dqiii8_knowledge.db` = knowledge/vector side. `dqiii8_history.db` and
+  `dqiii8_metrics.db.old` are frozen post-migration artifacts, not written anymore.
+  Do NOT create tables in the wrong file — `routing_feedback` already exists forked
+  in two DBs (known debt, predates this migration).
 
 ## Dispatch / wrapper
 - `dispatch.py` async mode FIXED 2026-07-05 (detached worker + atomic `os.replace()`

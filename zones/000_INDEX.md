@@ -11,7 +11,7 @@
 | Server | VPS server · `YOUR_VPS_IP` · SSH alias `your-vps` |
 | Telegram UI | @YourBotName |
 | CLI | `j cc` / `j loop` / `j status` |
-| DB | `database/dqiii8.db` (46T + 20V live) · `dqiii8_metrics.db` |
+| DB | `database/dqiii8.db` (schema SSOT, incl. session_memory) · `dqiii8_knowledge.db` |
 | Pipeline | 7-step DQ: Classify → Retrieve → Gate → Amplify → Route → Execute → Memory |
 | Hooks | 14 · Skills: 22 · Agents: 17 |
 | Repos | public: `senda-labs/DQIII8` · premium: `senda-labs/DQIII8-premium` |
@@ -26,7 +26,7 @@
 |---|---|---|
 | A | [[zone_A_core_pipeline]] | DQ 7-step pipeline, openrouter_wrapper, director.py, bin/agents/, bin/core/ |
 | B | [[zone_B_extensions]] | .claude/ — agents (17), skills (19), hooks (14), rules engine |
-| C | [[zone_C_database]] | dqiii8.db (46T+20V), dqiii8_metrics.db, schema_v2.sql, var/ |
+| C | [[zone_C_database]] | dqiii8.db (schema SSOT), dqiii8_knowledge.db, schema_v2.sql, var/ |
 | F | [[zone_F_knowledge]] | docs/, knowledge/, ADRs, CHANGELOG, architecture decisions |
 | G | [[zone_G_tasks]] | tasks/ — audit, benchmarks, research, results, FULL_SYSTEM_MAP |
 | H | [[zone_H_config]] | config/, .claude/rules/, .obsidian/, tiering table |
@@ -84,7 +84,7 @@ python3 -m bin.core.dq_compile "prompt"
 
 # DB
 sqlite3 database/dqiii8.db ".tables"
-sqlite3 database/dqiii8_metrics.db ".tables"
+sqlite3 database/dqiii8_knowledge.db ".tables"
 
 # Claude Code
 claude             # starts session (OAuth, no API key needed)

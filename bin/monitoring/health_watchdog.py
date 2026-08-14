@@ -238,7 +238,7 @@ def check_working_memory() -> None:
 # ── Check 9: Backup freshness ─────────────────────────────────────────────
 
 BACKUP_DIR = DQIII8_ROOT / "database" / "backups"
-BACKUP_DBS = ["dqiii8.db", "dqiii8_metrics.db", "dqiii8_history.db"]
+BACKUP_DBS = ["dqiii8.db", "dqiii8_knowledge.db", "dqiii8_history.db"]
 # Live counts 2026-08-12 (4/5/7 per DB) are still refilling at +1/DB/day after
 # the Stage-0.1 rotation fix; a flat >=7 floor would fire on deploy. Ramps to
 # the script's real KEEP=7 target by the date they're expected to reach it.

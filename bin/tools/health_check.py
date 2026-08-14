@@ -123,13 +123,13 @@ def main():
         detail["hook_telemetry_stale"] = None
         detail["hook_telemetry_error"] = str(exc)
 
-    # dqiii8_history.db is the LIVE session_memory store (working_memory.py
-    # writes to it); the 2026-06-10 rename-to-readonly-archive ADR was reverted
-    # in openrouter_wrapper._enforce_sensitive_permissions. The old
-    # "not writable" test could therefore never pass and silently capped the
-    # score at 90. Check what is actually required: owner-only permissions.
-    hist = ROOT / "database" / "dqiii8_history.db"
-    secure = hist.exists() and (hist.stat().st_mode & 0o777) in (0o600, 0o640)
+    # Post db-consolidation (2026-08-14): session_memory lives in dqiii8.db
+    # (working_memory.py writes there now, not dqiii8_history.db), so the
+    # other sensitive live DB worth checking here is dqiii8_knowledge.db
+    # (former dqiii8_metrics.db). Check what is actually required: owner-only
+    # permissions.
+    knowledge_db = ROOT / "database" / "dqiii8_knowledge.db"
+    secure = knowledge_db.exists() and (knowledge_db.stat().st_mode & 0o777) in (0o600, 0o640)
     detail["history_db_owner_only"] = secure
     score += 10 if secure else 0
 

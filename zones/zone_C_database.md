@@ -12,8 +12,8 @@ All SQLite databases, schema management, and database access patterns.
 
 | DB | Path | Size | Tables |
 |---|---|---|---|
-| Main | `database/dqiii8.db` | — | 46 live + 20 views |
-| Metrics | `database/dqiii8_metrics.db` | — | metrics/benchmarks |
+| Main | `database/dqiii8.db` | — | schema SSOT, incl. session_memory (2026-08-14) |
+| Knowledge | `database/dqiii8_knowledge.db` | — | vector/chunks/metrics (renamed from dqiii8_metrics.db, 2026-08-14) |
 | Schema source | `database/schema_v2.sql` | — | 65 defined |
 
 **NEVER commit `*.db` files** — gitignored. Use `schema_v2.sql` for fresh installs.
@@ -36,7 +36,7 @@ All SQLite databases, schema management, and database access patterns.
 ```bash
 sqlite3 database/dqiii8.db ".tables"
 sqlite3 database/dqiii8.db ".schema {table}"
-sqlite3 database/dqiii8_metrics.db ".tables"
+sqlite3 database/dqiii8_knowledge.db ".tables"
 
 # Row count check
 sqlite3 database/dqiii8.db "SELECT COUNT(*) FROM {table};"

@@ -19,7 +19,7 @@ from bin.core.logging_config import get_logger as _get_logger
 log = _get_logger(__name__)
 
 DB_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8_history.db"
+    Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8.db"
 )
 
 

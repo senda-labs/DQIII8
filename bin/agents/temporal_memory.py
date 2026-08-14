@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8_knowledge.db"
 
 
 def _conn() -> sqlite3.Connection:

@@ -27,7 +27,7 @@ find "$OUT_DIR" -maxdepth 1 -name "*.partial" -mmin +60 -print -delete 2>/dev/nu
     | sed 's/^/[db_backup] removing stale partial: /'
 
 failures=0
-for db in dqiii8.db dqiii8_metrics.db dqiii8_history.db; do
+for db in dqiii8.db dqiii8_knowledge.db dqiii8_history.db; do
     src="$DB_DIR/$db"
     [ -f "$src" ] || continue
     dst="$OUT_DIR/${db}.bak-$TS"

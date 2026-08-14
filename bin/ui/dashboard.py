@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB_PATH = JARVIS / "database" / "dqiii8_knowledge.db"
 for _d in [
     JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]
 ]:
@@ -837,7 +838,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
 
 def _persist_chat(session_id: str, user_msg: str, assistant_msg: str) -> None:
     """Write chat turn to DB. Creates tables if missing (graceful on older schemas)."""
-    db = JARVIS / "database" / "dqiii8.db"
+    db = DB_PATH
     if not db.exists():
         return
     try:
@@ -875,7 +876,7 @@ def _persist_chat(session_id: str, user_msg: str, assistant_msg: str) -> None:
 @app.get("/api/chat/history")
 async def chat_history(limit: int = 10, auth: bool = Depends(check_auth)):
     """Return last N sessions with first user message as preview."""
-    db = JARVIS / "database" / "dqiii8.db"
+    db = DB_PATH
     if not db.exists():
         return []
     try:
@@ -948,7 +949,7 @@ async def search_chat(q: str = "", limit: int = 20, auth: bool = Depends(check_a
     """Search chat sessions by content. Returns sessions matching the query."""
     if not q.strip():
         return []
-    db = JARVIS / "database" / "dqiii8.db"
+    db = DB_PATH
     if not db.exists():
         return []
     try:
@@ -978,7 +979,7 @@ async def search_chat(q: str = "", limit: int = 20, auth: bool = Depends(check_a
 @app.post("/api/chat/{session_id}/delete")
 async def delete_chat_session(session_id: str, auth: bool = Depends(check_auth)):
     """Delete a chat session and its messages."""
-    db = JARVIS / "database" / "dqiii8.db"
+    db = DB_PATH
     if not db.exists():
         return {"ok": False, "error": "DB not found"}
     try:
@@ -995,7 +996,7 @@ async def delete_chat_session(session_id: str, auth: bool = Depends(check_auth))
 @app.get("/api/chat/{session_id}/messages")
 async def chat_session_messages(session_id: str, auth: bool = Depends(check_auth)):
     """Return all messages for a given session."""
-    db = JARVIS / "database" / "dqiii8.db"
+    db = DB_PATH
     if not db.exists():
         return []
     try:

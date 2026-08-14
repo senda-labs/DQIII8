@@ -3,8 +3,9 @@ Tests for bin/agents/vector_store.py and bin/agents/hybrid_search.py.
 
 Split out of test_temporal_memory.py (review 2026-06-10) when temporal_memory /
 memory_decay were archived: the facts/fact_access_log tables live readonly in
-dqiii8_history.db and the relevance lane no-ops in production. Vector + FTS5 +
-RRF coverage is preserved here.
+dqiii8_knowledge.db (moved from dqiii8_metrics.db, DB-consolidation 2026-08-14)
+and the relevance lane no-ops in production. Vector + FTS5 + RRF coverage is
+preserved here.
 
 Run: python3 -m pytest tests/test_vector_hybrid_search.py -v
 """

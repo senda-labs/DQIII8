@@ -1105,11 +1105,11 @@ def _enforce_sensitive_permissions() -> None:
 
     root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
     # Active files → 600 (owner read-write only).
-    # dqiii8_history.db is the LIVE session_memory store (working_memory.py) —
-    # the 2026-06-10 ADR's rename-to-readonly-archive was never executed, so the
-    # old force-chmod-444 here was wrong (it only worked because we run as root).
+    # session_memory moved to dqiii8.db (working_memory.py) in the 2026-08-14
+    # db-consolidation; dqiii8_history.db is now a frozen pre-migration archive,
+    # still chmod'd defensively since it retains a copy of the same data.
     for rel in (".env", "database/dqiii8.db", "database/dqiii8_history.db",
-                "database/dqiii8_metrics.db"):
+                "database/dqiii8_knowledge.db"):
         path = root / rel
         if path.exists() and not path.is_symlink():
             current = path.stat().st_mode & 0o777

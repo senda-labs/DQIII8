@@ -32,7 +32,7 @@ log = _get_logger(__name__)
 import sqlite_vec
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8_knowledge.db"
 EMBEDDING_DIM = 1024  # bge-m3 multilingual (migrated from nomic-embed-text 768-dim)
 VEC_TABLE = "vec_knowledge"
 
@@ -283,13 +283,19 @@ def _embed_query(text: str) -> list[float] | None:
     try:
         import urllib.request
 
-        payload = json.dumps({"model": "bge-m3", "prompt": text}).encode()
+        # keep_alive keeps bge-m3 resident so only the first call after an idle
+        # period pays the cold-start cost; timeout=25 covers that cold start
+        # (measured ~12.7s) — 5s silently dropped every cold call into the
+        # 384-dim fallback below, a dimension mismatch vs the 1024-dim stored
+        # vectors that made KNN search return empty results (found 2026-08-14
+        # during db-consolidation regression testing).
+        payload = json.dumps({"model": "bge-m3", "prompt": text, "keep_alive": "30m"}).encode()
         req = urllib.request.Request(
             "http://localhost:11434/api/embeddings",
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=25) as resp:
             result = json.loads(resp.read())
             emb = result.get("embedding")
             if emb and len(emb) == EMBEDDING_DIM:

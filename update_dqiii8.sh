@@ -19,7 +19,7 @@ sync_workspace() {
         -e "my-projects/"
         -e ".env"
         -e "database/*.db"
-        -e "database/dqiii8_metrics.db"
+        -e "database/dqiii8_knowledge.db"
         -e "database/*.db-wal"
         -e "database/*.db-shm"
         -e "sessions/"
@@ -71,9 +71,6 @@ sed -i 's/CREATE TABLE \([^I]\)/CREATE TABLE IF NOT EXISTS \1/g' "$DQIII8_ROOT/d
 sed -i 's/CREATE VIEW \([^I]\)/CREATE VIEW IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
 sed -i 's/CREATE INDEX \([^I]\)/CREATE INDEX IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
 sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null || true
-sqlite3 "$DQIII8_ROOT/database/dqiii8_metrics.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null || true
-sqlite3 "$DQIII8_ROOT/database/dqiii8_metrics.db" \
-    "CREATE TABLE IF NOT EXISTS session_memory (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, domain TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP);" 2>/dev/null || true
 ok "Schemas applied"
 
 # 4. Database integrity (fix broken symlinks)

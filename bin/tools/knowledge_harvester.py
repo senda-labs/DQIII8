@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8_knowledge.db"
 
 try:
     from dotenv import load_dotenv

@@ -30,7 +30,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).parent.parent.parent
-DB = ROOT / "database" / "dqiii8.db"
+DB_PATH = ROOT / "database" / "dqiii8_knowledge.db"
 NOW_RUN = 1  # bump to re-run a fresh batch
 
 # ── Models under test ────────────────────────────────────────────────────────
@@ -260,7 +260,7 @@ def _call_model(model: str, messages: list[dict], max_tokens: int = 1200) -> str
 
 
 def db_connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB), timeout=10)
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -742,8 +742,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not DB.exists():
-        print(f"ERROR: DB not found at {DB}", file=sys.stderr)
+    if not DB_PATH.exists():
+        print(f"ERROR: DB not found at {DB_PATH}", file=sys.stderr)
         sys.exit(1)
 
     if args.run:

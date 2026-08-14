@@ -32,7 +32,7 @@ from bin.core.logging_config import get_logger as _get_logger
 log = _get_logger(__name__)
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8_knowledge.db"
 
 # Weights for RRF per source (higher = more influence when all three present)
 _WEIGHT_VECTOR = 1.0

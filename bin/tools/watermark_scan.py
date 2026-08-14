@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Scan staged files for invisible/hidden Unicode characters (watermark-style artifacts).
+"""Scan staged files for invisible/hidden Unicode characters (watermark-style artifacts):
+bidi overrides, Unicode Tag block (ASCII smuggling), zero-width space, invisible math
+operators, BOM. Report-only for ZWNJ/ZWJ/variation selectors (legitimate in some scripts
+and emoji sequences, no reliable way to distinguish from misuse).
 
 Scope is deliberately narrow: only files staged for commit
 (`git diff --cached --diff-filter=d --name-only -z`). Never walks directories, never
@@ -41,6 +44,23 @@ BIDI_BLOCK = {
     0x2068: "FSI",
     0x2069: "PDI",
     0x061C: "ALM",
+}
+
+# Unicode Tag block — payload-carrying invisible characters (each tag codepoint
+# mirrors an ASCII byte via +0xE0000 offset). Used for "ASCII smuggling": a
+# whole hidden instruction/payload can ride inside otherwise-normal-looking
+# text with zero visible trace. Hard-block like bidi — never auto-fixable,
+# since silently stripping would destroy evidence of an active payload.
+TAG_BLOCK_RANGES = [(0xE0000, 0xE007F, "TAG")]
+
+# Invisible math operators — no legitimate use in source code or prose; a
+# gap in prior coverage next to the existing invisible-char categories below.
+INVISIBLE_MATH_FIXABLE = {
+    0x2060: "WJ",
+    0x2061: "FUNC-APP",
+    0x2062: "INVIS-TIMES",
+    0x2063: "INVIS-SEP",
+    0x2064: "INVIS-PLUS",
 }
 
 # Zero-width space: only real category safe to auto-fix, and only manually.
@@ -107,8 +127,13 @@ def classify(cp: int) -> tuple[str, str] | None:
     """Return (category, label) for a codepoint of interest, else None."""
     if cp in BIDI_BLOCK:
         return ("bidi", BIDI_BLOCK[cp])
+    for lo, hi, label in TAG_BLOCK_RANGES:
+        if lo <= cp <= hi:
+            return ("tag", label)
     if cp in ZWSP_FIXABLE:
         return ("zwsp", ZWSP_FIXABLE[cp])
+    if cp in INVISIBLE_MATH_FIXABLE:
+        return ("invis_math", INVISIBLE_MATH_FIXABLE[cp])
     if cp in REPORT_ONLY_NEVER_FIX:
         return ("report_only", REPORT_ONLY_NEVER_FIX[cp])
     for lo, hi, label in REPORT_ONLY_NEVER_FIX_RANGES:
@@ -168,7 +193,7 @@ def scan_bytes(path: Path, raw: bytes) -> list[dict]:
 
 def apply_fix(path: Path, findings: list[dict]) -> bool:
     """Strip only zwsp/bom findings that are safe per policy. Atomic write."""
-    fixable_categories = {"zwsp"}
+    fixable_categories = {"zwsp", "invis_math"}
     if path.suffix in BOM_FIXABLE_EXTENSIONS:
         fixable_categories.add("bom")
     to_strip = {f["codepoint"] for f in findings if f["category"] in fixable_categories}
@@ -225,8 +250,8 @@ def main() -> int:
     for file_str, findings in by_file.items():
         print(f"\n{file_str}")
         for f in findings:
-            marker = " [BLOCKING]" if f["category"] == "bidi" else ""
-            if f["category"] == "bidi":
+            marker = " [BLOCKING]" if f["category"] in ("bidi", "tag") else ""
+            if f["category"] in ("bidi", "tag"):
                 hard_block = True
             print(
                 f"  {f['line']}:{f['col']}  {f['codepoint']} ({f['label']})"
@@ -237,8 +262,9 @@ def main() -> int:
 
     if hard_block:
         print(
-            "\nBidi/directional override characters found — this is the Trojan Source "
-            "(CVE-2021-42574) attack signature. Never auto-fixed. Investigate manually."
+            "\nBidi/directional-override or Unicode Tag characters found — Trojan Source "
+            "(CVE-2021-42574) and ASCII-smuggling attack signatures. Never auto-fixed. "
+            "Investigate manually."
         )
 
     if args.fix:

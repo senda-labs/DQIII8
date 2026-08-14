@@ -23,6 +23,7 @@ from pathlib import Path
 import logging
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB_PATH = DQIII8_ROOT / "database" / "dqiii8_knowledge.db"
 KNOWLEDGE_ROOT = DQIII8_ROOT / "knowledge"
 
 log = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ def _get_best_subdomains(
     """
     import struct
 
-    db_path = DQIII8_ROOT / "database" / "dqiii8.db"
+    db_path = DB_PATH
     try:
         conn = sqlite3.connect(str(db_path), timeout=2)
         rows = conn.execute(
@@ -426,7 +427,7 @@ def get_relevant_chunks(
     _sub_map: dict[str, str] = {}
     if _sources:
         try:
-            _db = DQIII8_ROOT / "database" / "dqiii8.db"
+            _db = DB_PATH
             _sconn = sqlite3.connect(str(_db), timeout=2)
             _placeholders = ",".join("?" * len(_sources))
             _srows = _sconn.execute(
@@ -509,7 +510,7 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
     """Log returned chunks to knowledge_usage for quality tracking."""
     if not chunks:
         return
-    db_path = DQIII8_ROOT / "database" / "dqiii8_metrics.db"
+    db_path = DB_PATH
     if not db_path.exists():
         return
     try:
@@ -622,7 +623,7 @@ def _load_health_verdicts() -> dict[str, dict]:
     Returns empty dict if chunk_health has no data (fail-open).
     Uses SHA256(text[:200]) as key — same as _chunk_hash().
     """
-    db_path = DQIII8_ROOT / "database" / "dqiii8.db"
+    db_path = DB_PATH
     if not db_path.exists():
         return {}
     try:
@@ -814,7 +815,7 @@ def _load_cached_facts(hashes: list[str]) -> dict[str, list[str]]:
     """Return {chunk_hash: [fact, ...]} for hashes present in chunk_key_facts."""
     if not hashes:
         return {}
-    db_path = DQIII8_ROOT / "database" / "dqiii8.db"
+    db_path = DB_PATH
     if not db_path.exists():
         return {}
     try:

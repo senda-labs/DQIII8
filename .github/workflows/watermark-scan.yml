@@ -1,0 +1,32 @@
+name: watermark-scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve base ref
+        id: base
+        run: |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif git rev-parse --verify "${{ github.event.before }}" >/dev/null 2>&1; then
+            echo "sha=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$(git rev-list --max-parents=0 HEAD | tail -1)" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Detection only — mirrors the pre-commit hook (bin/tools/watermark_scan.py)
+      # against the PR/push diff. --fix is never passed here on purpose: this job
+      # exists to BLOCK a merge on a finding, not to silently rewrite anyone's
+      # commit. Any removal stays a human decision made locally.
+      - name: Scan changed files for hidden/invisible Unicode
+        run: python3 bin/tools/watermark_scan.py --base "${{ steps.base.outputs.sha }}" --target "${{ github.sha }}"

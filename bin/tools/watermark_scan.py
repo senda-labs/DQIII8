@@ -210,6 +210,59 @@ def staged_blob_bytes(path: Path) -> bytes | None:
     return result.stdout
 
 
+def ref_diff_files(base: str, target: str) -> list[Path]:
+    """CI-mode equivalent of staged_files(): files changed between BASE and
+    TARGET (merge-base diff, like GitHub's PR diff), instead of the git index."""
+    out = subprocess.run(
+        ["git", "diff", "--diff-filter=d", "--name-only", "-z", f"{base}...{target}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if out.returncode != 0:
+        print(f"watermark-scan: git diff {base}...{target} failed: {out.stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
+    return [Path(p) for p in out.stdout.split("\0") if p]
+
+
+def ref_symlinks(files: list[Path], target: str) -> set[str]:
+    """CI-mode equivalent of staged_symlinks(): symlink check against TARGET's
+    tree instead of the index (there is no index to inspect in a CI checkout)."""
+    if not files:
+        return set()
+    out = subprocess.run(
+        ["git", "ls-tree", "-z", "-r", target, "--"] + [f.as_posix() for f in files],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if out.returncode != 0:
+        print(f"watermark-scan: warning: git ls-tree failed: {out.stderr.strip()}", file=sys.stderr)
+        return set()
+    symlinks = set()
+    for entry in out.stdout.split("\0"):
+        if not entry:
+            continue
+        meta, _, path_part = entry.partition("\t")
+        mode = meta.split(" ", 1)[0] if meta else ""
+        if mode.startswith("120000"):
+            symlinks.add(path_part)
+    return symlinks
+
+
+def ref_blob_bytes(path: Path, target: str) -> bytes | None:
+    """CI-mode equivalent of staged_blob_bytes(): read the file's content at
+    TARGET's commit tree instead of the git index."""
+    result = subprocess.run(
+        ["git", "cat-file", "-p", f"{target}:{path.as_posix()}"],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
 def classify(cp: int) -> tuple[str, str] | None:
     """Return (category, label) for a codepoint of interest, else None."""
     if cp in BIDI_BLOCK:
@@ -349,12 +402,29 @@ def main() -> int:
         action="store_true",
         help="Manually strip zero-width-space/invisible-math/invisible-ctrl/BOM "
         "findings (never bidi, tag, linesep, ZWNJ/ZWJ/VS, never non-.py/.js/.ts "
-        "for BOM). Still exits 1 if anything outside those categories remains.",
+        "for BOM). Still exits 1 if anything outside those categories remains. "
+        "Ignored (with a warning) in --base/CI mode — removal stays a human, "
+        "local, git-staged-only action, never something CI does automatically.",
     )
+    parser.add_argument(
+        "--base",
+        help="CI mode: scan files changed between BASE and --target (merge-base "
+        "diff, like a PR diff) instead of the git staging area. Detection only.",
+    )
+    parser.add_argument("--target", default="HEAD", help="CI mode: the ref to read changed content from (default HEAD).")
     args = parser.parse_args()
 
-    files = staged_files()
-    symlinks = staged_symlinks(files)
+    ci_mode = args.base is not None
+    if ci_mode and args.fix:
+        print("watermark-scan: --fix is ignored in --base/CI mode (detection only).", file=sys.stderr)
+        args.fix = False
+
+    if ci_mode:
+        files = ref_diff_files(args.base, args.target)
+        symlinks = ref_symlinks(files, args.target)
+    else:
+        files = staged_files()
+        symlinks = staged_symlinks(files)
 
     skip_counts: dict[str, int] = {}
     file_findings: dict[str, list[dict]] = {}
@@ -364,7 +434,7 @@ def main() -> int:
         if f.as_posix() in symlinks:
             skip_counts["symlink"] = skip_counts.get("symlink", 0) + 1
             continue
-        raw = staged_blob_bytes(f)
+        raw = ref_blob_bytes(f, args.target) if ci_mode else staged_blob_bytes(f)
         if raw is None:
             skip_counts["unreadable"] = skip_counts.get("unreadable", 0) + 1
             continue

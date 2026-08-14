@@ -177,10 +177,19 @@ def dispatch(
             pass  # fall through to subprocess
 
     # Modo sync — bloquea hasta tener respuesta
+    # full_prompt va por stdin, no por argv: un argumento de subprocess está
+    # limitado a MAX_ARG_STRLEN (128KB en Linux) independientemente de
+    # ARG_MAX; un prompt que incruste un plan/spec largo (ej. panel-review
+    # sobre un plan de miles de líneas) supera eso y subprocess.run revienta
+    # con "Argument list too long" antes de ejecutar nada — visto en vivo
+    # 2026-08-13 en las 4 seats de panel_review.py. El wrapper ya soporta
+    # stdin cuando se omite el prompt posicional (ver openrouter_wrapper.py
+    # main()); el modo async ya evitaba este límite escribiendo a fichero.
     t0 = time.time()
     try:
         result = subprocess.run(
-            [sys.executable, str(WRAPPER), "--agent", agent, "--no-enrich", full_prompt],
+            [sys.executable, str(WRAPPER), "--agent", agent, "--no-enrich"],
+            input=full_prompt,
             capture_output=True, text=True,
             timeout=timeout,
             cwd=str(DQIII8_ROOT),

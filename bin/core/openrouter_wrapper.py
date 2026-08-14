@@ -589,7 +589,14 @@ def _stream_via_claude_cli(
     Uses OAuth via ~/.claude/.credentials.json (same as dqiii8_bot /cc).
     Returns (text, tokens_in, tokens_out, success, retryable).
     """
-    cmd = ["claude", "-p", prompt, "--output-format", "json", "--model", model]
+    # prompt goes via stdin, not argv: a single subprocess argument is capped
+    # at MAX_ARG_STRLEN (128KB on Linux) regardless of ARG_MAX, and a prompt
+    # embedding a long plan/spec (e.g. panel-review over a multi-thousand-line
+    # plan) blows past that — confirmed live 2026-08-13 ("Argument list too
+    # long" on `claude`, same root cause already fixed in dispatch.py's
+    # subprocess.run of the wrapper itself). `claude -p` with no value reads
+    # the prompt from stdin.
+    cmd = ["claude", "-p", "--output-format", "json", "--model", model]
     if system_prompt:
         cmd += ["--system-prompt", system_prompt]
     env = {**os.environ}
@@ -597,6 +604,7 @@ def _stream_via_claude_cli(
     try:
         result = subprocess.run(
             cmd,
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=300,

@@ -136,7 +136,10 @@ try:
     _model = os.environ.get("DQIII8_MODEL", agent)
     _tier = _model_tier(_model)
     _cwd = str(data.get("cwd", "") or "")
-    sys.path.insert(0, os.path.join(DQIII8_ROOT, "bin"))
+    # core.action_log is installed code, fixed at this hook's own location —
+    # it must resolve from _HOOKS_DIR, not DQIII8_ROOT (which callers/tests
+    # legitimately override to relocate only the writable DB root).
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(_HOOKS_DIR)), "bin"))
     from core.action_log import resolve_project_safe, generate_request_id
 
     _project = resolve_project_safe(session, cwd=_cwd)

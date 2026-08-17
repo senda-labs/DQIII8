@@ -48,6 +48,18 @@ regex = '''159\.195\.149\.\d{1,3}'''
 tags = ["infra", "ip"]
 
 [[rules]]
+id = "netcup-vps-ip"
+description = "Current (Netcup) VPS IP — must not appear in committed files"
+regex = '''76\.13\.40\.235'''
+tags = ["infra", "ip"]
+
+[[rules]]
+id = "known-leaked-credential-literal"
+description = "Exact credential value already involved in a real leak (POSTGRES_PASSWORD=REDACTED) — plain alphanumeric, so the special-char-required generic rule below misses it"
+regex = '''(?i)POSTGRES_(?:USER|PASSWORD|DB)=hostkey|password\s*`hostkey`\s*for\s*user\s*`hostkey`'''
+tags = ["credential", "password"]
+
+[[rules]]
 id = "generic-credential-literal"
 description = "Human-readable password/credential literal near a password/contraseña keyword"
 # Catches cases like: `password admin Mautic (`JanusKeys2026!` -> nueva)` — missed by

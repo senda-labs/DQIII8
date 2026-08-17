@@ -32,8 +32,13 @@ echo "[gitleaks-setup] Writing pre-commit hook..."
 cat > "${HOOK_PATH}" <<'EOF'
 #!/usr/bin/env bash
 set -e
+# gitignore-invariant: runs first — scans staged files for secret-shaped
+# content (IPs, ssh commands, password literals) and unstages+ignores any hit
+# before gitleaks ever sees it, since it's the durable fix (prevents recommit).
+bash bin/tools/gitignore_invariant.sh
+
 # gitleaks pre-commit: blocks commits that contain secrets
-gitleaks protect --staged --redact --exit-code 1
+gitleaks protect --staged --redact --exit-code 1 --config .gitleaks.toml
 
 # watermark-scan pre-commit: blocks commits with hidden/invisible Unicode
 # characters in staged files (Trojan Source, zero-width, BOM). Report-only

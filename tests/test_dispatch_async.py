@@ -26,11 +26,15 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--agent", default="default")
     p.add_argument("--no-enrich", action="store_true")
-    p.add_argument("prompt", nargs="?", default="")
+    p.add_argument("prompt", nargs="?", default=None)
     args = p.parse_args()
-    if args.prompt == "FAIL":
+    # dispatch.py sends the prompt via stdin (not argv) since 2026-08-13, to
+    # avoid MAX_ARG_STRLEN on long prompts — the real wrapper's main() falls
+    # back to stdin the same way when no positional prompt is given.
+    prompt = args.prompt if args.prompt is not None else sys.stdin.read().strip()
+    if prompt == "FAIL":
         sys.exit(1)
-    print(f"STUB-RESPONSE:{args.prompt}")
+    print(f"STUB-RESPONSE:{prompt}")
 """
 
 

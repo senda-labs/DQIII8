@@ -10,6 +10,7 @@ tests/test_wrapper_routing_guards.py — routing guard rails added 2026-07-05:
 4. Tier labeling in log_to_db inputs (nim/B+, github/B++, opus/S).
 """
 
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -17,6 +18,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bin.core import openrouter_wrapper as w
+
+JARVIS = Path(__file__).resolve().parents[1]
+SCHEMA_V2_SQL = (JARVIS / "database" / "schema_v2.sql").read_text(encoding="utf-8")
 
 
 # ── _NO_DOWNGRADE membership ────────────────────────────────────────────────
@@ -176,20 +180,16 @@ def test_stream_response_keeps_four_tuple(monkeypatch):
 # ── log_to_db project parameter ─────────────────────────────────────────────
 
 def test_log_to_db_writes_project(tmp_path, monkeypatch):
+    """log_to_db()'s INSERT is exercised against the real schema_v2.sql SSOT.
+
+    A hand-listed column subset here previously drifted behind real schema
+    additions (e.g. `end_time_ms`), so the fixture silently exercised a
+    schema log_to_db() never actually sees in production and its INSERT
+    failed loudly (caught and logged, not raised — see fail-open DB block).
+    """
     db_path = tmp_path / "dqiii8.db"
-    conn = __import__("sqlite3").connect(str(db_path))
-    conn.execute(
-        """
-        CREATE TABLE agent_actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT, agent_name TEXT, tool_used TEXT, action_type TEXT,
-            model_used TEXT, tokens_used INTEGER, tokens_input INTEGER,
-            tokens_output INTEGER, estimated_cost_usd REAL, tier TEXT,
-            duration_ms INTEGER, success INTEGER, error_message TEXT,
-            start_time_ms INTEGER, project TEXT
-        )
-        """
-    )
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(SCHEMA_V2_SQL)
     conn.commit()
     conn.close()
     monkeypatch.setattr(w, "DB_PATH", db_path)
@@ -199,7 +199,8 @@ def test_log_to_db_writes_project(tmp_path, monkeypatch):
         project="intl-reports",
     )
 
-    conn = __import__("sqlite3").connect(str(db_path))
+    conn = sqlite3.connect(str(db_path))
     row = conn.execute("SELECT project FROM agent_actions").fetchone()
     conn.close()
+    assert row is not None
     assert row[0] == "intl-reports"

@@ -18,6 +18,7 @@ import pytest
 
 JARVIS = Path(__file__).parent.parent  # Current worktree or repo root
 HOOKS = JARVIS / ".claude" / "hooks"
+SCHEMA_V2_SQL = (JARVIS / "database" / "schema_v2.sql").read_text(encoding="utf-8")
 
 
 def test_precompact_exits_zero_and_outputs_empty_json():
@@ -193,37 +194,25 @@ def test_claims_conflict_detected():
 
 
 def test_pre_tool_use_resolves_project_from_cwd(tmp_path):
-    """When stdin cwd is under my-projects/<name>/, agent_actions.project is set."""
-    db_path = tmp_path / "dqiii8.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        """
-        CREATE TABLE agent_actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT, agent_name TEXT, tool_used TEXT, file_path TEXT,
-            action_type TEXT, start_time_ms INTEGER, model_tier INTEGER,
-            model_used TEXT, project TEXT
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
+    """When stdin cwd is under my-projects/<name>/, agent_actions.project is set.
 
+    Builds the tmp DB from the real schema_v2.sql SSOT rather than a hand-listed
+    column subset — a hand-listed subset previously drifted behind real schema
+    additions (e.g. the `worktree` column pre_tool_use.py's INSERT already
+    writes), so the fixture silently exercised a schema pre_tool_use.py never
+    actually sees in production and the INSERT it performs there failed loudly.
+    """
     db_path = tmp_path / "database" / "dqiii8.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        """
-        CREATE TABLE agent_actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT, agent_name TEXT, tool_used TEXT, file_path TEXT,
-            action_type TEXT, start_time_ms INTEGER, model_tier INTEGER,
-            model_used TEXT, project TEXT
-        )
-        """
-    )
+    conn.executescript(SCHEMA_V2_SQL)
     conn.commit()
     conn.close()
+
+    # known_projects() validates the resolved slug against DQIII8_ROOT/my-projects/
+    # (real DQIII8_ROOT has this; the isolated tmp DQIII8_ROOT below needs its own
+    # copy or "intl-reports" fails validation and silently falls back to CORE_PROJECT).
+    (tmp_path / "my-projects" / "intl-reports").mkdir(parents=True)
 
     cwd = "/root/dqiii8/my-projects/intl-reports/scripts"
     payload = json.dumps(

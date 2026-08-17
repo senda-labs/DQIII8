@@ -24,6 +24,9 @@ Pillow>=10.0.0
 groq>=1.1.1
 gTTS>=2.5.4
 openpyxl>=3.1.5
+python-docx>=1.1.0
+python-pptx>=1.0.0
+anthropic>=0.40.0
 
 # Orchestration — StateGraph director, Agno AgentOS, MetaGPT-pattern pipeline
 langgraph>=1.1.3

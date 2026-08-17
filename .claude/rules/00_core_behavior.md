@@ -18,6 +18,11 @@
 - NEVER add features, abstractions, or error handling beyond what the task requires.
 - NEVER write comments explaining WHAT code does — only WHY when non-obvious.
 
+### Priority Ladder (Karpathy/Anthropic minimalism — every line is a liability)
+Before writing code, stop at the first rung that resolves it: skip (YAGNI) → reuse
+(grep first) → stdlib → installed dependency → one line → minimum new code. Doesn't
+override validation/security/data-loss guards. `/panel-review` flags skipped rungs.
+
 ## Cost-First Rule (absolute)
 Always start at the cheapest tier that can handle the task (C → B → B+ → A → S).
 NEVER use Tier A/S for tasks Tier B can handle. Full table: `.claude/rules/03_tiering_and_routing.md`

@@ -843,6 +843,7 @@ def log_to_db(
     prompt_hash: str = "",
     project: str | None = None,
     request_id: str | None = None,
+    task_complexity: str | None = None,
 ) -> None:
     """Registra la llamada en agent_actions con tokens reales y coste estimado."""
     if not DB_PATH.exists():
@@ -963,6 +964,7 @@ def log_to_db(
             tokens_in,
             tokens_out,
             cost_usd,
+            task_complexity=task_complexity,
         )
     except Exception as _exc:
         log.warning("DB logging block failed: %s", _exc)
@@ -1425,8 +1427,10 @@ def main() -> None:
     # agent_actions rows from a failed primary + successful fallback can be
     # grouped as one logical request afterward.
     from core.action_log import generate_request_id
+    from bin.orchestrator import classify_task_complexity
 
     _request_id = generate_request_id()
+    _task_complexity = classify_task_complexity(_original_prompt)
 
     for provider, model in chain:
         log.info("%s | %s | %s", agent_name, provider, model)
@@ -1452,6 +1456,7 @@ def main() -> None:
             prompt_hash=_phash,
             project=args.project or None,
             request_id=_request_id,
+            task_complexity=_task_complexity,
         )
 
         if ok:

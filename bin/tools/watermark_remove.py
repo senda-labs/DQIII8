@@ -46,9 +46,27 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import watermark_scan as ws  # noqa: E402
+from metadata_lib.safeio import write_new_file  # noqa: E402
 
 MAX_DIR_FILES = 5000
+
+# Precedence: truncated (5) > write refused (1) > success (0). Shares
+# metadata_remove.py's value so the toolchain has one exit-code taxonomy.
+EXIT_TRUNCATED = 5
 ALL_TIER_CATEGORIES = {"bidi", "tag", "linesep", "report_only"}
+
+
+def _encode_like_input(raw: bytes, text: str) -> bytes:
+    """Re-encode `text` in the same encoding ws._decode() used to read `raw`,
+    preserving the original byte-order mark. Writing UTF-8 unconditionally
+    silently transcoded every UTF-16 file the scanner deliberately supports.
+    """
+    bom = raw[:2]
+    if bom == b"\xff\xfe":
+        return b"\xff\xfe" + text.encode("utf-16-le")
+    if bom == b"\xfe\xff":
+        return b"\xfe\xff" + text.encode("utf-16-be")
+    return text.encode("utf-8")
 
 
 def _target_categories(path: Path, strip_all: bool) -> set[str]:
@@ -58,82 +76,110 @@ def _target_categories(path: Path, strip_all: bool) -> set[str]:
     return cats
 
 
-def collect_files(dir_path: Path | None, file_path: Path | None) -> tuple[list[Path], dict[str, int]]:
+def collect_files(
+    dir_path: Path | None, file_path: Path | None
+) -> tuple[list[Path], dict[str, int], str | None]:
+    """Returns (files, skip_counts, truncated_reason)."""
     skip_counts: dict[str, int] = {}
     if file_path is not None:
         if file_path.is_symlink():
-            return [], {"symlink": 1}
-        return [file_path], {}
+            return [], {"symlink": 1}, None
+        return [file_path], {}, None
 
     files: list[Path] = []
+    truncated: str | None = None
     count = 0
-    for path in sorted(dir_path.rglob("*")):
+    for path in dir_path.rglob("*"):
         if path.is_symlink():
             skip_counts["symlink"] = skip_counts.get("symlink", 0) + 1
             continue
         if not path.is_file():
             continue
+        if path.suffix in (".bak", ".tmp"):
+            continue
         count += 1
         if count > MAX_DIR_FILES:
-            print(
-                f"watermark-remove: stopped after {MAX_DIR_FILES} files (more remain under {dir_path}) — narrow --dir",
-                file=sys.stderr,
-            )
+            truncated = f"stopped after {MAX_DIR_FILES} files (more remain under {dir_path}) — narrow --dir"
+            print(f"watermark-remove: {truncated}", file=sys.stderr)
             break
         files.append(path)
-    return files, skip_counts
+    return sorted(files), skip_counts, truncated
 
 
-def remove_from_file(path: Path, apply: bool, strip_all: bool) -> tuple[list[dict], bool]:
-    """Returns (findings_in_target_tier, actually_written)."""
+def remove_from_file(path: Path, apply: bool, strip_all: bool) -> tuple[list[dict], bool, bool]:
+    """Returns (findings_in_target_tier, actually_written, refused).
+
+    `refused` distinguishes "this tool wanted to write and could not" from the
+    benign not-written cases (dry run, nothing in the selected tier, no-op edit).
+    Collapsing the two is how a run in which every write was blocked could report
+    "removed across 0 file(s)" and still exit 0.
+    """
     try:
         raw = path.read_bytes()
-    except OSError:
-        return [], False
+    except OSError as e:
+        # Previously an invisible skip: a file the tool could not even read was
+        # indistinguishable from a file with nothing to remove.
+        print(f"  skip (unreadable: {e}): {path}", file=sys.stderr)
+        return [], False, True
 
     findings = ws.scan_bytes(path, raw)
     if not findings:
-        return [], False
+        return [], False, False
 
     target_cats = _target_categories(path, strip_all)
     to_strip = {f["codepoint"] for f in findings if f["category"] in target_cats}
     if not to_strip:
-        return findings, False
+        return findings, False, False
 
     if not apply:
-        return findings, False
+        return findings, False, False
 
     text, reason = ws._decode(raw)
     if text is None:
         print(f"  skip (undecodable, reason={reason}): {path}", file=sys.stderr)
-        return findings, False
+        return findings, False, True
 
     strip_chars = {int(cp[2:], 16) for cp in to_strip}
     new_text = "".join(ch for ch in text if ord(ch) not in strip_chars)
     if new_text == text:
-        return findings, False
+        return findings, False, False
+
+    if path.is_symlink():
+        print(f"  skip (symlink refused): {path}", file=sys.stderr)
+        return findings, False, True
 
     bak = path.with_name(path.name + ".bak")
-    if bak.exists():
+    if bak.is_symlink() or bak.exists():
         print(f"  skip (backup already exists, resolve it first): {bak}", file=sys.stderr)
-        return findings, False
+        return findings, False, True
 
     try:
         mode = path.stat().st_mode
     except OSError:
         mode = None
 
-    bak.write_bytes(raw)
-    if mode is not None:
-        os.chmod(bak, mode)
+    # Both side files go through safeio's single hardened primitive
+    # (O_CREAT|O_EXCL|O_NOFOLLOW) — a pre-planted `.bak`/`.tmp` symlink can
+    # never redirect either write to a victim path.
+    try:
+        write_new_file(bak, raw, mode=mode)
+    except FileExistsError:
+        print(f"  skip (backup already exists, resolve it first): {bak}", file=sys.stderr)
+        return findings, False, True
+    except OSError as e:
+        print(f"  skip (cannot write backup: {e}): {bak}", file=sys.stderr)
+        return findings, False, True
 
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(new_text, encoding="utf-8")
-    if mode is not None:
-        os.chmod(tmp, mode)
-    tmp.replace(path)
+    try:
+        write_new_file(tmp, _encode_like_input(raw, new_text), mode=mode)
+    except (FileExistsError, OSError) as e:
+        bak.unlink(missing_ok=True)
+        print(f"  skip (cannot write tmp: {e}): {tmp}", file=sys.stderr)
+        return findings, False, True
+    os.replace(tmp, path)
     print(f"  removed {len(to_strip)} codepoint(s) from {path}  (backup: {bak})")
-    return findings, True
+    return findings, True, False
 
 
 def main() -> int:
@@ -161,13 +207,16 @@ def main() -> int:
         print("watermark-remove: --apply --all also needs --yes (explicit confirmation for the risky tier).", file=sys.stderr)
         return 2
 
-    files, skip_counts = collect_files(args.dir, args.file)
+    files, skip_counts, truncated = collect_files(args.dir, args.file)
 
     total_findings = 0
     total_target = 0
     total_written = 0
+    total_refused = 0
     for path in files:
-        findings, written = remove_from_file(path, args.apply, args.all)
+        findings, written, refused = remove_from_file(path, args.apply, args.all)
+        if refused:
+            total_refused += 1
         if not findings:
             continue
         total_findings += len(findings)
@@ -180,22 +229,38 @@ def main() -> int:
         parts = ", ".join(f"{k}={v}" for k, v in sorted(skip_counts.items()))
         print(f"watermark-remove: skipped {sum(skip_counts.values())} file(s): {parts}", file=sys.stderr)
 
-    if total_findings == 0:
+    if total_findings == 0 and total_refused == 0:
+        if truncated:
+            print("watermark-remove: PARTIAL SCAN — nothing found in the portion scanned, but the scan was truncated.")
+            return EXIT_TRUNCATED
         print("watermark-remove: no hidden/invisible characters found.")
         return 0
 
     tier = "safe + risky (--all)" if args.all else "safe"
     if args.apply:
+        # "eligible" and "removed" are reported separately: conflating them let a
+        # run in which every write was refused still read as a successful clean.
         print(
             f"watermark-remove: {total_target}/{total_findings} finding(s) in the {tier} tier "
-            f"removed across {total_written} file(s). {total_findings - total_target} finding(s) "
+            f"were eligible; rewrote {total_written} file(s). {total_findings - total_target} finding(s) "
             "outside the selected tier were left untouched — re-run with --all --yes to include them."
         )
+        if total_refused:
+            print(
+                f"watermark-remove: {total_refused} file(s) could NOT be written (see skip lines above) "
+                "— those findings are still present.",
+                file=sys.stderr,
+            )
     else:
         print(
             f"watermark-remove: DRY RUN — {total_target}/{total_findings} finding(s) in the {tier} tier "
             f"would be removed. Re-run with --apply to actually write changes."
         )
+
+    if truncated:
+        return EXIT_TRUNCATED
+    if total_refused:
+        return 1
     return 0
 
 

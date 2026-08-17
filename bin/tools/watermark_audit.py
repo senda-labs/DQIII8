@@ -34,24 +34,39 @@ import watermark_scan as ws  # noqa: E402
 
 MAX_DIR_FILES = 5000  # sanity cap so a huge --dir reports partial results loudly, not hangs silently
 
+# Exit-code precedence for a directory sweep: truncated (5) > findings (1) > clean (0).
+# Truncation outranks everything because a partial scan is strictly worse information
+# than any complete result. Shares metadata_remove.py's value so there is one taxonomy.
+EXIT_TRUNCATED = 5
 
-def scan_directory(root: Path) -> tuple[list[dict], dict[str, int]]:
+
+def scan_directory(root: Path) -> tuple[list[dict], dict[str, int], str | None]:
+    """Returns (findings, skip_counts, truncated_reason).
+
+    truncated_reason is non-None when the cap stopped the walk early — the caller
+    must not report a partial sweep as a clean bill.
+    """
     findings: list[dict] = []
     skip_counts: dict[str, int] = {}
+    truncated: str | None = None
     count = 0
-    for path in sorted(root.rglob("*")):
+    candidates: list[Path] = []
+    for path in root.rglob("*"):
         if path.is_symlink():
             skip_counts["symlink"] = skip_counts.get("symlink", 0) + 1
             continue
         if not path.is_file():
             continue
+        if path.suffix in (".bak", ".tmp"):
+            continue
         count += 1
         if count > MAX_DIR_FILES:
-            print(
-                f"watermark-audit: stopped after {MAX_DIR_FILES} files (more remain under {root}) — narrow --dir",
-                file=sys.stderr,
-            )
+            truncated = f"stopped after {MAX_DIR_FILES} files (more remain under {root}) — narrow --dir"
+            print(f"watermark-audit: {truncated}", file=sys.stderr)
             break
+        candidates.append(path)
+
+    for path in sorted(candidates):
         try:
             raw = path.read_bytes()
         except OSError:
@@ -62,19 +77,24 @@ def scan_directory(root: Path) -> tuple[list[dict], dict[str, int]]:
             skip_counts[reason] = skip_counts.get(reason, 0) + 1
             continue
         findings.extend(ws.scan_bytes(path, raw))
-    return findings, skip_counts
+    return findings, skip_counts, truncated
 
 
 def scan_text(text: str) -> list[dict]:
     return ws.scan_bytes(Path("<input>"), text.encode("utf-8"))
 
 
-def report(findings: list[dict], skip_counts: dict[str, int]) -> int:
+def report(findings: list[dict], skip_counts: dict[str, int], truncated: str | None = None) -> int:
     if skip_counts:
         parts = ", ".join(f"{k}={v}" for k, v in sorted(skip_counts.items()))
         print(f"watermark-audit: skipped {sum(skip_counts.values())} file(s): {parts}", file=sys.stderr)
 
     if not findings:
+        if truncated:
+            # A partial sweep must never print a clean bill: exit TRUNCATED so a
+            # caller cannot read "nothing found" as "nothing is there".
+            print("watermark-audit: PARTIAL SCAN — no findings in the portion scanned, but the scan was truncated.")
+            return EXIT_TRUNCATED
         print("watermark-audit: no hidden/invisible characters found.")
         return 0
 
@@ -99,7 +119,7 @@ def report(findings: list[dict], skip_counts: dict[str, int]) -> int:
         "ZWNJ/ZWJ/variation-selector-out-of-emoji-context) needs manual review — "
         "this tool will never strip it for you."
     )
-    return 1
+    return EXIT_TRUNCATED if truncated else 1
 
 
 def main() -> int:
@@ -113,7 +133,7 @@ def main() -> int:
         if not args.dir.is_dir():
             print(f"watermark-audit: not a directory: {args.dir}", file=sys.stderr)
             return 2
-        findings, skip_counts = scan_directory(args.dir)
+        findings, skip_counts, truncated = scan_directory(args.dir)
     else:
         if args.text == "-":
             raw_text = sys.stdin.read()
@@ -123,9 +143,9 @@ def main() -> int:
             except OSError as e:
                 print(f"watermark-audit: cannot read {args.text}: {e}", file=sys.stderr)
                 return 2
-        findings, skip_counts = scan_text(raw_text), {}
+        findings, skip_counts, truncated = scan_text(raw_text), {}, None
 
-    return report(findings, skip_counts)
+    return report(findings, skip_counts, truncated)
 
 
 if __name__ == "__main__":

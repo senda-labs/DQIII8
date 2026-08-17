@@ -190,8 +190,21 @@ projects/
 tasks/
 decisions/
 database/audit_reports/*
-!database/audit_reports/*.md
 database/qdrant/
+
+# Red-team / Opus adversarial review reports, panel reviews, disaster-test
+# reports — private, may reference real infra/credentials/findings.
+# Root cause of F-26 (2026-08-17): docs/audits/*.md was NOT gitignored,
+# so a stress-test report with a raw VPS IP + DB credentials landed in
+# public history. Never again: this whole category is private by default.
+docs/audits/
+
+# Internal implementation plans (private roadmaps/scope, may reference
+# real infra or findings not meant for the public repo)
+.claude/plans/
+
+# spec-kit specs (internal feature specs — same rationale as plans/)
+specs/
 
 # User projects — track placeholder only, never project contents
 my-projects/*/

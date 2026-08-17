@@ -17,6 +17,7 @@ import pytest
 
 DQIII8_ROOT = Path(__file__).parent.parent
 DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"
+SCHEMA_V2_SQL = (DQIII8_ROOT / "database" / "schema_v2.sql").read_text(encoding="utf-8")
 sys.path.insert(0, str(DQIII8_ROOT))
 
 from bin.orchestrator import (
@@ -26,6 +27,22 @@ from bin.orchestrator import (
     select_tier,
     should_fallback,
 )
+
+
+def _isolated_db(tmp_path):
+    """Build a throwaway DB from the real schema_v2.sql SSOT.
+
+    log_token_usage()/log_to_db() write to the append-only, DB-trigger-enforced
+    agent_actions/token_usage audit tables — pointing them at the real production
+    DB from a test run permanently polluted a log that can't be deleted back out.
+    """
+    db_path = tmp_path / "database" / "dqiii8.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(SCHEMA_V2_SQL)
+    conn.commit()
+    conn.close()
+    return db_path
 
 # ── classify_task_complexity ──────────────────────────────────────────────────
 
@@ -261,11 +278,14 @@ def test_token_usage_has_task_complexity_column():
 
 
 @pytest.mark.requires_db
-def test_log_token_usage_stores_task_complexity():
-    from bin.core.openrouter_wrapper import log_token_usage
+def test_log_token_usage_stores_task_complexity(tmp_path, monkeypatch):
+    from bin.core import openrouter_wrapper
+
+    db_path = _isolated_db(tmp_path)
+    monkeypatch.setattr(openrouter_wrapper, "DB_PATH", db_path)
 
     session_id = f"test_complexity_{int(time.time())}"
-    log_token_usage(
+    openrouter_wrapper.log_token_usage(
         session_id=session_id,
         model="ollama/qwen2.5-coder:7b",
         tier="C",
@@ -277,7 +297,7 @@ def test_log_token_usage_stores_task_complexity():
         task_complexity="CODE_GEN",
     )
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(db_path))
     cur = conn.execute(
         "SELECT task_complexity FROM token_usage WHERE session_id = ? "
         "ORDER BY id DESC LIMIT 1",
@@ -291,8 +311,10 @@ def test_log_token_usage_stores_task_complexity():
 
 
 @pytest.mark.requires_db
-def test_log_to_db_passes_task_complexity(monkeypatch):
+def test_log_to_db_passes_task_complexity(tmp_path, monkeypatch):
     from bin.core import openrouter_wrapper
+
+    monkeypatch.setattr(openrouter_wrapper, "DB_PATH", _isolated_db(tmp_path))
 
     recorded = []
     original = openrouter_wrapper.log_token_usage

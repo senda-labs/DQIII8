@@ -12,9 +12,14 @@ NIM Tier B+ es $0 y calidad comparable/superior a Sonnet en planificación, aná
 **OBLIGATORIO intentar NIM antes de cualquier escalado a Tier A o S.**
 Ver regla completa en `.claude/rules/00_core_behavior.md` § INVARIANTE NIM.
 
-Modelos NIM prioritarios confirmados activos (sondeo 2026-06-26):
-- **Planificación/análisis** → `mistralai/mistral-large-3-675b-instruct-2512` (0.3s, agente: `software-specialist`)
-- **Código/web (1M ctx)** → `deepseek-ai/deepseek-v4-flash` (1.4s, agente: `web-specialist`)
+> ⚠️ **NIM caído a nivel de cuenta desde 2026-08-16**: 403 "Authorization failed" en
+> TODA inferencia (`GET /v1/models` funciona, `POST /v1/chat/completions` no, en
+> cualquier modelo). Acción requerida del usuario en build.nvidia.com — no reparable
+> en código. Ver comentario en `openrouter_wrapper.py` junto a `FALLBACK_CHAIN`.
+
+Modelos NIM prioritarios (catálogo vigente 2026-08-16 — reemplazan los EOL de 2026-06-26):
+- **Planificación/análisis** → `nvidia/llama-3.3-nemotron-super-49b-v1.5` (agente: `software-specialist`)
+- **Código/web (1M ctx)** → `deepseek-ai/deepseek-v4-flash-0731` (agente: `web-specialist`)
 
 ---
 
@@ -24,18 +29,18 @@ Modelos NIM prioritarios confirmados activos (sondeo 2026-06-26):
 |---|---|---|---|---|
 | C | Ollama (local) | `qwen2.5-coder:7b` | $0 | Code, git, pipeline, applied_sciences |
 | B | Groq | `llama-3.3-70b-versatile` | $0 | Research, analysis, writing, domain knowledge |
-| **B+** | **NVIDIA NIM** | `mistral-large-3-675b` / `deepseek-v4-flash` | **$0** | **Prioridad sobre Sonnet — planificación, código, análisis** |
+| **B+** | **NVIDIA NIM** | `nemotron-super-49b` / `deepseek-v4-flash-0731` | **$0** | **Prioridad sobre Sonnet — planificación, código, análisis** (⚠️ cuenta en 403, ver arriba) |
 | B++ | GitHub Models | `deepseek-v3-0324` / `codestral-2501` | $0 | Code review, fallback NIM |
 | A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Solo si NIM falla ≥3 veces. Orquestación, decisiones críticas |
 | S | Anthropic | `claude-opus-4-8` | ~$0.20/turn | SOLO revisión adversarial final. Nunca generación inicial |
 
-**NIM — sondeo completo 2026-06-26 (50/121 activos):**
+**NIM — sondeo completo 2026-06-26 (50/121 activos), catálogo re-verificado 2026-08-16 (listado vía `/v1/models`, latencias no re-medidas — inferencia bloqueada por el 403 de cuenta):**
 
 | Categoría | Modelos confirmados | Latencia |
 |-----------|--------------------|---------:|
-| LLM frontera | `mistralai/mistral-large-3-675b-instruct-2512` | **0.3s** |
+| LLM frontera | `nvidia/llama-3.3-nemotron-super-49b-v1.5` | sin re-medir |
 | LLM 100B+ | `openai/gpt-oss-120b`, `nvidia/nemotron-3-super-120b-a12b` | 0.5–1.0s |
-| Código (1M ctx) | `deepseek-ai/deepseek-v4-flash` | 1.4s |
+| Código (1M ctx) | `deepseek-ai/deepseek-v4-flash-0731` | sin re-medir |
 | Safety | `nvidia/llama-3.1-nemoguard-8b-content-safety`, `meta/llama-guard-4-12b`, `nvidia/gliner-pii` | 0.1s |
 | Visión | `microsoft/phi-4-multimodal-instruct`, `meta/llama-3.2-90b-vision-instruct` | 0.2–0.3s |
 | Traducción | `nvidia/riva-translate-4b-instruct-v1.1` | 0.2s |
@@ -110,11 +115,16 @@ Ventaja sobre Ollama qwen local: contexto de 1M (vs 32K), reasoning más profund
 ## Fallback Chain (SECUENCIAL, no round-robin)
 
 ```
-ollama  → groq → nim → openrouter → github → pollinations
-groq    → nim → openrouter → github → pollinations
-nim     → groq → openrouter → github → pollinations
+ollama  → groq → nim → pollinations
+groq    → nim → pollinations
+nim     → groq → pollinations
 github  → groq → nim → pollinations
 ```
+
+(`openrouter`/`github` quitados como destinos de fallback 2026-08-16 — ambos
+confirmados muertos, ver nota más abajo; sus entradas en `PROVIDERS` quedan intactas
+para reactivación de una línea si el usuario recarga créditos openrouter o GitHub
+revierte la retirada de plataforma.)
 
 Errores 429/500/502/503 en `stream_response()` triggean fallback automático al siguiente proveedor.
 
@@ -133,17 +143,28 @@ Groq/Llama si el CLI de claude falla: fallan alto con exit 2
 (`DQIII8_ALLOW_DOWNGRADE=1` para permitir la degradación explícitamente).
 Detalle completo del proveedor NIM → `.claude/rules_db/nim-provider.md`.
 
-**Estado real de `openrouter` y `github` en la cadena (verificado en vivo 2026-08-11):**
+**Estado real de `openrouter`, `github` y `nim` (verificado en vivo 2026-08-11, reconfirmado 2026-08-16):**
 - `openrouter`: el slug `qwen/qwen3-coder:free` está retirado (404); el slug correcto
   `qwen/qwen3-coder` (ya corregido en `_PROVIDER_DEFAULT_MODEL`) es de pago y la cuenta
-  no tiene créditos (402 "Insufficient credits") → fallback openrouter caído hasta que
-  el usuario recargue créditos en openrouter.ai/settings/credits.
+  no tiene créditos (402 "Insufficient credits") → openrouter caído hasta que
+  el usuario recargue créditos en openrouter.ai/settings/credits. **2026-08-16: quitado
+  como destino de `FALLBACK_CHAIN`** (su `PROVIDERS`/modelo por defecto se dejan intactos
+  para reactivación de una línea).
 - `github`: ambos endpoints (el deprecado `models.inference.ai.azure.com` y el sucesor
   `models.github.ai/inference`) responden 404/410 — GitHub está retirando el servicio
   a nivel de plataforma (`github_models_retirement_brownout`). No reparable en código.
-- Impacto real: bajo. Ambos son los últimos eslabones de sus cadenas (antes de
-  `pollinations`), así que su caída no bloquea el flujo normal (`groq`/`nim` cubren
-  la inmensa mayoría de casos).
+  **2026-08-16: quitado como destino de `FALLBACK_CHAIN`** por el mismo motivo.
+- `nim`: **hallazgo nuevo 2026-08-16** — toda inferencia (`POST /v1/chat/completions`)
+  devuelve 403 "Authorization failed" en cualquier modelo probado (`GET /v1/models` sí
+  funciona). No es un problema de modelo — la cuenta/key necesita revisión en
+  build.nvidia.com. NIM se mantiene en `FALLBACK_CHAIN` (no se desconecta): el fail-open
+  a Groq ya cubre este caso y desconectarlo violaría la INVARIANTE NIM si la cuenta se
+  repara. Modelos EOL corregidos de paso: `mistral-large-3-675b-instruct-2512` (410) →
+  `nvidia/llama-3.3-nemotron-super-49b-v1.5`; `deepseek-v4-flash` (410) →
+  `deepseek-ai/deepseek-v4-flash-0731`.
+- Impacto real de openrouter/github: bajo, eran los últimos eslabones de sus cadenas.
+  Impacto de NIM: alto — bloquea el tier B+ completo, degradando silenciosamente
+  ~9 agentes a Groq (Tier B) desde al menos 2026-08-07.
 
 ## Escalation to Opus (Plan Gate)
 

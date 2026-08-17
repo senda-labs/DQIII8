@@ -28,12 +28,21 @@ ANTES de escalar a Tier A (Sonnet) o S (Opus), es OBLIGATORIO intentar NIM prime
 
 Nota: estos nombres de agente (`software-specialist`, `research-analyst`, `web-specialist`, `python-specialist`, `opt-analyst`) refieren al backend `AGENT_ROUTING` (NIM Tier B+), NO a los ficheros homónimos en `.claude/agents/*.md` (que están hardcodeados a Groq/Ollama) — son dos sistemas distintos que comparten nombre (drift confirmado 2026-08-11).
 
+> ⚠️ **NIM caído a nivel de cuenta (2026-08-16):** todo POST a `/v1/chat/completions`
+> devuelve 403 "Authorization failed" en cualquier modelo (GET `/v1/models` sí funciona).
+> No es un problema de modelo — es la key/entitlement de `NVIDIA_API_KEY`. Requiere
+> acción del usuario en build.nvidia.com. El wrapper sigue haciendo fallback automático
+> a Groq mientras tanto; no desconectar NIM de la cadena.
+
 **Modelos NIM preferidos por tipo de tarea:**
 | Tarea | Modelo NIM | Latencia | Agente dqiii8 |
 |-------|-----------|----------|---------------|
-| Planificación, análisis, arquitectura | `mistralai/mistral-large-3-675b-instruct-2512` | 0.3s | `software-specialist`, `research-analyst` |
-| Código, web, pseudocódigo (1M ctx) | `deepseek-ai/deepseek-v4-flash` | 1.4s | `web-specialist`, `python-specialist` |
-| Optimización, razonamiento | `mistralai/mistral-large-3-675b-instruct-2512` | 0.3s | `opt-analyst` |
+| Planificación, análisis, arquitectura | `nvidia/llama-3.3-nemotron-super-49b-v1.5` | — | `software-specialist`, `research-analyst` |
+| Código, web, pseudocódigo (1M ctx) | `deepseek-ai/deepseek-v4-flash-0731` | — | `web-specialist`, `python-specialist` |
+| Optimización, razonamiento | `nvidia/llama-3.3-nemotron-super-49b-v1.5` | — | `opt-analyst` |
+
+_(Ambos reemplazados 2026-08-16: `mistral-large-3-675b-instruct-2512` y `deepseek-v4-flash`
+estaban EOL/410 desde 2026-07-23 y 2026-08-07 respectivamente; latencias sin re-sondear.)_
 
 **Reglas de escalado:**
 1. Tarea de planificación / análisis / redacción → `software-specialist` (NIM Mistral 675B) PRIMERO

@@ -11,9 +11,11 @@ NVIDIA NIM es el Tier B+ del sistema de routing. API OpenAI-compatible en `integ
 Clave: `NVIDIA_API_KEY` en `.env`. Sondeo completo: **50/121 modelos operativos** (2026-06-26).
 Fuente: `docs/research/2026-06-26-nvidia-nim-investigation.md` (reconciliado 2026-08-11 —
 "52/121" era drift de este fichero; el doc de investigación original y
-`03_tiering_and_routing.md` coinciden en 50/121). Nota: `NVIDIA_API_KEY` está actualmente
-rechazada (403, confirmado 2026-08-11) — la clave debe reemitirse en build.nvidia.com antes
-de poder re-sondear en vivo.
+`03_tiering_and_routing.md` coinciden en 50/121). Nota: `NVIDIA_API_KEY` sigue
+rechazada (403 "Authorization failed", reconfirmado 2026-08-16 contra 6+ modelos
+distintos incluidos los ya reemplazados abajo) — `GET /v1/models` funciona (key
+válida para listar), pero TODA inferencia falla. La clave debe revisarse/reemitirse
+en build.nvidia.com antes de poder re-sondear en vivo. No es un problema de modelo.
 
 ## Rate limits y comportamiento
 
@@ -29,7 +31,7 @@ de poder re-sondear en vivo.
 ### LLM general (routing síncrono)
 | Modelo | Latencia | Cuándo usar |
 |--------|----------|-------------|
-| `mistralai/mistral-large-3-675b-instruct-2512` | 0.3s | **DEFAULT NIM** — máxima calidad gratuita |
+| `nvidia/llama-3.3-nemotron-super-49b-v1.5` | — | **DEFAULT NIM** (actualizado 2026-08-16; el 675B anterior está EOL/410 desde 2026-07-23, latencia sin re-sondear) |
 | `meta/llama-4-maverick-17b-128e-instruct` | 0.3s | Contexto largo (1M tokens) |
 | `openai/gpt-oss-120b` | 0.5s | Alternativa calidad alta |
 | `mistralai/mistral-small-4-119b-2603` | 0.2s | Balance velocidad/calidad |
@@ -39,7 +41,7 @@ de poder re-sondear en vivo.
 ### Código
 | Modelo | Latencia | Cuándo usar |
 |--------|----------|-------------|
-| `deepseek-ai/deepseek-v4-flash` | 1.4s | **Único código disponible** — 1M ctx, pseudocódigo→impl |
+| `deepseek-ai/deepseek-v4-flash-0731` | — | **Único código disponible** — 1M ctx, pseudocódigo→impl (actualizado 2026-08-16; slug anterior sin sufijo EOL/410 desde 2026-08-07) |
 
 > ⚠️ Todos los modelos código especializados (Granite, CodeLlama, Codestral, StarCoder, CodeGemma) son **404**.
 
@@ -92,7 +94,7 @@ Ver notebook: `NVIDIA/GenerativeAIExamples/RAG/notebooks/langchain/Chat_with_nvi
 
 ```python
 # En AGENT_ROUTING (openrouter_wrapper.py):
-"nuevo-agente": ("nim", "mistralai/mistral-large-3-675b-instruct-2512"),
+"nuevo-agente": ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
 
 # SIEMPRE verificar que el modelo responde antes de commitear:
 curl -s --max-time 30 -X POST https://integrate.api.nvidia.com/v1/chat/completions \
@@ -109,8 +111,10 @@ curl -s --max-time 30 -X POST https://integrate.api.nvidia.com/v1/chat/completio
 # 500/502/503 → ídem
 # Sin respuesta (timeout) → ídem tras curl --max-time
 
-# Fallback chain desde NIM:
-# nim → groq → openrouter → github → pollinations
+# Fallback chain desde NIM (actualizado 2026-08-16, ver openrouter_wrapper.py):
+# nim → groq → pollinations
+# (openrouter/github quitados como destino de fallback: 402 sin créditos / 404-410
+# plataforma retirada — ambos confirmados muertos, sin reparación posible en código)
 ```
 
 ## Referencia investigación

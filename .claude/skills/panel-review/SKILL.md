@@ -36,10 +36,17 @@ Runs `python3 bin/tools/panel_review.py <plan-file>`.
    allowance defined in `.claude/rules_db/dqiii8-plan-gate.md` (max 1 per task) —
    it is not an additional or second Opus budget. No iteration, no forced
    dissent, no re-voting loop: one pass, one verdict.
-3. **Report**: written to `database/audit_reports/panel-review-YYYY-MM-DD-HH-<slug>.md`
-   (tracked path, mirrors the `audit` skill). Never `docs/superpowers/` — that
-   path is gitignored, which is exactly how a prior review's findings ledger
-   was permanently lost (see session 2026-08-11 handover).
+3. **Report**: written to `database/audit_reports/panel-review-YYYY-MM-DD-HH-<slug>.md`.
+   `database/audit_reports/*.md` is explicitly un-ignored in `.gitignore` (narrow
+   negation, `*.md` only — `analytics.log` and non-`.md` artifacts in the same
+   directory stay ignored) since 2026-08-17, after this path was found to be
+   gitignored wholesale — the same failure mode that permanently lost a prior
+   review's findings ledger (see session 2026-08-11 handover, and F11 in
+   `database/audit_reports/2026-08-16-metadata-watermark-toolchain-reaudit.md`).
+   Run `gitleaks detect` plus a manual IP/password/token grep over any new report
+   before committing — gitleaks' shipped rules do not catch a bare IP or a bare
+   password literal. Never `docs/superpowers/` — that path is gitignored and not
+   negated.
 4. **Verdict is advisory, not a gate.** The tool reports; the calling session
    (CC) is responsible for addressing each cited finding before implementation
    proceeds.

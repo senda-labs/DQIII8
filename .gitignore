@@ -189,7 +189,8 @@ sessions/
 projects/
 tasks/
 decisions/
-database/audit_reports/
+database/audit_reports/*
+!database/audit_reports/*.md
 database/qdrant/
 
 # User projects — track placeholder only, never project contents

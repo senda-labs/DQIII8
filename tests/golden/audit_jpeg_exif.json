@@ -1,0 +1,42 @@
+{
+  "degraded": [],
+  "engines": {
+    "c2pa": "absent",
+    "exiftool": "<VERSION>",
+    "pikepdf": "<VERSION>"
+  },
+  "findings": [
+    {
+      "error_class": null,
+      "field": "identity_metadata",
+      "format": "jpeg",
+      "location": "IFD0",
+      "note": "1 tag(s)",
+      "path": "<TMPDIR>/a.jpg",
+      "removable": true,
+      "severity": "notice",
+      "tier": "safe"
+    }
+  ],
+  "root": "<TMPDIR>/a.jpg",
+  "schema_version": 2,
+  "summary": {
+    "by_tier": {
+      "all": 0,
+      "safe": 1
+    },
+    "files_scanned": 1,
+    "files_with_findings": 1,
+    "skipped": {
+      "corrupt": 0,
+      "encrypted": 0,
+      "extension_mismatch": 0,
+      "symlink": 0,
+      "too_large": 0,
+      "unsupported_format": 0
+    }
+  },
+  "tool": "metadata_audit",
+  "tool_version": "1.0.0",
+  "truncated": null
+}

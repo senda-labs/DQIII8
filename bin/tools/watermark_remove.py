@@ -49,6 +49,13 @@ import watermark_scan as ws  # noqa: E402
 from metadata_lib.safeio import write_new_file  # noqa: E402
 
 MAX_DIR_FILES = 5000
+# Neither --dir nor --file had any per-file size ceiling — remove_from_file()
+# reads the whole file into memory (path.read_bytes()) unconditionally. A
+# pathologically large single file was unbounded in both modes, unlike
+# metadata_remove.py's --dir sweep which iter_files already caps by cumulative
+# bytes. Matches metadata_lib.safeio.DEFAULT_MAX_BYTES for one shared ceiling
+# across the toolchain.
+MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024
 
 # Precedence: truncated (5) > write refused (1) > success (0). Shares
 # metadata_remove.py's value so the toolchain has one exit-code taxonomy.
@@ -96,6 +103,13 @@ def collect_files(
         if not path.is_file():
             continue
         if path.suffix in (".bak", ".tmp"):
+            continue
+        try:
+            oversized = path.stat().st_size > MAX_FILE_BYTES
+        except OSError:
+            oversized = False  # let the per-file read in remove_from_file report it
+        if oversized:
+            skip_counts["oversized"] = skip_counts.get("oversized", 0) + 1
             continue
         count += 1
         if count > MAX_DIR_FILES:
@@ -200,9 +214,37 @@ def main() -> int:
     if args.dir is not None and not args.dir.is_dir():
         print(f"watermark-remove: not a directory: {args.dir}", file=sys.stderr)
         return 2
-    if args.file is not None and not args.file.is_file() and not args.file.is_symlink():
+    if args.file is not None and args.file.is_symlink():
+        # A --dir sweep discloses a symlinked member via skip_counts while still
+        # reporting on every other real file, so "clean" there is truthful. A
+        # single --file target has nothing else to report on: letting it fall
+        # through to collect_files' symlink skip made the whole run's summary
+        # "no hidden/invisible characters found" — a false clean identical in kind
+        # to F6, just on the --file path instead of --dir. metadata_remove.py
+        # already refuses this case outright; match that discipline here.
+        print(f"watermark-remove: refusing symlinked --file target: {args.file}", file=sys.stderr)
+        return 2
+    if args.file is not None and not args.file.is_file():
         print(f"watermark-remove: not a file: {args.file}", file=sys.stderr)
         return 2
+    if args.file is not None:
+        # remove_from_file() reads the whole file into memory unconditionally
+        # (path.read_bytes()) with no ceiling — a pathologically large single
+        # file is unbounded here, unlike metadata_remove.py's --dir sweep which
+        # iter_files already caps by cumulative bytes.
+        try:
+            file_size = args.file.stat().st_size
+        except OSError as e:
+            print(f"watermark-remove: cannot stat {args.file}: {e}", file=sys.stderr)
+            return 2
+        if file_size > MAX_FILE_BYTES:
+            print(
+                f"watermark-remove: {args.file} is {file_size} bytes, exceeding the "
+                f"{MAX_FILE_BYTES}-byte per-file ceiling — refusing rather than reading an "
+                "unbounded file fully into memory.",
+                file=sys.stderr,
+            )
+            return 2
     if args.all and args.apply and not args.yes:
         print("watermark-remove: --apply --all also needs --yes (explicit confirmation for the risky tier).", file=sys.stderr)
         return 2

@@ -158,7 +158,15 @@ def process_file(path: Path, *, apply: bool, all_tier: bool, invocation_id: str)
     except Exception as e:  # noqa: BLE001
         return {"status": ErrorClass.ENGINE_FAILURE.label, "note": str(e)}
 
-    result = safeio.atomic_replace(path, new_bytes, backup_from=raw)
+    try:
+        result = safeio.atomic_replace(path, new_bytes, backup_from=raw)
+    except OSError as e:
+        # atomic_replace re-raises OSError (e.g. ENOSPC) after cleaning up its own
+        # .tmp — the original file is untouched, but an uncaught exception here
+        # would previously crash the whole --dir sweep on the first disk-full file,
+        # discarding every already-processed result. Report it like any other
+        # per-file failure and let the batch continue.
+        return {"status": "write_failed", "note": str(e)}
     if not result.written:
         return {"status": "write_refused", "note": result.reason}
 
@@ -209,6 +217,24 @@ def main() -> int:
     if args.file is not None and (args.file.is_symlink() or not args.file.is_file()):
         print(f"metadata-remove: not a file (or is a symlink): {args.file}", file=sys.stderr)
         return 2
+    if args.file is not None:
+        # --dir sweeps are implicitly size-bounded: iter_files' cumulative budget
+        # refuses a file that alone exceeds --max-bytes. --file bypasses iter_files
+        # entirely and had no equivalent — a single pathologically large file was
+        # read whole into memory with no ceiling (measured ~3.7x RSS multiplier on
+        # a 300MB PDF; a multi-GB file risks OOM/thrash on a memory-constrained host).
+        try:
+            file_size = args.file.stat().st_size
+        except OSError as e:
+            print(f"metadata-remove: cannot stat {args.file}: {e}", file=sys.stderr)
+            return 2
+        if file_size > args.max_bytes:
+            print(
+                f"metadata-remove: {args.file} is {file_size} bytes, exceeding --max-bytes={args.max_bytes} — "
+                "refusing rather than reading an unbounded file fully into memory. Raise --max-bytes to override.",
+                file=sys.stderr,
+            )
+            return 2
     if args.all and args.apply and not args.yes:
         print("metadata-remove: --apply --all also needs --yes (explicit confirmation).", file=sys.stderr)
         return 2

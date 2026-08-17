@@ -151,15 +151,59 @@ def test_no_ci_or_hook_config_references_metadata_remove():
             assert tool not in text, f"{p} references {tool} — removal must stay manual-only"
 
 
-@pytest.mark.skip(
-    reason="deferred technical debt (2026-08-14): golden-file tests for "
-    "metadata_audit.py/metadata_remove.py --json reports (commit expected "
-    "output per fixture, volatile fields normalized — timestamps, "
-    "invocation_id, absolute paths, engine versions) not yet implemented. "
-    "Not blocking: schema/tier/finding coverage is already asserted "
-    "directly in test_metadata_*.py; this would only add regression "
-    "protection against an accidental schema break in a reviewable diff."
-)
-def test_json_report_golden_files():
-    """Placeholder — see skip reason. Implement when the report schema
-    stabilizes enough to be worth pinning, or on explicit request."""
+GOLDEN_DIR = REPO_ROOT / "tests" / "golden"
+
+GOLDEN_FIXTURES = {
+    # name: (make_fixture, filename, tool, base_args, expected_returncode)
+    # metadata_audit.py exits 1 when findings exist (see _exit_code()) —
+    # that's a deliberate signal, not a failure, since every fixture here
+    # is built to have findings.
+    "audit_jpeg_exif": (mf.make_jpeg_with_exif, "a.jpg", TOOLS / "metadata_audit.py", ["--file"], 1),
+    "audit_pdf_simple": (mf.make_pdf_simple, "a.pdf", TOOLS / "metadata_audit.py", ["--file"], 1),
+    "audit_docx_simple": (mf.make_docx_simple, "a.docx", TOOLS / "metadata_audit.py", ["--file"], 1),
+    "remove_jpeg_exif_dry_run": (mf.make_jpeg_with_exif, "a.jpg", TOOLS / "metadata_remove.py", ["--file"], 0),
+    "remove_pdf_simple_dry_run": (mf.make_pdf_simple, "a.pdf", TOOLS / "metadata_remove.py", ["--file"], 0),
+}
+
+
+def _normalize(report: dict, tmp_path: Path) -> dict:
+    """Strip fields that legitimately vary between runs/environments
+    (timestamps, invocation ids, absolute tmp paths, engine versions) so the
+    golden comparison only catches real schema/shape changes."""
+    text = json.dumps(report)
+    text = text.replace(str(tmp_path), "<TMPDIR>")
+    normalized = json.loads(text)
+    normalized.pop("generated_at", None)
+    normalized.pop("invocation_id", None)
+    for engine, version in list(normalized.get("engines", {}).items()):
+        if version != "absent":
+            normalized["engines"][engine] = "<VERSION>"
+    return normalized
+
+
+def test_json_report_golden_files(tmp_path):
+    """Pin metadata_audit.py/metadata_remove.py --json output shape per
+    fixture. A diff here means the report schema changed — update the
+    golden file deliberately (and note the schema bump) if the change is
+    intentional; a silent break is exactly what this guards against."""
+    for name, (make_fixture, filename, tool, base_args, expected_rc) in GOLDEN_FIXTURES.items():
+        target = tmp_path / name / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        make_fixture(target)
+
+        result = subprocess.run(
+            [sys.executable, str(tool), *base_args, str(target), "--json"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == expected_rc, f"{name}: rc={result.returncode} {result.stderr}"
+        report = json.loads(result.stdout)
+        normalized = _normalize(report, target.parent)
+
+        golden_path = GOLDEN_DIR / f"{name}.json"
+        assert golden_path.exists(), (
+            f"missing golden file {golden_path} — run the fixture generation "
+            f"once and commit its output deliberately"
+        )
+        expected = json.loads(golden_path.read_text())
+        assert normalized == expected, f"{name}: report shape drifted from golden file"

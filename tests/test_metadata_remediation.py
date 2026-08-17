@@ -215,6 +215,37 @@ def test_exiftool_engine_failure_aborts_removal_with_distinct_exit_code(tmp_path
     assert not (tmp_path / "a.jpg.bak").exists()
 
 
+def test_atomic_replace_oserror_is_a_clean_status_not_a_crash(tmp_path, monkeypatch):
+    """2026-08-17 disaster testing: safeio.atomic_replace re-raises OSError
+    (e.g. real ENOSPC, reproduced live against a 2MB tmpfs mount) after
+    cleaning up its own .tmp. process_file() previously called it unguarded,
+    so this exception propagated uncaught out of process_file and crashed the
+    whole --dir batch on the first disk-full file — discarding every result
+    already collected for files processed earlier in the sweep. It must
+    instead come back as an ordinary per-file failure so the caller's loop
+    continues, exactly like every other engine failure in this function.
+    """
+    import metadata_remove
+
+    img = tmp_path / "a.jpg"
+    mf.make_jpeg_with_exif(img)
+    before = img.read_bytes()
+
+    def _boom(*_a, **_kw):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(safeio, "atomic_replace", _boom)
+
+    r = metadata_remove.process_file(img, apply=True, all_tier=False, invocation_id="test")
+
+    assert r["status"] == "write_failed"
+    assert "No space left on device" in r["note"]
+    assert metadata_remove._exit_code_for([r]) == 1
+    assert img.read_bytes() == before
+    assert not (tmp_path / "a.jpg.bak").exists()
+    assert not (tmp_path / "a.jpg.tmp").exists()
+
+
 # ------------------------------------------------------------------ fix 3 ---
 
 

@@ -1,0 +1,97 @@
+{
+  "degraded": [],
+  "engines": {
+    "c2pa": "absent",
+    "exiftool": "<VERSION>",
+    "pikepdf": "<VERSION>"
+  },
+  "findings": [
+    {
+      "error_class": null,
+      "field": "identity_properties",
+      "format": "ooxml",
+      "location": "docProps/core.xml",
+      "note": "subject,creator,keywords,description,lastModifiedBy,category",
+      "path": "<TMPDIR>/a.docx",
+      "removable": true,
+      "severity": "notice",
+      "tier": "safe"
+    },
+    {
+      "error_class": null,
+      "field": "identity_properties",
+      "format": "ooxml",
+      "location": "docProps/app.xml",
+      "note": "Manager,Company,Company",
+      "path": "<TMPDIR>/a.docx",
+      "removable": true,
+      "severity": "notice",
+      "tier": "safe"
+    },
+    {
+      "error_class": null,
+      "field": "thumbnail",
+      "format": "ooxml",
+      "location": "docProps/thumbnail.jpeg",
+      "note": "",
+      "path": "<TMPDIR>/a.docx",
+      "removable": true,
+      "severity": "notice",
+      "tier": "safe"
+    },
+    {
+      "error_class": null,
+      "field": "editing_metadata",
+      "format": "ooxml",
+      "location": "word/settings.xml",
+      "note": "proofState/rsids",
+      "path": "<TMPDIR>/a.docx",
+      "removable": true,
+      "severity": "notice",
+      "tier": "safe"
+    },
+    {
+      "error_class": null,
+      "field": "rsid_attributes",
+      "format": "ooxml",
+      "location": "word/document.xml",
+      "note": "1 element(s)",
+      "path": "<TMPDIR>/a.docx",
+      "removable": true,
+      "severity": "info",
+      "tier": "all"
+    },
+    {
+      "error_class": null,
+      "field": "custom_xml",
+      "format": "ooxml",
+      "location": "customXml/",
+      "note": "2 part(s)",
+      "path": "<TMPDIR>/a.docx",
+      "removable": true,
+      "severity": "notice",
+      "tier": "all"
+    }
+  ],
+  "root": "<TMPDIR>/a.docx",
+  "schema_version": 2,
+  "summary": {
+    "by_tier": {
+      "all": 2,
+      "safe": 4
+    },
+    "files_scanned": 1,
+    "files_with_findings": 1,
+    "skipped": {
+      "corrupt": 0,
+      "encrypted": 0,
+      "extension_mismatch": 0,
+      "symlink": 0,
+      "too_large": 0,
+      "unsupported_format": 0
+    }
+  },
+  "tool": "metadata_audit",
+  "tool_version": "1.0.0",
+  "truncated": null
+}

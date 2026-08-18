@@ -11,8 +11,14 @@ v3.1: BLOCKED_PATHS Bash enforcement, CLAUDE_MD_PLUGIN_EDIT bypass removal,
 v3.4: Web egress gate for WebFetch/WebSearch (exfiltration control)
 v3.5: BLOCKED_PATHS enforced for MCP tools via _candidate_paths() +
       GOVERNANCE_PATHS/ESCALATE for the .claude/ rule-hook-agent-skill corpus
+v3.6 (SEC1-6, 2026-08-18): mcp__github__* write-tool path extraction,
+      mcp__context-mode__ctx_execute* treated as Bash-equivalent, Bash
+      write-primitive coverage (patch/git apply/tar/unzip/ed), glob/quote-
+      splicing-resistant credential detection, Bash curl/wget egress gate,
+      query-carrying MCP tools routed through the secret-in-query check.
 """
 
+import fnmatch
 import ipaddress
 import json
 import logging
@@ -219,6 +225,30 @@ def _candidate_paths(tool: str, tool_input: dict) -> list[str]:
                     paths.append(val)
                 elif isinstance(val, (list, tuple)):
                     paths.extend(str(v) for v in val if v)
+        # mcp__github__* (SEC1, 2026-08-18): create_or_update_file/delete_file/
+        # push_files etc. write repo content and were entirely unchecked —
+        # _MCP_PATH_KEYS didn't apply because the branch above is gated to
+        # mcp__filesystem__ only. Read-shaped suffixes (get_*/list_*/search_*)
+        # are exempt; anything else fails closed, same policy as the
+        # filesystem server above (settings.json allows the whole mcp__* glob).
+        if tool.startswith("mcp__github__") and not suffix.startswith(
+            ("get_", "list_", "search_")
+        ):
+            for key in _MCP_PATH_KEYS:
+                val = inp.get(key)
+                if isinstance(val, str) and val:
+                    paths.append(val)
+                elif isinstance(val, (list, tuple)):
+                    paths.extend(str(v) for v in val if v)
+            # push_files carries its targets as files: [{path, content}, ...],
+            # not a top-level path key.
+            files = inp.get("files")
+            if isinstance(files, (list, tuple)):
+                for f in files:
+                    if isinstance(f, dict):
+                        p = f.get("path")
+                        if isinstance(p, str) and p:
+                            paths.append(p)
         # Any MCP tool that takes SQL is a filesystem actor via ATTACH/VACUUM,
         # regardless of which server exposes it.
         for key in ("sql", "query", "statement"):
@@ -319,6 +349,51 @@ def _glob_filter_hit(spec: str) -> str | None:
         if _CREDENTIAL_BASENAME_RE.match(probe):
             return collapsed
     return None
+
+
+# Known-sensitive basenames a Bash glob token is probed against (SEC4,
+# 2026-08-18). _CREDENTIAL_BASENAME_RE needs an exact basename ('cat .env'
+# denies, 'cat .e*' doesn't — the token isn't a real basename, it's a glob
+# pattern), so credential detection for a glob-shaped token instead asks the
+# reverse question: does this pattern match a name we know is sensitive?
+_CREDENTIAL_GLOB_PROBES = (
+    ".env", ".env.local", ".env.production", ".credentials.json",
+    "id_rsa", "id_ed25519", ".secrets", "secrets.json",
+    "client_secret.json", "server.pem", "server.key", "cert.p12", "cert.pfx",
+)
+
+def _credential_glob_hit(token: str) -> str | None:
+    """Return the sensitive basename a Bash glob TOKEN would expand to, or None.
+
+    Only checked when `token` actually contains a glob metacharacter — a
+    literal token is already covered by `_credential_hit`.
+    """
+    if not token or not _GLOB_WILDCARD_RE.search(token):
+        return None
+    base = token.replace("\\", "/").rsplit("/", 1)[-1]
+    for probe in _CREDENTIAL_GLOB_PROBES:
+        if fnmatch.fnmatchcase(probe, base):
+            return probe
+    return None
+
+
+def _collapse_adjacent_quotes(cmd: str) -> str:
+    """Collapse Bash's directly-adjacent-quote string concatenation.
+
+    Bash joins quoted literals with no separating whitespace into one word:
+    '.en''v' -> .env, ".e"'nv' -> .env. The tokenizer splits on quote
+    characters, so it never reconstructs this; without collapsing first,
+    `cat '.en''v'` reads as two harmless tokens ('.en', 'v') instead of one
+    credential basename. Applied repeatedly to a working copy used only for
+    credential detection (SEC4) — a 3+-way concatenation needs more than one
+    pass, and this must never affect any other check's view of `cmd`.
+    """
+    prev = None
+    out = cmd
+    while prev != out:
+        prev = out
+        out = out.replace("''", "").replace('""', "").replace("'\"", "").replace("\"'", "")
+    return out
 
 
 def _url_secret_hit(text: str) -> str | None:
@@ -532,6 +607,62 @@ _BLOB_ALNUM_RE = re.compile(r"^[A-Za-z0-9]+$")
 # Bash operators that indicate a WRITE to a file
 _BASH_WRITE_SIGNS = [">", ">>", "tee ", "sed -i", "truncate "]
 
+# context-mode MCP server (SEC2, 2026-08-18): allow-listed in
+# settings.local.json, arbitrary sandboxed code/subprocess execution, and its
+# own tool descriptions actively steer callers here instead of Bash ("PREFER
+# THIS OVER BASH for: API calls..., test runners..."). None of it was routed
+# through any Bash-equivalent check. ctx_fetch_and_index/ctx_search are read/
+# query-shaped by name and are deliberately left out — only the three
+# confirmed exec-capable tools are covered.
+_CTX_MODE_EXEC_TOOLS = frozenset({
+    "mcp__context-mode__ctx_execute",
+    "mcp__context-mode__ctx_execute_file",
+    "mcp__context-mode__ctx_batch_execute",
+})
+
+
+def _ctx_mode_command_text(tool: str, inp: dict) -> str:
+    """The command-line-equivalent text a context-mode exec tool carries.
+
+    ctx_execute/ctx_execute_file: a `code` string (plus `path` for the file
+    variant, which is fed into `code` as FILE_CONTENT — the path itself is
+    still worth scanning directly). ctx_batch_execute: an array of literal
+    shell command strings under `commands[].command`.
+    """
+    parts: list[str] = []
+    code = inp.get("code")
+    if isinstance(code, str) and code:
+        parts.append(code)
+    path = inp.get("path")
+    if isinstance(path, str) and path:
+        parts.append(path)
+    commands = inp.get("commands")
+    if isinstance(commands, (list, tuple)):
+        for c in commands:
+            if isinstance(c, dict):
+                cmd_str = c.get("command")
+                if isinstance(cmd_str, str) and cmd_str:
+                    parts.append(cmd_str)
+    return "\n".join(parts)
+
+
+# Bash-level web-egress bypass (SEC5, 2026-08-18): the WebFetch/WebSearch gate
+# (_web_egress_block) never runs for Bash, so 'curl ...$ANTHROPIC_API_KEY',
+# 'printenv | curl -X POST ...' and 'curl ... | sh' all reached the network
+# with zero checks. Scoped to the three concretely observed shapes rather
+# than replicating the full WebFetch gate (host-risk/opaque-blob reasoning
+# over arbitrary shell text is too noisy to be worth it here).
+_NETWORK_EGRESS_BASH_RE = re.compile(r"\b(?:curl|wget)\b")
+_SENSITIVE_ENV_VAR_RE = re.compile(
+    r"\$\{?[A-Z][A-Z0-9_]*(?:_KEY|_TOKEN|_SECRET|_PASSWORD|_PASSWD)\}?\b"
+)
+_ENV_DUMP_TO_NET_RE = re.compile(
+    r"\b(?:printenv|env)\b[^|;\n]*\|\s*(?:curl|wget|nc|ncat|netcat|socat)\b"
+)
+_PIPE_TO_SHELL_RE = re.compile(
+    r"\b(?:curl|wget)\b[^|;\n]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh|python[0-9.]*|perl|ruby)\b"
+)
+
 # Always CRITICAL regardless of mode
 CRITICAL_PATTERNS = [
     r"rm\s+-rf\s+/\s*$",  # rm -rf / (exact root filesystem wipe)
@@ -674,15 +805,21 @@ class PermissionAnalyzer:
                 return False
         return True
 
-    def _bash_touches_blocked(self, cmd: str) -> dict | None:
-        """Block Bash commands that read credential paths or write to any blocked path."""
+    def _bash_touches_blocked(self, cmd: str, tool: str = "Bash") -> dict | None:
+        """Block Bash (or a context-mode exec-equivalent, SEC2) commands that
+        read credential paths or write to any blocked path.
+
+        `tool` is only used as the label on the returned decision — every
+        heuristic below still reasons over `cmd`, the flattened command text
+        (see _ctx_mode_command_text for the non-Bash callers).
+        """
         # 1. Credential paths — block any access (read or write) using path-component matching
         for cred in BASH_CREDENTIAL_PATHS:
             # Match as path component: must be preceded/followed by space, quote, slash, or string boundary
             pattern = r'(?:^|[\s\'">/=@:(`$])' + re.escape(cred) + r'(?:[\s\'"/=@:;|)(&<>`$]|$)'
             if re.search(pattern, cmd):
                 return self._deny(
-                    "Bash", cmd,
+                    tool, cmd,
                     f"Credential path '{cred}' referenced in Bash — access blocked.",
                     "CRITICAL",
                     f"bash_credential_path:{cred}",
@@ -693,18 +830,37 @@ class PermissionAnalyzer:
         # 'cat config/app.env' and 'base64 certs/server.pem' slipped through.
         # Tokenize and reuse the same matcher the read family uses, so Bash and
         # Read/Grep/Glob cannot disagree about what counts as a credential.
-        for tok in _BASH_TOKEN_SPLIT_RE.split(cmd):
+        # SEC4 (2026-08-18): tokenized on a quote-collapsed working copy —
+        # Bash concatenates directly-adjacent quoted literals ('.en''v' ->
+        # .env), which the split-on-quote-chars tokenizer never reconstructs
+        # from the raw command. `cmd` itself is untouched; every other check
+        # in this function still sees the original string.
+        _cred_cmd = _collapse_adjacent_quotes(cmd)
+        for tok in _BASH_TOKEN_SPLIT_RE.split(_cred_cmd):
             tok = tok.strip().strip("'\"")
             if not tok or tok.startswith("-"):
                 continue
             hit = _credential_hit(tok)
             if hit:
                 return self._deny(
-                    "Bash", cmd,
+                    tool, cmd,
                     f"Credential path '{tok}' referenced in Bash — access blocked ('{hit}').",
                     "CRITICAL",
                     f"bash_credential_path:{hit}",
                     "Use os.environ.get() for secrets. Never reference credential files in Bash.",
+                )
+            # SEC4: a glob token ('.e*', '?env') has no exact basename to
+            # match, but it can still be crafted to expand onto a known
+            # credential file. Ask the reverse question via fnmatch.
+            glob_hit = _credential_glob_hit(tok)
+            if glob_hit:
+                return self._deny(
+                    tool, cmd,
+                    f"Glob '{tok}' in Bash would match credential file "
+                    f"'{glob_hit}' — access blocked.",
+                    "CRITICAL",
+                    f"bash_credential_glob:{glob_hit}",
+                    "Reference the file explicitly, or use os.environ.get() for secrets.",
                 )
         # 2. All BLOCKED_PATHS — block write operations
         is_write = any(sign in cmd for sign in _BASH_WRITE_SIGNS)
@@ -733,11 +889,32 @@ class PermissionAnalyzer:
                re.search(r'\bos\.(?:replace|rename)\s*\(', cmd) or \
                re.search(r'\.write_(?:text|bytes)\s*\(', cmd):
                 is_write = True
+        if not is_write:
+            # SEC3 (2026-08-18): write primitives that reach a target path
+            # without any shell write operator or a name matched above —
+            # found live against governance-path escalation: 'patch -p1',
+            # 'git apply', 'git checkout <ref> -- <path>' (the -- form only;
+            # a bare 'git checkout <branch>' just switches branches, not a
+            # write), 'tar x... -C <dir>', 'unzip ... -d <dir>', and 'ed
+            # <file>' (writes on its own 'w' command, but the file argument
+            # alone is enough to treat it as write-capable — a read-only ed
+            # session against a governance path should still be escalated
+            # for human visibility, matching the conservative bias already
+            # used above for sqlite3 DML detection).
+            _tar_mode = re.search(r'\btar\s+(-?[a-zA-Z]{1,8})\b', cmd)
+            if re.search(r'\bpatch\b', cmd) or \
+               re.search(r'\bgit\s+apply\b', cmd) or \
+               re.search(r'\bgit\s+checkout\b[^|;&\n]*--', cmd) or \
+               (_tar_mode and "x" in _tar_mode.group(1).lower()) or \
+               re.search(r'\btar\b[^|;&\n]*--extract\b', cmd) or \
+               re.search(r'\bunzip\b', cmd) or \
+               re.search(r'(?:^|[\s;&|])ed\s+\S', cmd):
+                is_write = True
         if is_write:
             blocked = _blocked_path_hit(cmd)
             if blocked:
                 return self._deny(
-                    "Bash", cmd,
+                    tool, cmd,
                     f"Blocked path '{blocked}' targeted by Bash write operation.",
                     "CRITICAL",
                     f"bash_write_blocked_path:{blocked}",
@@ -748,11 +925,47 @@ class PermissionAnalyzer:
             gov = _governance_path_hit(cmd)
             if gov:
                 return self._escalate(
-                    "Bash", cmd[:80],
+                    tool, cmd[:80],
                     f"Bash write targets the DQIII8 governance corpus ('{gov}') — "
                     "human confirmation required.",
                     f"bash_write_governance_path:{gov}",
                     "Confirm the governance change with the user before writing.",
+                )
+        # 3. Web-egress bypass via Bash curl/wget (SEC5, 2026-08-18) — see
+        # _NETWORK_EGRESS_BASH_RE etc. above for the shapes covered.
+        if _NETWORK_EGRESS_BASH_RE.search(cmd):
+            secret = _url_secret_hit(cmd)
+            if secret:
+                return self._deny(
+                    tool, cmd,
+                    f"Command carries credential material ('{secret}') into curl/wget.",
+                    "CRITICAL", f"bash_web_egress_secret:{secret}",
+                    "Never pass a key/token to curl or wget on the command line.",
+                )
+            var_match = _SENSITIVE_ENV_VAR_RE.search(cmd)
+            if var_match:
+                return self._deny(
+                    tool, cmd,
+                    f"Command sends a sensitive env var ('{var_match.group(0)}') "
+                    "to a network tool.",
+                    "CRITICAL", "bash_web_egress_secret_envvar",
+                    "Never interpolate a *_KEY/*_TOKEN/*_SECRET/*_PASSWORD env "
+                    "var into a curl/wget command.",
+                )
+            if _ENV_DUMP_TO_NET_RE.search(cmd):
+                return self._deny(
+                    tool, cmd,
+                    "Command pipes the full process environment into a network tool.",
+                    "CRITICAL", "bash_web_egress_env_dump",
+                    "Never pipe printenv/env output to curl/wget/nc.",
+                )
+            if _PIPE_TO_SHELL_RE.search(cmd):
+                return self._escalate(
+                    tool, cmd[:80],
+                    "Command downloads remote content and pipes it directly into "
+                    "a shell/interpreter — human review required.",
+                    "bash_web_egress_pipe_to_shell",
+                    "Download to a file, inspect it, then run it explicitly.",
                 )
         return None
 
@@ -811,15 +1024,18 @@ class PermissionAnalyzer:
         WebSearch — no attacker-chosen destination exists, so only the secret
             shape is checked: a key pasted into a third-party search backend's
             logs is a disclosure even though nobody chose the recipient.
+        Any other MCP search-shaped tool (a `query` key, no `url` key — e.g.
+            mcp__exa__web_search_exa, SEC6, 2026-08-18) is the same case as
+            WebSearch: a third-party backend, no attacker-chosen destination.
         """
-        if tool == "WebSearch":
+        if tool == "WebSearch" or (tool.startswith("mcp__") and inp.get("query") and not inp.get("url")):
             query = str(inp.get("query", "") or "")
             secret = _url_secret_hit(query)
             if secret:
                 return self._deny(
                     tool,
                     query[:80],
-                    f"WebSearch blocked: query carries credential material ('{secret}').",
+                    f"Search blocked: query carries credential material ('{secret}').",
                     "CRITICAL",
                     f"web_egress_secret:{secret}",
                     "Never put keys or tokens in a search query — they land in "
@@ -903,7 +1119,9 @@ class PermissionAnalyzer:
                 f"WebFetch to private/loopback host '{token}' — needs human review.",
                 f"web_egress_private_host:{token}",
                 "Local services are reached with Bash curl, not WebFetch, so the "
-                "request is visible in the transcript.",
+                "request is visible in the transcript. Bash curl/wget still "
+                "enforces the secret-in-command, env-dump, and pipe-to-shell "
+                "checks — this does not bypass those.",
             )
 
         blob = _opaque_blob_hit(raw)
@@ -1019,14 +1237,24 @@ class PermissionAnalyzer:
             if claim_deny:
                 return claim_deny
 
-        # Extract Bash command once for all Bash checks (3c, 4, 4b)
-        _bash_cmd = inp.get("command", "") or "" if tool == "Bash" else ""
+        # Extract Bash command once for all Bash checks (3c, 4, 4b). SEC2
+        # (2026-08-18): mcp__context-mode__ctx_execute* is an arbitrary
+        # sandboxed-exec surface, allow-listed and actively steered to over
+        # Bash by its own tool descriptions, that reached none of the Bash
+        # checks below — treated as a Bash-equivalent here rather than left
+        # ungated.
+        if tool == "Bash":
+            _bash_cmd = inp.get("command", "") or ""
+        elif tool in _CTX_MODE_EXEC_TOOLS:
+            _bash_cmd = _ctx_mode_command_text(tool, inp)
+        else:
+            _bash_cmd = ""
 
         # 3c. BLOCKED_PATHS enforcement for Bash
-        if tool == "Bash":
+        if tool == "Bash" or tool in _CTX_MODE_EXEC_TOOLS:
             try:
                 cmd = _bash_cmd
-                _bash_block = self._bash_touches_blocked(cmd)
+                _bash_block = self._bash_touches_blocked(cmd, tool)
                 if _bash_block:
                     return _bash_block
             except Exception as _bte:
@@ -1047,7 +1275,7 @@ class PermissionAnalyzer:
         # 3d. Credential enforcement for the read family (mirror of 3c for Bash).
         # Must run before 4a (learned_approvals) so a historically-seen path
         # can never whitelist a credential read.
-        if tool in ("Read", "Grep", "Glob"):
+        if tool in ("Read", "Grep", "Glob", "mcp__context-mode__ctx_execute_file"):
             try:
                 _read_block = self._read_family_credential_block(tool, inp)
                 if _read_block:
@@ -1069,7 +1297,7 @@ class PermissionAnalyzer:
         # *documented default* fetcher (web-research-tools.md), so gating only
         # the built-in WebFetch would leave the primary path wide open.
         if tool in ("WebFetch", "WebSearch") or (
-            tool.startswith("mcp__") and inp.get("url")
+            tool.startswith("mcp__") and (inp.get("url") or inp.get("query"))
         ):
             try:
                 _web_block = self._web_egress_block(tool, inp)
@@ -1085,7 +1313,7 @@ class PermissionAnalyzer:
                 )
 
         # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
-        if tool == "Bash":
+        if tool == "Bash" or tool in _CTX_MODE_EXEC_TOOLS:
             try:
                 cmd = _bash_cmd
                 for pattern in CRITICAL_PATTERNS:
@@ -1113,7 +1341,7 @@ class PermissionAnalyzer:
             )
 
         # 4b. High-risk commands with ALLOWED_DELETIONS exception
-        if tool == "Bash":
+        if tool == "Bash" or tool in _CTX_MODE_EXEC_TOOLS:
             try:
                 cmd = _bash_cmd
                 for pattern in HIGH_RISK_PATTERNS:

@@ -76,20 +76,15 @@ existing in this repo** — anything discarded is still shown in a collapsed
 never silently deleted, because silent deletion is indistinguishable from a
 seat having genuinely found nothing.
 
-Two extra safeguards, both added after live use surfaced real gaps:
-- **Seat-degradation banner**: NIM has an internal fallback that can silently
-  substitute a different provider/model per call. Confirmed live 2026-08-12:
-  all 3 "heterogeneous" seats were actually served by the same
-  `groq/llama-3.3-70b-versatile` model, collapsing 3 independent opinions into
-  one model answering three times. The report now compares intended vs actual
-  provider/model per seat and renders a loud banner when they diverge — never
-  assume seat diversity without checking.
-- **Opus-only "all clean" flag**: cheap seats returning zero verified findings
-  is the observed baseline, not a signal (confirmed live: 3/3 NIM seats found
-  nothing against a plan with a planted SQL injection + IDOR that Opus caught
-  immediately). The report only calls out "unanimous clean bill" when the
-  **Opus** seat specifically finds nothing — that's rare and actually means
-  something.
+One extra safeguard survives INV2's single-seat redesign:
+- **"All clean" flag**: the report calls out a zero-verified-findings result
+  explicitly, rather than letting it read the same as "not shown" — the Opus
+  pass returning nothing is rare and actually means something.
+
+(The pre-INV2 design also carried a seat-degradation banner comparing
+intended vs actual provider/model per seat, and gated "all clean" on the
+**Opus** seat specifically among several. Both no longer apply with a single
+seat and no NIM fallback path — see "Why this design (history)" below.)
 
 There is deliberately no "find at least one issue per category" quota — on a
 seat that has already fabricated a citation once (observed live: invented

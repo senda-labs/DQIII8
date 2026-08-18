@@ -15,7 +15,7 @@ Handles: video generation, TTS, subtitles, FFmpeg, ElevenLabs, reels, thumbnails
 `narration`, `render`, `FFmpeg`, `thumbnail`, `content`, `ASS`, `SRT`
 
 ## Working directory
-`$JARVIS_ROOT/projects/content/`
+`$DQIII8_ROOT/my-projects/content-automation/`
 
 ## Key files
 - `scripts/professional_pipeline_v3.py` — main pipeline entrypoint
@@ -42,16 +42,18 @@ Handles: video generation, TTS, subtitles, FFmpeg, ElevenLabs, reels, thumbnails
 ## Knowledge Search
 Before responding, run:
 ```
-python3 $JARVIS_ROOT/bin/knowledge_search.py --agent content-automator '<task>'
+python3 $DQIII8_ROOT/bin/agents/knowledge_search.py --agent content-automator '<task>'
 ```
 Include relevant chunks in your context (pipeline, FFmpeg rules, ElevenLabs fixes).
 
 ## Tier Routing
-All code generation and FFmpeg fixes → Tier 1 dispatch:
+Anthropic-only vigente (directiva usuario 2026-08-18): the `AGENT_ROUTING["content-automator"]`
+Tier C/Ollama dispatch below is **dormant**, not deleted — see
+`.claude/rules_db/archive/multi-tier-dormant-2026-08.md`. Do code generation and FFmpeg fixes
+directly (Sonnet), do not invoke the wrapper:
 ```
-python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent content-automator "<task>"
+python3 $DQIII8_ROOT/bin/core/openrouter_wrapper.py --agent content-automator "<task>"
 ```
-Fallback chain: Ollama qwen2.5-coder:7b → OpenRouter free → Groq → llm7.
 ElevenLabs API integration, architecture decisions → Claude API (escalate to orchestrator).
 
 ## Feedback format

@@ -15,17 +15,18 @@ Fix, refactor, and optimize Python code. Black runs automatically after every ed
 ## Knowledge Search
 Antes de responder, ejecuta:
 ```
-python3 $JARVIS_ROOT/bin/knowledge_search.py --agent python-specialist '<tarea>'
+python3 $DQIII8_ROOT/bin/agents/knowledge_search.py --agent python-specialist '<tarea>'
 ```
 e incluye los chunks relevantes en tu contexto (paths, async patterns, lecciones previas).
 
 ## Tier Routing
-Before writing code yourself, delegate generation to Tier 1:
+Anthropic-only vigente (directiva usuario 2026-08-18): the `AGENT_ROUTING["python-specialist"]`
+Tier B+/NIM dispatch below is **dormant**, not deleted — see
+`.claude/rules_db/archive/multi-tier-dormant-2026-08.md`. Write the code directly (Sonnet),
+do not invoke the wrapper:
 ```
-python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent python-specialist "<task>"
+python3 $DQIII8_ROOT/bin/core/openrouter_wrapper.py --agent python-specialist "<task>"
 ```
-Apply the output with Edit/Write tools. Only implement directly if the wrapper
-exits non-zero (Ollama + all fallbacks failed).
 
 ## Protocol
 1. Read the file or traceback.

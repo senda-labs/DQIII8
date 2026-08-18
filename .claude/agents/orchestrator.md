@@ -36,12 +36,12 @@ user → director.analyze_intent() → plan JSON → dispatch by graph → synth
 ```
 
 ```bash
-python3 $JARVIS_ROOT/bin/director.py "user request"
+python3 $DQIII8_ROOT/bin/director.py "user request"
 ```
 
 Director v3 produces a plan with priority:
 1. **Instincts DB** (confidence > 0.7) — fast path without LLM
-2. **LLM tier2** via openrouter_wrapper (research-analyst, free)
+2. **LLM complexity-class 2** via openrouter_wrapper (research-analyst, free tier)
 3. **Keyword fallback** — static analysis without network
 
 The resulting JSON includes `task_type`, `subtasks[]` with `agent` and `depends_on[]`,
@@ -50,29 +50,40 @@ The resulting JSON includes `task_type`, `subtasks[]` with `agent` and `depends_
 
 ## Tier Dispatch
 
-The orchestrator adapts the dispatch mechanism based on the plan's `recommended_tier`:
+`recommended_tier` is `director.py`'s `TASK_TIER_MAP` value — a legacy 1/2/3
+complexity shorthand (audit gap 9, 2026-08-17) that picks the dispatch
+**mechanism** below, NOT the provider tier. `AGENT_ROUTING[<agent>]` in
+`openrouter_wrapper.py` still names per-agent NIM/Groq/Ollama tier bindings
+(e.g. `python-specialist`/`research-analyst`/`data-specialist` at NIM/Tier B+,
+`writing-specialist` at Groq/Tier B) — those bindings are **dormant**, not
+deleted, under Anthropic-only (directiva usuario 2026-08-18): see
+`.claude/rules_db/archive/multi-tier-dormant-2026-08.md`. Today, route class 1
+and class 3 work to Sonnet directly (`finance-specialist`/`code-reviewer`'s
+Sonnet/Opus bindings are the only ones still live). Canonical tier table:
+`.claude/rules/03_tiering_and_routing.md`.
 
-**Tier 1 (code, pipeline)** — Run via wrapper directly, without Agent tool:
+**Complexity class 1 (code, pipeline) and class 3 (analysis, finance, trading,
+writing)** — dispatch via Bash → wrapper, not Task() (these agent names exist
+only in the `AGENT_ROUTING` backend, no `.claude/agents/*.md` counterpart to
+invoke via Task(), per the two-SSOT rule in `common/agents.md`):
 ```bash
-python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent python-specialist "<task>"
-python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent git-specialist "<task>"
-python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent content-automator "<task>"
+python3 $DQIII8_ROOT/bin/core/openrouter_wrapper.py --agent <agent-name> "<task>"
 ```
 Capture stdout → apply with Edit/Write → write result to `tasks/results/[agent]-[ts].md`.
-This eliminates Sonnet overhead for pure code tasks.
 
-**Tier 2 (research, review)** — Agent tool with free model:
+**Complexity class 2 (research, review)** — Agent tool, cheapest available model:
 ```
 Task(research-analyst | code-reviewer, minimum context)
 ```
 
-**Tier 3 (analysis, trading, writing, mixed)** — Agent tool with Sonnet/Opus:
-```
-Task(data-analyst | quant-analyst | creative-writer | orchestrator, minimum context)
-```
+`mixed` is the one case with a real Agent-tool file — dispatch via
+`Task(orchestrator, minimum context)` only for a subtask that itself needs
+further multi-agent coordination (rare; usually the top-level orchestrator
+run already covers it).
 
 Rule: the Agent tool invokes Sonnet 4.6 regardless of the agent's `model:` field.
-For tier=1 always use Bash → wrapper instead of Task() to respect the real routing.
+For class 1 and class 3 always use Bash → wrapper instead of Task() to respect
+the real per-agent routing.
 
 ## When NOT to use
 - Single-domain tasks (one file, one bug) → python-specialist or git-specialist directly

@@ -13,11 +13,13 @@ tools: ["Read", "Grep", "Glob", "Bash"]
 All git operations. Conventional commits. Never merges without code-reviewer approval.
 
 ## Tier Routing
-For commit message generation or diff analysis, delegate to Tier 1:
+Anthropic-only vigente (directiva usuario 2026-08-18): the `AGENT_ROUTING["git-specialist"]`
+Tier C/Ollama dispatch below is **dormant**, not deleted — see
+`.claude/rules_db/archive/multi-tier-dormant-2026-08.md`. Do commit message generation and
+diff analysis directly (Sonnet), do not invoke the wrapper:
 ```
-python3 $JARVIS_ROOT/bin/openrouter_wrapper.py --agent git-specialist "<task>"
+python3 $DQIII8_ROOT/bin/core/openrouter_wrapper.py --agent git-specialist "<task>"
 ```
-Only fall back to direct implementation if wrapper exits non-zero.
 
 ## Protocol
 1. Confirm the operation with user if destructive (force-push, rebase main, delete branch).

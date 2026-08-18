@@ -9,6 +9,8 @@ v3: Dual-channel rejections (DB + JSON inbox) + budget check +
 v3.1: BLOCKED_PATHS Bash enforcement, CLAUDE_MD_PLUGIN_EDIT bypass removal,
       in-process fallback counter, defensive pattern check wrapping
 v3.4: Web egress gate for WebFetch/WebSearch (exfiltration control)
+v3.5: BLOCKED_PATHS enforced for MCP tools via _candidate_paths() +
+      GOVERNANCE_PATHS/ESCALATE for the .claude/ rule-hook-agent-skill corpus
 """
 
 import ipaddress
@@ -37,12 +39,40 @@ BLOCKED_PATHS = [
     "secrets",
     "dqiii8.db",
     ".claude/settings.json",
-    "schema.sql",
+    "schema_v2.sql",
     ".git/",
     "id_rsa",
     "id_ed25519",
     ".ssh/",
     "context/proposito.md",
+    # The file that allow-lists mcp__filesystem__write_file / mcp__dqiii8-db__execute
+    # with no matching deny. Editing it is how an agent would grant itself the
+    # capability to bypass every other entry in this list. Governance-escalated
+    # rather than hard-denied (see GOVERNANCE_PATHS below).
+    ".claude/settings.local.json",
+]
+
+# ── Governance paths (v3.5) ─────────────────────────────────────────────────
+# The rule/hook/agent/skill corpus that *defines* this system's behaviour. A
+# write here is not automatically an attack — legitimate maintenance of the
+# governance corpus is a real, recurring task — but it is never routine either:
+# it rewrites the policy that every other check enforces.
+#
+# So these produce ESCALATE (human confirms, same wire effect as DENY but
+# routed to the operator by record_rejection) instead of DENY. A hard DENY
+# would make the governance system unmaintainable by any agent, including the
+# remediation work that introduced this constant.
+#
+# ESCALATE here is deliberately NOT reachable by the autonomous-mode
+# auto-approve fast path (step 5) nor by learned_approvals (step 4a): the
+# candidate-path check runs at step 3, ahead of both.
+GOVERNANCE_PATHS = [
+    ".claude/hooks/",
+    ".claude/rules/",
+    ".claude/rules_db/",
+    ".claude/agents/",
+    ".claude/skills/",
+    ".claude/settings.local.json",
 ]
 
 # Paths where even READ is dangerous (credential exfiltration risk).
@@ -64,7 +94,7 @@ BASH_CREDENTIAL_PATHS = [
 # drift apart: a path blocked for one is blocked for all.
 #
 # Deliberately NOT BLOCKED_PATHS: that list is a *write* denylist and also
-# contains files that must stay readable (CLAUDE.md, dqiii8.db, schema.sql,
+# contains files that must stay readable (CLAUDE.md, dqiii8.db, schema_v2.sql,
 # .claude/settings.json, context/proposito.md). This gate covers genuine
 # credential material only.
 #
@@ -96,6 +126,137 @@ _CREDENTIAL_BASENAME_RE = re.compile(
 # The ".+\." on the suffix branch likewise requires a non-empty stem.
 
 _GLOB_WILDCARD_RE = re.compile(r"[*?]+")
+
+# ── Candidate-path extraction (v3.5) ────────────────────────────────────────
+# Every filesystem path a tool call could touch, whatever the tool. Before
+# v3.5 the BLOCKED_PATHS write check ran only for Edit/Write/MultiEdit plus a
+# Bash heuristic, so the MCP tools that settings.local.json allow-lists
+# (mcp__filesystem__write_file, mcp__dqiii8-db__execute) reached the same files
+# with no check at all.
+
+# The @modelcontextprotocol/server-filesystem tools that only READ. Everything
+# else under mcp__filesystem__ is treated as write-capable — settings.json
+# allows the whole `mcp__*` glob, so an unlisted/new write tool must fail
+# closed into the check rather than out of it.
+_MCP_FS_READONLY_SUFFIXES = {
+    "read_file",
+    "read_text_file",
+    "read_media_file",
+    "read_multiple_files",
+    "list_directory",
+    "list_directory_with_sizes",
+    "directory_tree",
+    "search_files",
+    "get_file_info",
+    "list_allowed_directories",
+}
+
+# Argument names carrying a path across the filesystem MCP tools
+# (write_file/edit_file/create_directory use `path`; move_file uses
+# `source`/`destination`).
+_MCP_PATH_KEYS = ("file_path", "path", "source", "destination", "target", "dest")
+
+# SQLite statements that name a filesystem path directly.
+_SQL_ATTACH_RE = re.compile(
+    r"""\bATTACH\s+(?:DATABASE\s+)?['"]([^'"]+)['"]""", re.IGNORECASE
+)
+_SQL_VACUUM_INTO_RE = re.compile(
+    r"""\bVACUUM\s+INTO\s+['"]([^'"]+)['"]""", re.IGNORECASE
+)
+# Best-effort catch-all for a path-shaped string literal anywhere in the query
+# (readfile()/writefile() extensions, .import targets, or an ATTACH spelled in
+# a form the two patterns above miss). Deliberately a heuristic, not a parser:
+# a literal counts as path-shaped if it contains a directory separator or ends
+# in a file extension this system actually protects.
+_SQL_PATHISH_RE = re.compile(
+    r"""['"]\s*((?:[^'"\s]*/[^'"]*)|(?:[^'"\s/]+\.(?:db|sqlite|sqlite3|sql|env|json|md|py|sh|key|pem)))\s*['"]""",
+    re.IGNORECASE,
+)
+
+
+def _sql_candidate_paths(sql: str) -> list[str]:
+    """Filesystem paths a SQL string could write to or read from."""
+    if not sql:
+        return []
+    out: list[str] = []
+    for pattern in (_SQL_ATTACH_RE, _SQL_VACUUM_INTO_RE, _SQL_PATHISH_RE):
+        out.extend(m.group(1) for m in pattern.finditer(sql))
+    seen: set[str] = set()
+    return [p for p in out if p and not (p in seen or seen.add(p))]
+
+
+def _candidate_paths(tool: str, tool_input: dict) -> list[str]:
+    """Every filesystem path this tool call could touch.
+
+    Edit/Write/MultiEdit — file_path (the pre-v3.5 behaviour, preserved).
+    mcp__filesystem__*   — its path argument(s), unless the tool only reads.
+    mcp__*__execute /
+    mcp__*db*__query     — paths named by the SQL string (ATTACH DATABASE,
+                           VACUUM INTO, path-shaped literals).
+    Bash                 — deliberately empty: Bash keeps its own token/write-
+                           operator heuristic in _bash_touches_blocked(), which
+                           reasons over the whole command line rather than a
+                           discrete path argument.
+    """
+    inp = tool_input or {}
+    paths: list[str] = []
+
+    if tool in ("Edit", "Write", "MultiEdit"):
+        p = inp.get("file_path", inp.get("path", ""))
+        if p:
+            paths.append(str(p))
+        return paths
+
+    if tool.startswith("mcp__"):
+        suffix = tool.rsplit("__", 1)[-1]
+        is_fs = tool.startswith("mcp__filesystem__")
+        if is_fs and suffix in _MCP_FS_READONLY_SUFFIXES:
+            return []
+        if is_fs:
+            for key in _MCP_PATH_KEYS:
+                val = inp.get(key)
+                if isinstance(val, str) and val:
+                    paths.append(val)
+                elif isinstance(val, (list, tuple)):
+                    paths.extend(str(v) for v in val if v)
+        # Any MCP tool that takes SQL is a filesystem actor via ATTACH/VACUUM,
+        # regardless of which server exposes it.
+        for key in ("sql", "query", "statement"):
+            val = inp.get(key)
+            if isinstance(val, str) and val:
+                paths.extend(_sql_candidate_paths(val))
+
+    seen: set[str] = set()
+    return [p for p in paths if not (p in seen or seen.add(p))]
+
+
+def _blocked_path_hit(path: str) -> str | None:
+    """The BLOCKED_PATHS token a path matches, ignoring governance-only tokens.
+
+    A token that is in both lists (`.claude/settings.local.json`) is resolved by
+    GOVERNANCE_PATHS (ESCALATE), so it is excluded here. A governance file that
+    *also* matches a genuine deny token (e.g. `.claude/rules/secrets.md` hitting
+    "secrets") still denies — DENY wins whenever the two lists disagree.
+    """
+    if not path:
+        return None
+    for blocked in BLOCKED_PATHS:
+        if blocked in GOVERNANCE_PATHS:
+            continue
+        if blocked in path:
+            return blocked
+    return None
+
+
+def _governance_path_hit(path: str) -> str | None:
+    """The GOVERNANCE_PATHS token a path matches, or None."""
+    if not path:
+        return None
+    normalized = path.replace("\\", "/")
+    for gov in GOVERNANCE_PATHS:
+        if gov in normalized:
+            return gov
+    return None
 
 # Shell metacharacters used to split a Bash command into path-like tokens.
 _BASH_TOKEN_SPLIT_RE = re.compile(r"""[\s'"();|&<>=`,]+""")
@@ -435,7 +596,7 @@ DENIAL_HINTS: dict[str, str] = {
         "Use os.environ['KEY'] to read temporary variables. "
         "Or use export KEY=value in bash without touching the file."
     ),
-    "blocked_path:schema.sql": (
+    "blocked_path:schema_v2.sql": (
         "Add the SQL migration in a new file: "
         "database/migrations/YYYYMMDD_description.sql"
     ),
@@ -573,15 +734,26 @@ class PermissionAnalyzer:
                re.search(r'\.write_(?:text|bytes)\s*\(', cmd):
                 is_write = True
         if is_write:
-            for blocked in BLOCKED_PATHS:
-                if blocked in cmd:
-                    return self._deny(
-                        "Bash", cmd,
-                        f"Blocked path '{blocked}' targeted by Bash write operation.",
-                        "CRITICAL",
-                        f"bash_write_blocked_path:{blocked}",
-                        "Use Write/Edit tool for file modifications. Bash cannot bypass path restrictions.",
-                    )
+            blocked = _blocked_path_hit(cmd)
+            if blocked:
+                return self._deny(
+                    "Bash", cmd,
+                    f"Blocked path '{blocked}' targeted by Bash write operation.",
+                    "CRITICAL",
+                    f"bash_write_blocked_path:{blocked}",
+                    "Use Write/Edit tool for file modifications. Bash cannot bypass path restrictions.",
+                )
+            # Governance corpus via shell (v3.5): same policy as the Edit/Write
+            # and MCP routes — escalate, never silently allow.
+            gov = _governance_path_hit(cmd)
+            if gov:
+                return self._escalate(
+                    "Bash", cmd[:80],
+                    f"Bash write targets the DQIII8 governance corpus ('{gov}') — "
+                    "human confirmation required.",
+                    f"bash_write_governance_path:{gov}",
+                    "Confirm the governance change with the user before writing.",
+                )
         return None
 
     def _read_touches_credential(self, tool: str, path: str) -> dict | None:
@@ -778,7 +950,13 @@ class PermissionAnalyzer:
                 for safe in SAFE_PROJECT_DIRS
             )
             if in_safe_dir:
-                if not any(blocked in real_path for blocked in BLOCKED_PATHS):
+                # GOVERNANCE_PATHS excluded too: the whole governance corpus
+                # lives *inside* DQIII8_ROOT, so without this the safe-dir
+                # fast path would approve every rule/hook rewrite before the
+                # step-3 escalation could ever run.
+                if not any(
+                    blocked in real_path for blocked in BLOCKED_PATHS
+                ) and not _governance_path_hit(real_path):
                     return self._approve(
                         "Safe project directory", "LOW", "safe_project_dir"
                     )
@@ -795,20 +973,44 @@ class PermissionAnalyzer:
         if budget_deny:
             return budget_deny
 
-        # 3. Blocked paths (Write, Edit, MultiEdit)
-        if tool in ("Edit", "Write", "MultiEdit"):
-            path = inp.get("file_path", inp.get("path", ""))
-            for blocked in BLOCKED_PATHS:
-                if blocked in path:
-                    return self._deny(
-                        tool,
-                        path,
-                        f"Write blocked at '{path}'. "
-                        "Edit this file manually if needed.",
-                        "CRITICAL",
-                        f"blocked_path:{blocked}",
-                        "Edit directly from terminal or ask the user.",
-                    )
+        # 3. Blocked / governance paths — EVERY tool that names a path (v3.5).
+        # Runs ahead of learned_approvals (4a) and the autonomous auto-approve
+        # (5), so neither can whitelist a blocked or governance write.
+        try:
+            _candidates = _candidate_paths(tool, inp)
+        except Exception as _cpe:
+            log.warning("permission_analyzer: _candidate_paths failed: %s", _cpe)
+            return self._deny(
+                tool, str(detail)[:80],
+                "Internal analyzer error during path extraction — denying as precaution.",
+                "HIGH", "analyzer_internal_error",
+                "Retry, or ask the user to perform this write manually.",
+            )
+        for path in _candidates:
+            blocked = _blocked_path_hit(path)
+            if blocked:
+                return self._deny(
+                    tool,
+                    path,
+                    f"Write blocked at '{path}'. "
+                    "Edit this file manually if needed.",
+                    "CRITICAL",
+                    f"blocked_path:{blocked}",
+                    "Edit directly from terminal or ask the user.",
+                )
+            gov = _governance_path_hit(path)
+            if gov:
+                return self._escalate(
+                    tool,
+                    path,
+                    f"'{path}' is part of the DQIII8 governance corpus ('{gov}') — "
+                    "it defines the rules every other permission check enforces. "
+                    "Human confirmation required before this write proceeds.",
+                    f"governance_path:{gov}",
+                    "Confirm with the user that this governance change is intended, "
+                    "then have them apply it or re-run with explicit approval. "
+                    "Autonomous mode does not waive this.",
+                )
 
         # 3b. Resource claims — block if another agent holds the file
         if tool in ("Edit", "Write", "MultiEdit"):
@@ -1267,11 +1469,16 @@ def record_rejection(tool: str, inp: dict, result: dict) -> None:
         # with the actual destination instead of an empty string. Deliberately
         # NOT mirrored into record_decision(): that path feeds learned_approvals,
         # and approved research URLs must not accumulate as auto-approve rules.
+        # `path`/`sql` added in v3.5: MCP filesystem and DB tools carry their
+        # target there, so without them a blocked/escalated MCP write reached
+        # the operator as an empty action_detail.
         "action_detail": str(
             inp.get("file_path")
             or inp.get("command")
+            or inp.get("path")
             or inp.get("url")
             or inp.get("query")
+            or inp.get("sql")
             or ""
         )[:200],
         "decision": result["decision"],

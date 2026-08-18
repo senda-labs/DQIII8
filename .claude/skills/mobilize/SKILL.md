@@ -24,7 +24,7 @@ user-invocable: true
 
 ### Step 2 — Spawn Agents
 For each sub-task:
-- Spawn a Task agent with the appropriate agent type (see CLAUDE.md Delegation table).
+- Spawn a Task agent with the appropriate agent type (see `.claude/rules_db/common/agents.md` § Two runtimes, two SSOTs).
 - Pass only the minimum context needed for that sub-task.
 - Every agent gets an isolated worktree (`isolation: worktree`).
 - Each agent writes its result to `tasks/results/{agent_name}-{YYYY-MM-DD}.md`.

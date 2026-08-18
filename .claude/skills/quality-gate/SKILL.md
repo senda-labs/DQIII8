@@ -91,6 +91,4 @@ RESULT: PASS / BLOCKED
 
 ## Related
 
-- `verification-loop` skill — more detailed phase-by-phase protocol
-- `tdd-workflow` skill — write tests before running this
-- `security-review` skill — deeper checklist for auth/secrets code
+- `security-review` skill (Claude Code built-in) — deeper checklist for auth/secrets code

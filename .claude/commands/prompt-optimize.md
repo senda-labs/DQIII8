@@ -55,7 +55,8 @@ Apply these DQIII8-specific improvements:
 **For agent instructions:**
 - Add `## When NOT to use` section if missing
 - Verify trigger keywords match CLAUDE.md delegation table
-- Confirm model assignment matches 3-tier routing
+- Confirm model assignment matches the canonical C/B/B+/B++/A/S tier table
+  (`.claude/rules/03_tiering_and_routing.md`)
 
 **For Telegram messages:**
 - Keep under 280 chars for readability

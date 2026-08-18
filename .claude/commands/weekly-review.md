@@ -5,14 +5,32 @@ User writes `/weekly-review` (typically on Mondays or Fridays).
 
 ## Behavior
 
+> **SSOT: `.claude/skills/weekly-review/SKILL.md`.** This command file duplicated
+> the same three broken path literals and was corrected alongside it on
+> 2026-08-17 (Gap 14). Keep the two in sync; the skill carries the full rationale.
+
 ### 1. Read sessions from the last 7 days
 ```bash
-find $DQIII8_ROOT/sessions/ -name "*.md" -newer <(date -d '7 days ago' +%Y-%m-%d) | sort
+CUTOFF=$(date -d '7 days ago' +%Y-%m-%d)
+ls ${DQIII8_ROOT:-/root/dqiii8}/sessions/*.md \
+  | awk -v c="$CUTOFF" -F/ '{
+        d = substr($NF, 1, 10)
+        if (d ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && d >= c) print
+    }' | sort
 ```
-For each session: extract frontmatter (project, date) and "What we did" section (first bullet).
+Select by filename date, not mtime. (The previous `find … -newer <(date …)` matched
+zero files on every run: `-newer` compares against a file's mtime and the
+process-substitution FIFO is created *now*.)
+
+Session notes have no YAML frontmatter — they are `/handover` notes with
+`# Session Handover — YYYY-MM-DD` and `##` sections. Use the heading for the date
+and the first bullet of `## Next steps` for the one-liner.
 
 ### 2. Read status of all projects
-Read `projects/*.md` — extract: title, status from YAML frontmatter, section "Next step".
+Read `my-projects/PROJECT.md` — the index table (`Proyecto | Estado | Descripción |
+Próximo paso`). Per-project detail lives in `my-projects/<slug>/PROJECT.md`, where
+status is a plain `Status: active | Stack: …` header line, not YAML frontmatter.
+(`projects/*.md` does not exist and never did.)
 
 ### 3. Query week metrics
 ```sql
@@ -81,16 +99,16 @@ tags: [dashboard, weekly]
 > [Problem description]
 ```
 
-### 5. Git push
-```bash
-git -C $DQIII8_ROOT add 00_DASHBOARD.md sessions/
-git -C $DQIII8_ROOT commit -m "docs: weekly review week W[N]"
-git -C $DQIII8_ROOT push origin main
-```
+### 5. Do NOT commit or push
+`00_DASHBOARD.md` and `sessions/` are both gitignored, and the dashboard was
+deliberately purged from the public repo (commit `1437942`) because it aggregates
+private project status. `git add` on either path fails or no-ops; forcing it with
+`-f` would re-leak exactly what that purge removed. The dashboard stays local,
+same convention as `/handover`.
 
 ### 6. Feedback
 ```
-[WEEKLY] ✅ Dashboard updated in 00_DASHBOARD.md · Week W[N] · [N] sessions processed
+[WEEKLY] ✅ Dashboard updated locally in 00_DASHBOARD.md · Week W[N] · [N] sessions processed
 ```
 
 ## Notes

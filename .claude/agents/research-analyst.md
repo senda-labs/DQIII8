@@ -1,6 +1,8 @@
 ---
 name: research-analyst
 model: groq/llama-3.3-70b-versatile
+# Nota: distinto del backend AGENT_ROUTING['research-analyst'] (NIM) usado por
+# bin/core/openrouter_wrapper.py — dos runtimes distintos, ver .claude/rules_db/common/agents.md.
 tools: ["Read", "Grep", "Glob"]
 ---
 

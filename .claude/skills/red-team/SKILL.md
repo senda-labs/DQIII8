@@ -168,8 +168,15 @@ Before classifying ANY finding, run this checklist. Unverified findings are nois
    conn = sqlite3.connect('database/dqiii8.db')
    rows = conn.execute('SELECT title, status FROM security_findings ORDER BY created_at DESC LIMIT 20').fetchall()
    [print(r) for r in rows]
-   " 2>/dev/null || echo "(no security_findings table)"
+   "
    ```
+   The `security_findings` table exists in `database/schema_v2.sql` and in the
+   live DB as of 2026-08-17. There is deliberately **no** `2>/dev/null ||` fallback
+   here anymore: an error from this query means the schema regressed, and that
+   must surface loudly rather than be swallowed into a "no duplicates" result.
+   Columns available for filing a finding: `finding_id`, `title`, `severity`,
+   `status`, `category`, `source`, `file_path`, `proof`, `impact`, `report_path`,
+   `resolved`, `resolution`, `created_at`.
 5. **Classify each finding**:
    - `REAL` — reproduced, no recent fix, genuinely exploitable
    - `MITIGATED` — real but defense-in-depth reduces impact

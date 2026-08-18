@@ -7,7 +7,7 @@ Layer 1 — READ_PREFIXES fast-path:
     - Bash commands starting with safe prefixes (ls, git log, cat, etc.)
     → auto-approves instantly without LLM
 
-Layer 2 — LLM supervisor (openrouter tier2, timeout 3s → PERMITE):
+Layer 2 — LLM supervisor (openrouter_wrapper, Tier B / Groq, timeout 3s → PERMITE):
     - Reads tasks/current_objective.txt for context
     - Responds {decision: PERMITE|REDIRIGE|ESCALA, reason}
     - PERMITE → allow | REDIRIGE → deny with suggestion | ESCALA → Layer 3
@@ -180,7 +180,7 @@ def _read_current_objective() -> str:
 
 def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> dict:
     """
-    Layer 2: Calls the LLM supervisor via openrouter_wrapper (tier2, timeout 3s).
+    Layer 2: Calls the LLM supervisor via openrouter_wrapper (Tier B / Groq, timeout 3s).
     Returns: {"decision": "PERMITE"|"REDIRIGE"|"ESCALA", "reason": str}
     Timeout → PERMITE by default (do not block autonomy if LLM fails).
     """

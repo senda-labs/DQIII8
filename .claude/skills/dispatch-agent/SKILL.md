@@ -157,7 +157,10 @@ Posibles status: `ok` | `error` | `timeout` | `pending` (async)
 
 ## Reglas de uso
 
-1. **Tier-first**: si puedes hacer la tarea tú (CC/Sonnet), hazla. Usa dispatch solo para trabajo intensivo o paralelo.
+1. **Cost-first**: antes de resolver la tarea tú mismo (CC/Sonnet = Tier A, de pago),
+   evalúa si un tier gratuito (C/B/B+) puede resolverla vía dispatch. Resolverla tú es
+   el escalado, no el atajo. Ver `.claude/rules/00_core_behavior.md` § Cost-First Rule.
+   (Cadena vigente hoy: `C → B → A`, con B+/NIM saltado por el outage de cuenta.)
 2. **No dispatch para decisiones de arquitectura** — eso requiere contexto completo del proyecto que solo CC tiene.
 3. **Max 6 workers en paralelo** — el NIM global rate limit es 40 RPM, evitar 429 masivos.
 4. **Persistir resultados importantes**: `--project <nombre>` escribe a `tasks/results/dispatch-{id}.json`.

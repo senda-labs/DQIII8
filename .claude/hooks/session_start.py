@@ -202,19 +202,37 @@ except Exception as e:
 model = os.environ.get("DQIII8_MODEL", "qwen2.5-coder:7b (Ollama)")
 
 # ── Personality Mode ────────────────────────────────────────────────
-_mode = ""
-try:
-    _mode_file = Path("/tmp/dqiii8_mode.txt")
-    if _mode_file.exists():
-        _mode = _mode_file.read_text(encoding="utf-8").strip()
-except Exception as e:
-    _log.debug("mode-file read skipped: %s", e)
-
 _MODE_BEHAVIORS = {
     "coder": "CODER MODE: code first, minimal prose, Black always, show diffs.",
     "analyst": "ANALYST MODE: tables, metrics, verify numbers, no speculation.",
     "creative": "CREATIVE MODE: narrative, literary style, no technical formatting.",
 }
+
+# Precedence: DQIII8_MODE env var → var/dqiii8_mode.conf → /tmp legacy file.
+#
+# The env var is only honoured when it names a real personality mode. The same
+# DQIII8_MODE name is already owned by permission_analyzer.py, where it carries a
+# different vocabulary ("supervised"/"autonomous"); validating against
+# _MODE_BEHAVIORS keeps the two uses from colliding instead of silently
+# interpreting a permission setting as a writing style.
+#
+# var/dqiii8_mode.conf is the file /mode writes (gitignored, survives reboot).
+# /tmp/dqiii8_mode.txt is the pre-2026-08-17 location, still read so an already
+# running box doesn't lose its mode mid-flight.
+_mode = ""
+try:
+    _env_mode = os.environ.get("DQIII8_MODE", "").strip().lower()
+    if _env_mode in _MODE_BEHAVIORS:
+        _mode = _env_mode
+    else:
+        for _mode_file in (JARVIS / "var" / "dqiii8_mode.conf", Path("/tmp/dqiii8_mode.txt")):
+            if _mode_file.exists():
+                _candidate = _mode_file.read_text(encoding="utf-8").strip().lower()
+                if _candidate:
+                    _mode = _candidate
+                    break
+except Exception as e:
+    _log.debug("mode read skipped: %s", e)
 
 _vault_block = ""
 if vault_facts:

@@ -1,56 +1,78 @@
-# Agent Orchestration
+# Agent Orchestration — SSOT
 
-## Available Agents
+## Two runtimes, two SSOTs (no fusionarlos)
 
-Located in `~/.claude/agents/`:
+DQIII8 tiene **dos sistemas de agentes distintos** que comparten algunos nombres.
+No son un duplicado a reconciliar: son runtimes diferentes con propósitos diferentes.
 
-| Agent | Purpose | When to Use |
-|-------|---------|-------------|
-| planner | Implementation planning | Complex features, refactoring |
-| architect | System design | Architectural decisions |
-| tdd-guide | Test-driven development | New features, bug fixes |
-| code-reviewer | Code review | After writing code |
-| security-reviewer | Security analysis | Before commits |
-| build-error-resolver | Fix build errors | When build fails |
-| e2e-runner | E2E testing | Critical user flows |
-| refactor-cleaner | Dead code cleanup | Code maintenance |
-| doc-updater | Documentation | Updating docs |
+| Runtime | SSOT | Qué define | Cómo se invoca |
+|---|---|---|---|
+| **Dispatch dqiii8** (NIM / Groq / Ollama / Anthropic vía wrapper) | `AGENT_ROUTING` en `bin/core/openrouter_wrapper.py` (**código**) | Nombre de agente → `(provider, model)` | `python3 bin/core/openrouter_wrapper.py --agent <nombre> --no-enrich "<prompt>"` |
+| **Agent tool nativo de Claude Code** | Ficheros `.claude/agents/*.md` (**frontmatter**) | `name`, `model`, `tools`, `description` | Agent tool del propio Claude Code (Tier A por defecto) |
 
-## Immediate Agent Usage
+Solapan parcialmente: el wrapper lee el **cuerpo** de `.claude/agents/<nombre>.md` como
+system prompt (`load_agent_system_prompt()`), pero **ignora su `model:`** — el modelo de
+dispatch sale siempre de `AGENT_ROUTING`. Por eso un mismo nombre puede legítimamente
+correr en dos modelos distintos según el runtime.
 
-No user prompt needed:
-1. Complex feature requests - Use **planner** agent
-2. Code just written/modified - Use **code-reviewer** agent
-3. Bug fix or new feature - Use **tdd-guide** agent
-4. Architectural decision - Use **architect** agent
+### Cómo resolver un nombre de agente (no memorizar listas)
 
-## Parallel Task Execution
+- ¿Es válido para dispatch por Bash? → **claves de `AGENT_ROUTING`**:
+  ```bash
+  python3 -c "import re,sys; s=open('bin/core/openrouter_wrapper.py').read(); \
+  m=re.search(r'AGENT_ROUTING = \{(.*?)\n\}', s, re.S); \
+  print(sorted(re.findall(r'^\s*\"([a-z0-9\-_]+)\":', m.group(1), re.M)))"
+  ```
+  (no hay flag `--list-agents` en el wrapper; verificado 2026-08-17)
+- ¿Es válido para el Agent tool nativo? → **listado del directorio**: `ls .claude/agents/*.md`.
+- Un nombre que no aparezca en ninguno de los dos **no existe**. No inventarlo.
 
-ALWAYS use parallel Task execution for independent operations:
+Cualquier tabla de agentes escrita a mano en un `.md` es una copia derivada y se
+desincroniza: si necesitas una, verifícala contra las dos fuentes anteriores en el momento.
 
-```markdown
-# GOOD: Parallel execution
-Launch 3 agents in parallel:
-1. Agent 1: Security analysis of auth module
-2. Agent 2: Performance review of cache system
-3. Agent 3: Type checking of utilities
+### Estado verificado 2026-08-17 (ilustrativo, no normativo)
 
-# BAD: Sequential when unnecessary
-First agent 1, then agent 2, then agent 3
-```
+- `AGENT_ROUTING`: 43 claves (incluida `default`). Familias: specialists de dominio en Groq,
+  código/análisis en NIM, `code-reviewer` / `code-validator` en Opus (`claude-opus-4-8`),
+  `finance-specialist` / `auditor` / `orchestrator` / `tax-auditor` / `closing-specialist`
+  en Sonnet (`claude-sonnet-4-6`), `git-specialist` / `content-automator` en Ollama,
+  bloque Accounting-ERP en Groq.
+- `.claude/agents/` (17 ficheros): `auditor`, `closing-specialist`, `code-reviewer`,
+  `content-automator`, `customer-accountant`, `executor-lite`, `explorer-lite`,
+  `finance-specialist`, `git-specialist`, `intl-writer`, `invoice-extractor`,
+  `orchestrator`, `python-specialist`, `research-analyst`, `supplier-accountant`,
+  `tax-auditor`, `web-specialist`.
 
-## Multi-Perspective Analysis
+Versiones previas de este fichero listaban ~10 nombres de agente que no existían en ninguno
+de los dos sistemas; se eliminaron el 2026-08-17 (Gap 8). Si encuentras un nombre de agente
+citado en cualquier doc, verifícalo contra las dos fuentes de arriba antes de usarlo.
 
-For complex problems, use split role sub-agents:
-- Factual reviewer
-- Senior engineer
-- Security expert
-- Consistency reviewer
-- Redundancy checker
+### Split legítimo conocido
 
----
-## ⚠️ DQIII8 OVERRIDE
-Agents defined in `.claude/agents/` of DQIII8 replace the table above.
-Active agents: python-specialist, git-specialist, code-reviewer, orchestrator,
-content-automator, data-analyst, creative-writer, auditor.
-Delegation table: see CLAUDE.md § Delegation.
+`research-analyst`: `.claude/agents/research-analyst.md` usa `groq/llama-3.3-70b-versatile`
+(coste) para el Agent tool nativo; `AGENT_ROUTING["research-analyst"]` usa NIM Nemotron
+para el dispatch por Bash. Es intencionado, no drift.
+
+### Frontmatter: campos que el runtime lee de verdad
+
+`model:` es el único campo de modelo que el Agent tool nativo entiende. `tier:` **no lo lee
+nadie** (ni Claude Code ni `openrouter_wrapper.py`, que solo parsea `domain:`) — un agente
+con `tier:` y sin `model:` cae al modelo por defecto en silencio. Si documentas un tier,
+acompáñalo siempre de un `model:` explícito.
+
+## Cost-First al delegar
+
+Antes de usar el Agent tool nativo (Tier A, tokens Anthropic), evalúa si el trabajo lo
+resuelve un tier gratuito vía el wrapper. Ver `.claude/rules/00_core_behavior.md`
+§ Cost-First Rule y `.claude/rules/03_tiering_and_routing.md`.
+
+## Ejecución paralela
+
+Usa ejecución paralela para operaciones independientes (sin estado compartido ni
+dependencias secuenciales). Secuencial solo cuando exista dependencia real.
+
+## Análisis multi-perspectiva
+
+Para problemas complejos, usa sub-agentes con roles separados: revisor factual, ingeniero
+senior, experto en seguridad, revisor de consistencia, detector de redundancia.
+Ver `.claude/skills/panel-review/`.

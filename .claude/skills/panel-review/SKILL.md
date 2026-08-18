@@ -39,13 +39,20 @@ Runs `python3 bin/tools/panel_review.py <plan-file>`.
 3. **Report**: written to `database/audit_reports/panel-review-YYYY-MM-DD-HH-<slug>.md`.
    `database/audit_reports/*.md` is explicitly un-ignored in `.gitignore` (narrow
    negation, `*.md` only — `analytics.log` and non-`.md` artifacts in the same
-   directory stay ignored) since 2026-08-17, after this path was found to be
-   gitignored wholesale — the same failure mode that permanently lost a prior
-   review's findings ledger (see session 2026-08-11 handover, and F11 in
+   directory stay ignored). The negation was actually implemented on 2026-08-17
+   (Gap 5 of the governance remediation); before that the path was gitignored
+   wholesale — the same failure mode that permanently lost a prior review's
+   findings ledger (see session 2026-08-11 handover, and F11 in
    `database/audit_reports/2026-08-16-metadata-watermark-toolchain-reaudit.md`).
-   Run `gitleaks detect` plus a manual IP/password/token grep over any new report
-   before committing — gitleaks' shipped rules do not catch a bare IP or a bare
-   password literal. Never `docs/superpowers/` — that path is gitignored and not
+   Two negation lines are needed, one after each of the broad ignore patterns in
+   `.gitignore` — the last matching pattern wins, so dropping the second one
+   silently re-ignores the whole directory.
+   Run `gitleaks detect` over any new report before committing. As of 2026-08-17
+   `.gitleaks.toml` carries two rules scoped to this corpus —
+   `audit-docs-bare-ipv4` and `audit-docs-password-literal` — that catch the bare
+   IP / bare password literal that gitleaks' shipped rules miss (the mechanical
+   cause of F-26); a manual grep is still worthwhile for anything they can't
+   pattern-match. Never `docs/superpowers/` — that path is gitignored and not
    negated.
 4. **Verdict is advisory, not a gate.** The tool reports; the calling session
    (CC) is responsible for addressing each cited finding before implementation

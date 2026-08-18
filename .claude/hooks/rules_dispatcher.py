@@ -3,7 +3,19 @@ DQIII8 — Rules Dispatcher (RAG de Reglas Dinámico)
 Inyecta SÓLO las reglas relevantes al contexto del tool en curso.
 
 En lugar de cargar los 16 archivos en cada turno (~4k tokens), este módulo
-mapea tool + input → subconjunto mínimo de reglas (~200-800 tokens).
+mapea tool + input → subconjunto mínimo de reglas (~1.430-4.470 tokens).
+
+RANGO CANÓNICO (medido con token_estimate() sobre la matriz de casos
+representativos de tests/test_rules_dispatcher.py, 2026-08-17, tras añadir
+"core-behavior" a _ALWAYS, reescribir la § REGLA NIM y purgar los aliases
+huérfanos): **suelo 1.432** (solo _ALWAYS = ops + core-behavior), **techo 4.469**
+(Bash con keyword agent/orchestrat → tiering+agents+plan-gate).
+
+RE-MEDIR OBLIGATORIAMENTE (este rango ya se ha quedado obsoleto dos veces en un
+mismo día) siempre que cambie de tamaño 00_core_behavior.md, dqiii8-ops.md, o
+cualquier fichero de rules_db/ que esté en _ALWAYS o en un trigger muy usado, y
+siempre que se añada/quite un trigger. Los 4 sitios que citan el rango deben
+actualizarse juntos: este docstring, DYNAMIC.md, y 02_hooks_and_permissions.md (×2).
 
 Las reglas residen en .claude/rules_db/ (fuera del auto-inject de Claude Code).
 El único archivo en .claude/rules/ es el DYNAMIC.md de 3 líneas.
@@ -32,26 +44,44 @@ _REGISTRY: dict[str, str] = {
     # ── Legacy contextual rules (rules_db/) ───────────────────────────────────
     "git-safety":     "git-safety.md",
     "python":         "python.md",
-    "routing":        "routing.md",
     "ops":            "dqiii8-ops.md",
     "prevention":     "dqiii8-error-prevention.md",
     "tools":          "dqiii8-tools.md",
     "plan-gate":      "dqiii8-plan-gate.md",
     # "deliverables" / "context-window" aliases removed 2026-07-05: their files
     # never existed and no tool/keyword mapping referenced them (audit P3-15).
+    # "routing" alias + routing.md removed 2026-08-17 (audit gap 12a): orphaned —
+    # no tool/keyword mapping referenced it and 03_tiering_and_routing.md already
+    # carries the routing table, decision algorithm and delegation rules.
     "workspace":      "workspace.md",
     "intl-reports":   "intl-reports-ops.md",
     "web-tools":      "web-research-tools.md",
     "agents":         "common/agents.md",
     "quality":        "common/quality.md",
-    "git-workflow":   "common/git-workflow.md",
-    "workflow":       "common/workflow.md",
-    "testing":        "common/testing.md",
-    "performance":    "common/performance.md",
+    # "git-workflow" / "workflow" / "testing" aliases + their common/*.md files
+    # removed 2026-08-17 (audit gap 12a, residual sweep): all three were orphans —
+    # registered but unreachable from _ALWAYS/_TOOL_RULES/_BASH_KEYWORD_RULES/_EXT_RULES
+    # — AND generic Claude Code boilerplate already superseded by wired DQIII8 files:
+    #   testing.md      → python.md § Testing (pytest+marks+80% cov), wired to
+    #                     .py and to the \bpytest\b keyword; also cited a
+    #                     non-existent "tdd-guide" agent.
+    #   git-workflow.md → git-safety.md, wired to \bgit\b and .sh. Its only
+    #                     DQIII8-specific line (commit attribution trailer) was
+    #                     merged there; its own copy was stale ("Sonnet 4.6") and
+    #                     it linked a development-workflow.md that never existed.
+    #   workflow.md     → hooks section duplicated ../rules/02_hooks_and_permissions.md,
+    #                     TDD/coverage duplicated python.md, and it cited a
+    #                     non-existent "planner" agent. Rest was generic web-app
+    #                     patterns (Repository, API envelope) unrelated to DQIII8.
+    # "performance" alias + common/performance.md removed 2026-08-17 (audit gap 9):
+    # orphaned (no tool/keyword mapping referenced it) AND generic Claude Code
+    # boilerplate, not DQIII8 content — it redefined tiers with a numeric 1/2/3
+    # competing taxonomy. La taxonomía canónica es C/B/B+/B++/A/S y vive en
+    # ../rules/03_tiering_and_routing.md (alias "tiering"). No redefinir tiers aquí.
 }
 
-# ── ALWAYS injected (minimal ops guard, <300 tokens combined) ────────────────
-_ALWAYS: tuple[str, ...] = ("ops",)   # prohibitions + autonomy rules
+# ── ALWAYS injected (ops guard + core behavior, ~1.040 tokens combined) ──────
+_ALWAYS: tuple[str, ...] = ("ops", "core-behavior")  # prohibitions + autonomy + zero-complacency/cost-first
 
 # ── Tool → rules mapping ─────────────────────────────────────────────────────
 # Each entry is a list of rule aliases to inject.
@@ -81,7 +111,8 @@ _BASH_KEYWORD_RULES: list[tuple[re.Pattern, list[str]]] = [
     (re.compile(r"\bsystemctl\b|\bservice\b"),       ["prevention"]),
     (re.compile(r"\bnohup\b|\bbg\b"),               []),
     (re.compile(r"\bclaude\b|\bcc\b"),               ["tools"]),
-    (re.compile(r"\bagent\b|\borchestrat"),          ["tiering", "agents"]),
+    (re.compile(r"\bagent\b|\borchestrat"),          ["tiering", "agents", "plan-gate"]),
+    (re.compile(r"\btmux\b|\byazi\b|bin/workspace|launch_(swarm|beeswarm|monitor)"), ["workspace"]),
     (re.compile(r"generate_company|save_response|intl.writer|intl.reports"), ["intl-reports"]),
     (re.compile(r"\bfirecrawl\b"),                   ["web-tools"]),
 ]

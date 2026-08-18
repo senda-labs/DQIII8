@@ -72,4 +72,4 @@ cat .claude/checkpoints.log | tail -20
 
 - Checkpoints are git commits — they survive context compaction
 - Use before risky multi-file changes (P2, P3 batches)
-- Combine with `strategic-compact`: compact AFTER creating checkpoint
+- If you compact the context afterwards, create the checkpoint first

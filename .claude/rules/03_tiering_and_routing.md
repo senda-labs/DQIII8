@@ -7,17 +7,27 @@ paths:
 ---
 # Tiering & Routing — DQIII8
 
-## ⚠️ INVARIANTE NIM (leer antes que cualquier otra regla)
-NIM Tier B+ es $0 y calidad comparable/superior a Sonnet en planificación, análisis y código.
-**OBLIGATORIO intentar NIM antes de cualquier escalado a Tier A o S.**
-Ver regla completa en `.claude/rules/00_core_behavior.md` § INVARIANTE NIM.
+## ⚠️ REGLA NIM — condicional al estado de la cuenta (leer antes que cualquier otra regla)
+
+**Estado actual: NIM EN OUTAGE. Cadena vigente `C → B → A` (Tier B+ SALTADO).**
 
 > ⚠️ **NIM caído a nivel de cuenta desde 2026-08-16**: 403 "Authorization failed" en
 > TODA inferencia (`GET /v1/models` funciona, `POST /v1/chat/completions` no, en
 > cualquier modelo). Acción requerida del usuario en build.nvidia.com — no reparable
-> en código. Ver comentario en `openrouter_wrapper.py` junto a `FALLBACK_CHAIN`.
+> en código. Telemetría: 0% de éxito sobre 86 llamadas. Ver comentario en
+> `openrouter_wrapper.py` junto a `FALLBACK_CHAIN`.
 
-Modelos NIM prioritarios (catálogo vigente 2026-08-16 — reemplazan los EOL de 2026-06-26):
+Mientras dure el outage **no se intenta NIM antes de escalar**: Ollama (C) → Groq (B) →
+Sonnet (A). Cuando la cuenta esté sana, y solo entonces, vuelve a ser obligatorio intentar
+NIM (B+) antes de cualquier escalado a Tier A o S.
+
+**Reactivación:** requiere (1) probe manual humano `POST /v1/chat/completions` con
+`Bearer $NVIDIA_API_KEY` devolviendo 200 (un 200 en `GET /v1/models` NO vale) y
+(2) confirmación explícita del usuario. Ningún agente puede levantar este flag por sí
+mismo. Regla completa y comando de probe: `.claude/rules/00_core_behavior.md` § REGLA NIM.
+
+Modelos NIM correctos (catálogo vigente 2026-08-16 — reemplazan los EOL de 2026-06-26;
+el código debe mantenerlos correctos aunque la cuenta esté caída):
 - **Planificación/análisis** → `nvidia/llama-3.3-nemotron-super-49b-v1.5` (agente: `software-specialist`)
 - **Código/web (1M ctx)** → `deepseek-ai/deepseek-v4-flash-0731` (agente: `web-specialist`)
 
@@ -29,9 +39,9 @@ Modelos NIM prioritarios (catálogo vigente 2026-08-16 — reemplazan los EOL de
 |---|---|---|---|---|
 | C | Ollama (local) | `qwen2.5-coder:7b` | $0 | Code, git, pipeline, applied_sciences |
 | B | Groq | `llama-3.3-70b-versatile` | $0 | Research, analysis, writing, domain knowledge |
-| **B+** | **NVIDIA NIM** | `nemotron-super-49b` / `deepseek-v4-flash-0731` | **$0** | **Prioridad sobre Sonnet — planificación, código, análisis** (⚠️ cuenta en 403, ver arriba) |
-| B++ | GitHub Models | `deepseek-v3-0324` / `codestral-2501` | $0 | Code review, fallback NIM |
-| A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Solo si NIM falla ≥3 veces. Orquestación, decisiones críticas |
+| **B+** | **NVIDIA NIM** | `nemotron-super-49b` / `deepseek-v4-flash-0731` | **$0** | ⚠️ **EN OUTAGE — saltado. No intentar.** Cuando esté sano: prioridad sobre Sonnet en planificación, código y análisis |
+| B++ | GitHub Models | `deepseek-v3-0324` / `codestral-2501` | $0 | ⚠️ Retirado por GitHub (410) — fuera de la cadena de fallback |
+| A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Solo si C y B fallan (o, con NIM sano, si NIM falla ≥3 veces). Orquestación, decisiones críticas |
 | S | Anthropic | `claude-opus-4-8` | ~$0.20/turn | SOLO revisión adversarial final. Nunca generación inicial |
 
 **NIM — sondeo completo 2026-06-26 (50/121 activos), catálogo re-verificado 2026-08-16 (listado vía `/v1/models`, latencias no re-medidas — inferencia bloqueada por el 403 de cuenta):**
@@ -54,7 +64,8 @@ Rate limit: 40 RPM global, sin headers x-ratelimit → exponential backoff en 42
 2. Lower tier returns an error or produces demonstrably inadequate output.
 3. Domain is finance/trading/architecture AND complexity ≥ ARCHITECTURE level.
 
-**NEVER skip tiers.** NEVER use A/S for a task B can handle.
+**NEVER skip tiers** — con una única excepción vigente y documentada: **B+ (NIM) se salta
+mientras dure el outage de cuenta** (ver arriba). NEVER use A/S for a task B can handle.
 
 ## Patrón: Pseudocódigo → Código → Validación
 
@@ -63,10 +74,10 @@ Pipeline de dos fases para implementación a partir de plan/spec:
 ```
 [Plan / Pseudocódigo]
         ↓
-  code-generator          NIM / deepseek-ai/deepseek-v4-flash   (B+, 1M ctx, 8s TTFB)
-  python-specialist       NIM / deepseek-ai/deepseek-v4-flash   (B+)
-  algo-specialist         NIM / deepseek-ai/deepseek-v4-flash   (B+)
-  web-specialist          NIM / deepseek-ai/deepseek-v4-flash   (B+)
+  code-generator          NIM / deepseek-ai/deepseek-v4-flash-0731   (B+, 1M ctx, 8s TTFB)
+  python-specialist       NIM / deepseek-ai/deepseek-v4-flash-0731   (B+)
+  algo-specialist         NIM / deepseek-ai/deepseek-v4-flash-0731   (B+)
+  web-specialist          NIM / deepseek-ai/deepseek-v4-flash-0731   (B+)
         ↓
   code-reviewer           Anthropic / claude-opus-4-8            (S — revisión estricta)
   code-validator          Anthropic / claude-opus-4-8            (S — alias explícito)
@@ -90,7 +101,10 @@ Ventaja sobre Ollama qwen local: contexto de 1M (vs 32K), reasoning más profund
 
 3. **Keyword fallback** — `KEYWORD_TASK_TYPE` dict in `bin/director.py`. Last resort.
 
-## Task Complexity → Tier Mapping
+## Task Complexity → Executor Mapping
+
+_(Eje distinto al de los tiers C/B/B+/B++/A/S: esta tabla mapea **clase de complejidad**
+a **tipo de ejecutor**, no a tier de coste. No llamar "tiers" a estas clases.)_
 
 | Complexity | Executor | Trigger |
 |---|---|---|
@@ -157,9 +171,10 @@ Detalle completo del proveedor NIM → `.claude/rules_db/nim-provider.md`.
 - `nim`: **hallazgo nuevo 2026-08-16** — toda inferencia (`POST /v1/chat/completions`)
   devuelve 403 "Authorization failed" en cualquier modelo probado (`GET /v1/models` sí
   funciona). No es un problema de modelo — la cuenta/key necesita revisión en
-  build.nvidia.com. NIM se mantiene en `FALLBACK_CHAIN` (no se desconecta): el fail-open
-  a Groq ya cubre este caso y desconectarlo violaría la INVARIANTE NIM si la cuenta se
-  repara. Modelos EOL corregidos de paso: `mistral-large-3-675b-instruct-2512` (410) →
+  build.nvidia.com. NIM se mantiene en `FALLBACK_CHAIN` (el 403 es fatal y salta al
+  siguiente proveedor sin reintentos, coste ~1 RTT), pero **a nivel de decisión de
+  routing NIM está saltado**: no elegir agentes NIM como primarios mientras dure el
+  outage (ver § REGLA NIM arriba). Modelos EOL corregidos: `mistral-large-3-675b-instruct-2512` (410) →
   `nvidia/llama-3.3-nemotron-super-49b-v1.5`; `deepseek-v4-flash` (410) →
   `deepseek-ai/deepseek-v4-flash-0731`.
 - Impacto real de openrouter/github: bajo, eran los últimos eslabones de sus cadenas.

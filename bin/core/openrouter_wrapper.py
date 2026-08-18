@@ -92,9 +92,10 @@ PROVIDERS = {
     },
     # NVIDIA NIM — Tier B+ (free, OpenAI-compatible, 50/121 models activos, 40 RPM global)
     # Sondeo completo 2026-06-26: 50 OK, 58 404, 9 timeout, 4 error
-    # RÁPIDOS (<1s): mistral-large-3-675b(0.3s), llama-3.1-70b(0.3s), llama-4-maverick(0.3s),
+    # RÁPIDOS (<1s): llama-3.1-70b(0.3s), llama-4-maverick(0.3s),
     #               ministral-14b(0.1s), nemotron-mini-4b(0.1s), phi-4-multimodal(0.2s)
-    # CÓDIGO: deepseek-v4-flash(1.4s, 1M ctx) — únicos granite/codestral/starcoder son 404
+    # RAZONAMIENTO: nvidia/llama-3.3-nemotron-super-49b-v1.5 (mistral-large-3-675b: EOL/410 2026-07-23)
+    # CÓDIGO: deepseek-v4-flash-0731 (1M ctx) — granite/codestral/starcoder son 404
     # SAFETY: nemoguard-8b-content-safety(0.1s), llama-guard-4-12b(0.1s), gliner-pii(0.1s)
     # VISIÓN: phi-4-multimodal(0.2s), llama-3.2-90b-vision(0.3s), llama-3.2-11b-vision(4.9s)
     # TRADUCCIÓN: riva-translate-4b-v1.1(0.2s)
@@ -135,19 +136,19 @@ AGENT_ROUTING = {
 
     # ── Tier B+ NIM — Código (DeepSeek V4 Flash: 1.4s, 1M ctx, confirmado) ──
     # Patrón: pseudocódigo → [nim] → code-validator [Opus] revisión estricta
-    "python-specialist": ("nim", "deepseek-ai/deepseek-v4-flash"),
-    "web-specialist":    ("nim", "deepseek-ai/deepseek-v4-flash"),
-    "algo-specialist":   ("nim", "deepseek-ai/deepseek-v4-flash"),
-    "code-engineer":     ("nim", "deepseek-ai/deepseek-v4-flash"),   # MetaGPT Engineer role
-    "opt-analyst":       ("nim", "mistralai/mistral-large-3-675b-instruct-2512"),  # optimization analysis
+    "python-specialist": ("nim", "deepseek-ai/deepseek-v4-flash-0731"),
+    "web-specialist":    ("nim", "deepseek-ai/deepseek-v4-flash-0731"),
+    "algo-specialist":   ("nim", "deepseek-ai/deepseek-v4-flash-0731"),
+    "code-engineer":     ("nim", "deepseek-ai/deepseek-v4-flash-0731"),   # MetaGPT Engineer role
+    "opt-analyst":       ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),  # optimization analysis
     "context-probe":     ("anthropic", "claude-haiku-4-5-20251001"),  # Haiku context bombardment
 
-    # ── Tier B+ NIM — Alta calidad (Mistral Large 3 675B: 0.3s, confirmado) ─
-    # 675B a 0.3s: mejor modelo gratuito disponible en NIM para razonamiento
-    "research-analyst":  ("nim", "mistralai/mistral-large-3-675b-instruct-2512"),
-    "software-specialist":("nim", "mistralai/mistral-large-3-675b-instruct-2512"),
-    "data-specialist":   ("nim", "mistralai/mistral-large-3-675b-instruct-2512"),
-    "ai-ml-specialist":  ("nim", "mistralai/mistral-large-3-675b-instruct-2512"),
+    # ── Tier B+ NIM — Alta calidad (Nemotron Super 49B v1.5) ────────────────
+    # Reemplaza mistral-large-3-675b-instruct-2512, EOL/410 desde 2026-07-23.
+    "research-analyst":  ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
+    "software-specialist":("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
+    "data-specialist":   ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
+    "ai-ml-specialist":  ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
 
     # ── Tier B+ NIM — Safety / Moderation (0.1s, confirmados) ───────────────
     "safety-checker":    ("nim", "nvidia/llama-3.1-nemoguard-8b-content-safety"),
@@ -219,18 +220,21 @@ _PROVIDER_DEFAULT_MODEL = {
     "openrouter": "qwen/qwen3-coder",
     "pollinations": "openai",
     "anthropic": "claude-sonnet-4-6",
-    "nim": "mistralai/mistral-large-3-675b-instruct-2512",  # 675B, 0.3s, mejor disponible
+    "nim": "nvidia/llama-3.3-nemotron-super-49b-v1.5",  # sustituye al mistral-large-3-675b EOL (410)
 }
 
 # Cadena de fallback por proveedor primario
 # Fallback chain — llm7 removed (0% success), anthropic added, nim added as B+
+# 2026-08-16: `openrouter` y `github` eliminados como DESTINOS de fallback (openrouter
+# sin créditos → 402; github retirado a nivel de plataforma → 404/410). Sus entradas en
+# PROVIDERS/_PROVIDER_DEFAULT_MODEL se conservan intactas para reactivación de una línea.
 FALLBACK_CHAIN = {
-    "ollama": ["groq", "nim", "openrouter", "github", "pollinations"],
-    "openrouter": ["groq", "nim", "github", "pollinations"],
-    "groq": ["nim", "openrouter", "github", "pollinations"],
-    "nim": ["groq", "openrouter", "github", "pollinations"],
+    "ollama": ["groq", "nim", "pollinations"],
+    "openrouter": ["groq", "nim", "pollinations"],
+    "groq": ["nim", "pollinations"],
+    "nim": ["groq", "pollinations"],
     "github": ["groq", "nim", "pollinations"],
-    "anthropic": ["groq", "nim", "openrouter", "pollinations"],
+    "anthropic": ["groq", "nim", "pollinations"],
     "pollinations": [],
 }
 

@@ -120,6 +120,29 @@ class Source:
             n for n in names if not any(n.startswith(x) for x in MD_SCAN_EXCLUDE)
         )
 
+    def list_governance_md(self) -> list[str]:
+        """Every markdown file in governance scope: `.claude/**` plus the
+        repo-root `CLAUDE.md` — `list_md(".claude")` alone always missed the
+        apex always-loaded file, so its own stale counts (RC3) and any model
+        slug or agent name it cites went unchecked (RC11.6, 2026-08-18)."""
+        paths = self.list_md(".claude")
+        root_claude = self.root / "CLAUDE.md"
+        has_root_claude = (
+            self._staged_file_exists("CLAUDE.md") if self.staged else root_claude.is_file()
+        )
+        if has_root_claude:
+            paths = sorted(paths + ["CLAUDE.md"])
+        return paths
+
+    def _staged_file_exists(self, rel: str) -> bool:
+        result = subprocess.run(
+            ["git", "cat-file", "-e", f":{rel}"],
+            cwd=self.root,
+            capture_output=True,
+            timeout=15,
+        )
+        return result.returncode == 0
+
     def list_agent_stems(self) -> set[str]:
         if self.staged:
             result = subprocess.run(
@@ -415,7 +438,7 @@ def check_agent_names_exist(src: Source) -> tuple[list[str], list[str]]:
         else None
     )
 
-    for rel in src.list_md(".claude"):
+    for rel in src.list_governance_md():
         text = src.read(rel)
         if text is None:
             continue
@@ -463,7 +486,10 @@ def check_agent_names_exist(src: Source) -> tuple[list[str], list[str]]:
 # file in this repo already writes them as `provider/model`. Bare prose is not
 # scanned — the false-positive rate on "and/or", dates and paths is far too high.
 _SLUG = re.compile(r"`([A-Za-z0-9][A-Za-z0-9_.\-]*/[A-Za-z0-9][A-Za-z0-9_.\-]*(?::[A-Za-z0-9_.\-]+)?)`")
-_PATHISH_SUFFIX = (".py", ".md", ".json", ".sh", ".sql", ".toml", ".yaml", ".yml", ".txt", ".db")
+_PATHISH_SUFFIX = (
+    ".py", ".md", ".json", ".sh", ".sql", ".toml", ".yaml", ".yml", ".txt", ".db",
+    ".flag", ".conf",
+)
 # Lines that explicitly document a slug as dead/wrong are citing it in order to
 # warn about it. Requiring such a slug to exist in code would be backwards.
 _NEGATION = re.compile(
@@ -489,7 +515,13 @@ def _code_slugs(src: Source) -> tuple[set[str], set[str], list[str]]:
     if isinstance(routing, dict):
         for value in routing.values():
             if isinstance(value, (tuple, list)) and len(value) >= 2:
+                # AGENT_ROUTING stores (provider, model) tuples, but docs cite
+                # the slash-joined form ("groq/llama-3.3-70b-versatile") — only
+                # indexing the bare model id made every such doc citation a
+                # false-positive "not in code" problem once the scan widened
+                # to rules_db/skills and actually hit one (2026-08-18).
                 models.add(value[1])
+                models.add(f"{value[0]}/{value[1]}")
     defaults = tables.get("_PROVIDER_DEFAULT_MODEL")
     if isinstance(defaults, dict):
         models.update(str(v) for v in defaults.values())
@@ -540,8 +572,21 @@ def check_model_slugs_match_code(src: Source) -> tuple[list[str], list[str]]:
     if problems:
         return problems, warnings
 
+    scan_targets = {CORE_BEHAVIOR_MD, TIERING_MD, "CLAUDE.md"}
+    for rel in src.list_governance_md():
+        # .claude/rules_db/archive/ is explicitly historical/dormant content
+        # (RC9, 2026-08-18) — it is never re-synced with live code by design,
+        # so scanning it here would force either perpetual false positives or
+        # someone "fixing" a doc that's supposed to preserve a past state.
+        if rel.startswith(".claude/rules_db/archive/"):
+            continue
+        if rel.startswith(".claude/rules_db/") or (
+            rel.startswith(".claude/skills/") and rel.endswith("/SKILL.md")
+        ):
+            scan_targets.add(rel)
+
     cited: set[str] = set()
-    for rel in (CORE_BEHAVIOR_MD, TIERING_MD):
+    for rel in sorted(scan_targets):
         text = src.read(rel)
         if text is None:
             problems.append(f"cannot read {rel}")
@@ -550,12 +595,18 @@ def check_model_slugs_match_code(src: Source) -> tuple[list[str], list[str]]:
         for n, line in enumerate(text.splitlines(), 1):
             for slug in _SLUG.findall(line):
                 head, _, tail = slug.partition("/")
+                # Strip a trailing `:N` file:line citation (the same shape the
+                # slug regex itself accepts) before path-checking — expanding
+                # the scan to skills/rules_db surfaced `src/db.py:15`-style
+                # citations that the exists()/suffix checks below didn't catch
+                # because the line number defeated both (2026-08-18).
+                path_part = re.sub(r":\d+$", "", slug)
                 # Not a model slug at all: repo paths (`bin/director.py`,
                 # `var/circuit_breaker.json`) and hostnames (`models.github.ai/
                 # inference` — a provider namespace never contains a dot).
-                if "." in head or slug.endswith(_PATHISH_SUFFIX):
+                if "." in head or path_part.endswith(_PATHISH_SUFFIX):
                     continue
-                if (src.root / slug).exists():
+                if (src.root / path_part).exists():
                     continue
                 cited.add(slug)
                 if slug in models:

@@ -2,23 +2,28 @@
 DQIII8 — Rules Dispatcher (RAG de Reglas Dinámico)
 Inyecta SÓLO las reglas relevantes al contexto del tool en curso.
 
-En lugar de cargar los 16 archivos en cada turno (~4k tokens), este módulo
-mapea tool + input → subconjunto mínimo de reglas (~1.430-4.470 tokens).
+En lugar de cargar los 16 archivos en cada turno, este módulo mapea
+tool + input → subconjunto mínimo de reglas (~1144–6853 tokens, cl100k_base real).
 
-RANGO CANÓNICO (medido con token_estimate() sobre la matriz de casos
-representativos de tests/test_rules_dispatcher.py, 2026-08-17, tras añadir
-"core-behavior" a _ALWAYS, reescribir la § REGLA NIM y purgar los aliases
-huérfanos): **suelo 1.432** (solo _ALWAYS = ops + core-behavior), **techo 4.469**
-(Bash con keyword agent/orchestrat → tiering+agents+plan-gate).
+RANGO CANÓNICO (medido con token_estimate() — real cl100k_base vía tiktoken,
+ya no el heurístico de word-split que subestimaba ~30-45% — sobre la matriz de
+casos representativos, incluyendo triggers combinados, de
+tests/test_rules_dispatcher.py, re-medido 2026-08-18 tras el fold RC9 de
+§ REGLA NIM en 00_core_behavior.md): **suelo 1144** (solo _ALWAYS =
+ops + core-behavior), **techo 6853** (Bash combinando las keywords
+git + agent/orchestrat + sqlite3 en un mismo comando).
 
-RE-MEDIR OBLIGATORIAMENTE (este rango ya se ha quedado obsoleto dos veces en un
-mismo día) siempre que cambie de tamaño 00_core_behavior.md, dqiii8-ops.md, o
+RE-MEDIR OBLIGATORIAMENTE (este rango ya se ha quedado obsoleto varias veces)
+siempre que cambie de tamaño 00_core_behavior.md, dqiii8-ops.md, o
 cualquier fichero de rules_db/ que esté en _ALWAYS o en un trigger muy usado, y
 siempre que se añada/quite un trigger. Los 4 sitios que citan el rango deben
 actualizarse juntos: este docstring, DYNAMIC.md, y 02_hooks_and_permissions.md (×2).
 
 Las reglas residen en .claude/rules_db/ (fuera del auto-inject de Claude Code).
-El único archivo en .claude/rules/ es el DYNAMIC.md de 3 líneas.
+El único archivo en .claude/rules_db/ que se auto-inyecta vía Claude Code es
+.claude/rules/DYNAMIC.md; el resto de .claude/rules/*.md y .claude/rules_db/*.md
+se inyectan solo bajo demanda por este dispatcher (RC4, corregido 2026-08-18 —
+la afirmación anterior de "3 líneas" era obsoleta desde que DYNAMIC.md creció).
 """
 
 from __future__ import annotations
@@ -213,6 +218,22 @@ def get_rules(tool: str, tool_input: dict) -> str:
     return "\n\n".join(parts)
 
 
+_ENCODING = None
+
+
 def token_estimate(text: str) -> int:
-    """Rough token estimate (word count / 0.75)."""
-    return round(len(text.split()) / 0.75)
+    """Real cl100k_base token count (tiktoken). Falls back to the word-count
+    heuristic only if tiktoken/its encoding data is unavailable — that
+    heuristic undercounts real BPE tokens by ~30-40% on this corpus and must
+    never be the source of a number cited in docs (RC8, 2026-08-17/18)."""
+    global _ENCODING
+    if _ENCODING is None:
+        try:
+            import tiktoken
+
+            _ENCODING = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            _ENCODING = False
+    if _ENCODING is False:
+        return round(len(text.split()) / 0.75)
+    return len(_ENCODING.encode(text))

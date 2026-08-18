@@ -4,8 +4,10 @@ DQIII8 Hook — PreToolUse v7
 Thin wrapper: parse stdin → PermissionAnalyzer → RAG rules injection + output truncation.
 
 v7 changes (ADR-001 corrections):
-  - Rules RAG: injects ONLY relevant rules via rules_dispatcher.py (~200-800 tokens)
-    instead of auto-loading all 16 files (~4k tokens) on every tool call.
+  - Rules RAG: injects ONLY relevant rules via rules_dispatcher.py (~1144–6853
+    tokens, real cl100k_base count, re-measured 2026-08-18 after the RC9
+    archive fold — see tests/test_rules_dispatcher.py) instead of auto-loading
+    all 16 files on every tool call.
   - Output Truncation: wraps Bash commands that may produce large output with
     truncate_output.py pipe. Uses modifiedToolInput to transform the command
     transparently — no blocking, no censorship.

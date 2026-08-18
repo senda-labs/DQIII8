@@ -27,7 +27,7 @@ import validate_rules_registry as vrr  # noqa: E402
 
 # Only the surface the validator actually reads; keeps each fixture repo cheap.
 _COPY_TREES = (".claude/hooks", ".claude/rules", ".claude/rules_db", ".claude/agents")
-_COPY_FILES = ("bin/core/openrouter_wrapper.py",)
+_COPY_FILES = ("bin/core/openrouter_wrapper.py", "CLAUDE.md")
 
 
 @pytest.fixture
@@ -130,53 +130,53 @@ def test_registered_alias_with_missing_file_is_a_problem(repo: Path):
 
 
 def test_token_range_mismatch_in_dynamic_md_is_a_problem(repo: Path):
-    edit(repo, ".claude/rules/DYNAMIC.md", "1.432–4.469", "1.999–4.469")
+    edit(repo, ".claude/rules/DYNAMIC.md", "1144–6853", "1999–6853")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("DYNAMIC.md" in p and "disagrees" in p for p in problems), problems
 
 
 def test_token_range_mismatch_in_hooks_perms_is_a_problem(repo: Path):
-    edit(repo, ".claude/rules/02_hooks_and_permissions.md", "~1.432–4.469", "~1.432–9.999")
+    edit(repo, ".claude/rules/02_hooks_and_permissions.md", "~1144–6853", "~1144–9999")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("02_hooks_and_permissions.md" in p and "disagrees" in p for p in problems), problems
 
 
 def test_prose_floor_restatement_mismatch_is_a_problem(repo: Path):
-    """'el suelo de 1.432 es ops + core-behavior' must track the canonical floor."""
-    edit(repo, ".claude/rules/02_hooks_and_permissions.md", "suelo de 1.432", "suelo de 1.111")
+    """'el suelo de 1144 es ops + core-behavior' must track the canonical floor."""
+    edit(repo, ".claude/rules/02_hooks_and_permissions.md", "suelo de 1144", "suelo de 1111")
     problems, _ = vrr.check_token_budget(src(repo))
-    assert any("suelo stated as 1.111" in p for p in problems), problems
+    assert any("suelo stated as 1111" in p for p in problems), problems
 
 
 def test_dropping_a_required_citation_is_a_problem(repo: Path):
     """02_hooks_and_permissions.md must keep BOTH of its range citations."""
-    edit(repo, ".claude/rules/02_hooks_and_permissions.md", "~1.432–4.469 tokens", "some tokens")
+    edit(repo, ".claude/rules/02_hooks_and_permissions.md", "~1144–6853 tokens", "some tokens")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("expected at least 2 citation" in p for p in problems), problems
 
 
 def test_canonical_range_change_alone_breaks_the_docs(repo: Path):
     """Re-measuring the dispatcher without updating the 3 doc sites fails."""
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 1.432**", "**suelo 2.000**")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 1144**", "**suelo 2000**")
     problems, _ = vrr.check_token_budget(src(repo))
     assert len([p for p in problems if "disagrees" in p or "suelo" in p]) >= 2, problems
 
 
 def test_missing_canonical_markers_is_a_problem(repo: Path):
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 1.432**", "**floor 1.432**")
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "**techo 4.469**", "**ceiling 4.469**")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 1144**", "**floor 1144**")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", "**techo 6853**", "**ceiling 6853**")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("cannot locate the canonical token range" in p for p in problems), problems
 
 
 def test_rounded_prose_range_in_docstring_is_accepted(repo: Path):
-    """'~1.430-4.470' is a legitimate rounding of 1.432-4.469 — no warning."""
+    """'~1144–6853' is a legitimate (exact) rounding of the canonical 1144-6853 — no warning."""
     _, warnings = vrr.check_token_budget(src(repo))
     assert not [w for w in warnings if "not a rounding" in w], warnings
 
 
 def test_badly_rounded_prose_range_in_docstring_is_a_warning(repo: Path):
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "~1.430-4.470 tokens", "~1.200-4.470 tokens")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", "~1144–6853 tokens", "~1200–6853 tokens")
     problems, warnings = vrr.check_token_budget(src(repo))
     assert any("not a rounding" in w for w in warnings), warnings
     assert not problems, problems
@@ -278,13 +278,25 @@ def test_code_slug_absent_from_docs_is_only_a_warning(repo: Path):
 
 
 def test_slug_in_provider_inventory_table_is_only_a_warning(repo: Path):
-    """A NIM availability listing is not a claim about DQIII8's routing."""
+    """A provider availability listing is not a claim about DQIII8's routing."""
+    (repo / ".claude/rules_db/fixture-inventory.md").write_text(
+        "# Fixture\n\n"
+        "| Categoría | Modelo |\n"
+        "|---|---|\n"
+        "| LLM | `openai/gpt-oss-120b` |\n",
+        encoding="utf-8",
+    )
     problems, warnings = vrr.check_model_slugs_match_code(src(repo))
     assert not problems, problems
     assert any("openai/gpt-oss-120b" in w and "inventory" in w for w in warnings), warnings
 
 
 def test_slug_documented_as_retired_is_only_a_warning(repo: Path):
+    (repo / ".claude/rules_db/fixture-retired.md").write_text(
+        "# Fixture\n\n"
+        "El modelo `qwen/qwen3-coder:free` quedó retirado del proveedor, no usar.\n",
+        encoding="utf-8",
+    )
     _problems, warnings = vrr.check_model_slugs_match_code(src(repo))
     assert any("qwen/qwen3-coder:free" in w and "retired" in w for w in warnings), warnings
 
@@ -368,7 +380,7 @@ def test_cli_exits_zero_on_the_real_repo(capsys):
 
 
 def test_cli_exits_one_on_problems(repo: Path, capsys):
-    edit(repo, ".claude/rules/DYNAMIC.md", "1.432–4.469", "1.999–4.469")
+    edit(repo, ".claude/rules/DYNAMIC.md", "1144–6853", "1999–6853")
     assert vrr.main(["--root", str(repo)]) == 1
     assert "problem(s)" in capsys.readouterr().out
 

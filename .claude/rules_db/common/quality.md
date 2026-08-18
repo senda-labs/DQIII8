@@ -20,4 +20,4 @@ Before marking work complete:
 ## Secret management
 - NEVER hardcode secrets — always env vars or secret manager
 - Rotate any secrets that may have been exposed
-- On security issue: STOP → security-reviewer agent → fix CRITICAL before continuing
+- On security issue: STOP → `code-reviewer` agent (Opus adversarial pass) → fix CRITICAL before continuing

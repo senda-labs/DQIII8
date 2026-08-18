@@ -5,7 +5,7 @@ paths:
 ---
 # Hooks & Permissions — DQIII8
 
-**Order**: `pre_tool_use.py` (PermissionAnalyzer → APPROVE/DENY/ESCALATE + rules_dispatcher.py injection, ~1.432–4.469 tokens) → tool runs → `post_tool_use.py` (logs to `agent_actions`, estimates cost).
+**Order**: `pre_tool_use.py` (PermissionAnalyzer → APPROVE/DENY/ESCALATE + rules_dispatcher.py injection, ~1144–6853 tokens) → tool runs → `post_tool_use.py` (logs to `agent_actions`, estimates cost).
 **Session**: `session_start.py` injects context+lessons; `stop.py` auto-commits + writes metrics.
 
 | Decision | Trigger | Result |
@@ -36,9 +36,9 @@ This is the corpus that *defines* the rules every other check enforces, so a wri
 
 **Web egress gate (v3.4)** — `WebFetch`, `WebSearch` and any `mcp__*` tool carrying a `url`. There is deliberately **no host allowlist**: real usage spans 211 distinct hosts, 125 fetched exactly once, so an allowlist would block the research this system exists to do. The gate targets exfiltration *shape* instead. DENY: non-http(s) scheme, `user:pass@host` userinfo, recognised secret shapes in the URL/query (API keys, Telegram bot token, PEM block), request-capture sinks (webhook.site, ngrok, pipedream, oast…), cloud-metadata addresses. ESCALATE: private/loopback/obfuscated-IP hosts, opaque ≥40-char encoded tokens. WebFetch's `prompt` is not gated — it is applied to fetched content locally and never leaves the VPS. Runs at step 3e, before `learned_approvals`, so a repeated exfil URL cannot be auto-whitelisted.
 
-**Rules dispatcher**: maps tool+input → 1-3 rule aliases from `.claude/rules_db/` (~1.432-4.469 tokens, medido 2026-08-17 con `token_estimate()`
-sobre la matriz de `tests/test_rules_dispatcher.py`; el suelo de 1.432 es `ops` + `core-behavior`,
-siempre inyectados; el techo de 4.469 es Bash con keyword `agent|orchestrat`); never loads all files.
+**Rules dispatcher**: maps tool+input → 1-3 rule aliases from `.claude/rules_db/` (~1144–6853 tokens, cl100k_base real, re-medido 2026-08-18 con `token_estimate()`
+sobre la matriz de `tests/test_rules_dispatcher.py`, incluyendo casos de trigger combinado, tras el fold RC9 de § REGLA NIM; el suelo de 1144 es `ops` + `core-behavior`,
+siempre inyectados; el techo de 6853 es un Bash que combina las keywords `git` + `agent|orchestrat` + `sqlite3`); never loads all files.
 El rango es canónico en el docstring de `rules_dispatcher.py` y debe re-medirse cuando cambie
 el tamaño de un fichero `_ALWAYS`/muy disparado o se añada un trigger.
 

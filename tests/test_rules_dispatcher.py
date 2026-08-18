@@ -106,14 +106,22 @@ def test_governance_and_agent_aliases_all_resolve():
 
 # ── Token budget ────────────────────────────────────────────────────────────
 
-# Measured 2026-08-17 with token_estimate() over the representative matrix below,
-# after remediation groups A-F *and* the group-F residual sweep (orphan alias purge
-# + the git-safety.md merge). Re-measure and update the dispatcher docstring,
-# DYNAMIC.md and 02_hooks_and_permissions.md together whenever an _ALWAYS or
-# heavily-triggered rule file changes size, or a trigger is added/removed — this
-# range went stale twice on 2026-08-17 alone.
-MEASURED_FLOOR = 1432   # _ALWAYS only (ops + core-behavior)
-MEASURED_CEILING = 4469  # Bash matching agent|orchestrat → +tiering+agents+plan-gate
+# Measured 2026-08-18 with the real cl100k_base token_estimate() (RC8 — the
+# prior range was a word-count-heuristic undercount, ~30-45% low) over the
+# representative matrix below, including combined-trigger cases (a single
+# Bash command or file path can hit more than one keyword/extension pattern
+# at once, which the single-trigger-only matrix never probed). Re-measure and
+# update the dispatcher docstring, DYNAMIC.md and 02_hooks_and_permissions.md
+# together whenever an _ALWAYS or heavily-triggered rule file changes size,
+# or a trigger is added/removed — this range has gone stale on every prior
+# audit day it was touched.
+MEASURED_FLOOR = 1144    # _ALWAYS only (ops + core-behavior) — re-measured 2026-08-18
+MEASURED_CEILING = 6853  # Bash combining git + agent/orchestrat + sqlite3 keywords
+# Re-measured 2026-08-18 after 00_core_behavior.md's § REGLA NIM section was
+# collapsed from ~1,371 tokens to a short Anthropic-only paragraph (RC9 archive
+# fold) — this halved both ends of the range. Whoever restores multi-tier
+# content into _ALWAYS files must re-measure again (see archive checklist,
+# .claude/rules_db/archive/multi-tier-dormant-2026-08.md).
 TOLERANCE = 0.05
 
 # tool, tool_input, expected label
@@ -137,6 +145,20 @@ BUDGET_MATRIX = [
     ("Glob", {}, "glob"),
     ("Grep", {}, "grep"),
     ("TodoWrite", {}, "todowrite"),
+    # Combined-trigger cases (RC8, 2026-08-18): a single Bash command commonly
+    # matches more than one _BASH_KEYWORD_RULES pattern at once — the matrix
+    # above only ever probes one keyword per call, which understates the real
+    # worst case an agent can hit in one turn.
+    (
+        "Bash",
+        {"command": "git commit -m 'agent orchestrator sqlite3 database/dqiii8.db migration'"},
+        "bash-combined-git-agent-sqlite",
+    ),
+    (
+        "Edit",
+        {"file_path": "/root/dqiii8/.claude/hooks/openrouter_wrapper.py"},
+        "edit-combined-hook-tiering-py",
+    ),
 ]
 
 
@@ -165,11 +187,11 @@ def test_token_budget_floor_is_always_set_only():
 
 
 def test_token_budget_ceiling_case_is_the_max():
-    """The agent/orchestrat Bash trigger remains the most expensive case."""
+    """The combined git+agent+sqlite3 Bash trigger remains the most expensive case."""
     worst = max(
         (rd.token_estimate(rd.get_rules(t, i)), lbl) for t, i, lbl in BUDGET_MATRIX
     )
-    assert worst[1] in ("bash-agent-keyword", "agent-tool")
+    assert worst[1] == "bash-combined-git-agent-sqlite"
 
 
 # ── Fail-open ───────────────────────────────────────────────────────────────

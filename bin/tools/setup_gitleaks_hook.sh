@@ -52,8 +52,27 @@ python3 bin/tools/watermark_scan.py
 # error_log), so a break there must be caught before it lands, not discovered
 # later via silence.
 python3 bin/tools/validate_hooks_config.py
+
+# rules-registry pre-commit: blocks commits that break the rules/routing
+# governance surface — an orphaned/dangling `_REGISTRY` alias, a token-budget
+# range that no longer agrees across the dispatcher docstring + DYNAMIC.md +
+# 02_hooks_and_permissions.md (x2), a routing table citing an agent that does
+# not exist, or a rule file presenting a model slug the wrapper never routes
+# to. Every one of these drifted silently in the 2026-08-17 audit; the token
+# range drifted twice in that single day. --staged so it gates the index, not
+# the worktree. Warnings are printed and ignored; only problems exit 1.
+python3 bin/tools/validate_rules_registry.py --staged
 EOF
 chmod +x "${HOOK_PATH}"
 
+# This installer must produce a hook with exactly these 5 gates, in this
+# order: gitignore_invariant.sh, gitleaks, watermark_scan.py,
+# validate_hooks_config.py, validate_rules_registry.py --staged. The live
+# hook and this heredoc drifted once already (2026-08-18: the rules-registry
+# gate existed live but was never added here, so re-running this installer
+# would have silently deleted it on next provisioning — cat-4 finding B,
+# 2026-08-17 re-audit). tests/test_setup_gitleaks_hook.py asserts this
+# invariant against a scratch hook path; keep both in sync by hand until
+# then, and never remove a gate here without removing it from that test too.
 echo "[gitleaks-setup] Done. Hook active at ${HOOK_PATH}"
 echo "[gitleaks-setup] Test with: git commit -m 'test' (should be blocked if staged secrets)"

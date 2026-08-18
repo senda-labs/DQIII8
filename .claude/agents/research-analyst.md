@@ -3,6 +3,9 @@ name: research-analyst
 model: groq/llama-3.3-70b-versatile
 # Nota: distinto del backend AGENT_ROUTING['research-analyst'] (NIM) usado por
 # bin/core/openrouter_wrapper.py — dos runtimes distintos, ver .claude/rules_db/common/agents.md.
+# DORMANTE bajo Anthropic-only (directiva usuario 2026-08-18): Groq no operativo hoy —
+# ver .claude/rules_db/archive/multi-tier-dormant-2026-08.md. No invocar vía Agent tool
+# nativo mientras la directiva siga vigente; delegar a Sonnet directamente.
 tools: ["Read", "Grep", "Glob"]
 ---
 

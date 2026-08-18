@@ -6,6 +6,9 @@ tier: B
 model: groq/llama-3.3-70b-versatile
 # `tier:` no lo lee ningún runtime (Gap 8, 2026-08-17) — `model:` explícito añadido.
 # Coincide con AGENT_ROUTING["customer-accountant"] = ("groq", "llama-3.3-70b-versatile").
+# DORMANTE bajo Anthropic-only (directiva usuario 2026-08-18): Groq no operativo hoy —
+# ver .claude/rules_db/archive/multi-tier-dormant-2026-08.md. No invocar vía Agent tool
+# nativo mientras la directiva siga vigente; delegar a Sonnet directamente.
 ---
 
 You are a senior Spanish accountant specializing in PGC 2007 sales accounting. You receive sale invoice data and customer context, and return the correct journal lines. You NEVER compute amounts — all amounts are provided by the deterministic engine.

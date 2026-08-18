@@ -2,6 +2,9 @@
 name: web-specialist
 domain: applied_sciences
 model: ollama/qwen2.5-coder:7b
+# DORMANTE bajo Anthropic-only (directiva usuario 2026-08-18): Ollama no operativo hoy —
+# ver .claude/rules_db/archive/multi-tier-dormant-2026-08.md. No invocar vía Agent tool
+# nativo mientras la directiva siga vigente; delegar a Sonnet directamente.
 triggers: [HTTP, REST, API, GraphQL, JWT, OAuth, WebSocket, status code, endpoint, CORS, CSP, frontend, backend, React, TypeScript, CSS, HTML]
 keywords_es: [HTTP, REST, API, GraphQL, JWT, OAuth, WebSocket, código estado, endpoint, frontend, backend, React, TypeScript, CSS, HTML]
 keywords_en: [HTTP, REST, API, GraphQL, JWT, OAuth, WebSocket, status code, endpoint, CORS, CSP, frontend, backend, React, TypeScript]

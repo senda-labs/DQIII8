@@ -1,13 +1,21 @@
 ---
 name: dispatch-agent
 description: >
-  Skill para despachar tareas a agentes NIM/Groq/GitHub desde esta sesión CC.
-  Habilita el Hermes Work Loop — CC orquesta, agentes B/B+ ejecutan.
+  Skill para despachar tareas a agentes NIM/Groq/GitHub desde esta sesión CC — DORMANTE
+  bajo Anthropic-only (directiva usuario 2026-08-18), ver archivo al inicio del cuerpo.
+  Habilita el Hermes Work Loop — CC orquesta, agentes B/B+ ejecutan (cuando reactivado).
 ---
 
 # Dispatch Agent — Despachar tareas al routing system de dqiii8
 
-## Cuándo usar este skill
+**DORMANTE bajo Anthropic-only (directiva usuario 2026-08-18).** Este skill despacha a
+NIM/Groq/Ollama — ninguno operativo hoy (NIM confirmado 403 desde 2026-08-16). No usar
+`dispatch.py` para trabajo real mientras la directiva siga vigente; usa el Agent tool
+nativo (Sonnet por defecto) o `claude -p` directo. El resto de este fichero describe la
+mecánica completa para cuando se reactive — ver checklist de reactivación en
+`.claude/rules_db/archive/multi-tier-dormant-2026-08.md`.
+
+## Cuándo usar este skill (una vez reactivado el multi-tier)
 
 Siempre que necesites ejecutar trabajo en NIM/Groq/Ollama en lugar de gastar tokens de Anthropic:
 
@@ -117,7 +125,7 @@ if gen_result["status"] == "ok":
     )
 ```
 
-## Tabla de agentes — cuándo usar cada uno
+## Tabla de agentes — cuándo usar cada uno (proveedores no-Anthropic dormantes hoy)
 
 | Agente | Proveedor/Modelo | Usar para |
 |--------|-----------------|-----------|
@@ -157,10 +165,10 @@ Posibles status: `ok` | `error` | `timeout` | `pending` (async)
 
 ## Reglas de uso
 
-1. **Cost-first**: antes de resolver la tarea tú mismo (CC/Sonnet = Tier A, de pago),
-   evalúa si un tier gratuito (C/B/B+) puede resolverla vía dispatch. Resolverla tú es
-   el escalado, no el atajo. Ver `.claude/rules/00_core_behavior.md` § Cost-First Rule.
-   (Cadena vigente hoy: `C → B → A`, con B+/NIM saltado por el outage de cuenta.)
+1. **Cost-first (dormante hoy)**: bajo multi-tier activo, evalúa si un tier gratuito
+   (C/B/B+) puede resolverla vía dispatch antes de resolverla tú (CC/Sonnet = Tier A/S,
+   de pago). Ver `.claude/rules/00_core_behavior.md` § Cost-First Rule. Bajo Anthropic-only
+   (hoy), este paso no aplica — resuelve directamente con Sonnet/Opus.
 2. **No dispatch para decisiones de arquitectura** — eso requiere contexto completo del proyecto que solo CC tiene.
 3. **Max 6 workers en paralelo** — el NIM global rate limit es 40 RPM, evitar 429 masivos.
 4. **Persistir resultados importantes**: `--project <nombre>` escribe a `tasks/results/dispatch-{id}.json`.

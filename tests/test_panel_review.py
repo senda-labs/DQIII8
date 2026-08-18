@@ -1,4 +1,4 @@
-"""Tests for bin/tools/panel_review.py — finding parser, citation gate, degradation flag."""
+"""Tests for bin/tools/panel_review.py — finding parser, citation gate, single-seat health flag."""
 
 import sys
 from pathlib import Path
@@ -122,32 +122,58 @@ def test_parse_findings_sanitizes_fake_verdict_heading_injection():
     assert "\n## Verdict" not in verified[0]["text"]
 
 
-def test_mark_degradation_flags_provider_mismatch():
-    seat = {
-        "provider_intended": "nim",
-        "model_intended": "deepseek-ai/deepseek-v4-flash",
-        "provider": "groq",
-        "model": "llama-3.3-70b-versatile",
+def test_nim_seats_removed_inv2():
+    """INV2 (2026-08-18): Anthropic-only directive removed the NIM pre-filter
+    seats and the cross-seat degradation check entirely — single Opus pass is
+    the whole review now."""
+    assert not hasattr(pr, "NIM_SEATS")
+    assert not hasattr(pr, "_mark_degradation")
+
+
+def test_render_report_single_seat_healthy_no_findings():
+    result = {
+        "plan_file": "dummy.md",
+        "seats": [
+            {
+                "agent": pr.OPUS_AGENT,
+                "seat_focus": "adversarial (Opus, single pass)",
+                "provider": "anthropic",
+                "model": "claude-opus-4-8",
+                "status": "ok",
+                "latency_ms": 1000,
+                "verified_findings": [],
+                "dropped_findings": [],
+                "healthy": True,
+            }
+        ],
     }
-    pr._mark_degradation(seat)
-    assert seat["degraded"] is True
+    report = pr.render_report(result)
+    assert "(no verified findings)" in report
+    assert "Opus pass returned zero verified findings" in report
+    assert "unhealthy" not in report
 
 
-def test_mark_degradation_clean_when_intended_matches_actual():
-    seat = {
-        "provider_intended": "nim",
-        "model_intended": "deepseek-ai/deepseek-v4-flash",
-        "provider": "nim",
-        "model": "deepseek-ai/deepseek-v4-flash",
+def test_render_report_flags_unhealthy_seat():
+    result = {
+        "plan_file": "dummy.md",
+        "seats": [
+            {
+                "agent": pr.OPUS_AGENT,
+                "seat_focus": "adversarial (Opus, single pass)",
+                "provider": "unknown",
+                "model": "unknown",
+                "status": "error",
+                "error": "timeout",
+                "latency_ms": None,
+                "verified_findings": [],
+                "dropped_findings": [],
+                "healthy": False,
+            }
+        ],
     }
-    pr._mark_degradation(seat)
-    assert seat["degraded"] is False
-
-
-def test_mark_degradation_no_flag_when_intended_missing():
-    seat = {"provider": "groq", "model": "llama-3.3-70b-versatile"}
-    pr._mark_degradation(seat)
-    assert seat["degraded"] is False
+    report = pr.render_report(result)
+    assert "seat unhealthy" in report
+    assert "Opus pass returned zero verified findings" not in report
 
 
 def test_run_panel_raises_on_non_utf8_plan_file(tmp_path):

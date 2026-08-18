@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""Adversarial plan-review panel: heterogeneous NIM pre-filter + single Opus pass.
+"""Adversarial plan-review: single Opus pass.
 
 Design (see docs/superpowers/plans/... watermark/panel-review plan, v2, post-Opus
 adversarial review of v1; taxonomy/anti-groupthink upgrade, v3, post-Opus review
-2026-08-12):
-  - 3 heterogeneous NIM seats (genuinely distinct underlying models per
-    AGENT_ROUTING): python-specialist (DeepSeek), data-specialist (Mistral),
-    safety-checker (NemoGuard). NOTE: NIM has an internal fallback that can
-    silently substitute a different provider/model per call (confirmed live,
-    2026-08-12: all 3 seats answered via groq/llama-3.3-70b instead). This
-    orchestrator compares provider_intended/model_intended against the actual
-    served provider/model on every run and renders a loud degradation banner
-    when they differ — never assume "3 heterogeneous seats" without checking.
+2026-08-12; INV2 Anthropic-only redesign, 2026-08-18):
+  - INV2 (2026-08-18): the earlier design ran 3 heterogeneous NIM seats as a
+    breadth-first $0 pre-filter alongside the Opus pass. Under the user's
+    2026-08-18 Anthropic-only directive (no non-Anthropic provider API is
+    operative), those seats would route through dead infrastructure — removed
+    rather than left as a pre-filter that silently returns nothing every run.
+    Single Opus pass is now the entire review, not a fallback path.
   - Exactly ONE Opus adversarial pass (code-reviewer agent -> claude-opus-4-8).
     This reuses the existing single-Opus-escalation allowance from
     dqiii8-plan-gate.md — it is not an additional budget. No iteration, no
@@ -19,20 +17,17 @@ adversarial review of v1; taxonomy/anti-groupthink upgrade, v3, post-Opus review
   - Findings must cite a real file:line to count as verified — this is the
     only hard discard gate. Everything discarded is still shown in a
     "dropped findings" appendix with its reason (no_citation / fake_path),
-    never silently deleted — silent deletion is indistinguishable from a
-    seat having found nothing (confirmed live: the 3 cheap seats produced
-    zero verified findings against a plan with a planted SQL injection).
+    never silently deleted — silent deletion is indistinguishable from the
+    pass having found nothing.
   - Category (STRIDE-derived Security/Correctness/DataIntegrity/Resilience/
     Operational) and severity (P0-P3) tags are advisory metadata parsed from
-    each finding block — never a survival requirement. Seats are asked to
-    state which categories they *considered*, not to hit a finding quota per
+    each finding block — never a survival requirement. The pass is asked to
+    state which categories it *considered*, not to hit a finding quota per
     category (a fixed quota on a model that has already fabricated a
     citation is a fabrication incentive, not a rigor increase).
-  - "All clean" is only flagged as noteworthy when the OPUS seat specifically
-    finds nothing — cheap seats returning nothing is the observed baseline,
-    not a signal; firing on that would just be alert fatigue.
-  - Each seat dispatched defensively: one seat's exception/timeout never
-    aborts the batch.
+  - "All clean" (zero verified findings) is always noteworthy now that Opus
+    is the only pass — flagged in the report, conditioned on the pass having
+    had real repo access and not timed out/errored.
   - Report written to database/audit_reports/ (tracked path — mirrors the
     existing `audit` skill; NOT docs/superpowers/, which is gitignored).
 
@@ -54,14 +49,6 @@ from dispatch import dispatch  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 REPORT_DIR = REPO_ROOT / "database" / "audit_reports"
-
-NIM_SEATS = [
-    {"agent": "python-specialist", "focus": "API/contract correctness, test coverage"},
-    {"agent": "data-specialist", "focus": "data integrity, blast radius, rollback/undo path"},
-    {"agent": "safety-checker", "focus": "destructive-operation and permission review"},
-]
-NIM_TIMEOUT = 120
-NIM_OUTER_TIMEOUT = 180
 
 OPUS_AGENT = "code-reviewer"
 OPUS_TIMEOUT = 240
@@ -215,46 +202,26 @@ def _parse_findings(response_text: str) -> tuple[list[dict], list[dict]]:
     return verified, dropped
 
 
-def _mark_degradation(seat: dict) -> None:
-    """Flag when NIM's internal fallback served a different provider/model than
-    AGENT_ROUTING intended — confirmed live 2026-08-12 (all 3 NIM seats fell
-    back to groq/llama-3.3-70b), which silently collapses "3 heterogeneous
-    seats" into one model answering three times. Must be visible in the report,
-    not assumed away."""
-    intended_p, intended_m = seat.get("provider_intended"), seat.get("model_intended")
-    actual_p, actual_m = seat.get("provider"), seat.get("model")
-    seat["degraded"] = bool(
-        intended_p and actual_p and (intended_p != actual_p or intended_m != actual_m)
-    )
-
-
 def run_panel(plan_path: Path) -> dict:
     plan_text = plan_path.read_text(encoding="utf-8")
 
-    nim_results = []
-    for seat in NIM_SEATS:
-        prompt = _seat_prompt(seat["focus"], plan_text)
-        result = _run_seat(seat["agent"], prompt, NIM_OUTER_TIMEOUT)
-        result["seat_focus"] = seat["focus"]
-        nim_results.append(result)
-
     opus_prompt = _seat_prompt(
-        "full adversarial review — the seat proven to catch what NIM seats miss; "
-        "no iteration, one verdict",
+        "full adversarial review — Security/Correctness/DataIntegrity/"
+        "Resilience/Operational, one pass, one verdict",
         plan_text,
     )
     opus_result = _run_seat(OPUS_AGENT, opus_prompt, OPUS_OUTER_TIMEOUT)
     opus_result["seat_focus"] = "adversarial (Opus, single pass)"
 
-    all_seats = nim_results + [opus_result]
-    for seat in all_seats:
-        response = seat.get("response", "") or ""
-        verified, dropped = _parse_findings(response)
-        seat["verified_findings"] = verified
-        seat["dropped_findings"] = dropped
-        _mark_degradation(seat)
+    response = opus_result.get("response", "") or ""
+    verified, dropped = _parse_findings(response)
+    opus_result["verified_findings"] = verified
+    opus_result["dropped_findings"] = dropped
+    # A real, non-empty, non-error result — the only health signal that
+    # matters with a single seat (no cross-seat comparison to run).
+    opus_result["healthy"] = opus_result.get("status") != "error" and bool(response.strip())
 
-    return {"plan_file": str(plan_path), "seats": all_seats}
+    return {"plan_file": str(plan_path), "seats": [opus_result]}
 
 
 def render_report(result: dict) -> str:
@@ -262,27 +229,19 @@ def render_report(result: dict) -> str:
     lines = [
         f"# Panel Review — {result['plan_file']}",
         "",
-        "Opus seat spends the operator's own Claude Code session quota (OAuth, "
+        "This Opus pass spends the operator's own Claude Code session quota (OAuth, "
         "no ANTHROPIC_API_KEY configured) — it reuses the existing single-escalation "
         "allowance from dqiii8-plan-gate.md, not an additional budget.",
         "",
     ]
 
-    degraded = [s for s in seats if s.get("degraded")]
-    if degraded:
-        lines.append("**SEAT DEGRADED — epistemic diversity lost:**")
-        for s in degraded:
-            lines.append(
-                f"- {s['agent']}: intended {s.get('provider_intended')}/"
-                f"{s.get('model_intended')}, actually served by "
-                f"{s.get('provider')}/{s.get('model')}"
-            )
-        lines.append(
-            "Treat NIM seat findings as fewer independent opinions than the "
-            "seat count implies while this holds.\n"
-        )
-
     for seat in seats:
+        if not seat.get("healthy", True):
+            lines.append(
+                f"**{seat['agent']} seat unhealthy** — status={seat.get('status')} "
+                f"error={seat.get('error')}. Findings below (if any) may be "
+                "incomplete; treat this run as inconclusive, not a clean bill.\n"
+            )
         lines.append(f"## {seat['agent']} — {seat.get('seat_focus', '')}")
         lines.append(
             f"provider={seat.get('provider')} model={seat.get('model')} "
@@ -317,19 +276,17 @@ def render_report(result: dict) -> str:
             lines.append("</details>")
         lines.append("")
 
-    opus_seat = next((s for s in seats if s["agent"] == OPUS_AGENT), None)
-    if opus_seat is not None and not opus_seat.get("verified_findings"):
+    opus_seat = seats[0] if seats else None
+    if opus_seat is not None and opus_seat.get("healthy") and not opus_seat.get("verified_findings"):
         lines.append(
-            "**Opus seat returned zero verified findings** — this is the rare, "
-            "informative signal (cheap seats returning nothing is the observed "
-            "baseline and not itself noteworthy). Treat as an actual clean bill "
-            "only after confirming the Opus seat had real repo access and did "
-            "not time out/error.\n"
+            "**Opus pass returned zero verified findings** — treat as a clean "
+            "bill only because the pass had real repo access and did not "
+            "time out/error (confirmed above).\n"
         )
 
     lines.append(
         "## Verdict\n"
-        "Union of all verified findings above, Opus findings weighted highest. "
+        "The Opus pass's verified findings above are the entire review. "
         "This is a report, not a gate — the operator/session is responsible for "
         "addressing each finding before implementation."
     )

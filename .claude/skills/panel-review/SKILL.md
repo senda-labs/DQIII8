@@ -1,12 +1,12 @@
 ---
 name: panel-review
-description: Adversarial review of a plan file — 3 heterogeneous NIM seats (breadth) + exactly one Opus pass (depth) — before implementation of a ≥3-module or ambiguous-scope change.
+description: Adversarial review of a plan file — a single Opus pass — before implementation of a ≥3-module or ambiguous-scope change.
 command: /panel-review
 allowed-tools: [Bash, Read]
 user-invocable: true
 ---
 
-# /panel-review — Plan Adversarial Review Panel
+# /panel-review — Plan Adversarial Review
 
 Run before implementing any plan that touches ≥3 modules or has ambiguous scope,
 after plan-mode design and before writing code.
@@ -21,22 +21,26 @@ Runs `python3 bin/tools/panel_review.py <plan-file>`.
 
 ## What it does
 
-1. **3 heterogeneous NIM seats** (genuinely distinct models, not aliases of the
-   same one — verified against `AGENT_ROUTING`):
-   - `python-specialist` (DeepSeek V4 Flash) — API/contract correctness, test coverage
-   - `data-specialist` (Mistral 675B) — data integrity, blast radius, rollback/undo path
-   - `safety-checker` (NemoGuard 8B) — destructive-operation and permission review
-   These are $0, fast, breadth-first pre-filters. They read the plan and the repo
-   and must cite `file:line` for every finding — uncited findings are discarded
-   by the orchestrator, not just flagged.
-2. **Exactly ONE Opus adversarial pass** (`code-reviewer` agent → `claude-opus-4-8`).
-   **This spends the operator's own Claude Code session quota** — no
-   `ANTHROPIC_API_KEY` is configured, so it runs as a nested `claude -p` OAuth call,
-   not a free NIM request. It reuses the *existing* single-Opus-escalation
+**INV2 (2026-08-18)**: this used to run 3 heterogeneous NIM seats as a $0
+breadth-first pre-filter alongside the Opus pass. Under the user's
+2026-08-18 Anthropic-only directive (no non-Anthropic provider API is
+operative today), those seats would route through dead infrastructure —
+removed rather than kept as a pre-filter that silently returns nothing every
+run. If the multi-tier chain is ever reactivated
+(`.claude/rules_db/archive/multi-tier-dormant-2026-08.md`), re-adding a
+pre-filter is a deliberate future decision, not an automatic revert of this
+one.
+
+1. **Exactly ONE Opus adversarial pass** (`code-reviewer` agent → `claude-opus-4-8`),
+   the entire review. **This spends the operator's own Claude Code session
+   quota** — no `ANTHROPIC_API_KEY` is configured, so it runs as a nested
+   `claude -p` OAuth call. It reuses the *existing* single-Opus-escalation
    allowance defined in `.claude/rules_db/dqiii8-plan-gate.md` (max 1 per task) —
    it is not an additional or second Opus budget. No iteration, no forced
-   dissent, no re-voting loop: one pass, one verdict.
-3. **Report**: written to `database/audit_reports/panel-review-YYYY-MM-DD-HH-<slug>.md`.
+   dissent, no re-voting loop: one pass, one verdict. It reads the plan and
+   the repo and must cite `file:line` for every finding — uncited findings
+   are discarded by the orchestrator, not just flagged.
+2. **Report**: written to `database/audit_reports/panel-review-YYYY-MM-DD-HH-<slug>.md`.
    `database/audit_reports/*.md` is explicitly un-ignored in `.gitignore` (narrow
    negation, `*.md` only — `analytics.log` and non-`.md` artifacts in the same
    directory stay ignored). The negation was actually implemented on 2026-08-17

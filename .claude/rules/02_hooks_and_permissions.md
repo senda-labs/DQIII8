@@ -7,6 +7,7 @@ paths:
 
 **Order**: `pre_tool_use.py` (PermissionAnalyzer → APPROVE/DENY/ESCALATE + rules_dispatcher.py injection, ~1144–6853 tokens) → tool runs → `post_tool_use.py` (logs to `agent_actions`, estimates cost).
 **Session**: `session_start.py` injects context+lessons; `stop.py` auto-commits + writes metrics.
+**PermissionRequest**: `permission_request.py` — separate from `pre_tool_use.py`'s PermissionAnalyzer; wired to the `PermissionRequest` hook event in `.claude/settings.json`. If `DQIII8_MODE != "autonomous"` → always allow (no interference). In autonomous mode: `CRITICAL_PATTERNS` (`.env`, `rm -rf`, `git push --force`, `DROP TABLE`/`DROP DATABASE`, `chmod 777 /`, fork bomb, etc.) → Telegram escalation, 10-min timeout → automatic deny; anything else → allow. (INV1, 2026-08-18: an earlier 3-layer design — a `READ_PREFIXES` fast-path plus an LLM-supervisor call before this escalation — was already dead code, superseded by the current allow-all default; deleted rather than left as fictional documentation.)
 
 | Decision | Trigger | Result |
 |---|---|---|

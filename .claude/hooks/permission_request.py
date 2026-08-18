@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
-DQIII8 Hook — PermissionRequest v2 (autonomous 3-layer supervisor)
+DQIII8 Hook — PermissionRequest (autonomous critical-pattern escalation)
 
-Layer 1 — READ_PREFIXES fast-path:
-    - Read-only tools (Read, Glob, Grep, LS, WebFetch, WebSearch, TodoRead)
-    - Bash commands starting with safe prefixes (ls, git log, cat, etc.)
-    → auto-approves instantly without LLM
+If DQIII8_MODE != "autonomous" → {"decision": "allow"} always (no interference).
 
-Layer 2 — LLM supervisor (openrouter_wrapper, Tier B / Groq, timeout 3s → PERMITE):
-    - Reads tasks/current_objective.txt for context
-    - Responds {decision: PERMITE|REDIRIGE|ESCALA, reason}
-    - PERMITE → allow | REDIRIGE → deny with suggestion | ESCALA → Layer 3
+In autonomous mode:
+    - CRITICAL_PATTERNS in the tool input → Telegram escalation, 10-min
+      timeout → automatic deny.
+    - Anything else → allow (logged as "autonomous-allow-all").
 
-Layer 3 — Telegram escalation (10-min timeout → deny):
-    - Triggered by: CRITICAL_PATTERNS in the input
-    - Or when LLM supervisor says ESCALA
-    - Timeout → automatic deny
-
-If DQIII8_MODE != "autonomous" → {"decision": "allow"} always (no interference)
+INV1 (2026-08-18): this used to document a 3-layer design (READ_PREFIXES
+fast-path, then an LLM supervisor call, then this escalation). Layers 1-2
+were removed from main() at some earlier point ("Layer 1/2 removed: no LLM
+supervisor calls in autonomous mode" — see the autonomous-mode branch below)
+but the supporting code (READ_PREFIXES, READ_ONLY_TOOLS, _is_read_prefix,
+_call_llm_supervisor) and this docstring were left describing the removed
+design. Confirmed via grep: nothing outside this file imports any of those
+names, and no test exercises them. Deleted rather than kept as fictional
+documentation of dead code.
 
 Input via stdin: {"tool_name": X, "tool_input": {...}, "session_id": Y, "request_id": Z}
 Output via stdout: {"decision": "allow"|"deny", "reason": "..."}
@@ -37,92 +37,7 @@ log = logging.getLogger("dqiii8." + __name__)
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
 
-# ── Layer 1: READ_PREFIXES ───────────────────────────────────────────────────
-# Bash commands starting with these prefixes → auto-approve without LLM
-
-READ_PREFIXES = (
-    "ls",
-    "find",
-    "cat",
-    "head",
-    "tail",
-    "grep",
-    "wc",
-    "du",
-    "df",
-    "echo",
-    "pwd",
-    "which",
-    "whoami",
-    "date",
-    "env",
-    "printenv",
-    "git log",
-    "git status",
-    "git diff",
-    "git show",
-    "git branch",
-    "python3 bin/",
-    "python3 -c",
-    "python3 -m json",
-    "sqlite3",
-    "ollama list",
-    "ollama ps",
-    "tmux ls",
-    "semgrep scan",
-    "black --check",
-    "pip show",
-    "curl -s http",
-    "curl --get",
-    "crontab -l",
-    "systemctl status",
-    "systemctl restart",
-    "systemctl is-active",
-    "ps aux",
-    "top -bn1",
-    "cat /root/dqiii8/",
-    "python3 -m pytest",
-    "pip install",
-    "pip show",
-    "npm",
-    "npx",
-    "bun",
-    "sed ",
-    "awk ",
-    "mkdir",
-    "cp ",
-    "mv ",
-    "touch ",
-    "chmod ",
-    "git add",
-    "git commit",
-    "git push",
-    "git rm",
-    "git checkout",
-    "git fetch",
-    "git reset",
-    "git stash",
-    "git clean",
-    "ollama",
-    "claude ",
-    "black ",
-    "ruff ",
-    "bash -n",
-    "bash update",
-    "wc -l",
-    "diff ",
-    "sort ",
-    "uniq ",
-    "tee ",
-    "tar ",
-    "zip ",
-    "unzip ",
-)
-
-# Read-only tools → always Layer 1
-READ_ONLY_TOOLS = {"Read", "Glob", "Grep", "LS", "WebFetch", "WebSearch", "TodoRead"}
-
-# ── Layer 3: CRITICAL_PATTERNS ───────────────────────────────────────────────
+# ── CRITICAL_PATTERNS ────────────────────────────────────────────────────────
 # These patterns always escalate to human (Telegram, 10-min timeout → deny)
 
 CRITICAL_PATTERNS = [
@@ -155,77 +70,13 @@ def _deny(reason: str) -> None:
     print(json.dumps({"decision": "deny", "reason": reason}))
 
 
-def _is_read_prefix(command: str) -> bool:
-    """Layer 1: True if Bash command starts with a safe read prefix."""
-    cmd = command.strip()
-    return any(cmd.startswith(prefix) for prefix in READ_PREFIXES)
-
-
 def _has_critical_pattern(tool_input: dict) -> str | None:
-    """Layer 3: Returns the critical pattern found, or None."""
+    """Returns the critical pattern found, or None."""
     searchable = json.dumps(tool_input, ensure_ascii=False).lower()
     for pattern in CRITICAL_PATTERNS:
         if pattern.lower() in searchable:
             return pattern
     return None
-
-
-def _read_current_objective() -> str:
-    """Reads tasks/current_objective.txt for LLM supervisor context."""
-    obj_file = DQIII8_ROOT / "tasks" / "current_objective.txt"
-    if obj_file.exists():
-        return obj_file.read_text(encoding="utf-8").strip()[:300]
-    return "No objective set — general autonomous session"
-
-
-def _call_llm_supervisor(tool_name: str, tool_input: dict, objective: str) -> dict:
-    """
-    Layer 2: Calls the LLM supervisor via openrouter_wrapper (Tier B / Groq, timeout 3s).
-    Returns: {"decision": "PERMITE"|"REDIRIGE"|"ESCALA", "reason": str}
-    Timeout → PERMITE by default (do not block autonomy if LLM fails).
-    """
-    inp_summary = json.dumps(tool_input, ensure_ascii=False)[:300]
-    prompt = (
-        f"DQIII8 autonomous supervisor. Evaluate if this tool use aligns with the objective.\n"
-        f"Objective: {objective}\n"
-        f"Tool: {tool_name}\n"
-        f"Input: {inp_summary}\n\n"
-        f"Respond ONLY with valid JSON on one line:\n"
-        f'{{"decision": "PERMITE", "reason": "brief explanation"}}\n'
-        f"PERMITE = action aligns with objective, allow it\n"
-        f"REDIRIGE = action doesn't align with objective, deny with suggestion\n"
-        f"ESCALA = action is risky or ambiguous, needs human approval"
-    )
-
-    wrapper = DQIII8_ROOT / "bin" / "openrouter_wrapper.py"
-    if not wrapper.exists():
-        return {"decision": "PERMITE", "reason": "wrapper-not-found"}
-
-    try:
-        result = subprocess.run(
-            ["python3", str(wrapper), "--agent", "auditor", prompt],
-            capture_output=True,
-            text=True,
-            timeout=3,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            out = result.stdout.strip()
-            # Extract JSON from output
-            start = out.find("{")
-            end = out.rfind("}") + 1
-            if start != -1 and end > start:
-                parsed = json.loads(out[start:end])
-                if "decision" in parsed and parsed["decision"] in (
-                    "PERMITE",
-                    "REDIRIGE",
-                    "ESCALA",
-                ):
-                    return parsed
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
-        log.warning("permission_request: LLM supervisor subprocess call failed: %s", e, exc_info=True)
-
-    # Timeout or error → PERMITE (do not block autonomy on LLM failure)
-    return {"decision": "PERMITE", "reason": "llm-timeout-3s"}
 
 
 def _send_telegram(message: str) -> bool:

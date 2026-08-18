@@ -18,14 +18,18 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 - Entry: `bin/core/openrouter_wrapper.py` | Director: `bin/director.py`
 - Dispatch (CC↔dqiii8): `bin/core/dispatch.py` — thin subprocess shim; sync + async (async fixed 2026-07-05 via detached worker + atomic JSON envelope — see `docs/audits/2026-07-fable5-remediation-report.md`)
 
-> **`docs/audits/` durability does NOT come from git.** That path is gitignored on
-> purpose (F-26 leak, 2026-08-17) even though rules and skills cite it as a source of
-> truth. Its only copies live off-VPS, via two independent channels: `bin/tools/backup_audit_docs.sh`
-> (mutual Netcup↔Hostinger rsync, dated snapshots, no `--delete` mirror) and
-> `bin/tools/telegram_audit_backup.py` (per-file upload to a single allowlisted Telegram chat).
-> Both read their targets/credentials from env vars only. `database/audit_reports/*.md`
-> *is* tracked in git (narrow `.gitignore` negation + `audit-docs-*` gitleaks rules).
-> Deleting a file under `docs/audits/` is effectively irreversible once both backups roll.
+> **Audit reports and audit docs are never committed — full stop (policy set 2026-08-18,
+> supersedes the 2026-08-17 tracked-report design).** Both `docs/audits/*.md` and
+> `database/audit_reports/*.md` are gitignored with no negation. Their durability does
+> NOT come from git — it comes from two independent off-VPS channels:
+> `bin/tools/backup_audit_docs.sh` (mutual Netcup↔Hostinger rsync, dated snapshots, no
+> `--delete` mirror) and `bin/tools/telegram_audit_backup.py` (per-file upload to a single
+> allowlisted Telegram chat). Both read their targets/credentials from env vars only.
+> Deleting a file under either path is effectively irreversible once both backups roll —
+> treat these files with the same care as tracked ones even though `git status` won't see
+> them. (History: a 2026-08-17 design briefly tracked `database/audit_reports/*.md` via a
+> narrow `.gitignore` negation; reverted 2026-08-18 after that negation was found to leave
+> a report with a real infra IP one `git add -A` away from being staged.)
 
 > **Not DQIII8-specific**: `.claude/architecture/` holds a generic reference book on Claude Code's own internals (agent loop, tool execution, etc.), unrelated to DQIII8's architecture. Don't confuse it with DQIII8 docs when orienting.
 

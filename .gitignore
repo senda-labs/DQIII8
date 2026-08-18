@@ -131,10 +131,6 @@ desktop.ini
 database/system_metrics.log
 database/audit_reports/jarvis_bot.log
 database/audit_reports/*.md
-# Narrow negation (2026-08-17): audit/panel-review reports are the durable
-# findings ledger and must survive in git. Only *.md is re-included — logs and
-# any other artifact in the same directory stay ignored.
-!database/audit_reports/*.md
 database/audit-*.md
 
 # Internal task directories (do not publish)
@@ -194,9 +190,6 @@ projects/
 tasks/
 decisions/
 database/audit_reports/*
-# Re-negate after the broad `database/audit_reports/*` above — last matching
-# pattern wins in gitignore, so this line is what actually keeps reports tracked.
-!database/audit_reports/*.md
 database/qdrant/
 
 # Red-team / Opus adversarial review reports, panel reviews, disaster-test

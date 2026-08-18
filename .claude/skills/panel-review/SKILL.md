@@ -41,23 +41,18 @@ one.
    the repo and must cite `file:line` for every finding — uncited findings
    are discarded by the orchestrator, not just flagged.
 2. **Report**: written to `database/audit_reports/panel-review-YYYY-MM-DD-HH-<slug>.md`.
-   `database/audit_reports/*.md` is explicitly un-ignored in `.gitignore` (narrow
-   negation, `*.md` only — `analytics.log` and non-`.md` artifacts in the same
-   directory stay ignored). The negation was actually implemented on 2026-08-17
-   (Gap 5 of the governance remediation); before that the path was gitignored
-   wholesale — the same failure mode that permanently lost a prior review's
-   findings ledger (see session 2026-08-11 handover, and F11 in
-   `database/audit_reports/2026-08-16-metadata-watermark-toolchain-reaudit.md`).
-   Two negation lines are needed, one after each of the broad ignore patterns in
-   `.gitignore` — the last matching pattern wins, so dropping the second one
-   silently re-ignores the whole directory.
-   Run `gitleaks detect` over any new report before committing. As of 2026-08-17
-   `.gitleaks.toml` carries two rules scoped to this corpus —
-   `audit-docs-bare-ipv4` and `audit-docs-password-literal` — that catch the bare
-   IP / bare password literal that gitleaks' shipped rules miss (the mechanical
-   cause of F-26); a manual grep is still worthwhile for anything they can't
-   pattern-match. Never `docs/superpowers/` — that path is gitignored and not
-   negated.
+   **Never committed — policy set 2026-08-18.** `database/audit_reports/*.md` is fully
+   gitignored, no negation. (History: a 2026-08-17 design briefly tracked these reports
+   via a narrow `.gitignore` negation — reverted 2026-08-18 after that negation was found
+   to leave a report containing a real infra IP + a Postgres credential literal one
+   `git add -A` away from being staged, the same failure class the negation was meant to
+   prevent for `docs/audits/` in the first place.) Durability for these reports comes
+   from the off-VPS backup channels documented in `CLAUDE.md` (`backup_audit_docs.sh` +
+   `telegram_audit_backup.py`), not from git. `.gitleaks.toml` still carries the
+   `audit-docs-bare-ipv4` / `audit-docs-password-literal` rules scoped to this corpus —
+   now mostly a defense-in-depth backstop against a future re-negation, but still worth
+   running (`gitleaks detect`) over any new report as a manual habit, since these files
+   never pass through the pre-commit hook at all while gitignored.
 4. **Verdict is advisory, not a gate.** The tool reports; the calling session
    (CC) is responsible for addressing each cited finding before implementation
    proceeds.

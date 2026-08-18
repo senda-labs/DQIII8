@@ -204,3 +204,56 @@ def test_log_to_db_writes_project(tmp_path, monkeypatch):
     conn.close()
     assert row is not None
     assert row[0] == "intl-reports"
+
+
+# ── EOL model slugs / dead fallback destinations (audit gap 2, 2026-08-17) ───
+# Regression guards: the 2026-08-16 model corrections were written into the rule
+# docs but never applied to the code. These assertions make the drift mechanical.
+
+_EOL_SLUGS = (
+    "mistralai/mistral-large-3-675b-instruct-2512",  # 410 desde 2026-07-23
+    "mistral-large-3-675b-instruct-2512",
+)
+
+_DEAD_FALLBACK_DESTINATIONS = ("openrouter", "github")
+
+
+def _all_routed_models():
+    models = [model for _prov, model in w.AGENT_ROUTING.values()]
+    models += list(w._PROVIDER_DEFAULT_MODEL.values())
+    return models
+
+
+def test_no_eol_model_slug_in_routing_tables():
+    for model in _all_routed_models():
+        for eol in _EOL_SLUGS:
+            assert eol not in model, f"EOL slug still routed: {model}"
+
+
+def test_deepseek_v4_flash_is_dated_revision():
+    """Bare `deepseek-v4-flash` is 410; only the -0731 revision is live."""
+    for model in _all_routed_models():
+        if "deepseek-v4-flash" in model:
+            assert model.endswith("-0731"), (
+                f"undated deepseek-v4-flash slug still routed: {model}"
+            )
+
+
+def test_nim_default_model_is_live_slug():
+    assert w._PROVIDER_DEFAULT_MODEL["nim"] == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+
+
+def test_dead_providers_absent_from_every_fallback_chain():
+    """openrouter (402, no credits) and github (410, platform retirement) were
+    removed as fallback DESTINATIONS 2026-08-16. Their PROVIDERS entries stay."""
+    for primary, destinations in w.FALLBACK_CHAIN.items():
+        for dead in _DEAD_FALLBACK_DESTINATIONS:
+            assert dead not in destinations, (
+                f"dead provider {dead!r} still a fallback destination of {primary!r}"
+            )
+
+
+def test_dead_providers_still_defined_for_one_line_reactivation():
+    for dead in _DEAD_FALLBACK_DESTINATIONS:
+        assert dead in w.PROVIDERS
+        assert dead in w._PROVIDER_DEFAULT_MODEL

@@ -391,8 +391,13 @@ def classify_cc_tier(prompt: str) -> str:
 
 # ── 5-level task complexity classifier ───────────────────────────────────────
 #
-# Maps a prompt to one of five complexity tiers used by the Claude Code
+# Maps a prompt to one of five COMPLEXITY CLASSES used by the Claude Code
 # routing rules (ml-routing.md / token-routing.md).
+#
+# Naming (audit gap 9, 2026-08-17): these are complexity classes, NOT "tiers".
+# "Tier" is reserved for the single canonical cost taxonomy C/B/B+/B++/A/S
+# (see .claude/rules/03_tiering_and_routing.md). Complexity class → executor is
+# a different axis; do not conflate the two vocabularies.
 #
 #   READ_ONLY    — no writes, pure observation (grep, ls, cat, git log)
 #   SIMPLE_WRITE — single file or trivial multi-step (run tests, git commit)
@@ -530,7 +535,7 @@ def _kw_in(kw: str, text: str) -> bool:
 
 
 def classify_task_complexity(prompt: str) -> str:
-    """Classify a prompt into one of five complexity tiers.
+    """Classify a prompt into one of five complexity classes.
 
     Returns one of: READ_ONLY, SIMPLE_WRITE, CODE_GEN, ARCHITECTURE, CRITICAL.
 

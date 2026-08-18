@@ -47,6 +47,10 @@ TASK_AGENT_MAP: dict[str, str] = {
     "mixed": "orchestrator",
 }
 
+# Legacy numeric shorthand (1/2/3) for the canonical cost taxonomy, NOT a separate
+# tier vocabulary (audit gap 9, 2026-08-17): 1 ≈ Tier C (Ollama local), 2 ≈ Tier B
+# (Groq), 3 ≈ Tier A (Sonnet). Canonical table: .claude/rules/03_tiering_and_routing.md.
+# Values/logic frozen — changing them requires updating KEYWORD_TASK_TYPE too.
 TASK_TIER_MAP: dict[str, int] = {
     "code": 1,
     "pipeline": 1,

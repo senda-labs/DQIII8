@@ -1639,3 +1639,33 @@ CREATE TABLE IF NOT EXISTS session_memory (
             domain TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+
+-- ── security_findings ───────────────────────────────────────────────────────
+-- Added 2026-08-17 (governance remediation Gap 11). Purely additive.
+-- Backs the de-duplication step of `.claude/skills/red-team/SKILL.md`
+-- ("Check security_findings DB for duplicates"), which queried this table
+-- before it existed and silently swallowed the error. Columns mirror the
+-- vocabulary the skill's own report format already uses: finding_id (RT-001),
+-- title, severity, status, file:line locator, proof, impact.
+CREATE TABLE IF NOT EXISTS security_findings (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    finding_id    TEXT,                                  -- report-local ref, e.g. 'RT-001'
+    title         TEXT NOT NULL,
+    severity      TEXT CHECK(severity IN ('CRITICAL','HIGH','MEDIUM','LOW','INFO')),
+    status        TEXT NOT NULL DEFAULT 'REAL'
+                  CHECK(status IN ('REAL','MITIGATED','FALSE_POSITIVE','ALREADY_FIXED','RESOLVED')),
+    category      TEXT,                                  -- OWASP category
+    source        TEXT,                                  -- skill/agent that filed it, e.g. 'red-team'
+    file_path     TEXT,                                  -- 'path/to/file.py:123'
+    proof         TEXT,                                  -- reproducible command/payload
+    impact        TEXT,
+    report_path   TEXT,                                  -- the report this came from
+    resolved      INTEGER NOT NULL DEFAULT 0,            -- 0/1, mirrors error_log convention
+    resolution    TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_security_findings_created ON security_findings(created_at);
+CREATE INDEX IF NOT EXISTS idx_security_findings_status  ON security_findings(status, severity);

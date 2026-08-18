@@ -1445,6 +1445,45 @@ def test_chdir_to_safe_dir_write_still_approved():
     assert r["decision"] == "APPROVE"
 
 
+# Panel-v4 guardrails-security finding #1 (2026-08-18): _blocked_path_hit /
+# _governance_path_hit did raw substring matching, so a '/./' segment broke
+# the substring without changing the resolved file.
+def test_dotslash_segment_does_not_bypass_blocked_path():
+    r = analyzer.evaluate(
+        "Write", {"file_path": "/root/dqiii8/.claude/./settings.json", "content": "x"}
+    )
+    assert r["decision"] == "DENY"
+
+
+def test_dotslash_segment_does_not_bypass_claude_md():
+    r = analyzer.evaluate("Write", {"file_path": "/root/dqiii8/././CLAUDE.md", "content": "x"})
+    assert r["decision"] == "DENY"
+
+
+def test_dotslash_segment_does_not_bypass_governance_path():
+    r = analyzer.evaluate(
+        "Write", {"file_path": "/root/dqiii8/.claude/rules/./00_core_behavior.md", "content": "x"}
+    )
+    assert r["decision"] == "ESCALATE"
+
+
+# Panel-v4 guardrails-security finding #2 (2026-08-18): a symlink planted in
+# an allowed directory laundered writes to a protected file — the credential
+# gate already realpath-resolved its candidates, the path gates didn't.
+def test_symlink_to_blocked_path_does_not_launder_write(tmp_path):
+    link = tmp_path / "notes.md"
+    link.symlink_to("/root/dqiii8/CLAUDE.md")
+    r = analyzer.evaluate("Write", {"file_path": str(link), "content": "x"})
+    assert r["decision"] == "DENY"
+
+
+def test_symlink_to_governance_path_does_not_launder_write(tmp_path):
+    link = tmp_path / "notes.md"
+    link.symlink_to("/root/dqiii8/.claude/rules/00_core_behavior.md")
+    r = analyzer.evaluate("Write", {"file_path": str(link), "content": "x"})
+    assert r["decision"] == "ESCALATE"
+
+
 # 6 — egress shapes the binary/library regex did not recognise, and payload
 # checks that must not depend on the destination host being a known sink.
 def test_http_client_to_sink_host_denied():

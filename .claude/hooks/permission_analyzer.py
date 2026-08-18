@@ -299,6 +299,33 @@ def _mcp_read_candidate_paths(tool: str, tool_input: dict) -> list[str]:
     return [p for p in paths if not (p in seen or seen.add(p))]
 
 
+def _path_match_candidates(path: str) -> list[str]:
+    """Normalized forms of `path` to test BLOCKED_PATHS/GOVERNANCE_PATHS against.
+
+    Mirrors `_credential_hit`'s candidate set (2026-08-18): the plain normpath
+    closes the `/./`/`//` bypass (`.claude/./settings.json` collapsed a
+    substring match that raw string containment never caught), and the
+    realpath closes symlink laundering (`ln -s CLAUDE.md notes.md` then
+    `Write notes.md` must resolve to the real protected file, same as the
+    credential gate already requires).
+    """
+    if not path:
+        return []
+    # normpath/realpath both strip a trailing slash, but BLOCKED_PATHS/
+    # GOVERNANCE_PATHS tokens for directories carry one ('.claude/hooks/') to
+    # avoid matching a same-prefixed file — restore it so a directory
+    # candidate still matches after normalization.
+    trailing_slash = path.endswith(("/", "\\"))
+    candidates = {os.path.normpath(path)}
+    try:
+        candidates.add(os.path.realpath(path))
+    except OSError as _re:  # pragma: no cover — realpath rarely raises
+        log.warning("permission_analyzer: realpath failed for %r: %s", path, _re)
+    if trailing_slash:
+        candidates |= {c + "/" for c in candidates}
+    return sorted(candidates)
+
+
 def _blocked_path_hit(path: str) -> str | None:
     """The BLOCKED_PATHS token a path matches, ignoring governance-only tokens.
 
@@ -307,24 +334,22 @@ def _blocked_path_hit(path: str) -> str | None:
     *also* matches a genuine deny token (e.g. `.claude/rules/secrets.md` hitting
     "secrets") still denies — DENY wins whenever the two lists disagree.
     """
-    if not path:
-        return None
-    for blocked in BLOCKED_PATHS:
-        if blocked in GOVERNANCE_PATHS:
-            continue
-        if blocked in path:
-            return blocked
+    for cand in _path_match_candidates(path):
+        for blocked in BLOCKED_PATHS:
+            if blocked in GOVERNANCE_PATHS:
+                continue
+            if blocked in cand:
+                return blocked
     return None
 
 
 def _governance_path_hit(path: str) -> str | None:
     """The GOVERNANCE_PATHS token a path matches, or None."""
-    if not path:
-        return None
-    normalized = path.replace("\\", "/")
-    for gov in GOVERNANCE_PATHS:
-        if gov in normalized:
-            return gov
+    for cand in _path_match_candidates(path):
+        normalized = cand.replace("\\", "/")
+        for gov in GOVERNANCE_PATHS:
+            if gov in normalized:
+                return gov
     return None
 
 # Shell metacharacters used to split a Bash command into path-like tokens.

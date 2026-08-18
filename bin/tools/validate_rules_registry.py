@@ -193,14 +193,30 @@ def _num(raw: str) -> int | None:
     return int(cleaned) if cleaned.isdigit() else None
 
 
+_FENCE = re.compile(r"^\s*(```|~~~)")
+
+
 def _md_tables(text: str):
     """Yield (header_cells, [body_row_cells...]) for every GFM table.
 
     A table is a `|---|---|` separator line, its preceding line as header, and
     every following pipe-line until the block ends.
+
+    Lines inside fenced code blocks (``` or ~~~) are skipped — a pipe-table
+    shown as a literal example inside a fence (illustrative output format,
+    vendored snippet) is not a declarative citation, and scanning it produces
+    false positives no author intended as a real agent-name citation.
     """
     lines = text.splitlines()
     sep = re.compile(r"^\s*\|?[\s:\-|]+\|[\s:\-|]*$")
+    in_fence = [False] * len(lines)
+    fenced = False
+    for idx, line in enumerate(lines):
+        if _FENCE.match(line):
+            fenced = not fenced
+            in_fence[idx] = True  # the fence marker line itself is never a table line
+            continue
+        in_fence[idx] = fenced
 
     def cells(line: str) -> list[str]:
         return [c.strip() for c in line.strip().strip("|").split("|")]
@@ -208,7 +224,14 @@ def _md_tables(text: str):
     i = 1
     while i < len(lines):
         line = lines[i]
-        if "|" in line and "-" in line and sep.match(line) and "|" in lines[i - 1]:
+        if (
+            not in_fence[i]
+            and not in_fence[i - 1]
+            and "|" in line
+            and "-" in line
+            and sep.match(line)
+            and "|" in lines[i - 1]
+        ):
             header = cells(lines[i - 1])
             body: list[list[str]] = []
             j = i + 1
@@ -765,6 +788,68 @@ def check_claude_md_counts(src: Source) -> tuple[list[str], list[str]]:
     return problems, warnings
 
 
+# ── check 6: file-path citations ─────────────────────────────────────────────
+
+_BACKTICK_PATH = re.compile(
+    r"`((?:[\w.\-]+/)+[\w.\-]+\.(?:md|py|json|sh|sql|toml|ya?ml|txt|db))`"
+)
+
+
+def _path_citation_exists(src: Source, path_str: str) -> bool:
+    """Mirrors panel_review.py's `_citation_exists()` security invariants
+    (reject absolute paths, reject `~`, reject traversal outside the repo
+    root) adapted for `Source`'s staged/worktree/test-fixture root instead of
+    panel_review.py's hardcoded REPO_ROOT constant — that module always runs
+    against the real repo; this validator also runs against staged content
+    and pytest fixtures rooted elsewhere.
+    """
+    if path_str.startswith("/") or path_str.startswith("~"):
+        return False
+    candidate = (src.root / path_str).resolve()
+    if not candidate.is_relative_to(src.root):
+        return False
+    rel = str(candidate.relative_to(src.root))
+    return src._staged_file_exists(rel) if src.staged else candidate.is_file()
+
+
+def check_file_citations_exist(src: Source) -> tuple[list[str], list[str]]:
+    """Every backtick-fenced path shaped like a real file, cited from
+    `.claude/rules*/` or `.claude/skills/`, is checked against this repo.
+
+    Warn-only, same rationale as `check_agent_names_exist()`'s prose sweep:
+    measured live against the real corpus (2026-08-18), a plain existence
+    scan is dominated by false positives that are not stale citations —
+    inline BLOCKED_PATHS glob-pattern examples (`.claude/rules/secrets.md`,
+    `context/proposito.md`), deliberate "this was deleted" historical notes
+    (`common/git-workflow.md`, `bin/tools/gemini_review.py`), and templated
+    or runtime-created paths (`sessions/YYYY-MM-DD_session_N.md`,
+    `tasks/todo.md`). None of that is reliably distinguishable by regex from
+    a real stale citation, so this is a human-reviewed signal, not a hard
+    gate — the one real hit found this way (`svsi/SKILL.md:16` ->
+    `docs/SVSI_PLAN.md`, which never existed) was fixed directly in the doc.
+    """
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    scan_paths = [
+        rel
+        for rel in src.list_governance_md()
+        if rel.startswith(".claude/rules") or rel.startswith(".claude/skills")
+    ]
+    for rel in scan_paths:
+        text = src.read(rel)
+        if text is None:
+            continue
+        for m in _BACKTICK_PATH.finditer(text):
+            path_str = m.group(1)
+            if not _path_citation_exists(src, path_str):
+                warnings.append(
+                    f"{rel}: cites `{path_str}`, which does not exist in this repo."
+                )
+
+    return problems, warnings
+
+
 # ── entrypoint ───────────────────────────────────────────────────────────────
 
 CHECKS = (
@@ -773,6 +858,7 @@ CHECKS = (
     ("agent-names", check_agent_names_exist),
     ("model-slugs", check_model_slugs_match_code),
     ("claude-md-counts", check_claude_md_counts),
+    ("file-citations", check_file_citations_exist),
 )
 
 

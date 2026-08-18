@@ -200,6 +200,18 @@ def test_unknown_agent_in_table_row_is_a_problem(repo: Path):
     assert any("ghost-specialist" in p and "table row cites agent" in p for p in problems), problems
 
 
+def test_unknown_agent_in_a_fenced_code_block_table_is_not_a_problem(repo: Path):
+    """RC11.2: a pipe-table shown as a literal example inside a ``` fence
+    (illustrative output format, vendored snippet) is not a declarative
+    citation — _md_tables() must not scan it."""
+    fenced = "# Fixture\n\n```\n" + _TABLE.split("\n", 1)[1] + "```\n"
+    (repo / ".claude/rules_db/fixture-fenced-table.md").write_text(
+        fenced.format(name="ghost-specialist"), encoding="utf-8"
+    )
+    problems, _ = vrr.check_agent_names_exist(src(repo))
+    assert not [p for p in problems if "ghost-specialist" in p], problems
+
+
 def test_same_unknown_name_in_free_prose_is_only_a_warning(repo: Path):
     """Identical name, prose instead of a table row: warning, never a problem."""
     (repo / ".claude/rules_db/fixture-prose.md").write_text(
@@ -441,6 +453,35 @@ def test_staged_mode_detects_a_problem_only_present_in_the_index(tmp_path: Path)
     )
     assert not worktree_problems, worktree_problems
     assert any("orphan-fixture" in p for p in staged_problems), staged_problems
+
+
+# ── check 6: file-path citations (RC11.3) ───────────────────────────────────
+
+
+def test_nonexistent_backtick_path_is_a_warning_not_a_problem(repo: Path):
+    skill_dir = repo / ".claude/skills/fixture-skill"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(
+        "# Fixture skill\n\nPlan: `docs/DOES_NOT_EXIST.md`\n", encoding="utf-8"
+    )
+    problems, warnings = vrr.check_file_citations_exist(src(repo))
+    assert not [p for p in problems if "DOES_NOT_EXIST" in p], problems
+    assert any("DOES_NOT_EXIST" in w and "does not exist in this repo" in w for w in warnings), warnings
+
+
+def test_real_backtick_path_is_clean(repo: Path):
+    (repo / ".claude/rules_db/fixture-real-path.md").write_text(
+        "# Fixture\n\nSee `.claude/rules_db/git-safety.md` for details.\n", encoding="utf-8"
+    )
+    _, warnings = vrr.check_file_citations_exist(src(repo))
+    assert not [w for w in warnings if "fixture-real-path.md" in w], warnings
+
+
+def test_absolute_path_citation_does_not_escape_repo_root(repo: Path):
+    """Mirrors panel_review.py's _citation_exists() regression: an absolute
+    path or a `..`-traversal must never resolve outside the source root."""
+    assert not vrr._path_citation_exists(src(repo), "/etc/passwd")
+    assert not vrr._path_citation_exists(src(repo), "../../../etc/passwd")
 
 
 # ── CLI contract ────────────────────────────────────────────────────────────

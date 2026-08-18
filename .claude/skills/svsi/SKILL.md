@@ -13,7 +13,9 @@ user-invocable: true
 # /svsi-review — Pre-revisión Semántica de Informes
 
 Proyecto: `/root/dqiii8/my-projects/intl-reports/`
-Plan canónico: `docs/SVSI_PLAN.md` (v1.3)
+Reglas/autoridad canónica: `tools/review/authority.py` + `tests/test_svsi_authority.py` +
+`tests/test_svsi_invariants.py` — no existe un `docs/SVSI_PLAN.md` separado (citación stale
+detectada 2026-08-18, RC11.3; el código y su test suite son la única fuente de verdad).
 Engine: `tools/review/engine.py` → `review_slug(slug)`
 Reporter: `tools/review/reporter.py` → `write_report(report)`
 

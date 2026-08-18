@@ -2,12 +2,14 @@
 """
 DQIII8 Health Watchdog — daily preventive maintenance check.
 
-13+ checks (count varies: one per configured service/cron/backup-DB, plus a
-conditional hooks_config_warnings when out-of-repo hook paths exist) covering
-services, crons, core modules, DB integrity, disk space, import paths, backup
-freshness/log, the health_check.py dead-man's-switch, abandoned human_hours
-sessions, hooks config, and dependency version pins. Sends Telegram alert if
-any check fails.
+13+ checks (count varies: one per configured service/cron/backup-DB, plus
+conditional hooks_config_warnings/rules_registry_warnings when there's
+something non-fatal to surface) covering services, crons, core modules, DB
+integrity, disk space, import paths, backup freshness/log, the
+health_check.py dead-man's-switch, abandoned human_hours sessions, hooks
+config, the rules registry (RC10/RC11 doc-drift gate, otherwise pre-commit-
+only and blind to non-git drift), and dependency version pins. Sends
+Telegram alert if any check fails.
 Silent on full success (only logs).
 
 Usage:
@@ -438,6 +440,28 @@ def check_hooks_config() -> None:
         check("hooks_config", False, str(e)[:80])
 
 
+def check_rules_registry() -> None:
+    """validate_rules_registry.py (RC10's registry/token-budget/agent-name/
+    model-slug/CLAUDE.md-count checks) only ever runs as a pre-commit gate —
+    it has no periodic execution path, so drift introduced by any means other
+    than a gated commit (a direct edit outside git, a commit that bypasses
+    hooks) goes undetected indefinitely (RC11.6, 2026-08-18). Mirrors
+    check_hooks_config()'s pattern: worktree source (this check's whole point
+    is "is the live tree broken right now"), problems fail the check,
+    warnings are surfaced but non-fatal.
+    """
+    try:
+        sys.path.insert(0, str(DQIII8_ROOT / "bin" / "tools"))
+        from validate_rules_registry import Source, run_all
+
+        problems, warnings = run_all(Source(root=DQIII8_ROOT))
+        check("rules_registry", not problems, "; ".join(problems)[:200] if problems else "")
+        if warnings:
+            check("rules_registry_warnings", True, "; ".join(warnings)[:200])
+    except Exception as e:
+        check("rules_registry", False, str(e)[:80])
+
+
 def check_triage_ran() -> None:
     """error_log triage (bin/tools/triage_error_log.py --apply, cron 03:50)
     has no failure signal of its own — a locked DB or crash there is silent
@@ -495,6 +519,7 @@ CHECKS = [
     ("human_hours", check_human_hours),
     ("dependency_pins", check_dependency_pins),
     ("hooks_config", check_hooks_config),
+    ("rules_registry", check_rules_registry),
     ("triage_ran", check_triage_ran),
 ]
 

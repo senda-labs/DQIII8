@@ -19,10 +19,13 @@ from pathlib import Path
 import pytest
 
 HOOKS_DIR = Path(__file__).parent.parent / ".claude" / "hooks"
+TOOLS_DIR = Path(__file__).parent.parent / "bin" / "tools"
 sys.path.insert(0, str(HOOKS_DIR))
+sys.path.insert(0, str(TOOLS_DIR))
 
 import rules_dispatcher as rd  # noqa: E402
 import rules_registry_introspect as intro  # noqa: E402
+import validate_rules_registry as vrr  # noqa: E402
 
 DISPATCHER_SRC = HOOKS_DIR / "rules_dispatcher.py"
 
@@ -106,22 +109,16 @@ def test_governance_and_agent_aliases_all_resolve():
 
 # ── Token budget ────────────────────────────────────────────────────────────
 
-# Measured 2026-08-18 with the real cl100k_base token_estimate() (RC8 — the
-# prior range was a word-count-heuristic undercount, ~30-45% low) over the
-# representative matrix below, including combined-trigger cases (a single
-# Bash command or file path can hit more than one keyword/extension pattern
-# at once, which the single-trigger-only matrix never probed). Re-measure and
-# update the dispatcher docstring, DYNAMIC.md and 02_hooks_and_permissions.md
-# together whenever an _ALWAYS or heavily-triggered rule file changes size,
-# or a trigger is added/removed — this range has gone stale on every prior
-# audit day it was touched.
-MEASURED_FLOOR = 1144    # _ALWAYS only (ops + core-behavior) — re-measured 2026-08-18
-MEASURED_CEILING = 6853  # Bash combining git + agent/orchestrat + sqlite3 keywords
-# Re-measured 2026-08-18 after 00_core_behavior.md's § REGLA NIM section was
-# collapsed from ~1,371 tokens to a short Anthropic-only paragraph (RC9 archive
-# fold) — this halved both ends of the range. Whoever restores multi-tier
-# content into _ALWAYS files must re-measure again (see archive checklist,
-# .claude/rules_db/archive/multi-tier-dormant-2026-08.md).
+# RC11.4 (2026-08-18): this range used to be hardcoded here, duplicating the
+# dispatcher docstring's own "suelo N"/"techo N" markers — the two drifted
+# apart twice on 2026-08-17 alone. Now read live from the single canonical
+# source (bin/tools/validate_rules_registry.py's _canonical_range(), the same
+# function the pre-commit gate uses), so this file cannot go stale on its own.
+_CANON = vrr._canonical_range(DISPATCHER_SRC.read_text(encoding="utf-8"))
+assert _CANON is not None, (
+    f"{DISPATCHER_SRC}: docstring missing the canonical 'suelo N'/'techo N' markers"
+)
+MEASURED_FLOOR, MEASURED_CEILING = _CANON
 TOLERANCE = 0.05
 
 # tool, tool_input, expected label

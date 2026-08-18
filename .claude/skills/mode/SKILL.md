@@ -77,7 +77,7 @@ print('Persiste entre sesiones y reinicios (/mode status para verificar)')
 ## Notas DQIII8
 
 - El modo se inyecta via `session_start.py` en el bloque DQIII8 inicial
-- **Precedencia de lectura** (`session_start.py`, corregido 2026-08-17):
+- **Precedencia de lectura** (`session_start.py`):
   `DQIII8_MODE` (env, **solo si su valor es `coder`/`analyst`/`creative`**) →
   `var/dqiii8_mode.conf` → `/tmp/dqiii8_mode.txt` (legacy). La validacion contra
   `_MODE_BEHAVIORS` es lo que evita que un `DQIII8_MODE=autonomous` (vocabulario de

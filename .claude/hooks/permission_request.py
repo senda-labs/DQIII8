@@ -27,7 +27,6 @@ import json
 import logging
 import os
 import sqlite3
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -88,21 +87,18 @@ def _send_telegram(message: str) -> bool:
     if not token or not chat_id:
         return False
     try:
-        result = subprocess.run(
-            [
-                "python3",
-                "-c",
-                f"""
-import urllib.request, urllib.parse
-url = "https://api.telegram.org/bot{token}/sendMessage"
-data = urllib.parse.urlencode({{"chat_id": "{chat_id}", "text": {repr(message)}}}).encode()
-urllib.request.urlopen(url, data, timeout=10)
-""",
-            ],
-            capture_output=True,
-            timeout=15,
-        )
-        return result.returncode == 0
+        # Call the Telegram API directly in-process instead of
+        # interpolating token/chat_id into a `python3 -c` source string — that
+        # put the token in `ps aux` for the call's duration and was injectable
+        # if either value contained a quote (2026-08-06 bot hijack via a
+        # filtered token was the same class of leak, different vector).
+        import urllib.request
+        import urllib.parse
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = urllib.parse.urlencode({"chat_id": chat_id, "text": message}).encode()
+        urllib.request.urlopen(url, data, timeout=10)
+        return True
     except Exception:
         return False
 

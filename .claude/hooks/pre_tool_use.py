@@ -4,10 +4,10 @@ DQIII8 Hook — PreToolUse v7
 Thin wrapper: parse stdin → PermissionAnalyzer → RAG rules injection + output truncation.
 
 v7 changes (ADR-001 corrections):
-  - Rules RAG: injects ONLY relevant rules via rules_dispatcher.py (~1144–6853
-    tokens, real cl100k_base count, re-measured 2026-08-18 after the RC9
-    archive fold — see tests/test_rules_dispatcher.py) instead of auto-loading
-    all 16 files on every tool call.
+  - Rules RAG: injects ONLY relevant rules via rules_dispatcher.py instead of
+    auto-loading all 16 files on every tool call. The measured token range is
+    NOT restated here (it drifted here silently once) — the single source is
+    rules_dispatcher.py's own docstring.
   - Output Truncation: wraps Bash commands that may produce large output with
     truncate_output.py pipe. Uses modifiedToolInput to transform the command
     transparently — no blocking, no censorship.
@@ -46,7 +46,7 @@ if not agent or (
     # agent_registry before building the filename (mirrors post_tool_use.py's
     # Stage 0 fix). A raw hex agent_id is not a usable agent name either, so
     # it takes the same resolution path as the "no agent" case.
-    agent = "claude-sonnet-4-6"
+    agent = "claude-sonnet-5"
     try:
         _direct = os.path.join(DQIII8_ROOT, "tmp", f"dqiii8_agent_{session}.json")
         _lookup_path = _direct if os.path.exists(_direct) else None
@@ -68,7 +68,7 @@ if not agent or (
         if _lookup_path:
             with open(_lookup_path, encoding="utf-8") as _f:
                 _lookup = json.load(_f)
-                agent = _lookup.get("agent_type", "claude-sonnet-4-6")
+                agent = _lookup.get("agent_type", "claude-sonnet-5")
                 _worktree = _lookup.get("worktree_path", "") or ""
     except Exception as e:
         log.debug("pre_tool_use: agent lookup failed (best-effort): %s", e)
@@ -90,7 +90,7 @@ except Exception as _e:
 
 if result["decision"] in ("DENY", "ESCALATE"):
     try:
-        record_rejection(tool, inp, result)
+        record_rejection(tool, inp, result, session_id=session)
     except Exception as e:
         log.warning("pre_tool_use: record_rejection failed: %s", e, exc_info=True)
     print(json.dumps({

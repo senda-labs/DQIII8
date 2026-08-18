@@ -37,7 +37,7 @@ Content pipeline requests route to **Tier 1/2** (free models):
 
 ```
 task_type=pipeline → agent=content-automator → tier=1 → nemotron-nano (free)
-task_type=writing  → agent=creative-writer   → tier=3 → claude-sonnet-4-6
+task_type=writing  → agent=creative-writer   → tier=3 → claude-sonnet-5
 ```
 
 Use `writing` for high-quality literary content; `pipeline` for batch automation.

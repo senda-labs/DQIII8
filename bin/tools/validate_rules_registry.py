@@ -19,6 +19,10 @@ mechanical pre-commit checks so they cannot come back:
   4. check_model_slugs_match_code() — a model slug a rule file presents as
      configured must actually appear in the wrapper's routing tables. This is
      Gap 2's exact failure mode: the doc fix was written, the code fix never was.
+  5. check_command_skill_parity()   — `.claude/commands/<name>.md` and
+     `.claude/skills/<name>/SKILL.md` must not be two forked copies of the same
+     slash command. `handover` had drifted into two *different* procedures, one
+     of which pushed to `master` unattended (F6, 2026-08-18).
 
 Contract, cloned from bin/tools/validate_hooks_config.py:
   * `--staged` (used by .git/hooks/pre-commit) reads content from the git index
@@ -38,6 +42,7 @@ Exit: 0 = clean, 1 = problems found, 2 = bad invocation.
 from __future__ import annotations
 
 import ast
+import difflib
 import re
 import subprocess
 import sys
@@ -54,6 +59,8 @@ DYNAMIC_MD = ".claude/rules/DYNAMIC.md"
 HOOKS_PERMS_MD = ".claude/rules/02_hooks_and_permissions.md"
 CORE_BEHAVIOR_MD = ".claude/rules/00_core_behavior.md"
 TIERING_MD = ".claude/rules/03_tiering_and_routing.md"
+_ARCHIVE_MD = ".claude/rules_db/archive/multi-tier-dormant-2026-08.md"
+_BARE_ANTHROPIC_SLUG = re.compile(r"`(claude-[A-Za-z0-9_.\-]+)`")
 AGENTS_DIR = ".claude/agents"
 
 # `.claude/architecture/` is a vendored third-party book about Claude Code's own
@@ -325,10 +332,16 @@ def _canonical_range(dispatcher_src: str) -> tuple[int, int] | None:
 
 def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
     """The dispatcher docstring is the single source for the measured token
-    range; DYNAMIC.md and 02_hooks_and_permissions.md must quote it verbatim.
+    range; DYNAMIC.md must quote it verbatim, and
+    02_hooks_and_permissions.md must not quote it at all.
 
-    Four places state this number and there is no mechanical link between them,
-    so it drifted twice on 2026-08-17 alone. Now a mismatch fails the commit.
+    Places stating this number drifted twice on 2026-08-17 alone, and again on
+    2026-08-18 — that last time in BOTH directions while this check still
+    printed "consistent", because it only cross-checked prose against prose.
+    It now also MEASURES: the real floor and the two real ceiling paths (Bash
+    all-keywords, and the Edit branch into .claude/hooks/**.py, which no
+    Bash-only probe can reach). Measurement reads the worktree even under
+    --staged: token_estimate() needs real files on disk.
     """
     problems: list[str] = []
     warnings: list[str] = []
@@ -361,9 +374,8 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
                 f"of the canonical {floor}-{ceiling}."
             )
 
-    # DYNAMIC.md: >=1 occurrence. 02_hooks_and_permissions.md: >=2 (the hook
-    # order line and the § Rules dispatcher paragraph).
-    for rel, expected_min in ((DYNAMIC_MD, 1), (HOOKS_PERMS_MD, 2)):
+    # DYNAMIC.md: >=1 occurrence, and it must match the canonical range.
+    for rel, expected_min in ((DYNAMIC_MD, 1),):
         text = src.read(rel)
         if text is None:
             problems.append(f"cannot read {rel}")
@@ -395,7 +407,80 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
                         f"{label} is {expected}."
                     )
 
+    # 02_hooks_and_permissions.md is itself injected and itself counts toward
+    # the ceiling it used to describe. It must point at the docstring, never
+    # restate the numbers — a fourth citation site is a fourth thing to drift.
+    hp_text = src.read(HOOKS_PERMS_MD)
+    if hp_text is None:
+        problems.append(f"cannot read {HOOKS_PERMS_MD}")
+    else:
+        stray = _RANGE.findall(hp_text) + _CANON_FLOOR.findall(hp_text) + _CANON_CEIL.findall(hp_text)
+        if stray:
+            problems.append(
+                f"{HOOKS_PERMS_MD}: must NOT restate the token range "
+                f"(found {stray!r}) — point at {DISPATCHER}'s docstring instead."
+            )
+
+    problems.extend(_measured_range_problems(src, floor, ceiling))
     return problems, warnings
+
+
+# Probes for the two structurally distinct ceiling paths. The Bash probe
+# combines every _BASH_KEYWORD_RULES trigger; the Edit probe is the ONLY way to
+# reach `hooks-perms`/`tiering`/`db-mutations`, which are wired to path
+# substrings inside get_rules() and are unreachable from any Bash command.
+_CEILING_PROBES = (
+    (
+        "Bash",
+        {
+            "command": "git python3 sqlite3 schema_v2 systemctl claude agent "
+            "orchestrator tmux intl-reports firecrawl"
+        },
+        "bash-all-keywords",
+    ),
+    (
+        "Edit",
+        {
+            "file_path": "/root/dqiii8/database/.claude/hooks/"
+            "openrouter_wrapper_domain_agent.py"
+        },
+        "edit-hooks-tiering-db-py",
+    ),
+)
+
+
+def _measured_range_problems(src: Source, floor: int, ceiling: int) -> list[str]:
+    """Measure the live corpus and hold the published range to it.
+
+    rules_dispatcher resolves its rule files from DQIII8_ROOT on disk, so this
+    can only measure the real repo. Synthetic fixture repos (unit tests) get
+    skipped rather than silently measured against the wrong tree.
+    """
+    problems: list[str] = []
+    if src.root.resolve() != ROOT.resolve():
+        return problems
+    try:
+        import rules_dispatcher as rd  # noqa: PLC0415 — optional, fail-open below
+    except Exception as exc:
+        return [f"cannot import rules_dispatcher to measure the token range: {exc}"]
+
+    measured_floor = rd.token_estimate(rd.get_rules("Glob", {}))
+    if measured_floor != floor:
+        problems.append(
+            f"{DISPATCHER}: docstring floor is {floor} but the measured "
+            f"_ALWAYS-only injection is {measured_floor}. Re-measure and update "
+            f"the docstring and {DYNAMIC_MD} together."
+        )
+
+    for tool, tool_input, label in _CEILING_PROBES:
+        measured = rd.token_estimate(rd.get_rules(tool, tool_input))
+        if measured > ceiling:
+            problems.append(
+                f"{DISPATCHER}: docstring ceiling is {ceiling} but the reachable "
+                f"'{label}' path measures {measured}. Shrink the rule files or "
+                f"re-publish the ceiling in the docstring and {DYNAMIC_MD}."
+            )
+    return problems
 
 
 # ── check 3: agent names ─────────────────────────────────────────────────────
@@ -614,6 +699,16 @@ def check_model_slugs_match_code(src: Source) -> tuple[list[str], list[str]]:
         if text is None:
             problems.append(f"cannot read {rel}")
             continue
+        # Anthropic models are conventionally cited bare (`claude-opus-5`),
+        # never slash-prefixed (`anthropic/claude-opus-5`) — the wrapper's
+        # AGENT_ROUTING stores both forms (see _code_slugs), but only the
+        # slash form was ever credited as "cited", so any bare-only-cited
+        # Anthropic model false-positived as undocumented (2026-08-18, first
+        # hit: claude-haiku-4-5-20251001 in 03_tiering_and_routing.md).
+        for bare in _BARE_ANTHROPIC_SLUG.findall(text):
+            slash = f"anthropic/{bare}"
+            if slash in models:
+                cited.add(slash)
         inventory = _inventory_line_numbers(text)
         for n, line in enumerate(text.splitlines(), 1):
             for slug in _SLUG.findall(line):
@@ -656,9 +751,17 @@ def check_model_slugs_match_code(src: Source) -> tuple[list[str], list[str]]:
                         "the doc names a model nothing routes to."
                     )
 
+    # Dormant multi-tier slugs (RC9, 2026-08-18) live on in the archive under
+    # their bare form (no `nim/`/`openrouter/` provider prefix) — that's
+    # "documented, just not in the hot path", not silence. Only warn for
+    # slugs the archive doesn't mention either.
+    archive_text = src.read(_ARCHIVE_MD) or ""
     for slug in sorted(models - cited):
         if "/" not in slug:
-            continue  # bare model ids (`claude-opus-4-8`) are matched elsewhere
+            continue  # bare model ids (`claude-opus-5`) are matched elsewhere
+        bare = slug.rsplit("/", 1)[-1] if slug.split("/", 1)[0] in providers else slug
+        if bare in archive_text or slug in archive_text:
+            continue
         warnings.append(
             f"{WRAPPER}: model slug `{slug}` is configured but cited in neither "
             f"{CORE_BEHAVIOR_MD} nor {TIERING_MD} (undocumented, not wrong)."
@@ -850,6 +953,80 @@ def check_file_citations_exist(src: Source) -> tuple[list[str], list[str]]:
     return problems, warnings
 
 
+# ── check 7: command/skill parity ────────────────────────────────────────────
+
+COMMANDS_DIR = ".claude/commands"
+SKILLS_DIR = ".claude/skills"
+
+# A pointer file is short and names its SKILL.md. Measured on the live corpus
+# (2026-08-18): the one real pointer, commands/handover.md, has a 1-line body
+# once its `>` SSOT annotation is stripped; the smallest *duplicating* command
+# body is 31 lines (`audit`). 15 sits in the middle of that gap.
+_POINTER_MAX_LINES = 15
+# Below this ratio the two copies have genuinely forked rather than drifted by a
+# few edits. Measured across the 10 duplicated pairs the distribution is
+# strongly bimodal: skill-create 0.06, weekly-review 0.51, mode 0.56, then a gap
+# to audit 0.82 ... mobilize 1.00. 0.60 lands in that gap, so it separates real
+# content forks from near-identical copies without hand-tuning per pair.
+_PARITY_MIN_RATIO = 0.60
+
+
+def _parity_body(text: str) -> list[str]:
+    """Substantive lines only: no YAML frontmatter, no blank lines, no
+    blockquote annotations (the `> **SSOT: ...**` cross-reference convention is
+    metadata about the duplication, not part of the procedure)."""
+    lines = text.splitlines()
+    if lines and lines[0].strip() == "---":
+        end = next((i for i, ln in enumerate(lines[1:], 1) if ln.strip() == "---"), None)
+        if end is not None:
+            lines = lines[end + 1 :]
+    return [
+        s for ln in lines if (s := ln.strip()) and not s.startswith(">")
+    ]
+
+
+def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
+    """`.claude/commands/<name>.md` and `.claude/skills/<name>/SKILL.md` are
+    11 pairs of the same slash-command definition with no parity check anywhere
+    (F6, panel 6 maintainability audit). The confirmed worst case was
+    `handover`, whose two copies described genuinely *different* procedures —
+    one pushed to `master` unattended, the other stopped to ask first — so an
+    agent that read the wrong copy would auto-push when it should have asked.
+
+    A pair is clean when the command file is a pure pointer at the skill (the
+    SSOT pattern). Otherwise the two bodies are compared and a divergence below
+    `_PARITY_MIN_RATIO` is reported. Warn-only by design: the remaining 10
+    duplicated pairs are known pre-existing debt slated for their own batch, and
+    hard-failing on them would break every commit in the repo.
+    """
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    for rel in src.list_md(COMMANDS_DIR):
+        name = Path(rel).stem
+        skill_rel = f"{SKILLS_DIR}/{name}/SKILL.md"
+        cmd_text = src.read(rel)
+        skill_text = src.read(skill_rel)
+        if cmd_text is None or skill_text is None:
+            continue  # unpaired command or skill — nothing to compare
+
+        cmd_body = _parity_body(cmd_text)
+        if len(cmd_body) <= _POINTER_MAX_LINES and skill_rel in cmd_text:
+            continue  # pure pointer at the SSOT — the intended end state
+
+        ratio = difflib.SequenceMatcher(
+            None, cmd_body, _parity_body(skill_text)
+        ).ratio()
+        if ratio < _PARITY_MIN_RATIO:
+            warnings.append(
+                f"{rel} duplicates {skill_rel} and has diverged "
+                f"(similarity {ratio:.2f} < {_PARITY_MIN_RATIO:.2f}) — reconcile "
+                f"them, or reduce the command file to a pointer at the skill."
+            )
+
+    return problems, warnings
+
+
 # ── entrypoint ───────────────────────────────────────────────────────────────
 
 CHECKS = (
@@ -859,6 +1036,7 @@ CHECKS = (
     ("model-slugs", check_model_slugs_match_code),
     ("claude-md-counts", check_claude_md_counts),
     ("file-citations", check_file_citations_exist),
+    ("command-skill-parity", check_command_skill_parity),
 )
 
 

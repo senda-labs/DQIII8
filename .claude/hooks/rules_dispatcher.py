@@ -2,28 +2,32 @@
 DQIII8 — Rules Dispatcher (RAG de Reglas Dinámico)
 Inyecta SÓLO las reglas relevantes al contexto del tool en curso.
 
-En lugar de cargar los 16 archivos en cada turno, este módulo mapea
-tool + input → subconjunto mínimo de reglas (~1144–6853 tokens, cl100k_base real).
+En lugar de cargar el corpus de reglas entero en cada turno, este módulo mapea
+tool + input → subconjunto mínimo de reglas (~946–7751 tokens, cl100k_base real).
+El número de archivos del registro no se cita aquí: el recuento vivo es
+`len(_REGISTRY)` y su parte de rules_db/ está fijada en CLAUDE.md
+("Contextual rules (N)"), validada por check_claude_md_counts().
 
-RANGO CANÓNICO (medido con token_estimate() — real cl100k_base vía tiktoken,
-ya no el heurístico de word-split que subestimaba ~30-45% — sobre la matriz de
-casos representativos, incluyendo triggers combinados, de
-tests/test_rules_dispatcher.py, re-medido 2026-08-18 tras el fold RC9 de
-§ REGLA NIM en 00_core_behavior.md): **suelo 1144** (solo _ALWAYS =
-ops + core-behavior), **techo 6853** (Bash combinando las keywords
-git + agent/orchestrat + sqlite3 en un mismo comando).
+RANGO CANÓNICO (medido con token_estimate(), cl100k_base real vía tiktoken):
+**suelo 946** (solo _ALWAYS = ops + core-behavior), **techo 7751**.
 
-RE-MEDIR OBLIGATORIAMENTE (este rango ya se ha quedado obsoleto varias veces)
-siempre que cambie de tamaño 00_core_behavior.md, dqiii8-ops.md, o
-cualquier fichero de rules_db/ que esté en _ALWAYS o en un trigger muy usado, y
-siempre que se añada/quite un trigger. Los 4 sitios que citan el rango deben
-actualizarse juntos: este docstring, DYNAMIC.md, y 02_hooks_and_permissions.md (×2).
+El techo es el MÁXIMO REALMENTE ALCANZABLE, no el peor caso de la matriz
+representativa: un Bash que combina todas las keywords de _BASH_KEYWORD_RULES
+en un mismo comando. La otra rama alta es Edit sobre .claude/hooks/**.py, por
+debajo de ese techo. Publicar el peor caso de la matriz deja fuera ambas.
 
-Las reglas residen en .claude/rules_db/ (fuera del auto-inject de Claude Code).
-El único archivo en .claude/rules_db/ que se auto-inyecta vía Claude Code es
-.claude/rules/DYNAMIC.md; el resto de .claude/rules/*.md y .claude/rules_db/*.md
-se inyectan solo bajo demanda por este dispatcher (RC4, corregido 2026-08-18 —
-la afirmación anterior de "3 líneas" era obsoleta desde que DYNAMIC.md creció).
+RE-MEDIR OBLIGATORIAMENTE siempre que cambie de tamaño 00_core_behavior.md,
+dqiii8-ops.md, o cualquier fichero de rules_db/ o rules/ que esté en _ALWAYS o
+en un trigger, y siempre que se añada/quite un trigger. Solo 2 sitios citan el
+rango y deben actualizarse juntos: este docstring y .claude/rules/DYNAMIC.md.
+02_hooks_and_permissions.md NO debe citar los números — apunta aquí
+(invariante verificada por bin/tools/validate_rules_registry.py, que además
+mide el suelo y los techos reales en cada commit).
+
+Las reglas contextuales residen en .claude/rules_db/, fuera del auto-inject de
+Claude Code: este dispatcher las carga bajo demanda. El único fichero de reglas
+que Claude Code auto-inyecta en el contexto de sesión es .claude/rules/DYNAMIC.md;
+el resto de .claude/rules/*.md se inyecta también bajo demanda por este dispatcher.
 """
 
 from __future__ import annotations

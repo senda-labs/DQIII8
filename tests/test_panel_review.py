@@ -138,7 +138,7 @@ def test_render_report_single_seat_healthy_no_findings():
                 "agent": pr.OPUS_AGENT,
                 "seat_focus": "adversarial (Opus, single pass)",
                 "provider": "anthropic",
-                "model": "claude-opus-4-8",
+                "model": "claude-opus-5",
                 "status": "ok",
                 "latency_ms": 1000,
                 "verified_findings": [],

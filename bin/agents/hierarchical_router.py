@@ -485,6 +485,9 @@ def classify_hierarchical_cached(
         except Exception:
             return _fallback_result(user_input)
 
+    if not prompt_embedding:
+        return _fallback_result(user_input)
+
     key = _cache_key(prompt_embedding)
 
     # Check cache

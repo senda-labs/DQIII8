@@ -1,6 +1,6 @@
 ---
 name: auditor
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools: ["Read", "Grep", "Glob", "Bash"]
 ---
 
@@ -201,7 +201,7 @@ score = (component_1*0.30 + component_2*0.30 + component_3*0.20
 > Note: component_2 uses `error_log` table only. If `error_log` is empty despite failures
 > in `agent_actions`, note "error_log pipeline broken" — do NOT award full score silently.
 
-> **component_4 — Scenario A interpretation (added 2026-03-16):**
+> **component_4 — Scenario A interpretation:**
 > For a system with >99% success rate, most sessions will be genuinely clean (no corrections
 > to capture). A component_4 of 30-40% in this context is **HEALTHY** (Scenario A), not a
 > deficiency. Before flagging low lesson capture, run the diagnostic:

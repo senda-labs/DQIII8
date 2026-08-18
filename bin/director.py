@@ -207,12 +207,12 @@ def _get_model_for_task(task_type: str) -> tuple[str, float]:
             "code": "qwen2.5-coder:7b",
             "pipeline": "qwen2.5-coder:7b",
             "research": "llama-3.3-70b-versatile",
-            "analysis": "claude-sonnet-4-6",
-            "trading": "claude-sonnet-4-6",
-            "writing": "claude-sonnet-4-6",
-            "mixed": "claude-sonnet-4-6",
+            "analysis": "claude-sonnet-5",
+            "trading": "claude-sonnet-5",
+            "writing": "claude-sonnet-5",
+            "mixed": "claude-sonnet-5",
         }
-        return _defaults.get(task_type, "claude-sonnet-4-6"), 0.5
+        return _defaults.get(task_type, "claude-sonnet-5"), 0.5
 
 
 # ── LLM call via openrouter_wrapper ──────────────────────────────────────────

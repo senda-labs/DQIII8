@@ -43,8 +43,8 @@ AGENT_TYPE_MAP = {
 }
 
 # Resolve: prefer explicit agent_type match, fallback to agent_type as-is,
-# then default to claude-sonnet-4-6
-resolved_name = AGENT_TYPE_MAP.get(agent_type, agent_type or "claude-sonnet-4-6")
+# then default to claude-sonnet-5
+resolved_name = AGENT_TYPE_MAP.get(agent_type, agent_type or "claude-sonnet-5")
 
 # ── Worktree isolation ───────────────────────────────────────────────────────
 WORKTREE_AGENTS = {"code-reviewer", "python-specialist", "orchestrator"}

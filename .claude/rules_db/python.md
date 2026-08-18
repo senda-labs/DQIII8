@@ -19,8 +19,6 @@ paths:
 
 ## Immutability & structure
 - Prefer `@dataclass(frozen=True)` / `NamedTuple` for value objects
-- Functions < 50 lines, files < 800 lines
-- No deep nesting (>4 levels)
 - `Protocol` for duck-typed interfaces
 
 ## Security (Python-specific)

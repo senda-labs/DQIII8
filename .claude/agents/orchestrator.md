@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 isolation: worktree
 tools: ["Read", "Grep", "Glob", "Bash", "Task"]
 ---
@@ -51,7 +51,7 @@ The resulting JSON includes `task_type`, `subtasks[]` with `agent` and `depends_
 ## Tier Dispatch
 
 `recommended_tier` is `director.py`'s `TASK_TIER_MAP` value — a legacy 1/2/3
-complexity shorthand (audit gap 9, 2026-08-17) that picks the dispatch
+complexity shorthand that picks the dispatch
 **mechanism** below, NOT the provider tier. `AGENT_ROUTING[<agent>]` in
 `openrouter_wrapper.py` still names per-agent NIM/Groq/Ollama tier bindings
 (e.g. `python-specialist`/`research-analyst`/`data-specialist` at NIM/Tier B+,

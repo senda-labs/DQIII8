@@ -315,7 +315,7 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
     pending_key = f"sat_{task_id}"
     PENDING_SATISFACTION[pending_key] = {
         "session_id": task_id,
-        "model_used": "claude-sonnet-4-6",
+        "model_used": "claude-sonnet-5",
         "task_type": task_type,
         "task_description": description[:100],
         "duration_ms": duration_ms,
@@ -325,7 +325,7 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
     # Write immediately — guarantees data even if user never clicks 👍/👎
     _log_satisfaction(
         session_id=task_id,
-        model_used="claude-sonnet-4-6",
+        model_used="claude-sonnet-5",
         task_type=task_type,
         task_description=description[:100],
         duration_ms=duration_ms,
@@ -1389,7 +1389,7 @@ def _run_claude(
         "--output-format",
         "json",
         "--model",
-        "claude-sonnet-4-6",
+        "claude-sonnet-5",
     ]
     if system_prompt:
         cmd += ["--system-prompt", system_prompt]
@@ -1442,7 +1442,7 @@ async def _run_cc_async(
     prompt: str,
     cwd: Path,
     system_prompt: str | None = None,
-    model: str = "claude-sonnet-4-6",
+    model: str = "claude-sonnet-5",
     progress_msg=None,
     project_label: str = "dqiii8",
 ) -> tuple[bool, str, list]:
@@ -1672,7 +1672,7 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             prompt=prompt,
             cwd=project["path"],
             system_prompt=ctx,
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             progress_msg=progress_msg,
             project_label=label,
         )

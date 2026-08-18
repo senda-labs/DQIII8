@@ -171,7 +171,7 @@ Before classifying ANY finding, run this checklist. Unverified findings are nois
    "
    ```
    The `security_findings` table exists in `database/schema_v2.sql` and in the
-   live DB as of 2026-08-17. There is deliberately **no** `2>/dev/null ||` fallback
+   live DB. There is deliberately **no** `2>/dev/null ||` fallback
    here anymore: an error from this query means the schema regressed, and that
    must surface loudly rather than be swallowed into a "no duplicates" result.
    Columns available for filing a finding: `finding_id`, `title`, `severity`,

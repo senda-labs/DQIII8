@@ -179,22 +179,22 @@ AGENT_ROUTING = {
 
     # ── Tier S — Opus: revisión estricta post-generación ────────────────────
     # Recibe código generado + spec original + contexto proyecto. Ataca el código.
-    "code-reviewer":  ("anthropic", "claude-opus-4-8"),
-    "code-validator": ("anthropic", "claude-opus-4-8"),
+    "code-reviewer":  ("anthropic", "claude-opus-5"),
+    "code-validator": ("anthropic", "claude-opus-5"),
     # hermes — NousResearch Hermes-3 405B (OpenRouter free, $0) — estrategia, analytics, datos
     "hermes":         ("openrouter", "nousresearch/hermes-3-llama-3.1-405b:free"),
 
     # ── Tier A — Sonnet: agentes de alto valor ───────────────────────────────
-    "finance-specialist": ("anthropic", "claude-sonnet-4-6"),
-    "auditor":            ("anthropic", "claude-sonnet-4-6"),
-    "orchestrator":       ("anthropic", "claude-sonnet-4-6"),
+    "finance-specialist": ("anthropic", "claude-sonnet-5"),
+    "auditor":            ("anthropic", "claude-sonnet-5"),
+    "orchestrator":       ("anthropic", "claude-sonnet-5"),
 
     # ── Accounting-ERP ───────────────────────────────────────────────────────
     "customer-accountant": ("groq", "llama-3.3-70b-versatile"),
     "supplier-accountant": ("groq", "llama-3.3-70b-versatile"),
     "invoice-extractor":   ("groq", "llama-3.3-70b-versatile"),
-    "tax-auditor":         ("anthropic", "claude-sonnet-4-6"),
-    "closing-specialist":  ("anthropic", "claude-sonnet-4-6"),
+    "tax-auditor":         ("anthropic", "claude-sonnet-5"),
+    "closing-specialist":  ("anthropic", "claude-sonnet-5"),
 
     "default": ("groq", "llama-3.3-70b-versatile"),
 }
@@ -219,7 +219,7 @@ _PROVIDER_DEFAULT_MODEL = {
     "github": "deepseek-v3-0324",
     "openrouter": "qwen/qwen3-coder",
     "pollinations": "openai",
-    "anthropic": "claude-sonnet-4-6",
+    "anthropic": "claude-sonnet-5",
     "nim": "nvidia/llama-3.3-nemotron-super-49b-v1.5",  # sustituye al mistral-large-3-675b EOL (410)
 }
 
@@ -330,24 +330,24 @@ TIER_MAP = {
     },
     "A": {
         "provider": "anthropic",
-        "model": "claude-sonnet-4-6",
+        "model": "claude-sonnet-5",
         "cost_input_1k": 0.003,
         "cost_output_1k": 0.015,
         "desc": "Claude Sonnet — ~$0.01-0.05",
     },
     "S": {
         "provider": "anthropic",
-        "model": "claude-opus-4-8",
+        "model": "claude-opus-5",
         "cost_input_1k": 0.015,
         "cost_output_1k": 0.075,
-        "desc": "Opus 4.8 planner — ~$0.15-0.50",
+        "desc": "Opus 5 planner — ~$0.15-0.50",
     },
     "S+": {
         "provider": "anthropic",
-        "model": "claude-opus-4-8",
+        "model": "claude-opus-5",
         "cost_input_1k": 0.015,
         "cost_output_1k": 0.075,
-        "desc": "Opus 4.8 orchestrator — ~$0.50-2.00",
+        "desc": "Opus 5 orchestrator — ~$0.50-2.00",
     },
 }
 
@@ -415,7 +415,7 @@ ROUTING_TABLE = [
     (
         "A",
         "anthropic",
-        "claude-sonnet-4-6",
+        "claude-sonnet-5",
         "claude_sonnet",
         [
             "wacc",
@@ -444,7 +444,7 @@ ROUTING_TABLE = [
     (
         "S",
         "anthropic",
-        "claude-opus-4-8",
+        "claude-opus-5",
         "opus_planner",
         [
             "mobilize",
@@ -1512,9 +1512,9 @@ _ROUTER_DEFAULTS: dict[str, tuple[str, str]] = {
     "pipeline": ("tier1", "qwen2.5-coder:7b"),
     "análisis": ("tier2", "llama-3.3-70b-versatile"),
     "research": ("tier2", "llama-3.3-70b-versatile"),
-    "escritura": ("tier3", "claude-sonnet-4-6"),
-    "trading": ("tier3", "claude-sonnet-4-6"),
-    "mixto": ("tier3", "claude-sonnet-4-6"),
+    "escritura": ("tier3", "claude-sonnet-5"),
+    "trading": ("tier3", "claude-sonnet-5"),
+    "mixto": ("tier3", "claude-sonnet-5"),
 }
 _ROUTER_MIN_SAMPLES = 5
 _ROUTER_NEUTRAL = 0.5
@@ -1523,7 +1523,7 @@ _ROUTER_NEUTRAL = 0.5
 def get_recommendation(task_type: str) -> tuple[str, float, int]:
     """Return (model_used, score, n_samples) based on historical satisfaction data."""
     if not DB_PATH.exists():
-        _, model = _ROUTER_DEFAULTS.get(task_type, ("tier3", "claude-sonnet-4-6"))
+        _, model = _ROUTER_DEFAULTS.get(task_type, ("tier3", "claude-sonnet-5"))
         return model, _ROUTER_NEUTRAL, 0
 
     try:
@@ -1560,7 +1560,7 @@ def get_recommendation(task_type: str) -> tuple[str, float, int]:
         )
         return best_model, blended, n
 
-    _, model = _ROUTER_DEFAULTS.get(task_type, ("tier3", "claude-sonnet-4-6"))
+    _, model = _ROUTER_DEFAULTS.get(task_type, ("tier3", "claude-sonnet-5"))
     return model, _ROUTER_NEUTRAL, 0
 
 

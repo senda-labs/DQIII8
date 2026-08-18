@@ -23,29 +23,15 @@ correr en dos modelos distintos según el runtime.
   m=re.search(r'AGENT_ROUTING = \{(.*?)\n\}', s, re.S); \
   print(sorted(re.findall(r'^\s*\"([a-z0-9\-_]+)\":', m.group(1), re.M)))"
   ```
-  (no hay flag `--list-agents` en el wrapper; verificado 2026-08-17)
+  (no hay flag `--list-agents` en el wrapper)
 - ¿Es válido para el Agent tool nativo? → **listado del directorio**: `ls .claude/agents/*.md`.
 - Un nombre que no aparezca en ninguno de los dos **no existe**. No inventarlo.
 
 Cualquier tabla de agentes escrita a mano en un `.md` es una copia derivada y se
 desincroniza: si necesitas una, verifícala contra las dos fuentes anteriores en el momento.
 
-### Estado verificado 2026-08-17 (ilustrativo, no normativo)
-
-- `AGENT_ROUTING`: 43 claves (incluida `default`). Familias: specialists de dominio en Groq,
-  código/análisis en NIM, `code-reviewer` / `code-validator` en Opus (`claude-opus-4-8`),
-  `finance-specialist` / `auditor` / `orchestrator` / `tax-auditor` / `closing-specialist`
-  en Sonnet (`claude-sonnet-4-6`), `git-specialist` / `content-automator` en Ollama,
-  bloque Accounting-ERP en Groq.
-- `.claude/agents/` (17 ficheros): `auditor`, `closing-specialist`, `code-reviewer`,
-  `content-automator`, `customer-accountant`, `executor-lite`, `explorer-lite`,
-  `finance-specialist`, `git-specialist`, `intl-writer`, `invoice-extractor`,
-  `orchestrator`, `python-specialist`, `research-analyst`, `supplier-accountant`,
-  `tax-auditor`, `web-specialist`.
-
-Versiones previas de este fichero listaban ~10 nombres de agente que no existían en ninguno
-de los dos sistemas; se eliminaron el 2026-08-17 (Gap 8). Si encuentras un nombre de agente
-citado en cualquier doc, verifícalo contra las dos fuentes de arriba antes de usarlo.
+Si encuentras un nombre de agente citado en cualquier doc, verifícalo contra las dos
+fuentes de arriba antes de usarlo.
 
 ### Split legítimo conocido
 

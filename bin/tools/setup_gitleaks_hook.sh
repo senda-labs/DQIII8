@@ -10,22 +10,36 @@ HOOK_PATH=".git/hooks/pre-commit"
 
 echo "[gitleaks-setup] Checking installation..."
 
-if ! command -v gitleaks &>/dev/null; then
-    echo "[gitleaks-setup] Downloading gitleaks v${GITLEAKS_VERSION}..."
+# The old `command -v gitleaks` guard skipped the version+SHA256
+# check entirely whenever ANY binary was already on PATH, so the pin never
+# re-verified a drifted install (8.21.2 in production vs the 8.18.4 pinned
+# here).
+_installed_version=""
+if command -v gitleaks &>/dev/null; then
+    _installed_version="$(gitleaks version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+fi
+
+if [ "${_installed_version}" != "${GITLEAKS_VERSION}" ]; then
+    if [ -n "${_installed_version}" ]; then
+        echo "[gitleaks-setup] Installed version ${_installed_version} != pinned ${GITLEAKS_VERSION} — reinstalling..."
+    else
+        echo "[gitleaks-setup] Downloading gitleaks v${GITLEAKS_VERSION}..."
+    fi
+    _tmpdir="$(mktemp -d)"
+    trap 'rm -rf "${_tmpdir}"' EXIT
     curl -sSLf \
         "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-        -o /tmp/gitleaks.tar.gz
-    echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c - || {
+        -o "${_tmpdir}/gitleaks.tar.gz"
+    echo "${GITLEAKS_SHA256}  ${_tmpdir}/gitleaks.tar.gz" | sha256sum -c - || {
         echo "[gitleaks-setup] ERROR: checksum mismatch for downloaded gitleaks tarball — aborting" >&2
-        rm -f /tmp/gitleaks.tar.gz
         exit 1
     }
-    tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
-    mv /tmp/gitleaks "${INSTALL_DIR}/gitleaks"
+    tar -xzf "${_tmpdir}/gitleaks.tar.gz" -C "${_tmpdir}" gitleaks
+    mv "${_tmpdir}/gitleaks" "${INSTALL_DIR}/gitleaks"
     chmod +x "${INSTALL_DIR}/gitleaks"
     echo "[gitleaks-setup] Installed to ${INSTALL_DIR}/gitleaks"
 else
-    echo "[gitleaks-setup] Already installed: $(gitleaks version)"
+    echo "[gitleaks-setup] Already installed and up to date: $(gitleaks version)"
 fi
 
 echo "[gitleaks-setup] Writing pre-commit hook..."

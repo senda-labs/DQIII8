@@ -119,7 +119,12 @@ assert _CANON is not None, (
     f"{DISPATCHER_SRC}: docstring missing the canonical 'suelo N'/'techo N' markers"
 )
 MEASURED_FLOOR, MEASURED_CEILING = _CANON
-TOLERANCE = 0.05
+
+# RC-2026-08-18: there used to be a TOLERANCE = 0.05 band here (±340 tokens at
+# the ceiling). It was wide enough to absorb a real −110 drift of the worst
+# case indefinitely, and it did. The floor is now an exact match and the
+# ceiling a hard bound — if either moves, this file goes red, which is the
+# whole point of publishing a range.
 
 # tool, tool_input, expected label
 BUDGET_MATRIX = [
@@ -156,6 +161,40 @@ BUDGET_MATRIX = [
         {"file_path": "/root/dqiii8/.claude/hooks/openrouter_wrapper.py"},
         "edit-combined-hook-tiering-py",
     ),
+    # The `hooks-perms` alias is reachable ONLY through this Edit/Write path
+    # branch — never from Bash. Before this case the matrix could not observe
+    # 02_hooks_and_permissions.md at all, so a 53% growth of that file passed
+    # the budget gate green (context-economy audit N3, 2026-08-18).
+    (
+        "Edit",
+        {
+            "file_path": "/root/dqiii8/database/.claude/hooks/"
+            "openrouter_wrapper_domain_agent.py"
+        },
+        "edit-hooks-tiering-db-py",
+    ),
+]
+
+# The two structurally distinct maxima an agent can actually hit in one call.
+# The matrix worst case is a Bash command; the Edit branch is a separate ridge
+# the Bash probe cannot see. The published ceiling must bound BOTH.
+TRUE_MAX_PROBES = [
+    (
+        "Bash",
+        {
+            "command": "git python3 sqlite3 schema_v2 systemctl claude agent "
+            "orchestrator tmux intl-reports firecrawl"
+        },
+        "bash-all-keywords",
+    ),
+    (
+        "Edit",
+        {
+            "file_path": "/root/dqiii8/database/.claude/hooks/"
+            "openrouter_wrapper_domain_agent.py"
+        },
+        "edit-hooks-tiering-db-py",
+    ),
 ]
 
 
@@ -163,14 +202,14 @@ BUDGET_MATRIX = [
 def test_token_budget_matrix(tool, tool_input, label):
     """Every representative call sits inside the documented token range."""
     tokens = rd.token_estimate(rd.get_rules(tool, tool_input))
-    assert tokens >= MEASURED_FLOOR * (1 - TOLERANCE), (
+    assert tokens >= MEASURED_FLOOR, (
         f"{label}: {tokens} tokens is below the documented floor "
         f"{MEASURED_FLOOR} — is core-behavior/ops still in _ALWAYS?"
     )
-    assert tokens <= MEASURED_CEILING * (1 + TOLERANCE), (
+    assert tokens <= MEASURED_CEILING, (
         f"{label}: {tokens} tokens exceeds the documented ceiling "
-        f"{MEASURED_CEILING} — re-measure and update the docstring, DYNAMIC.md "
-        f"and 02_hooks_and_permissions.md."
+        f"{MEASURED_CEILING} — re-measure and update rules_dispatcher.py's "
+        f"docstring and DYNAMIC.md together."
     )
 
 
@@ -180,15 +219,27 @@ def test_token_budget_floor_is_always_set_only():
     assert rd.token_estimate(bare) == min(
         rd.token_estimate(rd.get_rules(t, i)) for t, i, _ in BUDGET_MATRIX
     )
-    assert abs(rd.token_estimate(bare) - MEASURED_FLOOR) <= MEASURED_FLOOR * TOLERANCE
-
-
-def test_token_budget_ceiling_case_is_the_max():
-    """The combined git+agent+sqlite3 Bash trigger remains the most expensive case."""
-    worst = max(
-        (rd.token_estimate(rd.get_rules(t, i)), lbl) for t, i, lbl in BUDGET_MATRIX
+    assert rd.token_estimate(bare) == MEASURED_FLOOR, (
+        f"measured floor {rd.token_estimate(bare)} != documented "
+        f"{MEASURED_FLOOR} — re-measure and update rules_dispatcher.py's "
+        "docstring and DYNAMIC.md together."
     )
-    assert worst[1] == "bash-combined-git-agent-sqlite"
+
+
+@pytest.mark.parametrize("tool,tool_input,label", TRUE_MAX_PROBES)
+def test_documented_ceiling_bounds_every_reachable_path(tool, tool_input, label):
+    """The published ceiling must bound the true max, not just the matrix max.
+
+    The old test only asserted which BUDGET_MATRIX case was largest — true by
+    construction, and blind to anything outside the matrix. It let the
+    `hooks-perms` file grow 53% while reporting green.
+    """
+    tokens = rd.token_estimate(rd.get_rules(tool, tool_input))
+    assert tokens <= MEASURED_CEILING, (
+        f"{label}: {tokens} tokens exceeds the documented ceiling "
+        f"{MEASURED_CEILING}. Shrink the rule files, or re-publish the ceiling "
+        "in rules_dispatcher.py's docstring and DYNAMIC.md."
+    )
 
 
 # ── Fail-open ───────────────────────────────────────────────────────────────
@@ -227,4 +278,4 @@ def test_get_rules_all_files_broken_returns_empty(monkeypatch):
 def test_unknown_tool_returns_always_set():
     """An unmapped tool still gets the _ALWAYS rules and does not raise."""
     out = rd.get_rules("SomeFutureTool", {})
-    assert rd.token_estimate(out) >= MEASURED_FLOOR * (1 - TOLERANCE)
+    assert rd.token_estimate(out) >= MEASURED_FLOOR

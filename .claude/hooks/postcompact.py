@@ -66,7 +66,7 @@ except Exception:
     project = pre_state.get("project") or "dqiii8-core"
 
 # ── Active model ─────────────────────────────────────────────────────
-model = os.environ.get("DQIII8_MODEL", "claude-sonnet-4-6")
+model = os.environ.get("DQIII8_MODEL", "claude-sonnet-5")
 
 # ── Last 3 lessons ───────────────────────────────────────────────────
 lessons: list[str] = []

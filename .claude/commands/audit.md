@@ -41,4 +41,4 @@ The `stop.py` hook automatically triggers `/audit` when 7+ days have passed sinc
 ## Agent
 
 Handled by: `.claude/agents/auditor.md`
-Model: `claude-sonnet-4-6`
+Model: `claude-sonnet-5`

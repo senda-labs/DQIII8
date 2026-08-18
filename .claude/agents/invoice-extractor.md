@@ -4,7 +4,7 @@ description: Extracts structured invoice data from raw PDF text. VAT and IRPF aw
 tools: []
 tier: B
 model: groq/llama-3.3-70b-versatile
-# `tier:` no lo lee ningún runtime (Gap 8, 2026-08-17) — `model:` explícito añadido.
+# `tier:` no lo lee ningún runtime — `model:` explícito añadido.
 # Coincide con AGENT_ROUTING["invoice-extractor"] = ("groq", "llama-3.3-70b-versatile").
 # DORMANTE bajo Anthropic-only (directiva usuario 2026-08-18): Groq no operativo hoy —
 # ver .claude/rules_db/archive/multi-tier-dormant-2026-08.md. No invocar vía Agent tool

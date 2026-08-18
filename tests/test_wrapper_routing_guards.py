@@ -36,19 +36,19 @@ def test_no_downgrade_covers_all_anthropic_agents():
 
 def test_build_chain_anthropic_has_no_fallback():
     chain, no_downgrade = w.build_chain(
-        "anthropic", "claude-opus-4-8", allow_downgrade=False
+        "anthropic", "claude-opus-5", allow_downgrade=False
     )
     assert no_downgrade is True
-    assert chain == [("anthropic", "claude-opus-4-8")]
+    assert chain == [("anthropic", "claude-opus-5")]
 
 
 def test_build_chain_anthropic_optin_downgrade():
     chain, no_downgrade = w.build_chain(
-        "anthropic", "claude-opus-4-8", allow_downgrade=True
+        "anthropic", "claude-opus-5", allow_downgrade=True
     )
     assert no_downgrade is False
     assert len(chain) > 1
-    assert chain[0] == ("anthropic", "claude-opus-4-8")
+    assert chain[0] == ("anthropic", "claude-opus-5")
 
 
 def test_build_chain_free_tier_keeps_fallbacks():

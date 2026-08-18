@@ -10,7 +10,7 @@ adversarial review of v1; taxonomy/anti-groupthink upgrade, v3, post-Opus review
     operative), those seats would route through dead infrastructure — removed
     rather than left as a pre-filter that silently returns nothing every run.
     Single Opus pass is now the entire review, not a fallback path.
-  - Exactly ONE Opus adversarial pass (code-reviewer agent -> claude-opus-4-8).
+  - Exactly ONE Opus adversarial pass (code-reviewer agent -> claude-opus-5).
     This reuses the existing single-Opus-escalation allowance from
     dqiii8-plan-gate.md — it is not an additional budget. No iteration, no
     forced dissent, no re-voting: one pass, one verdict.

@@ -30,8 +30,8 @@ Live, current-state summary (short form) lives in:
 | B | Groq | `llama-3.3-70b-versatile` | $0 | Research, analysis, writing, domain knowledge |
 | B+ | NVIDIA NIM | `nvidia/llama-3.3-nemotron-super-49b-v1.5` / `deepseek-ai/deepseek-v4-flash-0731` | $0 | Planificación/análisis/arquitectura; código/web/pseudocódigo (1M ctx) |
 | B++ | GitHub Models | `deepseek-v3-0324` / `codestral-2501` | $0 | Retirado por GitHub (410) — fuera de la cadena de fallback desde 2026-08-16 |
-| A | Anthropic | `claude-sonnet-4-6` | ~$0.03/turn | Solo si C y B fallan (o, con NIM sano, si NIM falla ≥3 veces). Orquestación, decisiones críticas |
-| S | Anthropic | `claude-opus-4-8` | ~$0.20/turn | SOLO revisión adversarial final. Nunca generación inicial |
+| A | Anthropic | `claude-sonnet-5` | ~$0.03/turn | Solo si C y B fallan (o, con NIM sano, si NIM falla ≥3 veces). Orquestación, decisiones críticas |
+| S | Anthropic | `claude-opus-5` | ~$0.20/turn | SOLO revisión adversarial final. Nunca generación inicial |
 
 Rate limit NIM: 40 RPM global (compartido entre todos los modelos), sin headers `x-ratelimit` →
 sin señal anticipada de throttle, exponential backoff en 429.
@@ -208,7 +208,9 @@ sonda half-open). Ver `_call_with_retry`, `_breaker_*` en `openrouter_wrapper.py
   `qwen/qwen3-coder` (corregido en `_PROVIDER_DEFAULT_MODEL`) es de pago y la cuenta no tiene
   créditos (402 "Insufficient credits") → caído hasta que el usuario recargue créditos en
   openrouter.ai/settings/credits. Quitado como destino de `FALLBACK_CHAIN` 2026-08-16 (su
-  `PROVIDERS`/modelo por defecto se dejan intactos para reactivación de una línea).
+  `PROVIDERS`/modelo por defecto se dejan intactos para reactivación de una línea). El agente
+  `hermes` (`AGENT_ROUTING`) apunta a `nousresearch/hermes-3-llama-3.1-405b:free` — mismo
+  proveedor, mismo bloqueo, dormant junto con el resto de la cadena openrouter.
 - **github**: ambos endpoints (`models.inference.ai.azure.com` deprecado y el sucesor
   `models.github.ai/inference`) responden 404/410 — GitHub retirando el servicio a nivel de
   plataforma (`github_models_retirement_brownout`). No reparable en código. Quitado como
@@ -234,8 +236,8 @@ sonda half-open). Ver `_call_with_retry`, `_breaker_*` en `openrouter_wrapper.py
   algo-specialist         NIM / deepseek-ai/deepseek-v4-flash-0731   (B+)
   web-specialist          NIM / deepseek-ai/deepseek-v4-flash-0731   (B+)
         ↓
-  code-reviewer           Anthropic / claude-opus-4-8            (S — revisión estricta)
-  code-validator          Anthropic / claude-opus-4-8            (S — alias explícito)
+  code-reviewer           Anthropic / claude-opus-5            (S — revisión estricta)
+  code-validator          Anthropic / claude-opus-5            (S — alias explícito)
 ```
 
 Note (RC9 audit finding): `code-generator` does not exist as an agent anywhere in
@@ -272,3 +274,38 @@ currently theoretical.
 5. Undo the ~17 agent `.md` "dormant chain" Tier Routing notes back to their real NIM bindings
    (Phase 2.4 of the same remediation made these explicit precisely so this step is a grep-and-
    revert, not a re-derivation).
+
+## Moved out of `03_tiering_and_routing.md` on 2026-08-18 (F10, panel-6 context economy)
+
+Both blocks below were self-labelled dormant while still being injected on every `Agent`
+call and every Bash matching `\bagent\b|\borchestrat`. Restore them via step 3 of the
+reactivation checklist above.
+
+### Task Complexity → Executor Mapping (dormant)
+
+_(Eje distinto al de los tiers C/B/B+/B++/A/S: mapea **clase de complejidad** a **tipo de
+ejecutor**, no a tier de coste. No llamar "tiers" a estas clases.)_
+
+| Complexity | Executor | Trigger |
+|---|---|---|
+| READ_ONLY | executor-lite / explorer-lite (CC interactive only) | grep, ls, git log, read, count |
+| SIMPLE_WRITE | executor-lite (CC interactive only) | pytest, git commit, single-file edit |
+| CODE_GEN | PAL/Ollama → Sonnet fallback | create, implement, refactor |
+| ARCHITECTURE | Sonnet | design, plan, multi-file, >500-char prompt |
+| CRITICAL | Sonnet + Opus plan-gate | security, credentials, production, deploy |
+
+**Goal (dormant):** Haiku handles ≥70% of operations, Sonnet reserved for reasoning-heavy
+tasks. Under Anthropic-only `AGENT_ROUTING` routes exactly one agent to Haiku
+(`context-probe`), so the goal predates the current directive and cannot be met.
+
+> **Scope note — executor-lite / explorer-lite**: Claude Code native agents
+> (`.claude/agents/`), invokable via the Agent tool in interactive CC sessions only. In
+> `autonomous_loop.sh` (`claude -p` non-interactive) subagent spawning is unavailable — all
+> routing goes through `AGENT_ROUTING` in `openrouter_wrapper.py`.
+
+### Fallback chain notes (dormant)
+
+Free-tier fallback chains (`ollama`, `groq`, `nim`, `github`, `openrouter`, `pollinations`)
+are non-operative under Anthropic-only; the full per-provider table is above in this file.
+`anthropic` appears in no `FALLBACK_CHAIN` value: if the whole free chain fails the wrapper
+exits 1 instead of escalating to Sonnet/Opus (deliberate, cost-first).

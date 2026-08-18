@@ -44,12 +44,12 @@ if not agent:
     # agent_registry first, then build the correct filename. Try a direct
     # session-keyed match first too (harmless, cheap, covers any future case
     # where session_id and agent_id happen to coincide).
-    agent = "claude-sonnet-4-6"
+    agent = "claude-sonnet-5"
     try:
         _direct = _dqiii8_root_path / "tmp" / f"dqiii8_agent_{session}.json"
         if _direct.exists():
             with open(_direct, encoding="utf-8") as _af:
-                agent = json.load(_af).get("agent_type", "claude-sonnet-4-6")
+                agent = json.load(_af).get("agent_type", "claude-sonnet-5")
         else:
             import sqlite3 as _rics
 
@@ -68,7 +68,7 @@ if not agent:
                 _lookup = _dqiii8_root_path / "tmp" / f"dqiii8_agent_{_resolved_agent_id}.json"
                 if _lookup.exists():
                     with open(_lookup, encoding="utf-8") as _af:
-                        agent = json.load(_af).get("agent_type", "claude-sonnet-4-6")
+                        agent = json.load(_af).get("agent_type", "claude-sonnet-5")
     except Exception as e:
         _log.debug("agent-file read skipped: %s", e)
 # Infer from tool+path if agent looks like a UUID (17 hex chars starting with 'a')
@@ -85,7 +85,7 @@ if (
     ):
         agent = "git-specialist"
     else:
-        agent = "claude-sonnet-4-6"
+        agent = "claude-sonnet-5"
 now_ms = int(time.time() * 1000)
 
 # ── Auto-format Python ──────────────────────────────────────────────

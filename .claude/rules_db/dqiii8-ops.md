@@ -1,6 +1,6 @@
 # DQIII8 — Operations & Prohibitions
 
-**Autonomous mode (VPS)**: bugs → fix now (logs → isolate → resolve → verify, no hand-holding). Plans ≤5 steps + non-destructive → run autonomously. Plan touches >3 files or architecture → plan mode first. Destructive/ambiguous → notify user via Telegram (dqiii8_bot), wait.
+**Autonomous mode (VPS)**: escalera de autonomía → `00_core_behavior.md` §Autonomous Execution Rules (siempre co-inyectado). Notificar al usuario por Telegram (dqiii8_bot).
 
 **Absolute NEVER** (no user-request carve-out — see blocked-paths list in `02_hooks_and_permissions.md`, don't duplicate it here):
 - Write to `.env` / secrets / credential files, or any path in that blocked-paths list.

@@ -27,7 +27,7 @@ _PROVIDER_DEFAULT_MODEL = {
     "openrouter": "qwen/qwen3-coder:free",
     "github": "deepseek-v3-0324",
     "pollinations": "openai",
-    "anthropic": "claude-sonnet-4-6",
+    "anthropic": "claude-sonnet-5",
 }
 
 # Default cheap model set for benchmark when none specified

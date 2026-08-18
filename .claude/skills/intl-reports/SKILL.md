@@ -90,7 +90,7 @@ python3 -m core.cli run --slug {slug} --skip-gate
 | CSV tanda3 total | 201 empresas |
 | Ambos DOCXs completos | **130** |
 | Excluidas pervasive_no_intent | 6 |
-| Pendientes (sin company_intel) | **65** — `data/tanda3_no_acis.txt` |
+| Pendientes (sin company_intel) | **65** — worklist `data/tanda3_no_acis.txt` (snapshot runtime, ya consumido) |
 | Errores técnicos en batch | 0 |
 
 **Pendientes 65 — path para completarlas:**
@@ -177,7 +177,7 @@ python3 scripts/pre_batch_check.py --show-failures
 | 5 | PESTEL market coherence | Hard |
 | 6–10 | Redundancy, competitor usage, DAFO, entry coherence, repetición | Soft |
 
-Auto-fix pre-QA: `tools/auto_qa_fixer.py` (6 patches + `fix_plan()`).
+Auto-fix pre-QA: `my-projects/intl-reports/tools/auto_qa_fixer.py` (6 patches + `fix_plan()`).
 Max 2 retries Haiku por sección. Soft failures: no bloquean DOCX.
 
 ## Errores frecuentes

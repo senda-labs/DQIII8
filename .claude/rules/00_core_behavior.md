@@ -30,30 +30,16 @@ override validation/security/data-loss guards. `/panel-review` flags skipped run
 
 ## Cost-First Rule (absolute)
 Always start at the cheapest tier that can handle the task.
-Cadena canónica multi-tier: `C → B → B+ → A → S` — **DORMANTE**, ver § REGLA NIM abajo.
 Full table: `.claude/rules/03_tiering_and_routing.md`
 
 ## REGLA NIM — Anthropic-only vigente (non-negotiable)
-
-**Directiva del usuario (2026-08-18): ninguna API de proveedor no-Anthropic funciona hoy
-(NIM confirmado 403 desde 2026-08-16; Groq/Ollama/GitHub-free no operativos hasta nueva
-verificación). Solo Sonnet/Opus. Cadena multi-tier dormante, no eliminada.**
-
-**Agentes vigentes bajo Anthropic-only:** `context-probe`, `code-reviewer`, `code-validator`,
-`finance-specialist`, `auditor`, `orchestrator`, `tax-auditor`, `closing-specialist` — todos
-Sonnet, salvo revisión adversarial final (Opus, nunca generación inicial).
-
-Reactivación multi-tier: requiere (1) probe manual humano con 200 real en
-`POST /v1/chat/completions` (un 200 en `GET /v1/models` no cuenta) y (2) confirmación
-explícita del usuario levantando también la directiva Anthropic-only — dos gates
-independientes. Un agente NUNCA declara la reactivación por su cuenta.
-
-Historial completo (catálogo de modelos NIM, fallback chain de 7 claves, namespace collision
-`AGENT_ROUTING` vs `.claude/agents/*.md`, checklist de reactivación):
-`.claude/rules_db/archive/multi-tier-dormant-2026-08.md`.
-
-**Cómo llamar (Anthropic-only, hoy):**
-Usar el Agent tool (Sonnet por defecto) o `claude -p` directo. El wrapper
-`bin/core/openrouter_wrapper.py --agent <agente>` sigue existiendo para cuando se reactive
-el multi-tier, pero hoy toda ruta que no sea Anthropic falla — no invocarlo salvo para probes
-de reactivación explícitamente pedidos por el usuario.
+- Directiva usuario 2026-08-18: ningún proveedor no-Anthropic funciona (NIM 403 desde
+  2026-08-16; Groq/Ollama/GitHub-free sin verificar). Solo Sonnet (default) / Opus
+  (revisión adversarial final, nunca generación inicial). Multi-tier dormante, no eliminado.
+- Delegar con el Agent tool o `claude -p`. NO invocar `bin/core/openrouter_wrapper.py`
+  salvo probes de reactivación pedidos explícitamente por el usuario.
+- Reactivación = dos gates independientes: (1) probe humano con 200 real en
+  `POST /v1/chat/completions` (un 200 en `GET /v1/models` no cuenta) y (2) confirmación
+  explícita del usuario levantando la directiva. Un agente NUNCA la declara por su cuenta.
+- Roster/bindings vigentes (SSOT `AGENT_ROUTING`) → `.claude/rules/03_tiering_and_routing.md`.
+  Historial completo → `.claude/rules_db/archive/multi-tier-dormant-2026-08.md`.

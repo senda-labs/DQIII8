@@ -55,7 +55,7 @@ Based on content type, generate ONE OR MORE of:
 
 **A) Knowledge chunk** (factual knowledge):
 Save to: `knowledge/{domain}/{topic_slug}.md`
-Format: use template `templates/knowledge_chunk.md`
+Format: use template `.claude/skills/transcript-learn/templates/knowledge_chunk.md`
 
 **B) Skill proposal** (workflow/methodology):
 Save to: `skills-registry/custom/proposed/{skill_name}.md`

@@ -79,7 +79,7 @@ propia revisión de seguridad — no una opción más de esta herramienta.
 
 ## Deuda técnica conocida — no puede adjuntarse a una pestaña ya abierta
 
-Descubierto 2026-07-04: `cdp_investigate.py` siempre abre una **pestaña nueva
+`cdp_investigate.py` siempre abre una **pestaña nueva
 y dedicada** navegando de cero a `--url` (una CDPSession por invocación,
 cerrada en `finally`). Esto es correcto para el caso de uso principal (URL
 pública o autenticada, navegación limpia), pero significa que la tool **no

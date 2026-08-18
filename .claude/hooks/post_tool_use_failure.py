@@ -134,7 +134,7 @@ def _resolve_agent(data: dict) -> str:
         except Exception as e:
             log.debug("post_tool_use_failure: agent lookup file read failed (best-effort): %s", e)
     if not agent:
-        agent = "claude-sonnet-4-6"
+        agent = "claude-sonnet-5"
 
     # UUID inference (17 hex chars starting with 'a')
     if len(agent) == 17 and agent[0] == "a" and all(c in "0123456789abcdef" for c in agent[1:]):
@@ -146,7 +146,7 @@ def _resolve_agent(data: dict) -> str:
         ):
             agent = "git-specialist"
         else:
-            agent = "claude-sonnet-4-6"
+            agent = "claude-sonnet-5"
 
     return agent
 

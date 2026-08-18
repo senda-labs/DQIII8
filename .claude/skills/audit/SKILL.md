@@ -23,21 +23,17 @@ Triggers the **auditor** agent to analyze `database/dqiii8.db` and produce a str
 
 ## Scope note — `sessions` / `morning_report` / `loop_effectiveness`
 
-**Correction (2026-08-13, Opus red-team review of the same-day remediation):**
-the previous version of this note claimed `sessions` was bot-only. That's
-wrong — `.claude/hooks/stop.py:439` writes `sessions` from every CLI session
-too (`INSERT ... ON CONFLICT(session_id) DO UPDATE`), gated on
+`.claude/hooks/stop.py:439` writes `sessions` from every CLI session
+(`INSERT ... ON CONFLICT(session_id) DO UPDATE`), gated on
 `_total_actions > 0` (`stop.py:436`). So `sessions` is only populated when
 `agent_actions` has ≥1 row for that session, which makes a near-empty
-`sessions` table a **second, independent detector for the exact
-`agent_actions` outage class this repo already suffered** (2026-07-05 →
-08-11) — a real signal to chase, not noise to dismiss. Only `morning_report`
+`sessions` table a **second, independent detector for an `agent_actions`
+outage** — a real signal to chase, not noise to dismiss. Only `morning_report`
 is genuinely bot-only (written solely by `bin/ui/dqiii8_bot.py`).
 
-`loop_effectiveness` is a VIEW over `objectives`, which has 0 rows as of
-2026-08-13 because the autonomous-loop execution flow (`bin/director.py` loop
-mode) isn't in active use yet — an empty result there is still expected, not
-a symptom to chase. See `[[project_dqiii8_20260813_stress_test]]`.
+`loop_effectiveness` is a VIEW over `objectives`, which has 0 rows because the
+autonomous-loop execution flow (`bin/director.py` loop mode) isn't in active
+use yet — an empty result there is still expected, not a symptom to chase.
 
 ## What it does
 
@@ -70,4 +66,4 @@ The `stop.py` hook automatically triggers `/audit` when 7+ days have passed sinc
 ## Agent
 
 Handled by: `.claude/agents/auditor.md`
-Model: `claude-sonnet-4-6`
+Model: `claude-sonnet-5`

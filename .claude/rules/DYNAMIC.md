@@ -7,8 +7,8 @@ Siempre OAuth (Claude Max). Subprocess: env={"ANTHROPIC_API_KEY": ""}
 Si "Credit balance too low": verificar que ANTHROPIC_API_KEY="" en subprocess.
 
 Rules contextuales inyectadas por rules_dispatcher.py (llamado desde pre_tool_use.py).
-Mecanismo: tool_name + tool_input → alias → carga 1-3 archivos de .claude/rules_db/ (~1144–6853 tokens, cl100k_base real, re-medido 2026-08-18 tras el fold RC9).
-NUNCA carga los 20+ archivos completos en un mismo turno. Ver 02_hooks_and_permissions.md §Rules Dispatcher.
+Mecanismo: tool_name + tool_input → alias → carga 1-3 archivos de .claude/rules_db/ (~946–7751 tokens, cl100k_base real, re-medido 2026-08-18; techo = máximo realmente alcanzable, no el peor caso de la matriz).
+NUNCA carga el registro entero en un mismo turno (recuento vivo: `len(_REGISTRY)` en rules_dispatcher.py; el subtotal de rules_db/ está fijado y validado en CLAUDE.md). Ver 02_hooks_and_permissions.md §Rules Dispatcher.
 PROHIBIDO: episodic-memory (consume 48K tokens sin valor).
 Estado empresa: python3 -m core.cli status --slug {SLUG}
 

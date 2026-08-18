@@ -21,17 +21,14 @@ Runs `python3 bin/tools/panel_review.py <plan-file>`.
 
 ## What it does
 
-**INV2 (2026-08-18)**: this used to run 3 heterogeneous NIM seats as a $0
-breadth-first pre-filter alongside the Opus pass. Under the user's
-2026-08-18 Anthropic-only directive (no non-Anthropic provider API is
-operative today), those seats would route through dead infrastructure —
-removed rather than kept as a pre-filter that silently returns nothing every
-run. If the multi-tier chain is ever reactivated
+Under the Anthropic-only directive (no non-Anthropic provider API is operative
+today), there is no multi-seat NIM pre-filter alongside the Opus pass — it would
+route through dead infrastructure. If the multi-tier chain is ever reactivated
 (`.claude/rules_db/archive/multi-tier-dormant-2026-08.md`), re-adding a
 pre-filter is a deliberate future decision, not an automatic revert of this
 one.
 
-1. **Exactly ONE Opus adversarial pass** (`code-reviewer` agent → `claude-opus-4-8`),
+1. **Exactly ONE Opus adversarial pass** (`code-reviewer` agent → `claude-opus-5`),
    the entire review. **This spends the operator's own Claude Code session
    quota** — no `ANTHROPIC_API_KEY` is configured, so it runs as a nested
    `claude -p` OAuth call. It reuses the *existing* single-Opus-escalation
@@ -41,12 +38,10 @@ one.
    the repo and must cite `file:line` for every finding — uncited findings
    are discarded by the orchestrator, not just flagged.
 2. **Report**: written to `database/audit_reports/panel-review-YYYY-MM-DD-HH-<slug>.md`.
-   **Never committed — policy set 2026-08-18.** `database/audit_reports/*.md` is fully
-   gitignored, no negation. (History: a 2026-08-17 design briefly tracked these reports
-   via a narrow `.gitignore` negation — reverted 2026-08-18 after that negation was found
-   to leave a report containing a real infra IP + a Postgres credential literal one
-   `git add -A` away from being staged, the same failure class the negation was meant to
-   prevent for `docs/audits/` in the first place.) Durability for these reports comes
+   **Never committed.** `database/audit_reports/*.md` is fully gitignored, no negation —
+   a `.gitignore` negation here would put a report containing a real infra IP or
+   credential literal one `git add -A` away from being staged. Durability for these
+   reports comes
    from the off-VPS backup channels documented in `CLAUDE.md` (`backup_audit_docs.sh` +
    `telegram_audit_backup.py`), not from git. `.gitleaks.toml` still carries the
    `audit-docs-bare-ipv4` / `audit-docs-password-literal` rules scoped to this corpus —
@@ -86,7 +81,7 @@ seat that has already fabricated a citation once (observed live: invented
 `src/db.py:15` in a repo with no `src/` directory), a quota is a fabrication
 incentive, not a rigor increase.
 
-## Hardening from enterprise-grade stress testing (2026-08-12)
+## Hardening from enterprise-grade stress testing
 
 Live adversarial testing of `panel_review.py` (and the sibling `watermark_scan.py`
 pre-commit check) against real crafted payloads, not hypothetical ones, found and
@@ -144,11 +139,9 @@ underlying model (zero epistemic diversity), and the 3-4-round design would have
 spent the Opus session-quota escalation 3-4x per plan, conflicting with the
 repo's own 1-per-task rule. This design replaces it.
 
-A second Opus adversarial review (2026-08-12), run specifically against a
-proposal to make the taxonomy/format stricter, found the strict-format proposal
-would have silently degraded already-weak NIM output (from zero verified
-findings to zero *parseable* findings) and that a per-category finding quota
-would incentivize fabrication — both fixed as described above before landing.
+A stricter taxonomy/format was considered and rejected: it would have silently
+degraded already-weak NIM output (from zero verified findings to zero *parseable*
+findings), and a per-category finding quota would incentivize fabrication.
 
 ## Related
 

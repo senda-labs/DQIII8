@@ -11,15 +11,14 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 
 ## System Map
 - DQ Pipeline (7 steps): Classify → Retrieve → Gate → Amplify → Route → Execute → Memory
-- DB: `database/dqiii8.db` (schema_v2.sql — source of truth, now also holds `session_memory`; sibling: `dqiii8_knowledge.db` knowledge/vector. `dqiii8_history.db` and `dqiii8_metrics.db.old` are frozen post-migration artifacts, 2026-08-14)
+- DB: `database/dqiii8.db` (schema_v2.sql — source of truth, now also holds `session_memory`; sibling: `dqiii8_knowledge.db` knowledge/vector. `dqiii8_history.db` and `dqiii8_metrics.db.old` are frozen post-migration artifacts)
 - Writing to `agent_actions`: use `bin/core/action_log.py`'s shared helpers (`resolve_project_safe()`, `generate_request_id()`) — see `docs/audits/2026-08-13-db-attribution-rebuild.md`
 - Hooks (15): `.claude/hooks/` | Skills (22): `.claude/skills/` | Agents (17): `.claude/agents/`
 - Contextual rules (11): `.claude/rules_db/` — not read directly; injected 1-3 files at a time per tool call by `rules_dispatcher.py` (see `.claude/rules/02_hooks_and_permissions.md`). Counts on this line are validator-enforced (`check_claude_md_counts()` in `validate_rules_registry.py`).
 - Entry: `bin/core/openrouter_wrapper.py` | Director: `bin/director.py`
-- Dispatch (CC↔dqiii8): `bin/core/dispatch.py` — thin subprocess shim; sync + async (async fixed 2026-07-05 via detached worker + atomic JSON envelope — see `docs/audits/2026-07-fable5-remediation-report.md`)
+- Dispatch (CC↔dqiii8): `bin/core/dispatch.py` — thin subprocess shim; sync + async via detached worker + atomic JSON envelope
 
-> **Audit reports and audit docs are never committed — full stop (policy set 2026-08-18,
-> supersedes the 2026-08-17 tracked-report design).** Both `docs/audits/*.md` and
+> **Audit reports and audit docs are never committed — full stop.** Both `docs/audits/*.md` and
 > `database/audit_reports/*.md` are gitignored with no negation. Their durability does
 > NOT come from git — it comes from two independent off-VPS channels:
 > `bin/tools/backup_audit_docs.sh` (mutual Netcup↔Hostinger rsync, dated snapshots, no
@@ -27,9 +26,7 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 > allowlisted Telegram chat). Both read their targets/credentials from env vars only.
 > Deleting a file under either path is effectively irreversible once both backups roll —
 > treat these files with the same care as tracked ones even though `git status` won't see
-> them. (History: a 2026-08-17 design briefly tracked `database/audit_reports/*.md` via a
-> narrow `.gitignore` negation; reverted 2026-08-18 after that negation was found to leave
-> a report with a real infra IP one `git add -A` away from being staged.)
+> them.
 
 > **Not DQIII8-specific**: `.claude/architecture/` holds a generic reference book on Claude Code's own internals (agent loop, tool execution, etc.), unrelated to DQIII8's architecture. Don't confuse it with DQIII8 docs when orienting.
 

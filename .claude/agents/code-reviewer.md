@@ -1,9 +1,8 @@
 ---
 name: code-reviewer
-model: claude-opus-4-8
-# Tier S. Coincide con AGENT_ROUTING["code-reviewer"] = ("anthropic", "claude-opus-4-8").
-# Corregido 2026-08-17 (Gap 8): antes gpt-oss-120b:free, incompatible con su propósito
-# documentado de revisión adversarial Opus. Ver .claude/rules_db/common/agents.md.
+model: claude-opus-5
+# Tier S. Coincide con AGENT_ROUTING["code-reviewer"] = ("anthropic", "claude-opus-5").
+# Ver .claude/rules_db/common/agents.md.
 isolation: worktree
 tools: ["Read", "Grep", "Glob"]
 ---

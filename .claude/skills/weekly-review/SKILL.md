@@ -11,13 +11,9 @@ user-invocable: true
 ## Trigger
 User writes `/weekly-review` (typically on Mondays or Fridays).
 
-> **Path audit 2026-08-17 (Gap 14).** Three of this skill's path literals were
-> wrong and the skill could not complete end-to-end: `projects/*.md` never
-> existed (the real project corpus is `my-projects/`), `00_DASHBOARD.md` is
-> gitignored (deliberately — it was purged from the public repo in commit
-> `1437942`), and `sessions/` is gitignored too. The git push step has been
-> removed accordingly: this is a **local-only** artifact, same convention as
-> `/handover`.
+> The real project corpus is `my-projects/`, not `projects/*.md`.
+> `00_DASHBOARD.md` and `sessions/` are gitignored deliberately. This is a
+> **local-only** artifact, no git push step, same convention as `/handover`.
 
 ## Behavior
 

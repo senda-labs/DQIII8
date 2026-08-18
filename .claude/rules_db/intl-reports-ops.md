@@ -16,7 +16,7 @@ Para cada sección: Read /tmp/intl_{slug}_{section}.txt → Agent(intl-writer, p
 
 ## Guardado — OBLIGATORIO
 NUNCA: `python3 -c "...json..."` (rompe con caracteres especiales)
-NUNCA: `scripts/save_response.py` (archivado en tools/_archived/)
+NUNCA: `scripts/save_response.py` (patrón deprecado, sin script vigente en el árbol principal)
 SIEMPRE:
 ```bash
 cat > /tmp/intl_response.json << 'HEREDOC_EOF'

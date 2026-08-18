@@ -29,6 +29,12 @@ regex = '''sk-or-v1-[A-Za-z0-9]{60,}'''
 tags = ["api-key", "openrouter"]
 
 [[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key (sk-ant-*; the only LLM provider this system calls, so a leak is direct account compromise)"
+regex = '''sk-ant-[A-Za-z0-9_-]{20,}'''
+tags = ["api-key", "anthropic"]
+
+[[rules]]
 id = "elevenlabs-key"
 description = "ElevenLabs API Key"
 regex = '''sk_[a-f0-9]{48}'''
@@ -142,6 +148,7 @@ regexes = [
 
     # Test fixtures (truncated / fake values)
     '''sk-ant-oat01-truncated''',
+    '''sk-ant-api03-QQQQWWWWEEEERRRRTTTT''',
 
     # Regex pattern definitions in source code (db_security.py etc.)
     '''r"ghp_''',

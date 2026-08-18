@@ -22,8 +22,6 @@ git add -u <path>                 # 4. for renames/moves
 `<type>: <description>` — types: feat, fix, refactor, docs, test, chore, perf, ci.
 DQIII8 commits DO carry the attribution trailer (unlike the ECC default):
 `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`
-(merged here 2026-08-17 from the deleted orphan `common/git-workflow.md`, whose
-copy was stale at "Sonnet 4.6" — this line is the only DQIII8-specific fact it held.)
 
 ## Always gitignored — NEVER try to add
 - `database/*.db` / `*.db-wal` / `*.db-shm`
@@ -38,8 +36,14 @@ copy was stale at "Sonnet 4.6" — this line is the only DQIII8-specific fact it
 `rm -rf /` (and non-root variants), `chmod 777 /`, `DROP TABLE`/`DROP DATABASE`,
 `DELETE FROM agent_actions` without `WHERE`, writes to `.env` / `database/*.db` /
 other `BLOCKED_PATHS` (see `.claude/rules/02_hooks_and_permissions.md`).
+Exception: a recursive-force `rm` whose targets are *all* build/cache artifacts
+(`node_modules`, `dist`, `__pycache__`, …) is approved — see that file's
+`ALLOWED_DELETIONS` carve-out for the exact rule.
 
-**`git add -A`, `git add .`, and `git push --force` are NOT technically blocked** —
-`permission_analyzer.py` has no rule for them. The "Git add protocol" and "NEVER"
-lines above are agent self-discipline, not an enforced guardrail; nothing in the
-code stops a non-compliant run from executing them.
+**`git push --force` IS blocked** (2026-08-18): a `HIGH_RISK_PATTERNS` entry in
+`permission_analyzer.py` DENIES `git push` with `--force`/`-f`/`--force-with-lease`
+in any flag order, in either mode — same verdict as `rm -rf`/`DROP`.
+
+**`git add -A` and `git add .` are still NOT blocked** — no matcher, either
+mode. The "Git add protocol" and "NEVER" lines above are self-discipline, not
+an enforced guardrail.

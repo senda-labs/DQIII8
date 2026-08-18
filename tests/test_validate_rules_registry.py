@@ -130,53 +130,50 @@ def test_registered_alias_with_missing_file_is_a_problem(repo: Path):
 
 
 def test_token_range_mismatch_in_dynamic_md_is_a_problem(repo: Path):
-    edit(repo, ".claude/rules/DYNAMIC.md", "1144–6853", "1999–6853")
+    edit(repo, ".claude/rules/DYNAMIC.md", "946–7751", "1999–7751")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("DYNAMIC.md" in p and "disagrees" in p for p in problems), problems
 
 
-def test_token_range_mismatch_in_hooks_perms_is_a_problem(repo: Path):
-    edit(repo, ".claude/rules/02_hooks_and_permissions.md", "~1144–6853", "~1144–9999")
+def test_restating_the_range_in_hooks_perms_is_a_problem(repo: Path):
+    """02_hooks_and_permissions.md is itself injected — it must point at the
+    docstring, never restate the numbers. It did, and drifted (2026-08-18)."""
+    path = repo / ".claude/rules/02_hooks_and_permissions.md"
+    path.write_text(path.read_text() + "\n~946–7751 tokens\n", encoding="utf-8")
     problems, _ = vrr.check_token_budget(src(repo))
-    assert any("02_hooks_and_permissions.md" in p and "disagrees" in p for p in problems), problems
+    assert any("must NOT restate the token range" in p for p in problems), problems
 
 
-def test_prose_floor_restatement_mismatch_is_a_problem(repo: Path):
-    """'el suelo de 1144 es ops + core-behavior' must track the canonical floor."""
-    edit(repo, ".claude/rules/02_hooks_and_permissions.md", "suelo de 1144", "suelo de 1111")
+def test_prose_bound_restatement_in_hooks_perms_is_a_problem(repo: Path):
+    """Even a prose 'suelo de N' restatement is a citation site."""
+    path = repo / ".claude/rules/02_hooks_and_permissions.md"
+    path.write_text(path.read_text() + "\nel suelo de 946 es ops + core-behavior\n", encoding="utf-8")
     problems, _ = vrr.check_token_budget(src(repo))
-    assert any("suelo stated as 1111" in p for p in problems), problems
-
-
-def test_dropping_a_required_citation_is_a_problem(repo: Path):
-    """02_hooks_and_permissions.md must keep BOTH of its range citations."""
-    edit(repo, ".claude/rules/02_hooks_and_permissions.md", "~1144–6853 tokens", "some tokens")
-    problems, _ = vrr.check_token_budget(src(repo))
-    assert any("expected at least 2 citation" in p for p in problems), problems
+    assert any("must NOT restate the token range" in p for p in problems), problems
 
 
 def test_canonical_range_change_alone_breaks_the_docs(repo: Path):
-    """Re-measuring the dispatcher without updating the 3 doc sites fails."""
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 1144**", "**suelo 2000**")
+    """Re-measuring the dispatcher without updating DYNAMIC.md fails."""
+    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 946**", "**suelo 2000**")
     problems, _ = vrr.check_token_budget(src(repo))
-    assert len([p for p in problems if "disagrees" in p or "suelo" in p]) >= 2, problems
+    assert any("disagrees" in p for p in problems), problems
 
 
 def test_missing_canonical_markers_is_a_problem(repo: Path):
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 1144**", "**floor 1144**")
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "**techo 6853**", "**ceiling 6853**")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 946**", "**floor 946**")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", "**techo 7751**", "**ceiling 7751**")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("cannot locate the canonical token range" in p for p in problems), problems
 
 
 def test_rounded_prose_range_in_docstring_is_accepted(repo: Path):
-    """'~1144–6853' is a legitimate (exact) rounding of the canonical 1144-6853 — no warning."""
+    """'~946–7751' is a legitimate (exact) rounding of the canonical 946-7751 — no warning."""
     _, warnings = vrr.check_token_budget(src(repo))
     assert not [w for w in warnings if "not a rounding" in w], warnings
 
 
 def test_badly_rounded_prose_range_in_docstring_is_a_warning(repo: Path):
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "~1144–6853 tokens", "~1200–6853 tokens")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", "~946–7751 tokens", "~1000–7751 tokens")
     problems, warnings = vrr.check_token_budget(src(repo))
     assert any("not a rounding" in w for w in warnings), warnings
     assert not problems, problems
@@ -493,7 +490,7 @@ def test_cli_exits_zero_on_the_real_repo(capsys):
 
 
 def test_cli_exits_one_on_problems(repo: Path, capsys):
-    edit(repo, ".claude/rules/DYNAMIC.md", "1144–6853", "1999–6853")
+    edit(repo, ".claude/rules/DYNAMIC.md", "946–7751", "1999–7751")
     assert vrr.main(["--root", str(repo)]) == 1
     assert "problem(s)" in capsys.readouterr().out
 
@@ -511,3 +508,82 @@ def test_warnings_never_cause_a_nonzero_exit(repo: Path, capsys):
     )
     assert vrr.main(["--root", str(repo)]) == 0
     assert "WARNING" in capsys.readouterr().out
+
+
+# ── check 7: command/skill parity ───────────────────────────────────────────
+
+
+def _pair(repo: Path, name: str, cmd: str, skill: str) -> None:
+    """Write a `.claude/commands/<name>.md` + `.claude/skills/<name>/SKILL.md` pair."""
+    cmd_path = repo / ".claude/commands" / f"{name}.md"
+    skill_path = repo / ".claude/skills" / name / "SKILL.md"
+    for p in (cmd_path, skill_path):
+        p.parent.mkdir(parents=True, exist_ok=True)
+    cmd_path.write_text(cmd, encoding="utf-8")
+    skill_path.write_text(skill, encoding="utf-8")
+
+
+_PROCEDURE = "\n".join(f"{i}. step {i} of the real procedure" for i in range(1, 21))
+
+
+def test_forked_command_skill_pair_warns(repo: Path):
+    _pair(
+        repo,
+        "forky",
+        "# /forky\n\n" + _PROCEDURE,
+        "# /forky\n\n" + "\n".join(f"- totally different line {i}" for i in range(30)),
+    )
+    problems, warnings = vrr.check_command_skill_parity(src(repo))
+    assert problems == []
+    assert any("forky" in w and "diverged" in w for w in warnings), warnings
+
+
+def test_near_identical_pair_does_not_warn(repo: Path):
+    _pair(repo, "twin", "# /twin\n\n" + _PROCEDURE, "# /twin\n\n" + _PROCEDURE)
+    assert vrr.check_command_skill_parity(src(repo)) == ([], [])
+
+
+def test_pointer_command_file_is_clean_even_though_bodies_differ(repo: Path):
+    """A one-line pointer at the SKILL.md is the intended end state, so it must
+    not warn despite sharing almost no text with the skill (the `handover` fix)."""
+    _pair(
+        repo,
+        "ptr",
+        "# /ptr\n\n> **SSOT: `.claude/skills/ptr/SKILL.md`.** Pointer only.\n",
+        "# /ptr\n\n" + _PROCEDURE,
+    )
+    assert vrr.check_command_skill_parity(src(repo)) == ([], [])
+
+
+def test_short_command_file_without_the_skill_reference_still_warns(repo: Path):
+    """Brevity alone is not pointer-hood — it must actually cite the SKILL.md,
+    otherwise a truncated/stub command file would silently pass."""
+    _pair(repo, "stub", "# /stub\n\nrun the thing\n", "# /stub\n\n" + _PROCEDURE)
+    _, warnings = vrr.check_command_skill_parity(src(repo))
+    assert any("stub" in w for w in warnings), warnings
+
+
+def test_command_without_matching_skill_is_ignored(repo: Path):
+    (repo / ".claude/commands").mkdir(parents=True, exist_ok=True)
+    (repo / ".claude/commands/lonely.md").write_text("# /lonely\n\n" + _PROCEDURE)
+    assert vrr.check_command_skill_parity(src(repo)) == ([], [])
+
+
+def test_frontmatter_is_not_counted_as_divergence(repo: Path):
+    """Skills carry YAML frontmatter and command files do not; stripping it is
+    what keeps that structural difference from reading as a content fork."""
+    _pair(
+        repo,
+        "fm",
+        "# /fm\n\n" + _PROCEDURE,
+        "---\nname: fm\ndescription: x\nallowed-tools: [Bash]\n---\n\n# /fm\n\n"
+        + _PROCEDURE,
+    )
+    assert vrr.check_command_skill_parity(src(repo)) == ([], [])
+
+
+def test_real_handover_pair_is_a_clean_pointer():
+    """The F6 fix itself, asserted against the live repo."""
+    problems, warnings = vrr.check_command_skill_parity(vrr.Source())
+    assert problems == []
+    assert not any("handover" in w for w in warnings), warnings

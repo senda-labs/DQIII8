@@ -16,7 +16,7 @@ This example shows how to configure DQIII8 as a financial analysis assistant.
 export JARVIS_PROJECT=finance-analysis
 
 # Use the finance tier (Claude API for complex reasoning)
-export JARVIS_MODEL=claude-sonnet-4-6
+export JARVIS_MODEL=claude-sonnet-5
 
 # Start a session
 claude
@@ -36,8 +36,8 @@ claude
 Finance and trading requests automatically route to **Tier 3** (Claude API) via the model router:
 
 ```
-task_type=finance  → agent=finance-analyst  → tier=3 → claude-sonnet-4-6
-task_type=trading  → agent=quant-analyst    → tier=3 → claude-sonnet-4-6
+task_type=finance  → agent=finance-analyst  → tier=3 → claude-sonnet-5
+task_type=trading  → agent=quant-analyst    → tier=3 → claude-sonnet-5
 ```
 
 ## Output formats

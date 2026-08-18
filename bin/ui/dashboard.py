@@ -1090,7 +1090,7 @@ async def get_tiers(auth: bool = Depends(check_auth)):
                 and not has_anthropic
                 and "$0 (Pro plan)"
                 or "$3/Mtok",
-                "model": "claude-sonnet-4-6",
+                "model": "claude-sonnet-5",
                 "method": (
                     oauth["method"]
                     if oauth["available"]

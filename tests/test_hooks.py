@@ -55,7 +55,7 @@ def test_cost_tier_classification():
     assert fn("qwen2.5-coder:7b") == 1, "qwen2.5-coder must be tier 1 (local)"
     assert fn("groq:llama-3.3-70b-versatile") == 2, "groq must be tier 2 (cloud-free)"
     assert fn("claude-haiku-4-5") == 2, "haiku is tier 2 (mapped via haiku keyword)"
-    assert fn("claude-sonnet-4-6") == 3, "sonnet must be tier 3 (paid)"
+    assert fn("claude-sonnet-5") == 3, "sonnet must be tier 3 (paid)"
     assert fn("claude-opus-4-6") == 3, "opus must be tier 3 (paid)"
     assert fn("unknown-model") == 0, "unknown model must return tier 0"
 

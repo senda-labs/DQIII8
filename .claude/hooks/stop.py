@@ -427,7 +427,7 @@ try:
                 (session,),
             ).fetchone()
             _proj = _resolve_project()
-            _model = os.environ.get("DQIII8_MODEL", "claude-sonnet-4-6")
+            _model = os.environ.get("DQIII8_MODEL", "claude-sonnet-5")
             _total_actions = row[0] or 0
             _start_time = row[4] or NOW  # earliest action timestamp
             _total_duration_ms = row[5] or 0
@@ -797,7 +797,7 @@ try:
 date: {_date}
 time: {NOW[11:16]}
 project: {_project}
-agent_used: claude-sonnet-4-6
+agent_used: claude-sonnet-5
 session_id: {session[:8]}
 duration: {_duration_str}
 ---

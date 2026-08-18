@@ -1,31 +1,12 @@
 # /handover — Session Handover Note
 
-## Trigger
-User writes `/handover` at the end of a work session.
-
-## Behavior
-
-Executes the handover script with a single call:
-
-```bash
-python3 bin/tools/handover.py
-```
-
-The script does everything without additional Claude tools:
-- Collects modified files via `git diff --stat HEAD`
-- Reads `projects/[project].md` for the next step
-- Reads `tasks/lessons.md` (today's entries)
-- Writes `sessions/YYYY-MM-DD_session.md`
-- Updates `projects/[project].md` (section "Last session")
-- `git add sessions/ projects/` → commit → push origin master
-
-## Non-interactive invocation
-
-```bash
-python3 bin/tools/handover.py
-```
-
-## Notes
-- If git push fails (network/auth), the .md file is saved locally — does not block
-- Never include sensitive information (API keys, passwords) in the handover
-- The active project is resolved via `bin/core/project_context.py::resolve_project()` (DB-backed SSOT, default: `dqiii8-core`) — not an env var
+> **SSOT: `.claude/skills/handover/SKILL.md`.** This command file is a pointer
+> only — read the skill for the full procedure. It previously carried a second,
+> divergent copy that told the agent to `git add sessions/ projects/` → commit →
+> `push origin master`. That was wrong twice over: `bin/tools/handover.py` has no
+> commit or push code at all, and `sessions/` is gitignored (`.gitignore:10`), so
+> the note is a local-only artifact. It also contradicted
+> `.claude/rules_db/git-safety.md` and the core "destructive / irreversible
+> actions → STOP, notify, wait" rule by pushing to `master` unattended. The
+> skill's stop-and-ask flow (`AskUserQuestion` before writing anything, local
+> save, no push) is the correct behaviour. Resolved 2026-08-18 (F6).

@@ -31,9 +31,8 @@ When `create [name]` is called:
    git add -p   # stage only intended changes
    git commit -m "checkpoint: [name]"
    ```
-3. Append to `.claude/checkpoints.log` (create it first if absent — the file was
-   missing entirely until 2026-08-17, so `verify`/`list` failed on a fresh
-   install):
+3. Append to `.claude/checkpoints.log` (create it first if absent, otherwise
+   `verify`/`list` fail on a fresh install):
    ```bash
    [ -f .claude/checkpoints.log ] || touch .claude/checkpoints.log
    echo "$(date +%Y-%m-%d-%H:%M) | [name] | $(git rev-parse --short HEAD)" >> .claude/checkpoints.log

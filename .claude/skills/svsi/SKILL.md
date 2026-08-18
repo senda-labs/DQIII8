@@ -13,11 +13,12 @@ user-invocable: true
 # /svsi-review — Pre-revisión Semántica de Informes
 
 Proyecto: `/root/dqiii8/my-projects/intl-reports/`
-Reglas/autoridad canónica: `tools/review/authority.py` + `tests/test_svsi_authority.py` +
-`tests/test_svsi_invariants.py` — no existe un `docs/SVSI_PLAN.md` separado (citación stale
-detectada 2026-08-18, RC11.3; el código y su test suite son la única fuente de verdad).
-Engine: `tools/review/engine.py` → `review_slug(slug)`
-Reporter: `tools/review/reporter.py` → `write_report(report)`
+Reglas/autoridad canónica: `my-projects/intl-reports/tools/review/authority.py` +
+`my-projects/intl-reports/tests/test_svsi_authority.py` +
+`my-projects/intl-reports/tests/test_svsi_invariants.py` — no existe un docs/SVSI_PLAN.md
+separado; el código y su test suite son la única fuente de verdad.
+Engine: `my-projects/intl-reports/tools/review/engine.py` → `review_slug(slug)`
+Reporter: `my-projects/intl-reports/tools/review/reporter.py` → `write_report(report)`
 
 ## Cuándo usar
 
@@ -30,7 +31,7 @@ Reporter: `tools/review/reporter.py` → `write_report(report)`
 
 - Para verificar la generación misma (eso lo hace `qa_pre_render` dentro del pipeline)
 - Para regenerar secciones (eso requiere tmux externo con `core.cli`)
-- Para batch overnight (usar `scripts/pre_drive_review.py` desde tmux externo)
+- Para batch overnight (usar `my-projects/intl-reports/scripts/pre_drive_review.py` desde tmux externo)
 
 ## Flujo en sesión (Interactive Mode)
 
@@ -85,7 +86,7 @@ for i in report.issues:
 ## Restricciones absolutas
 
 - NUNCA ejecutar `core.cli run/resume` — CLAUDECODE=1 bloquea el orchestrator
-- NUNCA editar `tools/agent_writer.py`, `tools/block_writer.py`, `core/`
+- NUNCA editar `my-projects/intl-reports/tools/agent_writer.py`, `my-projects/intl-reports/tools/block_writer.py`, `core/`
 - NUNCA declarar "informe listo" sin verificar que el DOCX tiene > 500 KB
 - Las correcciones se proponen y confirman antes de aplicar — no edición silenciosa
 - Máximo 3 iteraciones del loop detect → edit → re-render → re-validate

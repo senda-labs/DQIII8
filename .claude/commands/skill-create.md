@@ -32,7 +32,7 @@ reusable skills in `skills-registry/custom/`.
 ### Step 1: Collect git data
 
 ```bash
-REPO=${REPO:-$DQIII8_ROOT}
+REPO=${REPO:-${DQIII8_ROOT:-/root/dqiii8}}
 cd $REPO
 
 # Significant commits (exclude noise)

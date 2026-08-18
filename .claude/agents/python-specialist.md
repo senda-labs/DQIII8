@@ -15,7 +15,7 @@ Fix, refactor, and optimize Python code. Black runs automatically after every ed
 ## Knowledge Search
 Antes de responder, ejecuta:
 ```
-python3 $DQIII8_ROOT/bin/agents/knowledge_search.py --agent python-specialist '<tarea>'
+python3 ${DQIII8_ROOT:-/root/dqiii8}/bin/agents/knowledge_search.py --agent python-specialist '<tarea>'
 ```
 e incluye los chunks relevantes en tu contexto (paths, async patterns, lecciones previas).
 
@@ -25,7 +25,7 @@ Tier B+/NIM dispatch below is **dormant**, not deleted — see
 `.claude/rules_db/archive/multi-tier-dormant-2026-08.md`. Write the code directly (Sonnet),
 do not invoke the wrapper:
 ```
-python3 $DQIII8_ROOT/bin/core/openrouter_wrapper.py --agent python-specialist "<task>"
+python3 ${DQIII8_ROOT:-/root/dqiii8}/bin/core/openrouter_wrapper.py --agent python-specialist "<task>"
 ```
 
 ## Protocol

@@ -12,8 +12,13 @@ injected. Every rule below traces to a real, documented recurring error.
   `sqlite3 /root/dqiii8/database/dqiii8.db "…"`, never `dqa "…"`. (git-safety.md)
 
 ## SQLite
-- Always `sqlite3.connect(path, timeout=30)` from Python — the default (5s) and the
-  hook default (10s) produce `SQLITE_BUSY` under parallel dispatch. (rule 01)
+- `sqlite3.connect(path, timeout=30)` for batch/background/one-off scripts (migrations,
+  backfills, `bin/tools/*`) — the driver default (5s) produces `SQLITE_BUSY` under
+  parallel dispatch. **Hooks and other hot-path callers deliberately use shorter,
+  tiered timeouts (0.5–10s)** to fail open fast under lock contention instead of
+  blocking a tool call — this is intentional design (Opus review P3-11, 2026-08-13:
+  ~96 call sites audited, all short timeouts pair with a graceful-degradation
+  try/except), not an oversight to "fix" to 30. See `01_database_mutations.md`.
 - WAL mode is set persistently; never disable it. Check `-wal` size before assuming
   a write landed.
 - `database/dqiii8.db` = live state, now also `session_memory` (migrated 2026-08-14);

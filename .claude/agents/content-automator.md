@@ -15,7 +15,7 @@ Handles: video generation, TTS, subtitles, FFmpeg, ElevenLabs, reels, thumbnails
 `narration`, `render`, `FFmpeg`, `thumbnail`, `content`, `ASS`, `SRT`
 
 ## Working directory
-`$DQIII8_ROOT/my-projects/content-automation/`
+`${DQIII8_ROOT:-/root/dqiii8}/my-projects/content-automation/`
 
 ## Key files
 - `scripts/professional_pipeline_v3.py` — main pipeline entrypoint
@@ -42,7 +42,7 @@ Handles: video generation, TTS, subtitles, FFmpeg, ElevenLabs, reels, thumbnails
 ## Knowledge Search
 Before responding, run:
 ```
-python3 $DQIII8_ROOT/bin/agents/knowledge_search.py --agent content-automator '<task>'
+python3 ${DQIII8_ROOT:-/root/dqiii8}/bin/agents/knowledge_search.py --agent content-automator '<task>'
 ```
 Include relevant chunks in your context (pipeline, FFmpeg rules, ElevenLabs fixes).
 
@@ -52,7 +52,7 @@ Tier C/Ollama dispatch below is **dormant**, not deleted — see
 `.claude/rules_db/archive/multi-tier-dormant-2026-08.md`. Do code generation and FFmpeg fixes
 directly (Sonnet), do not invoke the wrapper:
 ```
-python3 $DQIII8_ROOT/bin/core/openrouter_wrapper.py --agent content-automator "<task>"
+python3 ${DQIII8_ROOT:-/root/dqiii8}/bin/core/openrouter_wrapper.py --agent content-automator "<task>"
 ```
 ElevenLabs API integration, architecture decisions → Claude API (escalate to orchestrator).
 

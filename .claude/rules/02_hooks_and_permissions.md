@@ -42,4 +42,4 @@ siempre inyectados; el techo de 6853 es un Bash que combina las keywords `git` +
 El rango es canónico en el docstring de `rules_dispatcher.py` y debe re-medirse cuando cambie
 el tamaño de un fichero `_ALWAYS`/muy disparado o se añada un trigger.
 
-**Before editing anything in `.claude/hooks/`**: check which DB tables it writes (`agent_actions`/`session_events`) → confirm APPROVE/DENY/ESCALATE contract unchanged → dry-run (`echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | python3 .claude/hooks/pre_tool_use.py`) → hook errors must silently degrade to APPROVE, never block startup.
+**Before editing anything in `.claude/hooks/`**: check which DB tables it writes (`agent_actions` — `session_events` does not exist, see `01_database_mutations.md`) → confirm APPROVE/DENY/ESCALATE contract unchanged → dry-run (`echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | python3 .claude/hooks/pre_tool_use.py`) → hook errors must silently degrade to APPROVE, never block startup.

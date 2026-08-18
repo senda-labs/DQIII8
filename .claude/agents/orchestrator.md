@@ -36,7 +36,7 @@ user → director.analyze_intent() → plan JSON → dispatch by graph → synth
 ```
 
 ```bash
-python3 $DQIII8_ROOT/bin/director.py "user request"
+python3 ${DQIII8_ROOT:-/root/dqiii8}/bin/director.py "user request"
 ```
 
 Director v3 produces a plan with priority:
@@ -67,7 +67,7 @@ writing)** — dispatch via Bash → wrapper, not Task() (these agent names exis
 only in the `AGENT_ROUTING` backend, no `.claude/agents/*.md` counterpart to
 invoke via Task(), per the two-SSOT rule in `common/agents.md`):
 ```bash
-python3 $DQIII8_ROOT/bin/core/openrouter_wrapper.py --agent <agent-name> "<task>"
+python3 ${DQIII8_ROOT:-/root/dqiii8}/bin/core/openrouter_wrapper.py --agent <agent-name> "<task>"
 ```
 Capture stdout → apply with Edit/Write → write result to `tasks/results/[agent]-[ts].md`.
 

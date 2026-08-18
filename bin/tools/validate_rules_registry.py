@@ -644,6 +644,127 @@ def check_model_slugs_match_code(src: Source) -> tuple[list[str], list[str]]:
     return problems, warnings
 
 
+# ── check 5: CLAUDE.md counts ────────────────────────────────────────────────
+
+_COUNT_LINE_RE = {
+    "Hooks": re.compile(r"Hooks \((\d+)\)"),
+    "Skills": re.compile(r"Skills \((\d+)\)"),
+    "Agents": re.compile(r"Agents \((\d+)\)"),
+    "Contextual rules": re.compile(r"Contextual rules \((\d+)\)"),
+}
+
+
+def _glob_paths(src: Source, pattern: str) -> list[str]:
+    """Repo-relative paths matching `pattern`, staged- or worktree-aware.
+
+    Mirrors `Source.list_md`'s two-mode split but for an arbitrary glob (`.py`
+    files, `SKILL.md` files one level down) rather than a recursive `.md` walk.
+    """
+    if src.staged:
+        result = subprocess.run(
+            ["git", "ls-files", "--cached", "--", pattern],
+            cwd=src.root,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        return result.stdout.split() if result.returncode == 0 else []
+    return sorted(str(p.relative_to(src.root)) for p in src.root.glob(pattern))
+
+
+def _dir_has_any_file(src: Source, dirpath: str) -> bool:
+    """True if `dirpath` contains at least one tracked/worktree file.
+
+    Distinguishes "this source never copied/tracks this subtree at all" (e.g. a
+    test fixture that only mirrors `.claude/hooks`/`rules`/`rules_db`/`agents`)
+    from "the directory is real but genuinely empty" — only the former should
+    make `check_claude_md_counts()` skip that count instead of reporting a
+    false 0-vs-declared mismatch.
+    """
+    # Staged mode: git pathspec `*` crosses directory separators (unlike a
+    # worktree glob), so `dirpath/*` alone already matches recursively.
+    return len(_glob_paths(src, f"{dirpath}/*")) > 0 if src.staged else (
+        (src.root / dirpath).is_dir() and any((src.root / dirpath).iterdir())
+    )
+
+
+def check_claude_md_counts(src: Source) -> tuple[list[str], list[str]]:
+    """`CLAUDE.md`'s Hooks/Skills/Agents/Contextual-rules counts must match the
+    live filesystem exactly (RC3, cited 5x across the 2026-08-17 audit reports
+    — the highest-cited single defect). User decision: keep exact counts, but
+    validator-enforce them so they cannot silently drift a 6th time.
+
+    Definitions, chosen to match what each count is actually claiming:
+      * Hooks: `.py` files directly under `.claude/hooks/` (flat, not recursive).
+      * Skills: directories under `.claude/skills/` that contain a `SKILL.md`.
+      * Agents: `.claude/agents/*.md` files (reuses `list_agent_stems()`, the
+        same source `check_agent_names_exist()` treats as the SSOT).
+      * Contextual rules: `_REGISTRY` aliases in `rules_dispatcher.py` that
+        resolve into `.claude/rules_db/` — the deterministic `.claude/rules/*.md`
+        modules are a separate, already-counted-elsewhere surface, and archived
+        aliases are dormant by design (RC9), not part of the live count.
+
+    A count whose source directory is entirely absent from `src` (e.g. a test
+    fixture that only mirrors a subset of `.claude/`) is skipped rather than
+    compared against a live 0 — this validator's job is catching real drift in
+    the real repo, not demanding every fixture mirror the full tree.
+    """
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    text = src.read("CLAUDE.md")
+    if text is None:
+        return ["cannot read CLAUDE.md"], warnings
+
+    declared: dict[str, int] = {}
+    for label, pat in _COUNT_LINE_RE.items():
+        m = pat.search(text)
+        if m:
+            declared[label] = int(m.group(1))
+    if not declared:
+        return problems, warnings  # counts not present — nothing to check
+
+    hooks_live = len(_glob_paths(src, ".claude/hooks/*.py"))
+    skill_files_live = len(_glob_paths(src, ".claude/skills/*/SKILL.md"))
+    # Not src.list_agent_stems(): its staged-mode `git ls-files -- "*.md"`
+    # pathspec matches `*` across directory separators, so it over-counts
+    # nested knowledge files (e.g. finance-specialist/knowledge/*.md). Filter
+    # to exactly one path segment under AGENTS_DIR, flat like the worktree glob.
+    _agents_depth = AGENTS_DIR.count("/") + 1
+    agents_live = len(
+        [p for p in _glob_paths(src, f"{AGENTS_DIR}/*.md") if p.count("/") == _agents_depth]
+    )
+
+    dispatcher_src = src.read(DISPATCHER)
+    rules_db_aliases_live = None
+    if dispatcher_src is not None:
+        try:
+            module = intro.load_dispatcher(dispatcher_src, name="rules_dispatcher_counts")
+            rules_db_aliases_live = sum(
+                1 for rel in module._REGISTRY.values() if not rel.startswith("../rules/")
+            )
+        except Exception:
+            pass  # check_registry_reachability() already reports load failures
+
+    live = {
+        "Hooks": hooks_live if _dir_has_any_file(src, ".claude/hooks") else None,
+        "Skills": skill_files_live if _dir_has_any_file(src, ".claude/skills") else None,
+        "Agents": agents_live if _dir_has_any_file(src, AGENTS_DIR) else None,
+        "Contextual rules": rules_db_aliases_live,
+    }
+    for label, declared_n in declared.items():
+        live_n = live.get(label)
+        if live_n is None:
+            continue
+        if declared_n != live_n:
+            problems.append(
+                f"CLAUDE.md: declares '{label} ({declared_n})' but the live "
+                f"count is {live_n} — update CLAUDE.md or the live count drifted."
+            )
+
+    return problems, warnings
+
+
 # ── entrypoint ───────────────────────────────────────────────────────────────
 
 CHECKS = (
@@ -651,6 +772,7 @@ CHECKS = (
     ("token-budget", check_token_budget),
     ("agent-names", check_agent_names_exist),
     ("model-slugs", check_model_slugs_match_code),
+    ("claude-md-counts", check_claude_md_counts),
 )
 
 
@@ -691,8 +813,8 @@ def main(argv: list[str] | None = None) -> int:
     mode = "staged" if staged else "worktree"
     print(
         f"[validate-rules] OK ({mode}) — registry reachable, token range "
-        f"consistent, agent names and model slugs match code "
-        f"({len(warnings)} warning(s))"
+        f"consistent, agent names and model slugs match code, CLAUDE.md counts "
+        f"match live ({len(warnings)} warning(s))"
     )
     return 0
 

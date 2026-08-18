@@ -313,6 +313,78 @@ def test_repo_paths_and_hostnames_are_not_mistaken_for_slugs(repo: Path):
     assert not noise, noise
 
 
+# ── check 5: CLAUDE.md counts (RC3) ─────────────────────────────────────────
+
+
+def test_hooks_count_drift_is_a_problem(repo: Path):
+    edit(repo, "CLAUDE.md", "Hooks (15)", "Hooks (99)")
+    problems, _ = vrr.check_claude_md_counts(src(repo))
+    assert any("Hooks (99)" in p and "live count is 15" in p for p in problems), problems
+
+
+def test_agents_count_drift_is_a_problem(repo: Path):
+    edit(repo, "CLAUDE.md", "Agents (17)", "Agents (1)")
+    problems, _ = vrr.check_claude_md_counts(src(repo))
+    assert any("Agents (1)" in p for p in problems), problems
+
+
+def test_agents_count_ignores_nested_knowledge_files(repo: Path):
+    """Regression: a fixture with a nested `<agent>/knowledge/*.md` file must not
+    over-count agents — only one path segment under `.claude/agents/` counts."""
+    nested = repo / ".claude/agents/finance-specialist/knowledge/extra.md"
+    nested.parent.mkdir(parents=True, exist_ok=True)
+    nested.write_text("# extra\n", encoding="utf-8")
+    problems, _ = vrr.check_claude_md_counts(src(repo))
+    assert not any("Agents" in p for p in problems), problems
+
+
+def test_skills_count_is_skipped_when_the_directory_is_absent(repo: Path):
+    """The `repo` fixture never copies `.claude/skills/` — a directory the
+    validator's own check wants to count but this fixture doesn't mirror should
+    be skipped, not reported as a false 'live count is 0' drift."""
+    assert not (repo / ".claude/skills").exists()
+    problems, _ = vrr.check_claude_md_counts(src(repo))
+    assert not any("Skills" in p for p in problems), problems
+
+
+def test_skills_count_drift_is_detected_when_the_directory_is_present(repo: Path):
+    skills_dir = repo / ".claude/skills/example"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    (skills_dir / "SKILL.md").write_text("# example\n", encoding="utf-8")
+    assert "Skills (22)" in (repo / "CLAUDE.md").read_text(encoding="utf-8")
+    problems, _ = vrr.check_claude_md_counts(src(repo))
+    assert any("Skills (22)" in p and "live count is 1" in p for p in problems), problems
+
+
+def test_contextual_rules_count_drift_is_a_problem(repo: Path):
+    edit(repo, "CLAUDE.md", "Contextual rules (11)", "Contextual rules (0)")
+    problems, _ = vrr.check_claude_md_counts(src(repo))
+    assert any("Contextual rules (0)" in p for p in problems), problems
+
+
+def test_staged_mode_reads_counts_from_the_index(tmp_path: Path):
+    for rel in _COPY_TREES:
+        shutil.copytree(ROOT / rel, tmp_path / rel, dirs_exist_ok=True)
+    for rel in _COPY_FILES:
+        dst = tmp_path / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / rel, dst)
+    run = lambda *a: subprocess.run(  # noqa: E731
+        a, cwd=tmp_path, capture_output=True, text=True, check=True
+    )
+    run("git", "init", "-q")
+    run("git", "config", "user.email", "t@example.com")
+    run("git", "config", "user.name", "t")
+    run("git", "add", "-A")
+    run("git", "commit", "-q", "-m", "init")
+    edit(tmp_path, "CLAUDE.md", "Hooks (15)", "Hooks (99)")
+
+    worktree_problems, _ = vrr.check_claude_md_counts(vrr.Source(root=tmp_path))
+    staged_problems, _ = vrr.check_claude_md_counts(vrr.Source(root=tmp_path, staged=True))
+    assert any("Hooks (99)" in p for p in worktree_problems), worktree_problems
+    assert not any("Hooks" in p for p in staged_problems), staged_problems
+
+
 # ── staged-content reads ────────────────────────────────────────────────────
 
 

@@ -15,7 +15,8 @@ Escalate ONLY when `DQIII8_MODE=autonomous` AND the plan meets ≥1 criterion:
 ## Hard limits
 - Maximum **1** Opus escalation per task. Never re-escalate after Opus responds.
 - Opus is for **plan review / adversarial critique only** — never initial generation
-  (see INVARIANTE NIM in `00_core_behavior.md`: NIM Mistral-675B first for planning).
+  (see § REGLA NIM in `00_core_behavior.md`: Anthropic-only vigente — Sonnet does the
+  initial plan, Opus only ever attacks/reviews it).
 - Opus receives: the plan + full project context + original spec. Its job is to attack
   the plan: missing edge cases, contract violations, hidden coupling, cheaper paths.
 

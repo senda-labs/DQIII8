@@ -35,5 +35,11 @@ copy was stale at "Sonnet 4.6" — this line is the only DQIII8-specific fact it
 - `skills-registry/cache/`
 
 ## PermissionAnalyzer will DENY
-`git add -A`, `git add .`, `git push --force` (unless user explicitly requests),
-`rm -rf` on critical paths, writes to `.env` / `database/*.db`
+`rm -rf /` (and non-root variants), `chmod 777 /`, `DROP TABLE`/`DROP DATABASE`,
+`DELETE FROM agent_actions` without `WHERE`, writes to `.env` / `database/*.db` /
+other `BLOCKED_PATHS` (see `.claude/rules/02_hooks_and_permissions.md`).
+
+**`git add -A`, `git add .`, and `git push --force` are NOT technically blocked** —
+`permission_analyzer.py` has no rule for them. The "Git add protocol" and "NEVER"
+lines above are agent self-discipline, not an enforced guardrail; nothing in the
+code stops a non-compliant run from executing them.

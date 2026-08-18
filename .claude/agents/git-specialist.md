@@ -18,7 +18,7 @@ Tier C/Ollama dispatch below is **dormant**, not deleted — see
 `.claude/rules_db/archive/multi-tier-dormant-2026-08.md`. Do commit message generation and
 diff analysis directly (Sonnet), do not invoke the wrapper:
 ```
-python3 $DQIII8_ROOT/bin/core/openrouter_wrapper.py --agent git-specialist "<task>"
+python3 ${DQIII8_ROOT:-/root/dqiii8}/bin/core/openrouter_wrapper.py --agent git-specialist "<task>"
 ```
 
 ## Protocol

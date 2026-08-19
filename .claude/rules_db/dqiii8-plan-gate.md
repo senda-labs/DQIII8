@@ -22,6 +22,6 @@ Escalate ONLY when `DQIII8_MODE=autonomous` AND the plan meets ≥1 criterion:
 There is NO automatic code path that escalates a failed free-tier chain into
 Anthropic — `"anthropic"` appears in no `FALLBACK_CHAIN` value in
 `openrouter_wrapper.py`. Opus/Sonnet are reached only via static `AGENT_ROUTING`
-entries (e.g. `opus_planner`, `code-reviewer`) or explicit user request. Treat this
+entries (e.g. `orchestrator`, `code-reviewer`) or explicit user request. Treat this
 gate as a decision rule for the orchestrating session, not an implemented wrapper
 feature.

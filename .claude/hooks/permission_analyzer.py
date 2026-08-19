@@ -1136,7 +1136,8 @@ def _ctx_mode_command_text(tool: str, inp: dict) -> str:
 # arbitrary shell text is too noisy to be worth running here.
 _NETWORK_EGRESS_BASH_RE = re.compile(
     r"\b(?:curl|wget|nc|ncat|netcat|socat|scp|sftp|rsync|ssh|ftp|telnet)\b"
-    r"|urllib\.request|requests\.(?:post|get|put|patch)\b|httpx\.|socket\.(?:socket|connect)"
+    r"|urllib\.request|requests\.(?:post|get|put|patch)\b|httpx\."
+    r"|socket\.(?:socket|connect|create_connection)"
     r"|http\.client|aiohttp|/dev/tcp/"
 )
 _SENSITIVE_ENV_VAR_RE = re.compile(
@@ -1182,12 +1183,27 @@ _ARCHIVE_PIPE_TO_NET_RE = re.compile(
 # comment — no regex ever matched it; found live-unfixed 2026-08-19), a named
 # pipe piped through nc without -e (the classic `mkfifo`-based workaround for
 # netcat builds lacking -e), and Python/Perl socket-plus-shell one-liners.
+# [guardrails-security panel, 2026-08-19] four more standard-issue shapes
+# that walked straight through as APPROVE, live-confirmed: (1) bash's
+# `/dev/tcp/HOST/PORT` pseudo-device attached to an interactive shell or fd
+# dup'd back into one — no external binary at all, so none of the token
+# checks above ever fire; (2) socat's `system:` address type, functionally
+# identical to `exec:`/`EXEC:` but a different literal string; (3) Perl's
+# `-MSocket` command-line module flag, functionally identical to a
+# `use Socket;` source line but not matched by that literal text; (4) a
+# Python socket + os.dup2 fd-redirect one-liner that hands off to
+# subprocess/os.exec* instead of pty.spawn.
 _REVERSE_SHELL_RE = re.compile(
     r"\b(?:nc|ncat|netcat)\b[^|;\n]*\s-[A-Za-z]*[ec]\S*\s"
-    r"|\bsocat\b[^|;\n]*\b(?:exec|EXEC):"
+    r"|\bsocat\b[^|;\n]*\b(?:exec|EXEC|system|SYSTEM):"
     r"|\bmkfifo\b[^|;\n]*(?:[;&\n]|&&)[^|;\n]*\bnc\b[^|;\n]*<"
     r"|\bpython[0-9.]*\b[^\n]*\bimport\s+socket\b[^\n]*\bpty\.spawn\b"
-    r"|\bperl\b[^\n]*\buse\s+Socket\b"
+    r"|\bperl\b[^\n]*(?:\buse\s+Socket\b|-MSocket\b)"
+    r"|/dev/tcp/[A-Za-z0-9.\-]+/\d+[^\n]*(?:<&|>&|&>)"
+    r"|(?:<&|>&|&>)[^\n]*/dev/tcp/[A-Za-z0-9.\-]+/\d+"
+    r"|(?=[^\n]*\bimport\s+socket\b)(?=[^\n]*\bos\.dup2\b)"
+    r"(?=[^\n]*\b(?:subprocess\.(?:call|run|Popen)\b|os\.exec[lv][ep]?\b|os\.system\b))"
+    r"\bpython[0-9.]*\b"
 )
 # [RT12] os.system/os.popen hand a full shell command to the OS; pty.spawn
 # starts an interactive shell; eval/exec/compile run arbitrary Python source.

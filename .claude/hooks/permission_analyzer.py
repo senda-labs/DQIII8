@@ -488,6 +488,60 @@ def _collapse_adjacent_quotes(cmd: str) -> str:
     return out
 
 
+# [S5] base64/openssl/xxd/uudecode piped straight into a shell/interpreter —
+# the decoded payload never touches disk as a visible file, so no
+# blocked-path or CRITICAL/HIGH_RISK matcher ever sees its content.
+_OBFUSCATED_DECODE_PIPE_RE = re.compile(
+    r"\bbase64\b[^|;\n]*\s(?:-d\b|--decode\b|-di\b)[^|;\n]*\|\s*(?:sudo\s+)?"
+    r"(?:sh|bash|zsh|python[0-9.]*|perl|ruby)\b"
+    r"|\bopenssl\b[^|;\n]*\benc\b[^|;\n]*\s-d\b[^|;\n]*\s-a\b[^|;\n]*\|\s*(?:sudo\s+)?"
+    r"(?:sh|bash|zsh|python[0-9.]*|perl|ruby)\b"
+    r"|\bxxd\b[^|;\n]*\s-r\b[^|;\n]*\s-p\b[^|;\n]*\|\s*(?:sudo\s+)?"
+    r"(?:sh|bash|zsh|python[0-9.]*|perl|ruby)\b"
+    r"|\buudecode\b[^|;\n]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh|python[0-9.]*|perl|ruby)\b"
+)
+
+# [S5] Bash ANSI-C quoted strings ($'...') are decoded by the shell itself
+# before the command it names ever runs — 'rm -rf /' hidden as
+# $'\x72\x6d\x20\x2d\x72\x66\x20\x2f' reaches the real rm binary untouched
+# by any pattern matcher that only sees the literal escape sequences.
+# Deliberately matched against the RAW cmd, never the _collapse_adjacent_quotes
+# copy: that helper's `\(.)-> \1` pass runs re.sub repeatedly and would mangle
+# `\xNN` into a single stray character before this ever sees it.
+_ANSI_C_QUOTE_RE = re.compile(r"\$'((?:[^'\\]|\\.)*)'")
+_ANSI_C_ESCAPE_RE = re.compile(
+    r"\\x([0-9A-Fa-f]{1,2})|\\u([0-9A-Fa-f]{4})|\\([0-7]{1,3})|\\e|\\n"
+)
+
+
+def _decode_ansi_c_escapes(payload: str) -> str:
+    """Best-effort decode of the escape forms Bash's $'...' honors that a
+    hex/octal/obfuscated-command payload would actually use: \\xNN, \\NNN
+    (octal), \\uNNNN, \\e, \\n. [S5]"""
+    def _sub(m: re.Match) -> str:
+        if m.group(1) is not None:
+            return chr(int(m.group(1), 16))
+        if m.group(2) is not None:
+            return chr(int(m.group(2), 16))
+        if m.group(3) is not None:
+            return chr(int(m.group(3), 8) & 0xFF)
+        if m.group(0) == r"\e":
+            return "\x1b"
+        if m.group(0) == r"\n":
+            return "\n"
+        return m.group(0)
+
+    return _ANSI_C_ESCAPE_RE.sub(_sub, payload)
+
+
+def _ansi_c_decoded_cmd(raw_cmd: str) -> str | None:
+    """`raw_cmd` with every $'...' ANSI-C-quoted span replaced by its
+    decoded content, or None if no such span is present. [S5]"""
+    if "$'" not in raw_cmd:
+        return None
+    return _ANSI_C_QUOTE_RE.sub(lambda m: _decode_ansi_c_escapes(m.group(1)), raw_cmd)
+
+
 # Every directory change in the command, not just a leading `cd <dir> &&`
 # prefix (2026-08-18): the anchored form missed `pushd`, a second chained
 # `cd`, a subshell `(cd … && …)`, a newline separator, and the `cd` inside
@@ -1106,6 +1160,93 @@ _BASH_BARE_HOST_RE = re.compile(r"""['"]([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}
 _PIPE_TO_SHELL_RE = re.compile(
     r"\b(?:curl|wget)\b[^|;\n]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh|python[0-9.]*|perl|ruby)\b"
 )
+# [S6] Upload forms beyond the `curl -T-` shape already implied by
+# _NETWORK_EGRESS_BASH_RE: -T/--upload-file, and -F/--form with an @-file
+# attachment (curl reads the file named after '@' and sends its bytes).
+_UPLOAD_FORM_RE = re.compile(
+    r"\bcurl\b[^|;\n]*\s(?:-T\b|--upload-file\b)"
+    r"|\bcurl\b[^|;\n]*\s(?:-F\b|--form\b)[^|;\n]*=@"
+)
+# [S6] A local archive/compress/encode tool piped straight into a network
+# command — the compressed/encoded bytes never touch disk as a named file,
+# so no blocked-path check ever sees what's being sent. Extends the
+# existing tar|zip|7z coverage (_ARCHIVE_DEST_RES et al., a different
+# check for a different purpose — those gate the archive's *destination*
+# path, this gates archived *content* leaving via the network).
+_ARCHIVE_PIPE_TO_NET_RE = re.compile(
+    r"\b(?:zstd|gzip|bzip2|xz|base64|gpg)\b[^|;\n]*\|\s*(?:sudo\s+)?"
+    r"(?:curl|wget|nc|ncat|netcat|socat|scp|rsync)\b"
+)
+# [S6] Reverse-shell shapes beyond the existing `nc -e`/`ncat -c`/
+# `bash -i >&/dev/tcp/` coverage: a named pipe piped through nc without -e
+# (the classic `mkfifo`-based workaround for netcat builds lacking -e),
+# `socat ... exec:`, and Python/Perl socket-plus-shell one-liners.
+_REVERSE_SHELL_RE = re.compile(
+    r"\bmkfifo\b[^|;\n]*(?:[;&\n]|&&)[^|;\n]*\bnc\b[^|;\n]*<"
+    r"|\bsocat\b[^|;\n]*\bexec:"
+    r"|\bpython[0-9.]*\b[^\n]*\bimport\s+socket\b[^\n]*\bpty\.spawn\b"
+    r"|\bperl\b[^\n]*\buse\s+Socket\b"
+)
+# [RT12] os.system/os.popen hand a full shell command to the OS; pty.spawn
+# starts an interactive shell; eval/exec/compile run arbitrary Python source.
+# All four are execution primitives, not just write primitives — folded
+# into the same is_write trigger as os.remove/shutil.move/etc above, plus a
+# narrower unresolvable-argument ESCALATE (see the call site).
+_INLINE_EXEC_RE = re.compile(
+    r"\bos\.(?:system|popen)\s*\(|\bpty\.spawn\s*\(|\b(?:eval|exec|compile)\s*\("
+)
+
+
+def _py_inline_call_first_arg(cmd: str, paren_open_idx: int) -> str | None:
+    """The text of a Python call's first argument, given the index right
+    after its opening '(' (as returned by re.Match.end() on a call regex
+    ending in '\\('). Returns None if the parens don't balance within the
+    command (truncated/malformed source — fail open on the extraction,
+    the caller's regex-based checks elsewhere still see the raw text)."""
+    depth = 1
+    i = paren_open_idx
+    start = paren_open_idx
+    while i < len(cmd) and depth:
+        ch = cmd[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        i += 1
+    if depth:
+        return None
+    arg_blob = cmd[start:i - 1]
+    # First top-level comma splits off the first argument.
+    depth = 0
+    for j, ch in enumerate(arg_blob):
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            return arg_blob[:j].strip()
+    return arg_blob.strip()
+
+
+_PY_STRING_LITERAL_RE = re.compile(
+    r"""^(?:r|b|rb|br)?(['"]).*\1$""", re.IGNORECASE | re.DOTALL
+)
+
+
+def _py_arg_is_resolvable(arg: str) -> bool:
+    """[RT12] True only for a plain quoted string literal with no
+    interpolation — the one shape whose runtime value is already fully
+    known from the source text, so the existing literal-content checks
+    (blocked/governance path, Bash-pattern matchers) cover it. An f-string
+    (`f"..."`), a bare identifier, `sys.argv[...]`, string concatenation,
+    or anything else is treated as unresolvable — its actual value can only
+    be known at runtime."""
+    arg = arg.strip()
+    if not arg:
+        return True
+    if re.match(r"^(?:f|fr|rf)['\"]", arg, re.IGNORECASE):
+        return False
+    return bool(_PY_STRING_LITERAL_RE.match(arg))
 
 # Always CRITICAL regardless of mode.
 # The literal 'rm -rf /' entries are handled separately by
@@ -1356,12 +1497,25 @@ def _is_protected_branch(ref: str) -> bool:
 def _git_push_deleted_ref(cmd: str) -> str | None:
     """The branch name a `git push` deletes (`--delete`/`-d <ref>`, or the
     empty-source `:<ref>` refspec form), or None if this isn't a deleting
-    push at all. [S4]"""
-    if not re.search(r"\bgit\b(?:\s+\S+)*?\s+push\b", cmd):
+    push at all. [S4]
+
+    `--delete`/`-d` take the REF as a trailing positional, with the remote
+    (if given) positional before it — `git push --delete origin main` and
+    `git push origin --delete main` are both valid and both delete `main`,
+    not `origin`. Matching "the token right after --delete" (the original
+    approach) silently captured the remote name instead whenever a remote
+    was present, which is the common case — a real bypass, not a corner
+    case. Token-split and take the LAST non-flag positional instead.
+    """
+    m = re.search(r"\bgit\b(?:\s+\S+)*?\s+push\b(.*)$", cmd)
+    if not m:
         return None
-    m = re.search(r"(?:--delete|-d)\s+([^\s;&|'\"]+)", cmd)
-    if m:
-        return m.group(1)
+    tail = re.split(r"[;&|\n]", m.group(1), maxsplit=1)[0]
+    tokens = tail.split()
+    has_delete_flag = any(t in ("--delete", "-d") for t in tokens)
+    if has_delete_flag:
+        positionals = [t.strip("'\"") for t in tokens if not t.startswith("-")]
+        return positionals[-1] if positionals else None
     m = re.search(r"(?:^|[\s])(?:[\w.\-]+/)?:([^\s;&|'\"]+)", cmd)
     if m:
         return m.group(1)
@@ -1605,10 +1759,42 @@ class PermissionAnalyzer:
             if not is_write and _py_context and (
                 "write_text(" in cmd or "write_bytes(" in cmd
                 or re.search(r'\bshutil\.(?:copy\w*|move|rmtree)\s*\(', cmd)
-                or re.search(r'\bos\.(?:remove|unlink|rmdir|rename|replace)\s*\(', cmd)
+                or re.search(r'\bos\.(?:remove|unlink|rmdir|rename|replace|truncate)\s*\(', cmd)
                 or re.search(r'\bsubprocess\.(?:run|Popen|call|check_call|check_output)\s*\(', cmd)
+                # [RT12] os.system/os.popen/pty.spawn hand a full shell
+                # command to the OS; eval/exec/compile run arbitrary Python.
+                # Both are strictly more powerful than a single file write,
+                # so they're folded into the same is_write path rather than
+                # a parallel blocklist — see the unresolvable-target
+                # ESCALATE immediately below for the part a target-path
+                # check alone can't cover.
+                or _INLINE_EXEC_RE.search(cmd)
             ):
                 is_write = True
+            # [RT12] A literal inline-exec argument ("os.system('ls')") is
+            # just a Bash-equivalent command and already runs through the
+            # blocked/governance/network checks elsewhere in this function
+            # (see _ctx_mode_command_text and the checks above). What those
+            # checks cannot see is a *non-literal* argument — a bare
+            # variable, `sys.argv[...]`, or an f-string — since its actual
+            # content is only known at runtime. Scoped to exactly that gap
+            # (not "ESCALATE every inline interpreter call") so that
+            # `python3 -c "import subprocess; subprocess.run(['ls'])"`
+            # keeps approving.
+            if _py_context:
+                for _m in _INLINE_EXEC_RE.finditer(cmd):
+                    _arg = _py_inline_call_first_arg(cmd, _m.end())
+                    if _arg is not None and not _py_arg_is_resolvable(_arg):
+                        return self._escalate(
+                            tool, cmd[:80],
+                            f"Inline Python call ('{_m.group(0)}...') passes a "
+                            "non-literal argument (variable/sys.argv/f-string) "
+                            "whose runtime value cannot be statically checked "
+                            "— human review required.",
+                            "bash_inline_exec_unresolvable_target",
+                            "Use a literal argument, or confirm the runtime "
+                            "value with the user before approving.",
+                        )
         if not is_write:
             # Detect cp/mv/rsync/install/ln/dd (incl. sudo/absolute-path prefixes,
             # newline-separated commands) and shutil.copy*/shutil.move,
@@ -1730,9 +1916,50 @@ class PermissionAnalyzer:
                         "Confirm the governance change with the user before writing.",
                     )
 
+        # [S6] Reverse-shell shapes — checked ahead of, and independent of,
+        # the _NETWORK_EGRESS_BASH_RE gate below: a `python3 -c 'import
+        # socket,pty,os; pty.spawn(...)'` or `perl -e 'use Socket;...'`
+        # reverse-shell one-liner names no curl/wget/nc/socat token at all,
+        # so gating this on that list would miss exactly the obfuscated
+        # shapes it exists to catch.
+        if _REVERSE_SHELL_RE.search(cmd):
+            return self._deny(
+                tool, cmd,
+                "Command matches a reverse-shell shape "
+                "(mkfifo+nc, socat exec:, or a socket+pty/Socket one-liner).",
+                "CRITICAL", "bash_web_egress_reverse_shell",
+                "Reverse shells are never approved from an agent session.",
+            )
+
         # 3. Web-egress bypass via Bash — every socket-opening shape, not just
         # curl/wget; _NETWORK_EGRESS_BASH_RE above is the list.
         if _NETWORK_EGRESS_BASH_RE.search(cmd):
+            # [S6] Upload forms beyond -T-: --upload-file, -F/--form with an
+            # @-file attachment.
+            if _UPLOAD_FORM_RE.search(cmd):
+                return self._deny(
+                    tool, cmd,
+                    "Command uploads a local file via curl "
+                    "(--upload-file/-T or -F/--form with an @-attachment).",
+                    "CRITICAL", "bash_web_egress_upload_form",
+                    "Confirm the file and destination with the user before uploading.",
+                )
+            # [S6] Archive/compress/encode tool piped straight into a
+            # network command — same risk as tar|zip|7z piped to curl/nc,
+            # extended to zstd/gzip/bzip2/xz/base64/gpg. Documented residual
+            # risk (accepted, not a gap to re-file): the two-call form —
+            # `tar czf /tmp/a.tgz ...` in one Bash call, `curl -F
+            # f=@/tmp/a.tgz ...` in a separate one, or `find | xargs curl`
+            # — is outside a single-command regex's reach; only the direct
+            # pipe form is covered.
+            if _ARCHIVE_PIPE_TO_NET_RE.search(cmd):
+                return self._deny(
+                    tool, cmd,
+                    "Command pipes a compressed/encoded payload directly "
+                    "into a network command.",
+                    "CRITICAL", "bash_web_egress_archive_pipe",
+                    "Write to a file, inspect it, then send it explicitly.",
+                )
             secret = _url_secret_hit(cmd)
             if secret:
                 return self._deny(
@@ -2255,6 +2482,62 @@ class PermissionAnalyzer:
             _bash_db_client_sql_text(_bash_cmd) if tool == "Bash" and _bash_cmd else ""
         )
         _sql_decommented = _strip_sql_comments(_sql_comment_src) if _sql_comment_src else ""
+
+        # [S5] ANSI-C-quoted ($'...') command text, decoded on the RAW Bash
+        # command (before any quote-collapsing) — checked in ADDITION to cmd
+        # below, same additive pattern as _sql_decommented, so a
+        # $'\x72\x6d...'-hidden destructive command still matches.
+        _ansi_c_decoded = (
+            _ansi_c_decoded_cmd(_bash_cmd) if tool == "Bash" and _bash_cmd else None
+        ) or ""
+
+        # [S5] ANSI-C obfuscation — ESCALATE, not DENY: this is a heuristic
+        # decode, not a direct match on visible command text, so it gets
+        # human review rather than the CRITICAL/HIGH_RISK loops' automatic
+        # DENY. Checked ahead of section 4 so an obfuscated destructive
+        # command never reaches the ordinary approve path.
+        if _ansi_c_decoded and _ansi_c_decoded != _bash_cmd:
+            _ansi_hit = None
+            if any(_t == "/" for _t in _rm_destructive_targets(_ansi_c_decoded)):
+                _ansi_hit = "rm_rf_root"
+            else:
+                for _pattern in CRITICAL_PATTERNS:
+                    if re.search(_pattern, _ansi_c_decoded, re.IGNORECASE):
+                        _ansi_hit = _pattern
+                        break
+                if not _ansi_hit:
+                    for _pattern, _rule in HIGH_RISK_PATTERNS:
+                        if re.search(_pattern, _ansi_c_decoded, re.IGNORECASE):
+                            _ansi_hit = _rule
+                            break
+            if _ansi_hit:
+                return self._escalate(
+                    tool, _bash_cmd[:80],
+                    f"Command contains an ANSI-C quoted ($'...') span that "
+                    f"decodes to a high-risk pattern ('{_ansi_hit}') — human "
+                    "review required.",
+                    f"bash_ansi_c_obfuscated:{_ansi_hit}",
+                    "Confirm the decoded command's intent with the user "
+                    "before approving.",
+                )
+
+        # [S5] Decoded-payload-piped-to-shell — base64/openssl/xxd/uudecode
+        # decoding straight into sh/bash/python/perl/ruby with no
+        # intermediate file, same risk shape as _PIPE_TO_SHELL_RE's
+        # curl|wget case but for a locally-encoded payload. Independent of
+        # the network-egress gate below: this never has to touch the
+        # network. Documented residual risk (accepted, not a gap to
+        # re-file): a two-step form — `base64 -d file.b64 > /tmp/x && sh
+        # /tmp/x` — is architecturally outside a single-command regex's
+        # reach; only the direct pipe form is covered.
+        if tool == "Bash" and _bash_cmd and _OBFUSCATED_DECODE_PIPE_RE.search(_bash_cmd):
+            return self._escalate(
+                tool, _bash_cmd[:80],
+                "Command decodes a base64/openssl/xxd/uudecode payload "
+                "directly into a shell/interpreter — human review required.",
+                "bash_obfuscated_decode_pipe_to_shell",
+                "Decode to a file, inspect it, then run it explicitly.",
+            )
 
         # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
         if _pattern_scope:

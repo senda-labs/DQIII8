@@ -172,26 +172,70 @@ except Exception as e:
 # Any Bash command referencing an OAuth file is DENIED unless it is a bare
 # metadata check (ls/stat/test -e/-f). Allowlist beats denylist: unknown
 # binaries (curl, nc, jq, wget, rsync, scp...) fail closed automatically.
+#
+# /root/.claude.json carries oauthAccount and customApiKeyResponses and is
+# covered by nothing else in the pipeline: _credential_hit catches its sibling
+# .credentials.json by basename, but not this file. Two bypasses closed
+# 2026-08-18 — the block was gated on tool == "Bash", so `Read
+# {"file_path": "/root/.claude.json"}` never reached it, and the match was a
+# raw substring, so `cat ~/.claude.json` carried no literal to match. Paths now
+# go through the same expand/normpath/realpath candidate set _credential_hit
+# uses, and the read family runs the check too — with no ls/stat carve-out,
+# since a read tool has no metadata-only mode.
 _OAUTH_FILES = ["/root/.claude.json", "/root/.claude/.credentials.json"]
+_OAUTH_READ_TOOLS = {"Read", "Grep", "Glob", "LS", "NotebookRead"}
+_OAUTH_PATH_KEYS = ("file_path", "path", "notebook_path", "pattern")
 _OAUTH_ALLOWED_RE = re.compile(
     r'^\s*(?:ls(?:\s+-[a-zA-Z]+)*|stat|test\s+-[ef]|\[\s+-[ef])\s+\S'
 )
+_OAUTH_TOKEN_SPLIT_RE = re.compile(r"""[\s'"();|&<>=`,]+""")
+
+
+def _oauth_path_hit(raw: str) -> bool:
+    """True if `raw` names an OAuth credential file under any spelling."""
+    raw = (raw or "").strip().strip("'\"")
+    if not raw:
+        return False
+    expanded = os.path.expandvars(os.path.expanduser(raw))
+    candidates = {raw, expanded, os.path.normpath(expanded)}
+    try:
+        candidates.add(os.path.realpath(expanded))
+    except OSError:
+        pass
+    return any(f in c for c in candidates for f in _OAUTH_FILES)
+
+
+def _deny_oauth(detail: str) -> None:
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"Protected: OAuth credential file referenced ({detail}). Only "
+                "bare ls/stat/test metadata checks in Bash are permitted."
+            ),
+        }
+    }))
+    sys.exit(0)
+
+
 if tool == "Bash":
     _cmd_check = inp.get("command", "") or ""
-    if any(_f in _cmd_check for _f in _OAUTH_FILES):
+    try:
+        from permission_analyzer import _collapse_adjacent_quotes
+        _cmd_scan = _collapse_adjacent_quotes(_cmd_check)
+    except Exception:
+        _cmd_scan = _cmd_check
+    if any(_oauth_path_hit(t) for t in _OAUTH_TOKEN_SPLIT_RE.split(_cmd_scan)) or \
+            any(_f in _cmd_scan for _f in _OAUTH_FILES):
         _has_chain = any(op in _cmd_check for op in ("|", ";", "&&", "||", ">", "<", "`", "$(", "\n", "\r"))
         if _has_chain or not _OAUTH_ALLOWED_RE.match(_cmd_check):
-            print(json.dumps({
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": (
-                        "Protected: OAuth credential file referenced. Only bare "
-                        "ls/stat/test metadata checks are permitted."
-                    ),
-                }
-            }))
-            sys.exit(0)
+            _deny_oauth("Bash")
+elif tool in _OAUTH_READ_TOOLS:
+    for _key in _OAUTH_PATH_KEYS:
+        _val = inp.get(_key)
+        if isinstance(_val, str) and _oauth_path_hit(_val):
+            _deny_oauth(f"{tool}.{_key}")
 
 # ── Rules RAG: inject only relevant rules ─────────────────────────────────────
 _rules_context = ""

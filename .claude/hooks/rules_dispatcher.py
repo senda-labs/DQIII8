@@ -3,13 +3,15 @@ DQIII8 — Rules Dispatcher (RAG de Reglas Dinámico)
 Inyecta SÓLO las reglas relevantes al contexto del tool en curso.
 
 En lugar de cargar el corpus de reglas entero en cada turno, este módulo mapea
-tool + input → subconjunto mínimo de reglas (~946–7751 tokens, cl100k_base real).
+tool + input → subconjunto mínimo de reglas (~1060–7741 tokens, cl100k_base real).
 El número de archivos del registro no se cita aquí: el recuento vivo es
 `len(_REGISTRY)` y su parte de rules_db/ está fijada en CLAUDE.md
 ("Contextual rules (N)"), validada por check_claude_md_counts().
 
 RANGO CANÓNICO (medido con token_estimate(), cl100k_base real vía tiktoken):
-**suelo 946** (solo _ALWAYS = ops + core-behavior), **techo 7751**.
+**suelo 1060** (solo _ALWAYS = ops + core-behavior), **techo 7741**.
+**suelo de sesión 2761** = ese suelo + CLAUDE.md + DYNAMIC.md, los dos ficheros que
+Claude Code auto-inyecta en toda sesión; es el impuesto de contexto real por sesión.
 
 El techo es el MÁXIMO REALMENTE ALCANZABLE, no el peor caso de la matriz
 representativa: un Bash que combina todas las keywords de _BASH_KEYWORD_RULES
@@ -39,11 +41,9 @@ from pathlib import Path
 from typing import Sequence
 
 RULES_DB = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / ".claude" / "rules_db"
-# Rules split: deterministic modules live in .claude/rules/ (../rules/ from RULES_DB)
-# Legacy contextual rules remain in .claude/rules_db/
 
 # ── Rule file registry ────────────────────────────────────────────────────────
-# Paths are relative to RULES_DB. Use "../rules/" for the new deterministic modules.
+# Paths are relative to RULES_DB; "../rules/" reaches the deterministic modules.
 _REGISTRY: dict[str, str] = {
     # ── Deterministic modules (new rule engine split) ─────────────────────────
     "core-behavior":  "../rules/00_core_behavior.md",
@@ -57,43 +57,20 @@ _REGISTRY: dict[str, str] = {
     "prevention":     "dqiii8-error-prevention.md",
     "tools":          "dqiii8-tools.md",
     "plan-gate":      "dqiii8-plan-gate.md",
-    # "deliverables" / "context-window" aliases removed 2026-07-05: their files
-    # never existed and no tool/keyword mapping referenced them (audit P3-15).
-    # "routing" alias + routing.md removed 2026-08-17 (audit gap 12a): orphaned —
-    # no tool/keyword mapping referenced it and 03_tiering_and_routing.md already
-    # carries the routing table, decision algorithm and delegation rules.
     "workspace":      "workspace.md",
     "intl-reports":   "intl-reports-ops.md",
     "web-tools":      "web-research-tools.md",
     "agents":         "common/agents.md",
     "quality":        "common/quality.md",
-    # "git-workflow" / "workflow" / "testing" aliases + their common/*.md files
-    # removed 2026-08-17 (audit gap 12a, residual sweep): all three were orphans —
-    # registered but unreachable from _ALWAYS/_TOOL_RULES/_BASH_KEYWORD_RULES/_EXT_RULES
-    # — AND generic Claude Code boilerplate already superseded by wired DQIII8 files:
-    #   testing.md      → python.md § Testing (pytest+marks+80% cov), wired to
-    #                     .py and to the \bpytest\b keyword; also cited a
-    #                     non-existent "tdd-guide" agent.
-    #   git-workflow.md → git-safety.md, wired to \bgit\b and .sh. Its only
-    #                     DQIII8-specific line (commit attribution trailer) was
-    #                     merged there; its own copy was stale ("Sonnet 4.6") and
-    #                     it linked a development-workflow.md that never existed.
-    #   workflow.md     → hooks section duplicated ../rules/02_hooks_and_permissions.md,
-    #                     TDD/coverage duplicated python.md, and it cited a
-    #                     non-existent "planner" agent. Rest was generic web-app
-    #                     patterns (Repository, API envelope) unrelated to DQIII8.
-    # "performance" alias + common/performance.md removed 2026-08-17 (audit gap 9):
-    # orphaned (no tool/keyword mapping referenced it) AND generic Claude Code
-    # boilerplate, not DQIII8 content — it redefined tiers with a numeric 1/2/3
-    # competing taxonomy. La taxonomía canónica es C/B/B+/B++/A/S y vive en
+    # La taxonomía de tiers canónica es C/B/B+/B++/A/S y vive en
     # ../rules/03_tiering_and_routing.md (alias "tiering"). No redefinir tiers aquí.
 }
 
-# ── ALWAYS injected (ops guard + core behavior, ~1.040 tokens combined) ──────
+# ── ALWAYS injected (ops guard + core behavior) ──────────────────────────────
+# Estos dos ficheros son el suelo de tokens declarado en el docstring.
 _ALWAYS: tuple[str, ...] = ("ops", "core-behavior")  # prohibitions + autonomy + zero-complacency/cost-first
 
 # ── Tool → rules mapping ─────────────────────────────────────────────────────
-# Each entry is a list of rule aliases to inject.
 # Bash rules additionally filtered by command keyword below.
 _TOOL_RULES: dict[str, list[str]] = {
     "Bash":       [],                        # resolved dynamically from command
@@ -102,7 +79,7 @@ _TOOL_RULES: dict[str, list[str]] = {
     "Read":       ["prevention"],
     "Glob":       [],
     "Grep":       [],
-    "Agent":      ["tiering", "agents"],     # tiering replaces legacy routing
+    "Agent":      ["tiering", "agents"],
     "WebFetch":   ["web-tools"],
     "WebSearch":  ["web-tools"],
     "TodoWrite":  [],

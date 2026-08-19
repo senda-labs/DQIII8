@@ -2,7 +2,7 @@
   <h1 align="center">DQIII8</h1>
   <p align="center">Autonomous, Cost-First Multi-Agent Orchestration Engine</p>
   <p align="center">
-    <img alt="Tests" src="https://img.shields.io/badge/tests-285%20passing-brightgreen">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-1004%20passing-brightgreen">
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg">
     <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue">
     <img alt="Platform" src="https://img.shields.io/badge/platform-Ubuntu%2022.04%2F24.04-lightgrey">
@@ -14,7 +14,9 @@
 Every request flows through a cost-first routing pipeline that always tries the cheapest
 capable model first — local → free cloud → paid frontier — escalating only when the task
 demands it. It is deeply integrated with [Claude Code](https://claude.com/claude-code)
-through 14 lifecycle hooks, 22 skills, and 17 specialist agents.
+through 15 lifecycle hooks, 22 skills, and 17 specialist agents.
+(Counts are validator-enforced against the live tree — `check_readme_counts()` in
+`bin/tools/validate_rules_registry.py`; `CLAUDE.md:16` is the canonical restatement.)
 
 This repository is a **reference implementation**. It shows the architecture, routing
 logic, hook system, and agent patterns so you can build a similar system with your own
@@ -27,9 +29,9 @@ locally — see [Installation](#installation).
 
 - **Cost-first routing** — pick the cheapest tier that can do the job; escalate only on explicit task-type match or tier failure. Never skip tiers.
 - **Deterministic permissions** — every tool call is evaluated by `PermissionAnalyzer` (APPROVE / DENY / ESCALATE) inside a `pre_tool_use` hook before execution.
-- **State in SQLite** — instincts, agent actions, model performance, and session events live in a local SQLite database. No external state store.
+- **State in SQLite** — instincts, agent actions, routing feedback and permission decisions live in a local SQLite database. No external state store. (There is no `model_performance` or `session_events` table — see the SQLite section below.)
 - **Knowledge injection (optional)** — domain knowledge retrieved via hybrid search (vector + FTS5) before the model sees the prompt. Off by default for a clean install.
-- **Composable agents** — 17 specialist agents + 14 hooks + 22 skills form a layered permission and routing system, all configurable.
+- **Composable agents** — 17 specialist agents + 15 hooks + 22 skills form a layered permission and routing system, all configurable.
 
 ---
 
@@ -70,7 +72,7 @@ Fallback chain is **sequential** (not round-robin): `ollama → groq → nim →
                                   ▼
          Claude Code  ←──dispatch.py──→  NIM / Groq / GitHub workers
               │
-    14 hooks · 22 skills · 17 agents · PermissionAnalyzer
+    15 hooks · 22 skills · 17 agents · PermissionAnalyzer
 ```
 
 ---
@@ -103,21 +105,29 @@ City-block decomposition pipeline:
 4. **Haiku Context Bombardment** — feed Haiku 4.5 all context, fire 100 adversarial questions (traceability, contracts, invariants, edge cases). Gaps = real quality debt.
 5. **Opus reviewer** — invoked ONLY if `haiku_score < 70` or critical gaps found (cost gate keeps most runs at $0)
 
-### Lifecycle hooks — `.claude/hooks/` (14 hooks)
+### Lifecycle hooks — `.claude/hooks/` (15 hooks)
 
 | Hook | Lifecycle event | Responsibility |
 |---|---|---|
 | `pre_tool_use.py` | before every tool | PermissionAnalyzer (APPROVE / DENY / ESCALATE) + dynamic rule injection |
 | `session_start.py` | session open | inject zone context, recent lessons, last audit |
 | `post_tool_use.py` | after every tool | record cost estimate and tool usage to DB |
-| `stop.py` | session close | auto-commit, lessons extraction, session metrics |
-| `semgrep_scan.py` | on file write | static analysis gate on generated code |
-| `rules_dispatcher.py` | pre-tool | load 1–3 rule files relevant to the current call (~200–800 tokens) |
+| `stop.py` | session close *and* subagent close | lessons extraction, session metrics, auto-commit of `tasks/lessons.md` + `projects/*.md`, and an **unconditional `git push origin master`**; plus an automatic handover note + commit + push for sessions ≥15 min (see `.claude/skills/handover/SKILL.md` §Two implementations) |
 
-`PermissionAnalyzer` checks pattern blocklists, path blocklists (`.env`, `CLAUDE.md`, `*.db`, `.ssh/`), daily budget cap, and execution mode (`supervised` vs `autonomous`). A DENY is final — the wrapper never retries.
+The table covers the hooks worth knowing first; the full set is whatever
+`.claude/settings.json` wires — that file is the SSOT for which hook runs on which event.
+`rules_dispatcher.py` and `semgrep_scan.py` live in `.claude/hooks/` but are **not** wired to
+any lifecycle event: the first is a library imported by `pre_tool_use.py`, the second is
+currently invoked by nothing.
+
+`rules_dispatcher.py` injects a subset of the rule registry per tool call, never the whole
+corpus. The canonical file and token ranges live in `rules_dispatcher.py`'s docstring and
+`.claude/rules/02_hooks_and_permissions.md` — deliberately not restated here.
+
+`PermissionAnalyzer` checks pattern blocklists, path blocklists, daily budget cap, and execution mode (`supervised` vs `autonomous`). A DENY is final — the wrapper never retries. The blocked- and governance-path lists are code constants in `.claude/hooks/permission_analyzer.py`, documented once in `.claude/rules/02_hooks_and_permissions.md`; no other doc, this one included, may restate them.
 
 ### SQLite state engine — `database/schema_v2.sql`
-46 live tables + 20 views. `schema_v2.sql` is the idempotent source of truth — apply it
+60 tables + 29 views. `schema_v2.sql` is the idempotent source of truth — apply it
 for a fresh install; no migration scripts needed. Key tables: `instincts`, `agent_actions`,
 `routing_feedback`. (`model_performance` and `session_events` were documented here previously
 but do not exist in `schema_v2.sql` or the live DB — removed 2026-08-11 stress test.)
@@ -139,14 +149,14 @@ dqiii8/
 │   ├── director.py       3-stage intent routing
 │   └── orchestrator.py   /cc and /loop command handling
 ├── .claude/
-│   ├── hooks/            14 lifecycle hooks
+│   ├── hooks/            15 lifecycle hooks
 │   ├── skills/           22 slash-command skills
 │   ├── agents/           17 specialist agent definitions
 │   └── rules/            core behavior · tiering · database · hooks rules
 ├── config/               .env.example · domain_agent_map.json · claude_settings_template.json
 ├── database/             schema_v2.sql  (source of truth — *.db are gitignored)
 ├── knowledge/            README.md + AUDIT_REPORT.md stubs — populate locally
-├── tests/                285 tests across 21 files
+├── tests/                1004 tests across 43 files
 ├── examples/             usage examples
 ├── zones/                Obsidian-style architecture context for Claude Code
 └── install.sh            one-shot installer
@@ -174,7 +184,7 @@ The installer:
 2. Prompts to install Ollama (optional — skip to start with Tier B only)
 3. Pulls `qwen2.5-coder:7b` if Ollama is installed
 4. Copies `config/.env.example` → `.env` if not present
-5. Applies `database/schema_v2.sql` (creates all 46 tables)
+5. Applies `database/schema_v2.sql` (creates all 60 tables)
 6. Copies Claude Code settings template
 7. Runs smoke tests
 

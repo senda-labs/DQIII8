@@ -12,9 +12,9 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 ## System Map
 - DQ Pipeline (7 steps): Classify → Retrieve → Gate → Amplify → Route → Execute → Memory
 - DB: `database/dqiii8.db` (schema_v2.sql — source of truth, now also holds `session_memory`; sibling: `dqiii8_knowledge.db` knowledge/vector. `dqiii8_history.db` and `dqiii8_metrics.db.old` are frozen post-migration artifacts)
-- Writing to `agent_actions`: use `bin/core/action_log.py`'s shared helpers (`resolve_project_safe()`, `generate_request_id()`) — see `docs/audits/2026-08-13-db-attribution-rebuild.md`
+- Writing to `agent_actions`: use `bin/core/action_log.py`'s shared helpers (`resolve_project_safe()`, `generate_request_id()`) — never hand-build the row. Column families and trigger contract: `.claude/rules/01_database_mutations.md`
 - Hooks (15): `.claude/hooks/` | Skills (22): `.claude/skills/` | Agents (17): `.claude/agents/`
-- Contextual rules (11): `.claude/rules_db/` — not read directly; injected 1-3 files at a time per tool call by `rules_dispatcher.py` (see `.claude/rules/02_hooks_and_permissions.md`). Counts on this line are validator-enforced (`check_claude_md_counts()` in `validate_rules_registry.py`).
+- Contextual rules (11): `.claude/rules_db/` — not read directly; injected per tool call by `rules_dispatcher.py` — 2 files minimum (`_ALWAYS`), 13 in the reachable ceiling case, drawn from both `.claude/rules_db/` and `.claude/rules/` (see `.claude/rules/02_hooks_and_permissions.md`). Counts on this line are validator-enforced (`check_claude_md_counts()` in `validate_rules_registry.py`).
 - Entry: `bin/core/openrouter_wrapper.py` | Director: `bin/director.py`
 - Dispatch (CC↔dqiii8): `bin/core/dispatch.py` — thin subprocess shim; sync + async via detached worker + atomic JSON envelope
 
@@ -50,4 +50,7 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 - `ANTHROPIC_API_KEY` must be `""` in subprocess env when using Claude Code OAuth.
 - Plans touching ≥3 modules OR with ambiguous scope → enter plan mode first, then
   run `/panel-review <plan-file>` before implementation (see `.claude/skills/panel-review/`).
-- Destructive / irreversible actions (rm -rf, DROP, force-push) → STOP, notify, wait.
+- Destructive / irreversible actions (DROP, live-schema change, `rm -rf` of data) → STOP, notify, wait.
+  Two exceptions already decided in code (`.claude/rules/02_hooks_and_permissions.md`): `rm -rf` of
+  build/cache artifacts is auto-approved (`ALLOWED_DELETIONS`); `git push --force` is denied outright
+  and user confirmation does not unblock it.

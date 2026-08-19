@@ -18,15 +18,20 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 - Entry: `bin/core/openrouter_wrapper.py` | Director: `bin/director.py`
 - Dispatch (CC↔dqiii8): `bin/core/dispatch.py` — thin subprocess shim; sync + async via detached worker + atomic JSON envelope
 
-> **Audit reports and audit docs are never committed — full stop.** Both `docs/audits/*.md` and
-> `database/audit_reports/*.md` are gitignored with no negation. Their durability does
-> NOT come from git — it comes from two independent off-VPS channels:
-> `bin/tools/backup_audit_docs.sh` (mutual Netcup↔Hostinger rsync, dated snapshots, no
-> `--delete` mirror) and `bin/tools/telegram_audit_backup.py` (per-file upload to a single
-> allowlisted Telegram chat). Both read their targets/credentials from env vars only.
-> Deleting a file under either path is effectively irreversible once both backups roll —
-> treat these files with the same care as tracked ones even though `git status` won't see
-> them.
+> **New audit reports and audit docs are never committed — full stop.** Both `docs/audits/*.md`
+> and `database/audit_reports/*.md` are gitignored with no negation, so anything written today
+> stays untracked. Their durability does NOT come from git — it comes from two independent
+> off-VPS channels: `bin/tools/backup_audit_docs.sh` (mutual Netcup↔Hostinger rsync, dated
+> snapshots, no `--delete` mirror) and `bin/tools/telegram_audit_backup.py` (per-file upload to
+> a single allowlisted Telegram chat). Both read their targets/credentials from env vars only.
+> Deleting an untracked file under either path is effectively irreversible once both backups
+> roll — treat these files with the same care as tracked ones even though `git status` won't
+> show them.
+> **Exception, already in history:** commit `af869db` (2026-08-18) deliberately force-added 35
+> pre-2026-08-18 files under `database/audit_reports/` as a one-time archival decision — `git
+> ls-tree -r HEAD --name-only database/audit_reports | wc -l` confirms 35 tracked today. That
+> corpus is grandfathered, not a precedent: don't `git add -f` a new audit doc into either
+> directory without the same explicit human call that created this exception.
 
 > **Not DQIII8-specific**: `.claude/architecture/` holds a generic reference book on Claude Code's own internals (agent loop, tool execution, etc.), unrelated to DQIII8's architecture. Don't confuse it with DQIII8 docs when orienting.
 

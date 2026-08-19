@@ -1,5 +1,11 @@
 # Agent Orchestration — SSOT
 
+> **Precedencia: REGLA NIM (`00_core_behavior.md`) manda sobre este fichero.** El lane de dispatch
+> por `openrouter_wrapper.py` está **dormante — no invocarlo**; se delega con el Agent tool o
+> `claude -p`. Routing vigente → `.claude/rules/03_tiering_and_routing.md`; historial →
+> `.claude/rules_db/archive/multi-tier-dormant-2026-08.md`. Abajo se describe el cableado, no una
+> ruta de ejecución.
+
 ## Two runtimes, two SSOTs (no fusionarlos)
 
 DQIII8 tiene **dos sistemas de agentes distintos** que comparten algunos nombres.
@@ -7,7 +13,7 @@ No son un duplicado a reconciliar: son runtimes diferentes con propósitos difer
 
 | Runtime | SSOT | Qué define | Cómo se invoca |
 |---|---|---|---|
-| **Dispatch dqiii8** (NIM / Groq / Ollama / Anthropic vía wrapper) | `AGENT_ROUTING` en `bin/core/openrouter_wrapper.py` (**código**) | Nombre de agente → `(provider, model)` | `python3 bin/core/openrouter_wrapper.py --agent <nombre> --no-enrich "<prompt>"` |
+| **Dispatch dqiii8** — *dormante, no invocar* (NIM / Groq / Ollama / Anthropic vía wrapper) | `AGENT_ROUTING` en `bin/core/openrouter_wrapper.py` (**código**) | Nombre de agente → `(provider, model)` | CLI del wrapper — **dormante bajo REGLA NIM**. La línea de comando no se reproduce aquí a propósito: si algún día se reactiva, sale de `python3 bin/core/openrouter_wrapper.py --help` |
 | **Agent tool nativo de Claude Code** | Ficheros `.claude/agents/*.md` (**frontmatter**) | `name`, `model`, `tools`, `description` | Agent tool del propio Claude Code (Tier A por defecto) |
 
 Solapan parcialmente: el wrapper lee el **cuerpo** de `.claude/agents/<nombre>.md` como
@@ -33,11 +39,9 @@ desincroniza: si necesitas una, verifícala contra las dos fuentes anteriores en
 Si encuentras un nombre de agente citado en cualquier doc, verifícalo contra las dos
 fuentes de arriba antes de usarlo.
 
-### Split legítimo conocido
-
-`research-analyst`: `.claude/agents/research-analyst.md` usa `groq/llama-3.3-70b-versatile`
-(coste) para el Agent tool nativo; `AGENT_ROUTING["research-analyst"]` usa NIM Nemotron
-para el dispatch por Bash. Es intencionado, no drift.
+Un mismo nombre declarando modelos distintos en los dos runtimes es intencionado, no drift
+(caso vivo: `research-analyst`, Groq en el fichero vs. NIM en `AGENT_ROUTING` — ambos
+proveedores dormantes hoy). No lo "arregles".
 
 ### Frontmatter: campos que el runtime lee de verdad
 
@@ -48,17 +52,14 @@ acompáñalo siempre de un `model:` explícito.
 
 ## Cost-First al delegar
 
-Antes de usar el Agent tool nativo (Tier A, tokens Anthropic), evalúa si el trabajo lo
-resuelve un tier gratuito vía el wrapper. Ver `.claude/rules/00_core_behavior.md`
-§ Cost-First Rule y `.claude/rules/03_tiering_and_routing.md`.
+Delta sobre `00_core_behavior.md` § Cost-First Rule (siempre inyectada): bajo Anthropic-only
+no hay tier gratuito al que bajar, así que la regla se aplica **dentro** de Anthropic —
+Sonnet por defecto, Haiku donde baste, Opus solo revisión adversarial final. Nunca "ahorrar"
+saltando al wrapper: está dormante (REGLA NIM).
 
-## Ejecución paralela
+## Cómo repartir el trabajo
 
-Usa ejecución paralela para operaciones independientes (sin estado compartido ni
-dependencias secuenciales). Secuencial solo cuando exista dependencia real.
-
-## Análisis multi-perspectiva
-
-Para problemas complejos, usa sub-agentes con roles separados: revisor factual, ingeniero
-senior, experto en seguridad, revisor de consistencia, detector de redundancia.
-Ver `.claude/skills/panel-review/`.
+- Paralelo para operaciones independientes (sin estado compartido ni dependencias);
+  secuencial solo cuando haya dependencia real.
+- Problemas complejos → sub-agentes con roles separados (factual, ingeniería senior,
+  seguridad, consistencia, redundancia): `.claude/skills/panel-review/`.

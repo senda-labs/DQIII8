@@ -1,23 +1,17 @@
 # Code Quality & Security
 
-## Coding style
-- Immutability: ALWAYS create new objects, NEVER mutate in-place
-- Files: 200-400 lines typical, 800 max; organize by feature/domain
-- Error handling: explicit at every level; never silently swallow; user-friendly messages in UI, detailed logs server-side
-- Validate at system boundaries only (user input, external APIs); trust internal code
+Generic craft rules (function length, nesting depth, immutability, PEP 8) are model-prior
+knowledge and are not restated here — every line in this file is injected on **every `.py`
+edit**, so it only earns its place if it is DQIII8-specific. Python conventions that *are*
+project-specific: `python.md` (co-injected on the same trigger), including the secrets rule.
 
-## Code quality checklist
-Before marking work complete:
-- [ ] Readable, well-named, functions < 50 lines
-- [ ] No deep nesting (>4 levels), no hardcoded values
-- [ ] Proper error handling, no mutation
+## Before marking work complete
+- Errors: explicit at every level, never silently swallowed. A hook is the one exception —
+  it must degrade to APPROVE rather than block (`02_hooks_and_permissions.md`).
+- Validate at system boundaries only (user input, external APIs); trust internal code.
+- Error messages must not leak secrets, absolute VPS paths or DB contents.
 
-## Security — mandatory before ANY commit
-- [ ] No hardcoded secrets (API keys, passwords, tokens)
-- [ ] User inputs validated; SQL parameterized; HTML sanitized
-- [ ] Error messages don't leak sensitive data
-
-## Secret management
-- NEVER hardcode secrets — always env vars or secret manager
-- Rotate any secrets that may have been exposed
-- On security issue: STOP → `code-reviewer` agent (Opus adversarial pass) → fix CRITICAL before continuing
+## On a security issue
+STOP → `code-reviewer` agent (Opus adversarial pass) → fix CRITICAL before continuing.
+Any secret that may have been exposed is rotated, not just removed from the file —
+git history keeps it otherwise (see the 2026-08 Telegram/Netcup leaks).

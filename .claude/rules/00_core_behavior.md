@@ -15,7 +15,9 @@
 - Plans ≤5 steps, no destructive actions → execute autonomously, notify after.
 - Plan touches ≥3 modules OR has ambiguous scope → enter plan mode first, wait for
   confirmation, then run `/panel-review <plan-file>` before implementation.
-- Destructive / irreversible actions (rm -rf, DROP, force-push, schema change) → STOP, notify user, wait.
+- Destructive / irreversible actions (DROP, live-schema change, `rm -rf` de datos) → STOP, notify user, wait.
+  Excepciones ya cerradas en código (SSOT `02_hooks_and_permissions.md`): `rm -rf` de build/cache
+  = auto-aprobado (§ALLOWED_DELETIONS); `git push --force` = DENY, la confirmación no lo desbloquea.
 - Bug in production → fix immediately: read logs, isolate cause, resolve, verify. No hand-holding.
 
 ## Scope Discipline

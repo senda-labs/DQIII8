@@ -19,12 +19,8 @@ Scripts in `bin/workspace/`. Launch from any terminal with the aliases.
 - User starts a new dev session on VPS →
   suggest: `bash bin/workspace/launch_swarm.sh`
 
-## Yazi integration
-
-Yazi opens in `$DQIII8` or the active project dir.
-Config: `~/.config/yazi/yazi.toml` — hidden files visible, sorted dir-first, mtime linemode.
-Open files with `Enter`, edit with nano. Navigate with hjkl or arrow keys.
-Press `q` to quit Yazi (does not close the tmux pane).
+Yazi opens in `$DQIII8` or the active project dir; config `~/.config/yazi/yazi.toml`.
+(Its keybindings are a human-TUI concern, not an agent one — not documented here.)
 
 ## Session management
 

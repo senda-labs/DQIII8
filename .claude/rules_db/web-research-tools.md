@@ -19,22 +19,13 @@ research-only tools not exposed by the CLI at all.
 modes, inspect_paper, read_paper). This is the only capability in the whole DQIII8 tool
 surface that does citation-graph work; nothing else substitutes for it.
 
-For everything else (scrape/search/crawl/map/interact/parse/agent/monitor), prefer the
-CLI skill over the MCP tool of the same name — avoids double-counting credits and keeps
-one obvious tool per job.
+For everything else (scrape/search/crawl/map/interact/parse/agent/monitor), use the CLI
+skill: **this is now enforced, not a preference.** Desde 2026-08-18 los 21 firecrawl MCP
+no-research están en `permissions.deny` de `.claude/settings.json` — llamarlos falla, no
+degrada. Solo los `firecrawl_research_*` siguen permitidos.
 
-Pendiente humano (no aplicable por un agente): denegar los firecrawl MCP no-research en
-`.claude/settings.json` → `docs/pending-human-actions.md`.
+## Search credit refund — CLI only
 
-## Known gotcha: `firecrawl_parse` over MCP
-
-`firecrawl_parse` (MCP) throws unless `FIRECRAWL_API_URL` points at a self-hosted
-Firecrawl instance — we only have a cloud key. **Use the CLI `firecrawl parse` skill**
-for local file parsing (PDF/DOCX/etc.), not the MCP tool.
-
-## Search credit refund
-
-`firecrawl_search` (MCP) and `firecrawl search` (CLI) cost 2 credits per call. Calling
-`firecrawl_search_feedback` with the returned result `id` refunds 1 credit (daily cap
-100/team/UTC-day; stops refunding once `dailyCapReached:true`). Worth doing at high
-search volume; not worth automating below that.
+`firecrawl search` (CLI) cuesta 2 créditos por llamada. El refund de 1 crédito vía
+`firecrawl_search_feedback` era un tool MCP y **hoy está denegado**: no lo intentes, no hay
+ruta de refund desde una sesión de agente. (Tope histórico: 100/equipo/día UTC.)

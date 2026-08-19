@@ -1284,6 +1284,21 @@ CRITICAL_PATTERNS = [
     r":\(\)\s*\{.*:\|:.*\}",  # fork bomb
 ]
 
+# [output-quality F3] Human-readable label per CRITICAL_PATTERNS entry, used
+# only in the DENY message text — CRITICAL_PATTERNS itself stays a plain
+# regex list (test_every_critical_pattern_has_a_sample iterates it as such).
+# Keyed by the exact regex string, so an unlabeled future addition falls back
+# to the truncated command instead of raising.
+_CRITICAL_PATTERN_LABELS = {
+    CRITICAL_PATTERNS[0]: "redirect into a raw disk device",
+    CRITICAL_PATTERNS[1]: "filesystem format (mkfs)",
+    CRITICAL_PATTERNS[2]: "dd to/from a raw disk device",
+    CRITICAL_PATTERNS[3]: "tee into a raw disk device",
+    CRITICAL_PATTERNS[4]: "disk-scrubbing tool (wipefs/parted/sfdisk/fdisk/blkdiscard/shred) on a raw device",
+    CRITICAL_PATTERNS[5]: "redirect into a disk-by-id alias",
+    CRITICAL_PATTERNS[6]: "fork bomb",
+}
+
 # ── Protected-table matching (2026-08-18, round-3 audit) ────────────────────
 # Two shape fixes, both found live by the round-3 re-audit:
 #
@@ -2350,8 +2365,8 @@ class PermissionAnalyzer:
                 return self._deny(
                     tool,
                     path,
-                    f"Write blocked at '{path}'. "
-                    "Edit this file manually if needed.",
+                    f"Blocked path '{blocked}' targeted by {tool} write at "
+                    f"'{path}'. Edit this file manually if needed.",
                     "CRITICAL",
                     f"blocked_path:{blocked}",
                     "Edit directly from terminal or ask the user.",
@@ -2611,9 +2626,10 @@ class PermissionAnalyzer:
                     if re.search(pattern, cmd, re.IGNORECASE) or (
                         _sql_decommented and re.search(pattern, _sql_decommented, re.IGNORECASE)
                     ):
+                        _label = _CRITICAL_PATTERN_LABELS.get(pattern, "unlabeled catastrophic pattern")
                         return self._deny(
                             tool, cmd,
-                            f"Catastrophic command blocked: '{cmd[:80]}'",
+                            f"Catastrophic command blocked ({_label}): '{cmd[:80]}'",
                             "CRITICAL", f"critical_pattern:{pattern}",
                             "This command is irreversible and catastrophic.",
                         )

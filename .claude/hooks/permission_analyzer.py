@@ -1970,10 +1970,19 @@ class PermissionAnalyzer:
                 )
             var_match = _SENSITIVE_ENV_VAR_RE.search(cmd)
             if var_match:
+                # [F-05] This is co-occurrence, not a proven dataflow: the regex
+                # only checks that a *_KEY/*_TOKEN/*_SECRET/*_PASSWORD-shaped
+                # variable reference appears somewhere in a command already
+                # judged egress-shaped — it never confirms the variable's value
+                # actually reaches the network call's arguments (it could be an
+                # unrelated var mentioned in a comment or a later, unrelated
+                # command in the same line). The reason below states what was
+                # actually detected instead of asserting a send that wasn't verified.
                 return self._deny(
                     tool, cmd,
-                    f"Command sends a sensitive env var ('{var_match.group(0)}') "
-                    "to a network tool.",
+                    f"Command reaches a network tool while also referencing "
+                    f"what looks like a sensitive env var ('{var_match.group(0)}') "
+                    "— even if unused here, that ambiguity isn't worth the risk.",
                     "CRITICAL", "bash_web_egress_secret_envvar",
                     "Never interpolate a *_KEY/*_TOKEN/*_SECRET/*_PASSWORD env "
                     "var into a network command.",
@@ -2277,9 +2286,15 @@ class PermissionAnalyzer:
                 # lives *inside* DQIII8_ROOT, so without this the safe-dir
                 # fast path would approve every rule/hook rewrite before the
                 # step-3 escalation could ever run.
-                if not any(
-                    blocked in real_path for blocked in BLOCKED_PATHS
-                ) and not _governance_path_hit(real_path):
+                # [F9/F10] Uses the same _blocked_path_hit/_governance_path_hit
+                # matcher as every other path check below, instead of a second,
+                # separate substring loop over BLOCKED_PATHS — one matcher
+                # implementation, not two. This path was already realpath+
+                # normpath'd above, which is what _path_match_candidates adds
+                # over a plain substring check, so the change is SSOT/
+                # maintainability only, not a security fix (no bypass here was
+                # ever open that the old and new matcher disagree on).
+                if not _blocked_path_hit(real_path) and not _governance_path_hit(real_path):
                     return self._approve(
                         "Safe project directory", "LOW", "safe_project_dir"
                     )

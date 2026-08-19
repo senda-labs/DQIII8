@@ -1028,6 +1028,11 @@ def test_sec5_curl_with_sensitive_env_var_denied():
     )
     assert r["decision"] == "DENY"
     assert r["rule_triggered"] == "bash_web_egress_secret_envvar"
+    # [F-05] the reason must describe what was actually detected (a
+    # co-occurrence of egress + a sensitive-looking var reference), not
+    # assert a send that was never verified.
+    assert "sends" not in r["reason"]
+    assert "looks like" in r["reason"] or "reaches" in r["reason"]
 
 
 def test_sec5_printenv_piped_to_curl_denied():
@@ -2024,6 +2029,29 @@ def test_high_risk_patterns_denied(cmd):
     )
 
 
+@pytest.mark.parametrize("cmd", HIGH_RISK_SAMPLES)
+def test_high_risk_sample_triggers_its_own_pattern(cmd):
+    """[F5] "starts with high_risk_pattern:" above is satisfied by ANY id — a
+    sample could be silently rerouted to a different pattern's id (e.g. after
+    a reorder) and this would still pass. Pin down the *specific* rule_id each
+    sample is expected to trigger, mirroring HIGH_RISK_PATTERNS' own iteration
+    order (first match wins, same as evaluate())."""
+    import re as _re
+    # _sql_literal_tautology is checked in evaluate() BEFORE the HIGH_RISK_PATTERNS
+    # loop (it can't be expressed as a regex — see its own docstring), so it takes
+    # precedence over any HIGH_RISK_PATTERNS entry a sample might also match.
+    if _pa._sql_literal_tautology(cmd):
+        expected = "sql_literal_tautology"
+    else:
+        expected = next(
+            (rule_id for pattern, rule_id in _pa.HIGH_RISK_PATTERNS if _re.search(pattern, cmd, _re.IGNORECASE)),
+            None,
+        )
+    assert expected is not None, f"sample {cmd!r} matches no HIGH_RISK_PATTERNS entry"
+    r = analyzer.evaluate("Bash", {"command": cmd})
+    assert r["rule_triggered"] == f"high_risk_pattern:{expected}", (cmd, r["rule_triggered"], expected)
+
+
 def test_every_high_risk_pattern_has_a_sample():
     """Guard against an unexercised HIGH_RISK regex — the mirror of
     test_every_critical_pattern_has_a_sample. Adding a pattern without a
@@ -2033,6 +2061,147 @@ def test_every_high_risk_pattern_has_a_sample():
         assert any(
             _re.search(pattern, c, _re.IGNORECASE) for c in HIGH_RISK_SAMPLES
         ), f"no sample command exercises HIGH_RISK pattern {rule_id!r} ({pattern!r})"
+
+
+# ── F4 — drift meta-tests ───────────────────────────────────────────────────
+# Same rationale as test_every_high_risk_pattern_has_a_sample above: these
+# constants are consulted by substring/set/regex matchers, so a silent
+# deletion or narrowing of an entry doesn't raise — it just stops denying
+# something it used to deny. Each test below exercises every member of its
+# constant individually, so drift breaks a test instead of passing unnoticed.
+
+def test_every_blocked_path_is_individually_hit():
+    for token in _pa.BLOCKED_PATHS:
+        if token in _pa.GOVERNANCE_PATHS:
+            continue  # resolved by GOVERNANCE, not BLOCKED — see _blocked_path_hit docstring
+        probe = token if token.startswith("/") else f"/root/dqiii8/{token}"
+        assert _pa._blocked_path_hit(probe) == token, (
+            f"BLOCKED_PATHS entry {token!r} is not individually matched by _blocked_path_hit"
+        )
+
+
+def test_every_protected_branch_denies_delete_push():
+    for branch in _pa.PROTECTED_BRANCHES:
+        assert _pa._is_protected_branch(branch), f"{branch!r} not recognized by _is_protected_branch"
+        r = analyzer.evaluate("Bash", {"command": f"git push origin --delete {branch}"})
+        assert r["decision"] == "DENY", (branch, r)
+        assert r["rule_triggered"] == "high_risk_pattern:git_push_delete_protected_branch", (branch, r)
+
+
+def test_every_credential_dir_is_individually_hit():
+    for seg in _pa.CREDENTIAL_DIRS:
+        assert _pa._credential_hit(f"/root/{seg}/id_rsa") == seg, (
+            f"CREDENTIAL_DIRS entry {seg!r} is not individually matched by _credential_hit"
+        )
+
+
+def test_every_credential_glob_probe_is_individually_hit():
+    for probe in _pa._CREDENTIAL_GLOB_PROBES:
+        token = probe[:-1] + "*"  # keep the glob char present (function requires it)
+        assert _pa._credential_glob_hit(token) == probe, (
+            f"_CREDENTIAL_GLOB_PROBES entry {probe!r} not matched via token {token!r}"
+        )
+
+
+def test_every_exfil_sink_host_is_individually_classified():
+    for host in _pa._EXFIL_SINK_HOSTS:
+        result = _pa._host_egress_risk(host)
+        assert result == ("sink", host), f"_EXFIL_SINK_HOSTS entry {host!r}: got {result!r}"
+        # a subdomain of a sink is caught too, not just the exact registrable host
+        result_sub = _pa._host_egress_risk(f"abc.{host}")
+        assert result_sub == ("sink", host), (host, result_sub)
+
+
+# One crafted sample per _URL_SECRET_PATTERNS entry — mirrors
+# test_every_high_risk_pattern_has_a_sample's approach for a regex/label list
+# with no other natural "sample command" table.
+_ALNUM_PAD = "A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q7R8S9T0"  # 42 alnum chars, no underscore
+_URL_SECRET_SAMPLES = {
+    # "..._YOUR_KEY_PLACEHOLDER" is deliberate, not filler: it matches
+    # .gitleaks.toml's global allowlist regex 'YOUR_.*KEY' (the same escape
+    # hatch already used for 'sk-ant-YOUR_KEY'/'gsk_YOUR_KEY' elsewhere in
+    # that file) so these fixtures — which must satisfy the *app's* secret
+    # regex to test it — don't themselves look like a leaked credential to
+    # gitleaks. Padded with alnum-only filler first where the app regex's own
+    # character class has no underscore, so the required run-length is met
+    # before the marker (which does contain one) is appended.
+    "anthropic_api_key": "sk-ant-YOUR_KEY_PLACEHOLDER",
+    "openai_style_api_key": "sk-proj-" + _ALNUM_PAD + "_YOUR_KEY_PLACEHOLDER",
+    "github_token": "ghp_" + _ALNUM_PAD + "_YOUR_KEY_PLACEHOLDER",
+    "github_pat": "github_pat_YOUR_KEY_PLACEHOLDER",
+    "aws_access_key_id": "AKIA" + _ALNUM_PAD[:16] + "_YOUR_KEY_PLACEHOLDER",
+    "slack_token": "xoxb-" + _ALNUM_PAD + "_YOUR_KEY_PLACEHOLDER",
+    "google_api_key": "AIza" + _ALNUM_PAD + "_YOUR_KEY_PLACEHOLDER",
+    "huggingface_token": "hf_" + _ALNUM_PAD + "_YOUR_KEY_PLACEHOLDER",
+    "gitlab_token": "glpat-YOUR_KEY_PLACEHOLDER",
+    "groq_api_key": "gsk_" + _ALNUM_PAD + "_YOUR_KEY_PLACEHOLDER",
+    "nvidia_nim_key": "nvapi-YOUR_KEY_PLACEHOLDER",
+    "telegram_bot_token": "123456789:YOUR_KEY_PLACEHOLDER_PADDING_VALUE",
+    "private_key_block": "-----BEGIN RSA PRIVATE KEY",
+}
+
+
+def test_every_url_secret_pattern_has_a_sample():
+    assert set(_URL_SECRET_SAMPLES) == {label for _, label in _pa._URL_SECRET_PATTERNS}, (
+        "sample dict and _URL_SECRET_PATTERNS labels have drifted apart"
+    )
+    for pattern, label in _pa._URL_SECRET_PATTERNS:
+        sample = _URL_SECRET_SAMPLES[label]
+        assert pattern.search(sample), f"sample for {label!r} does not match its own pattern"
+
+
+def test_every_bash_write_sign_pattern_is_individually_hit():
+    samples = {
+        r"\bsed\b[^|;&\n]*\s(?:-i|--in-place)\b": "sed -i s/a/b/ file.txt",
+        r"\bperl\b[^|;&\n]*\s-\w*i\w*\b": "perl -i -pe 's/a/b/' file.txt",
+        r"(?:^|[\s;&|])(?:ex|vi|vim|nvim|nano|emacs)\s+\S": "vim file.txt",
+        r"\b(?:curl|wget)\b[^|;&\n]*\s(?:-o|-O|--output|--output-document)\b": "curl -o out.txt http://x",
+        r"\b(?:touch|mkdir|chmod|chown|ln)\b": "touch file.txt",
+        r"\b(?:rm|unlink|shred)\b": "rm file.txt",
+        r"\bfind\b[^|;&\n]*\s-delete\b": "find . -name '*.tmp' -delete",
+        r"\b(?:gzip|bzip2|xz|zstd)\b(?![^|;&\n]*\s-{1,2}(?:c\b|stdout\b))": "gzip file.txt",
+    }
+    pattern_strs = {p.pattern for p in _pa._BASH_WRITE_SIGN_PATTERNS}
+    assert set(samples) == pattern_strs, "sample dict and _BASH_WRITE_SIGN_PATTERNS have drifted apart"
+    for compiled in _pa._BASH_WRITE_SIGN_PATTERNS:
+        sample = samples[compiled.pattern]
+        assert compiled.search(sample), f"sample {sample!r} does not match its own write-sign pattern"
+
+
+def test_every_denial_hint_key_is_individually_wired():
+    a = _pa.PermissionAnalyzer()
+    for key, hint in _pa.DENIAL_HINTS.items():
+        r = a._deny("Bash", "x", "base reason", "LOW", key, "fix")
+        assert hint in r["reason"], f"DENIAL_HINTS key {key!r} not surfaced by _deny()"
+
+
+# ── F7 — routine `git add` must not be caught by any write/deletion heuristic
+@pytest.mark.parametrize("cmd", ["git add -A", "git add .", "git add -A .", "git add src/"])
+def test_git_add_approved(cmd):
+    r = analyzer.evaluate("Bash", {"command": cmd})
+    assert r["decision"] == "APPROVE", (cmd, r)
+
+
+# ── F8 — DQIII8_MODE=autonomous must not soften the DENY branches: neither
+# the HIGH_RISK_PATTERNS loop nor the destructive-rm check are gated by mode.
+@pytest.mark.parametrize("cmd", HIGH_RISK_SAMPLES)
+def test_high_risk_pattern_denied_in_autonomous_mode(monkeypatch, cmd):
+    monkeypatch.setattr(_pa, "DQIII8_MODE", "autonomous")
+    r = analyzer.evaluate("Bash", {"command": cmd})
+    assert r["decision"] == "DENY", (cmd, r)
+    assert (r["rule_triggered"] or "").startswith("high_risk_pattern:"), (cmd, r)
+
+
+@pytest.mark.parametrize("cmd", [
+    "rm -rf /",
+    "rm -rf /root",
+    "rm -rf ~",
+    "rm -rf $HOME",
+])
+def test_rm_destructive_denied_in_autonomous_mode(monkeypatch, cmd):
+    monkeypatch.setattr(_pa, "DQIII8_MODE", "autonomous")
+    r = analyzer.evaluate("Bash", {"command": cmd})
+    assert r["decision"] == "DENY", (cmd, r)
 
 
 # The mutation-verb rule is a single regex holding a six-way alternation, so

@@ -3,7 +3,10 @@
 Items that require a human edit outside any agent session. Agents must NOT apply these
 themselves, and must NOT attempt to bypass the block by any tool.
 
-## 1. Deny the non-research firecrawl MCP tools in `.claude/settings.json`
+## 1. Deny the non-research firecrawl MCP tools in `.claude/settings.json` — ✅ DONE 2026-08-18
+
+**Applied.** The 21 tools below are present in `permissions.deny` in `.claude/settings.json`.
+Kept here as the record of what was pasted and why; no action outstanding.
 
 Rationale: `firecrawl-cli` is the primary lane for scrape/search/crawl/map/interact/parse/
 agent/monitor; the `firecrawl` MCP server duplicates those tool names and double-counts

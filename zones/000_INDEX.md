@@ -25,7 +25,7 @@
 | Zone | File | Covers |
 |---|---|---|
 | A | [[zone_A_core_pipeline]] | DQ 7-step pipeline, openrouter_wrapper, director.py, bin/agents/, bin/core/ |
-| B | [[zone_B_extensions]] | .claude/ — agents (17), skills (19), hooks (14), rules engine |
+| B | [[zone_B_extensions]] | .claude/ — agents (17), skills (22), hooks (15), rules engine |
 | C | [[zone_C_database]] | dqiii8.db (schema SSOT), dqiii8_knowledge.db, schema_v2.sql, var/ |
 | F | [[zone_F_knowledge]] | docs/, knowledge/, ADRs, CHANGELOG, architecture decisions |
 | G | [[zone_G_tasks]] | tasks/ — audit, benchmarks, research, results, FULL_SYSTEM_MAP |

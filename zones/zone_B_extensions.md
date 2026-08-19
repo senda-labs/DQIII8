@@ -32,19 +32,22 @@ All Claude Code extensions: agents, skills, hooks, rules, and the permission/rul
 
 ---
 
-## Skills (20) — `.claude/skills/`
+## Skills (22) — `.claude/skills/`
 
 | Skill | Trigger | Purpose |
 |---|---|---|
 | audit | `/audit` | Full system health audit |
 | blue-team | — | Security defensive review |
+| cdp-investigate | — | Chrome DevTools Protocol investigation |
 | checkpoint | `/checkpoint` | Save session state |
+| dispatch-agent | — | Hermes work-loop agent dispatch |
 | drive-upload | `/drive-upload` | Upload intl-reports DOCXs to Google Drive via rclone |
 | handover | `/handover` | Session handover note |
 | instinct-status | `/instinct-status` | Instinct system check |
 | intl-reports | `/intl-reports` | intl-reports batch pipeline |
 | mobilize | `/mobilize` | Team mobilization |
 | mode | `/mode` | Switch operating mode |
+| panel-review | `/panel-review` | Adversarial multi-panel plan review |
 | prompt-optimize | `/prompt-optimize` | Optimize a prompt |
 | quality-gate | `/quality-gate` | Quality gate check |
 | red-team | — | Security offensive review |
@@ -76,9 +79,13 @@ All Claude Code extensions: agents, skills, hooks, rules, and the permission/rul
 | user_prompt_submit | user_prompt_submit.py | On user prompt |
 | dq_compile_hook | dq_compile_hook.py | Opt-in plan compiler (DQ_COMPILE_HOOK=1) |
 | subagent_start | subagent_start.py | Subagent start |
-| rules_dispatcher | rules_dispatcher.py | Dynamic rule injection |
-| semgrep_scan | semgrep_scan.py | Security scan |
-| run.sh | run.sh | Shell runner |
+| rules_dispatcher | rules_dispatcher.py | Library imported by pre_tool_use.py — **not** wired to an event |
+| semgrep_scan | semgrep_scan.py | Security scan — **not** wired to any event, currently invoked by nothing |
+| rules_registry_introspect | rules_registry_introspect.py | Library — registry introspection for tests/validator |
+
+15 = `.py` files in `.claude/hooks/` (the count CLAUDE.md pins). `run.sh` is the shell runner
+`.claude/settings.json` invokes them through, not a hook itself. SSOT for which file fires on
+which event: `.claude/settings.json`.
 
 ---
 

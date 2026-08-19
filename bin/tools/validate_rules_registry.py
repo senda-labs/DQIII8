@@ -1205,16 +1205,19 @@ def check_file_citations_exist(src: Source) -> tuple[list[str], list[str]]:
 COMMANDS_DIR = ".claude/commands"
 SKILLS_DIR = ".claude/skills"
 
-# A pointer file is short and names its SKILL.md. Measured on the live corpus
-# (2026-08-18): the one real pointer, commands/handover.md, has a 1-line body
-# once its `>` SSOT annotation is stripped; the smallest *duplicating* command
-# body is 31 lines (`audit`). 15 sits in the middle of that gap.
+# A pointer file is short and names its SKILL.md. Most `.claude/commands/*.md`
+# files are now pointer stubs (a few lines with an `>` SSOT annotation) rather
+# than full duplicates — re-measure with a one-liner before trusting a specific
+# line count here: `for f in .claude/commands/*.md; do wc -l "$f"; done`.
+# 15 was chosen to sit clear of both pointer-stub and duplicating-body lengths
+# as last measured; re-check it hasn't drifted if this check starts flagging
+# false positives/negatives.
 _POINTER_MAX_LINES = 15
 # Below this ratio the two copies have genuinely forked rather than drifted by a
-# few edits. Measured across the 10 duplicated pairs the distribution is
-# strongly bimodal: skill-create 0.06, weekly-review 0.51, mode 0.56, then a gap
-# to audit 0.82 ... mobilize 1.00. 0.60 lands in that gap, so it separates real
-# content forks from near-identical copies without hand-tuning per pair.
+# few edits. Re-measure per-pair ratios rather than trusting a fixed example
+# list here — the set of duplicated (non-pointer) pairs shrinks over time as
+# more commands convert to pointer stubs. 0.60 was chosen to sit in a gap
+# between near-identical copies and genuine forks as last measured.
 _PARITY_MIN_RATIO = 0.60
 
 

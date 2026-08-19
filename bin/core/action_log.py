@@ -2,8 +2,9 @@
 """Shared agent_actions writer helpers (Stage 3).
 
 Not a new abstraction over the INSERT/UPDATE statements themselves — those stay
-in each of the 3 write sites (pre_tool_use.py's open, post_tool_use.py's
-close-out, openrouter_wrapper.py's single-shot log_to_db) because their
+in each of the 5 write sites (pre_tool_use.py's open, post_tool_use.py's
+close-out, post_tool_use_failure.py's failure UPDATE, openrouter_wrapper.py's
+single-shot log_to_db, dqiii8_bot.py's `_log_cc_command`) because their
 matching/close semantics differ too much to unify safely. What was genuinely
 duplicated across sites is centralized here: project resolution's fail-open
 try/except, and request_id generation for a fallback cascade.

@@ -158,7 +158,7 @@ try:
         # Stage 0 / Correction H: raise the close-out timeout to match the INSERT
         # side (was timeout=2, tighter than pre_tool_use.py's timeout=10) — the
         # 2s connection was the second, independent SQLITE_BUSY loss source under
-        # parallel dispatch (Correction I.3), on top of the matching-key bug below.
+        # parallel dispatch, on top of the matching-key bug below.
         with _get_db(timeout=10) as conn:
             # Stage 0 / Correction H + I.2: match by (session_id, tool_used,
             # file_path) — not the old (session_id, tool_used) LIFO-only key,

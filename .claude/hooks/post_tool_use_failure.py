@@ -175,15 +175,14 @@ def main() -> None:
     error_type, keywords = _classify_error(error_message, tool)
     now_ms = int(time.time() * 1000)
 
-    # Stage 0 (panel pass 1 finding): the error_log INSERT and the agent_actions
-    # UPDATE must NOT share a transaction. With Stage 0 reviving post_tool_use.py's
-    # close-out, both this hook and post_tool_use.py can race to close the same
-    # row; the second closer hits trg_agent_actions_close_once's RAISE(ABORT) and
-    # sqlite3 raises IntegrityError. That was previously caught by a single
-    # try/except wrapping both statements — but since RAISE(ABORT) aborts before
-    # conn.commit() is reached, the already-executed error_log INSERT was silently
-    # rolled back too (never committed), losing the very error record this hook
-    # exists to capture. Each statement now gets its own connection/transaction.
+    # The error_log INSERT and the agent_actions UPDATE must NOT share a
+    # transaction: this hook and post_tool_use.py can race to close the same
+    # row, and the second closer hits trg_agent_actions_close_once's
+    # RAISE(ABORT), which sqlite3 raises as IntegrityError. RAISE(ABORT) aborts
+    # before conn.commit() is reached, so a shared transaction would silently
+    # roll back the already-executed error_log INSERT too (never committed),
+    # losing the very error record this hook exists to capture. Each statement
+    # gets its own connection/transaction to keep them independent.
     try:
         conn = sqlite3.connect(DB, timeout=10)
         conn.execute(

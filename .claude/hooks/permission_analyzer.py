@@ -1966,7 +1966,8 @@ class PermissionAnalyzer:
             if secret:
                 return self._deny(
                     tool, cmd,
-                    f"Command carries credential material ('{secret}') into a network command.",
+                    f"Command reaches a network tool while also carrying what looks like "
+                    f"credential material ('{secret}') — that co-occurrence isn't worth the risk.",
                     "CRITICAL", f"bash_web_egress_secret:{secret}",
                     "Never pass a key/token to a network command on the command line.",
                 )
@@ -1996,8 +1997,9 @@ class PermissionAnalyzer:
                     "network, either piped into a network tool or "
                     "redirected straight to a socket file descriptor.",
                     "CRITICAL", "bash_web_egress_env_dump",
-                    "Never pipe printenv/env output to curl/wget/nc, and "
-                    "never redirect it (>&N) to a socket fd.",
+                    "Never pipe printenv/env output to curl/wget/nc/ncat/netcat/socat, "
+                    "and never redirect it (>&N) to a socket fd — send only the "
+                    "specific values needed.",
                 )
             # Payload-shape check, independent of the destination host: a
             # request carrying os.environ is an environment dump whether it
@@ -3052,12 +3054,11 @@ def record_rejection(tool: str, inp: dict, result: dict, session_id: str | None 
     Channel 1 — DB: permission_decisions table
     Channel 2 — JSON mailbox: tasks/permission_rejection.json (read by OrchestratorLoop)
 
-    session_id (2026-08-18): defaults to the module-level
-    SESSION_ID constant, which is only ever set from CLAUDE_SESSION_ID — a
-    variable never populated anywhere in settings.json's env, so every row
-    this function ever wrote landed under session_id='unknown'
-    (176 DENY + 23 ESCALATE rows, confirmed). That silently broke
-    _check_repeat_rejections()'s loop-breaker, which filters
+    session_id: defaults to the module-level SESSION_ID constant, which is
+    only ever set from CLAUDE_SESSION_ID — a variable never populated
+    anywhere in settings.json's env, so every row this function writes
+    without an explicit session_id lands under session_id='unknown'. That
+    silently breaks _check_repeat_rejections()'s loop-breaker, which filters
     `WHERE session_id = ?` using the REAL per-invocation session id passed
     into evaluate(). Callers (pre_tool_use.py) already have that real id —
     pass it through instead of relying on the broken env-var fallback.

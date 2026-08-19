@@ -13,11 +13,10 @@ where the interpreter reads the file regardless of the x-bit, so an x-bit
 check would be noise, not signal).
 
 A path outside the repo root (e.g. a globally-installed npm hook) is reported
-as a WARNING, not a hard failure — Opus red-team review, 2026-08-13, P2-4:
-treating it as fatal would couple every commit in this repo to the lifecycle
-of an out-of-repo package (an `npm -g` prune or Node upgrade can relocate it
-with no DQIII8 change at all), and the pre-commit caller exits 1 only on
-`problems`, not `warnings`.
+as a WARNING, not a hard failure: treating it as fatal would couple every
+commit in this repo to the lifecycle of an out-of-repo package (an `npm -g`
+prune or Node upgrade can relocate it with no DQIII8 change at all), and the
+pre-commit caller exits 1 only on `problems`, not `warnings`.
 
 Usage:
     python3 bin/tools/validate_hooks_config.py [--settings PATH]
@@ -88,9 +87,9 @@ def check_command(command: str) -> tuple[list[str], list[str]]:
 def _staged_or_worktree_text(settings_path: Path) -> str:
     """Read the staged (index) content — only for the pre-commit CLI path,
     which must validate what's about to be committed, not whatever happens to
-    be sitting in the worktree (Opus red-team review, 2026-08-13, P2-3).
-    Falls back to the worktree file when the path isn't staged (e.g. a direct
-    CLI run outside a commit, or the file has no pending changes)."""
+    be sitting in the worktree. Falls back to the worktree file when the path
+    isn't staged (e.g. a direct CLI run outside a commit, or the file has no
+    pending changes)."""
     try:
         rel = settings_path.resolve().relative_to(ROOT)
     except ValueError:

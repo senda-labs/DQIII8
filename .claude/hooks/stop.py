@@ -36,8 +36,8 @@ NOW = datetime.now().isoformat()
 
 
 def _resolve_project() -> str:
-    """DB-backed project resolution (Opus review P2-5 fix — replaces the
-    dead DQIII8_PROJECT env var, which no writer has set since Stage 7)."""
+    """DB-backed project resolution — replaces the dead DQIII8_PROJECT env
+    var, which no writer sets."""
     try:
         _bin_root = str(JARVIS / "bin")
         if _bin_root not in sys.path:

@@ -53,8 +53,7 @@ except Exception as e:
 session_id = pre_state.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))
 
 # ── Active project ───────────────────────────────────────────────────
-# Opus review P2-5: DQIII8_PROJECT env var had no writer left after Stage 7
-# cleanup — resolve via the DB-backed SSOT instead.
+# DQIII8_PROJECT env var has no writer — resolve via the DB-backed SSOT instead.
 try:
     _bin_root = str(JARVIS / "bin")
     if _bin_root not in sys.path:

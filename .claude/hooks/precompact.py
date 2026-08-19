@@ -39,10 +39,10 @@ try:
 except Exception:
     data = {}
 
-# Opus red-team review (2026-08-13, P2): Claude Code passes session_id in the
-# hook's stdin JSON, not a CLAUDE_SESSION_ID env var — the old env-var read
-# was always "unknown", which silently broke the DB lookup below and the
-# session-scoped project resolution postcompact.py now depends on.
+# Claude Code passes session_id in the hook's stdin JSON, not a
+# CLAUDE_SESSION_ID env var — reading the env var instead is always
+# "unknown", which silently breaks the DB lookup below and the
+# session-scoped project resolution postcompact.py depends on.
 SESSION_ID = data.get("session_id", "unknown")
 
 state: dict = {

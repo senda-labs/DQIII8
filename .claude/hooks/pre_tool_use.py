@@ -156,9 +156,9 @@ try:
             "(session_id,agent_name,tool_used,file_path,action_type,start_time_ms,model_tier,model_used,project,worktree,tier,request_id) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (session, agent, tool,
-             # Correction I.2: no longer truncated to 120 chars — post_tool_use.py's
-             # Stage 0 close-out matches on the untruncated file_path; a truncated
-             # INSERT vs untruncated read silently defeated that matching key.
+             # Stored untruncated — post_tool_use.py's close-out matches on the
+             # untruncated file_path; a truncated INSERT vs untruncated read
+             # would silently defeat that matching key.
              inp.get("file_path", inp.get("command", "")),
              tool.lower(), int(time.time() * 1000), _tier, _model, _project,
              _worktree or None, _tier_text(_model), _request_id),

@@ -1177,13 +1177,15 @@ _ARCHIVE_PIPE_TO_NET_RE = re.compile(
     r"\b(?:zstd|gzip|bzip2|xz|base64|gpg)\b[^|;\n]*\|\s*(?:sudo\s+)?"
     r"(?:curl|wget|nc|ncat|netcat|socat|scp|rsync)\b"
 )
-# [S6] Reverse-shell shapes beyond the existing `nc -e`/`ncat -c`/
-# `bash -i >&/dev/tcp/` coverage: a named pipe piped through nc without -e
-# (the classic `mkfifo`-based workaround for netcat builds lacking -e),
-# `socat ... exec:`, and Python/Perl socket-plus-shell one-liners.
+# [S6] Reverse-shell shapes: the direct `nc -e`/`ncat -c`/`socat ... exec:`
+# exec-flag form (this was only claimed as "existing coverage" by a stale
+# comment — no regex ever matched it; found live-unfixed 2026-08-19), a named
+# pipe piped through nc without -e (the classic `mkfifo`-based workaround for
+# netcat builds lacking -e), and Python/Perl socket-plus-shell one-liners.
 _REVERSE_SHELL_RE = re.compile(
-    r"\bmkfifo\b[^|;\n]*(?:[;&\n]|&&)[^|;\n]*\bnc\b[^|;\n]*<"
-    r"|\bsocat\b[^|;\n]*\bexec:"
+    r"\b(?:nc|ncat|netcat)\b[^|;\n]*\s-[A-Za-z]*[ec]\S*\s"
+    r"|\bsocat\b[^|;\n]*\b(?:exec|EXEC):"
+    r"|\bmkfifo\b[^|;\n]*(?:[;&\n]|&&)[^|;\n]*\bnc\b[^|;\n]*<"
     r"|\bpython[0-9.]*\b[^\n]*\bimport\s+socket\b[^\n]*\bpty\.spawn\b"
     r"|\bperl\b[^\n]*\buse\s+Socket\b"
 )

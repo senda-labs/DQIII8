@@ -3380,3 +3380,23 @@ def test_rt12_eval_with_fstring_escalated():
 def test_rt12_literal_inline_exec_not_escalated(cmd):
     r = analyzer.evaluate("Bash", {"command": cmd})
     assert r["rule_triggered"] != "bash_inline_exec_unresolvable_target", (cmd, r)
+
+
+# ── F10 — bare directory-token form on the 0a fast path ─────────────────────
+# `_path_match_candidates` used to only add the trailing-slash variant when
+# the *input* path already had one, so `Write {"file_path": ".../.git"}`
+# (no trailing slash) never matched the `.git/`/`.ssh/` BLOCKED_PATHS tokens
+# and fell through to APPROVE via safe_project_dir. Fixed 2026-08-19.
+@pytest.mark.parametrize("suffix,token", [
+    (".git", "blocked_path:.git/"),
+    (".ssh", "blocked_path:.ssh/"),
+])
+def test_write_to_bare_blocked_directory_token_denied(suffix, token):
+    r = analyzer.evaluate("Write", {"file_path": f"/root/dqiii8/{suffix}"})
+    assert r["decision"] == "DENY", r
+    assert r["rule_triggered"] == token, r
+
+
+def test_write_to_dotfile_near_blocked_directory_token_still_approved():
+    r = analyzer.evaluate("Write", {"file_path": "/root/dqiii8/.gitignore"})
+    assert r["decision"] == "APPROVE", r

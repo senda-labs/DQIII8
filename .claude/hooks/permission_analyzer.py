@@ -336,16 +336,16 @@ def _path_match_candidates(path: str) -> list[str]:
         return []
     # normpath/realpath both strip a trailing slash, but BLOCKED_PATHS/
     # GOVERNANCE_PATHS tokens for directories carry one ('.claude/hooks/') to
-    # avoid matching a same-prefixed file — restore it so a directory
-    # candidate still matches after normalization.
-    trailing_slash = path.endswith(("/", "\\"))
+    # avoid matching a same-prefixed file — restore it unconditionally (not
+    # only when the input itself had one) so a bare directory name like
+    # `Write {"file_path": ".../.git"}` still matches the `.git/` token
+    # instead of silently falling through to APPROVE (F10, 2026-08-19).
     candidates = {os.path.normpath(path)}
     try:
         candidates.add(os.path.realpath(path))
     except OSError as _re:  # pragma: no cover — realpath rarely raises
         log.warning("permission_analyzer: realpath failed for %r: %s", path, _re)
-    if trailing_slash:
-        candidates |= {c + "/" for c in candidates}
+    candidates |= {c + "/" for c in candidates}
     return sorted(candidates)
 
 

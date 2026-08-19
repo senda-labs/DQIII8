@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 """
-DQIII8 — PermissionAnalyzer v3
+DQIII8 — PermissionAnalyzer
 Centralized permission evaluation for pre_tool_use hooks.
 
-v2: SQLite timeout + ALLOWED_DELETIONS + ESCALATE loop
-v3: Dual-channel rejections (DB + JSON inbox) + budget check +
-    autonomous auto-approve + FIX ESCALATE count (DENY+ESCALATE)
-v3.1: BLOCKED_PATHS Bash enforcement, CLAUDE_MD_PLUGIN_EDIT bypass removal,
-      in-process fallback counter, defensive pattern check wrapping
-v3.4: Web egress gate for WebFetch/WebSearch (exfiltration control)
-v3.5: BLOCKED_PATHS enforced for MCP tools via _candidate_paths() +
-      GOVERNANCE_PATHS/ESCALATE for the .claude/ rule-hook-agent-skill corpus
-v3.6 (2026-08-18, live security-bypass closures): mcp__github__* write-tool path extraction,
-      mcp__context-mode__ctx_execute* treated as Bash-equivalent, Bash
-      write-primitive coverage (patch/git apply/tar/unzip/ed), glob/quote-
-      splicing-resistant credential detection, Bash network-egress gate,
-      query-carrying MCP tools routed through the secret-in-query check.
+Every tool call resolves to APPROVE, DENY or ESCALATE. What is gated:
+
+- Destructive commands and SQL (CRITICAL_PATTERNS / HIGH_RISK_PATTERNS),
+  with ALLOWED_DELETIONS as the only carve-out.
+- Path writes: BLOCKED_PATHS denies, GOVERNANCE_PATHS escalates. Paths are
+  extracted by _candidate_paths() from Edit/Write, MCP filesystem and github
+  write tools, and Bash (cwd- and glob-aware); mcp__context-mode__ctx_execute*
+  is treated as Bash-equivalent.
+- Credential reads, including glob- and quote-spliced forms.
+- Network egress: WebFetch/WebSearch, MCP tools carrying url/urls/query, the
+  MCP payload catch-all, and egress primitives inside Bash.
+- Per-session budget.
+
+Rejections go to two channels (SQLite + JSON inbox) so an operator sees them
+even when the DB is unavailable.
 """
 
 import fnmatch
@@ -56,9 +58,27 @@ BLOCKED_PATHS = [
     # capability to bypass every other entry in this list. Governance-escalated
     # rather than hard-denied (see GOVERNANCE_PATHS below).
     ".claude/settings.local.json",
+    # Host persistence paths (2026-08-18). This list was repo-shaped except for
+    # the SSH/key entries, so `Write /etc/cron.d/pwn`, `Write /root/.bashrc`
+    # and `echo … >> /etc/passwd` were all approved — each of which executes
+    # code on the next cron tick, shell start or login, i.e. *outside* the hook
+    # system, which makes every other control here bypassable in one approved
+    # step. The agent runs as root; nothing it legitimately does writes any of
+    # these. Read stays unaffected — this is a write denylist.
+    "/etc/cron",
+    "/etc/systemd/",
+    "/etc/passwd",
+    "/etc/shadow",
+    "/etc/sudoers",
+    "/etc/profile",
+    "/etc/rc.local",
+    "/etc/ld.so.preload",
+    "/root/.bashrc",
+    "/root/.bash_profile",
+    "/root/.profile",
 ]
 
-# ── Governance paths (v3.5) ─────────────────────────────────────────────────
+# ── Governance paths ────────────────────────────────────────────────────────
 # The rule/hook/agent/skill corpus that *defines* this system's behaviour. A
 # write here is not automatically an attack — legitimate maintenance of the
 # governance corpus is a real, recurring task — but it is never routine either:
@@ -94,7 +114,7 @@ BASH_CREDENTIAL_PATHS = [
     ".gnupg/",
 ]
 
-# ── Credential-path gate (v3.3) ─────────────────────────────────────────────
+# ── Credential-path gate ────────────────────────────────────────────────────
 # Single source of truth shared by the read family (Read/Grep/Glob, step 3d)
 # and by Bash (step 3c), so the three read-family tools and the shell can never
 # drift apart: a path blocked for one is blocked for all.
@@ -131,14 +151,17 @@ _CREDENTIAL_BASENAME_RE = re.compile(
 # basename "env" (virtualenv dirs, /usr/bin/env) must stay accessible.
 # The ".+\." on the suffix branch likewise requires a non-empty stem.
 
-_GLOB_WILDCARD_RE = re.compile(r"[*?]+")
+# Bracket classes are globs too (2026-08-18, RT17): bash expands
+# '.claude/setting[s].json' onto the blocked literal exactly like the '?' form
+# already denied, but a '*?'-only detector never flagged the token, so it
+# never reached the fnmatch probes below.
+_GLOB_WILDCARD_RE = re.compile(r"[*?]+|\[[^\]]+\]")
 
-# ── Candidate-path extraction (v3.5) ────────────────────────────────────────
-# Every filesystem path a tool call could touch, whatever the tool. Before
-# v3.5 the BLOCKED_PATHS write check ran only for Edit/Write/MultiEdit plus a
-# Bash heuristic, so the MCP tools that settings.local.json allow-lists
-# (mcp__filesystem__write_file, mcp__dqiii8-db__execute) reached the same files
-# with no check at all.
+# ── Candidate-path extraction ───────────────────────────────────────────────
+# Every filesystem path a tool call could touch, whatever the tool. The
+# BLOCKED_PATHS check runs against all of them, not just Edit/Write file_path:
+# the MCP tools settings.local.json allow-lists (mcp__filesystem__write_file,
+# mcp__dqiii8-db__execute) reach the same files by other argument names.
 
 # The @modelcontextprotocol/server-filesystem tools that only READ. Everything
 # else under mcp__filesystem__ is treated as write-capable — settings.json
@@ -200,7 +223,7 @@ def _sql_candidate_paths(sql: str) -> list[str]:
 def _candidate_paths(tool: str, tool_input: dict) -> list[str]:
     """Every filesystem path this tool call could touch.
 
-    Edit/Write/MultiEdit — file_path (the pre-v3.5 behaviour, preserved).
+    Edit/Write/MultiEdit — file_path.
     mcp__filesystem__*   — its path argument(s), unless the tool only reads.
     mcp__*__execute /
     mcp__*db*__query     — paths named by the SQL string (ATTACH DATABASE,
@@ -570,6 +593,52 @@ def _archive_dest_dirs(cmd: str) -> list[str]:
     return out
 
 
+# Same-command shell variables (2026-08-18, RT16). `Y=settings; echo x >
+# .claude/$Y.json` writes the blocked literal, but every '$'-carrying token was
+# either dropped outright or resolved with the reference left intact, so no
+# BLOCKED/GOVERNANCE token ever appeared. Static text substitution of
+# assignments found earlier in the same command string — nothing is executed,
+# no eval, no environment lookup.
+_SHELL_ASSIGN_RE = re.compile(
+    r"""(?:^|[\s;&|(])([A-Za-z_]\w*)=("[^"]*"|'[^']*'|[^\s;&|)<>]*)"""
+)
+_SHELL_VAR_REF_RE = re.compile(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)")
+
+
+def _shell_assignments(cmd: str) -> dict[str, str]:
+    return {
+        m.group(1): m.group(2).strip("'\"")
+        for m in _SHELL_ASSIGN_RE.finditer(cmd)
+    }
+
+
+def _expand_shell_vars(token: str, assigns: dict[str, str]) -> str:
+    return _SHELL_VAR_REF_RE.sub(
+        lambda m: assigns.get(m.group(1) or m.group(2), m.group(0)), token
+    )
+
+
+def _protected_paths_matching(pattern: str) -> list[str]:
+    """Protected paths a still-unresolved write target could expand onto.
+
+    The leftover '$VAR' is treated as one wildcard segment, so a token whose
+    value only the runtime knows (an environment variable, a command
+    substitution) is never silently approved: if some expansion of it lands on
+    a BLOCKED/GOVERNANCE path, that concrete path is handed back to the normal
+    matchers, which decide DENY vs ESCALATE with the usual precedence.
+    Equal segment count keeps fnmatch's '/'-crossing '*' from making every
+    variable write match every protected path under the root.
+    """
+    depth = pattern.count("/")
+    hits = []
+    for token in (*BLOCKED_PATHS, *GOVERNANCE_PATHS):
+        cand = token if token.startswith("/") else os.path.join(str(DQIII8_ROOT), token)
+        cand = cand.rstrip("/")
+        if cand.count("/") == depth and fnmatch.fnmatchcase(cand, pattern):
+            hits.append(cand + "/" if token.endswith("/") else cand)
+    return hits
+
+
 def _bash_resolved_write_targets(cmd: str) -> list[str]:
     """Strings to test against BLOCKED_PATHS/GOVERNANCE_PATHS for a Bash
     write: the raw command (cheap, catches the common case), the quote/
@@ -580,16 +649,60 @@ def _bash_resolved_write_targets(cmd: str) -> list[str]:
     """
     collapsed = _collapse_adjacent_quotes(cmd)
     cwd = _bash_effective_cwd(collapsed)
+    assigns = _shell_assignments(collapsed)
     out = [cmd, collapsed]
     out.extend(_archive_dest_dirs(collapsed))
     for raw_tok in _BASH_TOKEN_SPLIT_RE.split(collapsed):
         tok = raw_tok.strip().strip("'\"")
-        if not tok or tok.startswith("-") or tok.startswith("$"):
+        if not tok or tok.startswith("-"):
             continue
-        if tok.startswith("/"):
-            out.append(os.path.normpath(tok))
-        else:
-            out.append(os.path.normpath(os.path.join(cwd, tok)))
+        if "$" in tok:
+            tok = _expand_shell_vars(tok, assigns)
+        # `~/.bashrc` and `$HOME/.bashrc` name the same file as
+        # `/root/.bashrc`, but the first resolved against cwd into a
+        # nonexistent `<cwd>/~/…` and the second was skipped outright with
+        # every other `$`-prefixed token. Only these two home spellings are
+        # expanded (2026-08-18): a general expandvars would rewrite unset
+        # variables to the empty string and manufacture paths the command
+        # never names.
+        if tok.startswith("~"):
+            tok = os.path.expanduser(tok)
+        elif tok.startswith(("$HOME", "${HOME}")):
+            tok = os.path.expanduser("~" + tok.split("}", 1)[-1].removeprefix("$HOME"))
+        elif "$" in tok and "/" in tok:
+            # RT16: a var not assigned earlier in this same command (an
+            # inherited env var, a value from a prior command) survives
+            # _expand_shell_vars unresolved. Silently skipping the token, as
+            # before, let `Y=settings; echo x > .claude/$Y.json` (a known
+            # assignment) work while `echo x > .claude/$UNKNOWN.json` sailed
+            # past every check with no candidate path at all. Each remaining
+            # '$VAR'/'${VAR}' becomes one wildcard path segment instead, so
+            # any concrete expansion landing on a BLOCKED/GOVERNANCE path is
+            # still caught (see _protected_paths_matching). Gated on '/' in
+            # tok: a bare '$VAR' with no path structure at all (a value being
+            # echoed/passed, not a path — `echo "$ANTHROPIC_API_KEY" > /dev/
+            # null`) would otherwise become a lone '*' that fnmatches ANY
+            # single-segment protected file at cwd's depth, denying commands
+            # that touch no protected path whatsoever.
+            wildcard_tok = _SHELL_VAR_REF_RE.sub("*", tok)
+            wildcard_path = os.path.normpath(
+                wildcard_tok if wildcard_tok.startswith("/") else os.path.join(cwd, wildcard_tok)
+            )
+            out.extend(_protected_paths_matching(wildcard_path))
+            continue
+        elif tok.startswith("$"):
+            continue
+        resolved = os.path.normpath(
+            tok if tok.startswith("/") else os.path.join(cwd, tok)
+        )
+        out.append(resolved)
+        # Directory entries in BLOCKED_PATHS/GOVERNANCE_PATHS carry a trailing
+        # separator ('.git/', '.claude/hooks/') so they cannot match a
+        # same-prefixed file, but a token naming the directory itself
+        # (`rm -r .claude/hooks`) never carries one — so the directory form is
+        # offered too, exactly as _archive_dest_dirs already does for
+        # extraction destinations.
+        out.append(resolved.rstrip("/") + "/")
     return out
 
 
@@ -749,10 +862,13 @@ def _host_egress_risk(host: str) -> tuple[str, str] | None:
     return None
 
 
-# ── Web egress gate (v3.4) ──────────────────────────────────────────────────
-# The credential gates above stop secrets *entering* context. This one is the
-# other half: WebFetch is the only tool that sends attacker-chosen bytes *out*
-# of the VPS, and it was auto-approved with zero inspection.
+# ── Web egress gate ─────────────────────────────────────────────────────────
+# The credential gates above stop secrets *entering* context. Egress is the
+# other half, and it is gated on four surfaces: this WebFetch/WebSearch gate,
+# the Bash network-egress checks in step 3, and the MCP url/urls and payload
+# catch-all gates in steps 3e/3f. Each one is load-bearing — none is a subset
+# of another. This surface covers the tools whose only outbound channel is a
+# URL, with no request body and no header control.
 #
 # Verified tool contract (not assumed):
 #   WebFetch(url, prompt) — GET only, http upgraded to https, cross-host
@@ -851,6 +967,22 @@ _BASH_WRITE_SIGN_PATTERNS = [
     re.compile(r"(?:^|[\s;&|])(?:ex|vi|vim|nvim|nano|emacs)\s+\S"),
     re.compile(r"\b(?:curl|wget)\b[^|;&\n]*\s(?:-o|-O|--output|--output-document)\b"),
     re.compile(r"\b(?:touch|mkdir|chmod|chown|ln)\b"),
+    # Deletion is a write (2026-08-18). `_rm_destructive_targets` below only
+    # reasons about recursive+force rm against '/'-rooted or $HOME targets and
+    # only against ALLOWED_DELETIONS — it never consults BLOCKED_PATHS or
+    # GOVERNANCE_PATHS. So plain `rm <file>`, `rm -r <dir>` (no -f),
+    # `find … -delete`, `xargs rm` and `shred -u` deleted CLAUDE.md,
+    # .claude/settings.json or this analyzer itself with no matcher at all,
+    # while `mv` away and `truncate -s 0` were both caught. A removed file is
+    # as gone as an overwritten one, and removing the analyzer disarms every
+    # other check in this module. ALLOWED_DELETIONS is unaffected: build/cache
+    # names are not blocked or governance paths.
+    re.compile(r"\b(?:rm|unlink|shred)\b"),
+    re.compile(r"\bfind\b[^|;&\n]*\s-delete\b"),
+    # The stream compressors replace their input file in place and delete the
+    # original unless '-c'/'--stdout' is given, so `gzip -f CLAUDE.md`
+    # destroys the file without naming any write operator.
+    re.compile(r"\b(?:gzip|bzip2|xz|zstd)\b(?![^|;&\n]*\s-{1,2}(?:c\b|stdout\b))"),
 ]
 
 # rm invocation matcher: `rm`, its flags (short-combined/-separate/long-form,
@@ -1089,25 +1221,57 @@ def _sql_literal_tautology(cmd: str) -> str | None:
     return None
 
 
+def _strip_sql_comments(sql: str) -> str:
+    """Strip SQL '--' line comments and '/* */' block comments.
+
+    [S9a] An additional pass, never a replacement: called only on
+    _mcp_sql_text and on the quoted SQL argument of a recognised DB-client
+    Bash invocation (see _bash_db_client_sql_text) — never on the full Bash
+    command. Blind-stripping '--' from arbitrary Bash blinds the analyzer to
+    real commands: 'ls --color=auto && rm -rf /' -> 'ls ' and
+    'git checkout -- x && DROP TABLE agent_actions' -> 'git checkout '.
+    """
+    sql = re.sub(r"--[^\n]*", " ", sql)
+    sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
+    return sql
+
+
+_DB_CLIENT_SQL_ARG_RE = re.compile(
+    r'\b(?:sqlite3|psql|mysql|mariadb)\b(?:\s+(?!["\'])\S+)*\s+(["\'])(.*?)\1', re.DOTALL
+)
+
+
+def _bash_db_client_sql_text(cmd: str) -> str:
+    """The quoted SQL argument of a sqlite3/psql/mysql/mariadb invocation in
+    a Bash command, or "" if none is present. Matches by the outer quote
+    character reappearing (not the first quote of any kind), since the SQL
+    payload itself routinely contains the other quote style as a string
+    literal (`'.claude/settings.json'` inside a "..."-quoted argument)."""
+    m = _DB_CLIENT_SQL_ARG_RE.search(cmd)
+    return m.group(2) if m else ""
+
+
 HIGH_RISK_PATTERNS = [
     # rm -rf /anything, ~, $HOME are handled by _rm_destructive_targets(),
     # not as regexes here: a literal regex list cannot stay flag-order agnostic.
-    r"DROP\s+TABLE",
-    r"DROP\s+DATABASE",
+    (r"DROP\s+TABLE", "drop_table"),
+    (r"DROP\s+DATABASE", "drop_database"),
     # DROP TRIGGER (2026-08-18): agent_actions/instincts are append-only
     # *because* of DB triggers (01_database_mutations.md). Dropping the
     # trigger achieves what DROP TABLE achieves — a silently mutable audit
     # trail — and was not covered by either DROP pattern above.
-    r"DROP\s+TRIGGER",
+    (r"DROP\s+TRIGGER", "drop_trigger"),
     # Mass-delete without WHERE against the audit trail. Widened beyond
     # agent_actions (2026-08-18): erasing `permission_decisions` erases the
     # forensic record of this very analyzer's denials *and* starves the
     # repeat-rejection loop-breaker that reads it.
-    r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b[\"'`\]]?(?!\s+WHERE)",
+    (r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b[\"'`\]]?(?!\s+WHERE)",
+     "delete_unbounded_audit_table"),
     # ...and the same delete *with* a WHERE whose predicate is a tautology:
     # `WHERE 1=1` / `WHERE TRUE` / `WHERE 1` delete exactly the same rows as
     # no WHERE at all, and previously APPROVED.
-    r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b[\"'`\]]?\s+WHERE\s+" + _SQL_TAUTOLOGY,
+    (r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b[\"'`\]]?\s+WHERE\s+" + _SQL_TAUTOLOGY,
+     "delete_tautology_audit_table"),
     # Any mutating verb against a governance/audit table. `01_database_mutations.md`
     # makes agent_actions/instincts append-only (DB triggers), and
     # learned_approvals/permission_decisions drive the permission decision
@@ -1116,10 +1280,21 @@ HIGH_RISK_PATTERNS = [
     # through bin/core/action_log.py, not raw SQL. sqlite_master/sqlite_schema
     # added 2026-08-18: writing the catalog directly rewrites the schema
     # (and drops triggers) without naming any protected table at all.
-    r"\b(?:UPDATE|ALTER\s+TABLE|TRUNCATE\s+TABLE|REPLACE\s+INTO|INSERT\s+(?:OR\s+\w+\s+)?INTO)\s+"
-    + _SQL_TABLE_PREFIX + _PROTECTED_MUTATION_TABLES + r"\b",
-    r"PRAGMA\s+writable_schema",  # flips SQLite's schema table writable — arbitrary catalog rewrite
-    r"chmod\s+(?:-[\w-]+\s+)*(?:777|a\+rwx)\s+/\S*",
+    (r"\b(?:UPDATE|ALTER\s+TABLE|TRUNCATE\s+TABLE|REPLACE\s+INTO|INSERT\s+(?:OR\s+\w+\s+)?INTO)\s+"
+     + _SQL_TABLE_PREFIX + _PROTECTED_MUTATION_TABLES + r"\b", "mutate_protected_table"),
+    # [S9c] CREATE TABLE ... AS SELECT ... FROM <protected table> copies a
+    # protected table's rows into a brand-new, unprotected table — the
+    # mutation verbs above only ever look at what comes right after
+    # CREATE/UPDATE/etc, never at the SELECT's FROM clause, so this exfil
+    # shape had no explicit matcher (only the incidental `*`-wildcard
+    # heuristic below, which false-positives on unrelated globs and misses
+    # an explicit column list).
+    (r"CREATE\s+TABLE\b[\s\S]*?\bAS\s+SELECT\b[\s\S]*?\bFROM\s+"
+     + _SQL_TABLE_PREFIX + _PROTECTED_MUTATION_TABLES + r"\b", "sql_create_table_as_select_protected"),
+    (r"CREATE\s+TABLE\b[\s\S]*?\bAS\s+SELECT\b[\s\S]*?\bFROM\s+"
+     + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b", "sql_create_table_as_select_protected"),
+    (r"PRAGMA\s+writable_schema", "pragma_writable_schema"),  # flips SQLite's schema table writable — arbitrary catalog rewrite
+    (r"chmod\s+(?:-[\w-]+\s+)*(?:777|a\+rwx)\s+/\S*", "chmod_777_root"),
     # git push --force / -f / --force-with-lease (2026-08-18). This module had
     # ZERO matchers for it: `permission_request.py` names it in its own
     # unrelated CRITICAL_PATTERNS, but that hook only fires for tools *absent*
@@ -1133,17 +1308,70 @@ HIGH_RISK_PATTERNS = [
     # before or after the remote/branch. `-[a-zA-Z]*f` catches bundled short
     # flags (`-qf`); the trailing lookahead keeps `--follow-tags` and
     # `-f`-prefixed longer flags from matching.
-    r"\bgit\s+push\b(?:[^|;&\n]*?\s)?"
-    r"(?:--force-with-lease(?:=[^\s;&|]*)?|--force|-[a-zA-Z]*f)(?=\s|$|[;&|])",
+    #
+    # Four evasions closed 2026-08-18, all live-reproduced:
+    #  * git global options — `git -c protocol.version=2 push --force` broke
+    #    the old `git\s+push` adjacency. The leading group accepts any number
+    #    of option-shaped tokens, each with an optional non-option value
+    #    (`-c x=y`), and nothing else: a bare token run would make
+    #    `git commit -m "push --force"` deny.
+    #  * quoted invocation — `bash -c 'git push -f'` failed the trailing
+    #    lookahead on the closing quote; quotes and parens are accepted
+    #    terminators now.
+    #  * backslash line continuation before the flag. A *bare* newline stays
+    #    excluded from the gap on purpose: it terminates the command, so
+    #    admitting it would deny `git push origin main` followed on the next
+    #    line by an unrelated `rm -f`.
+    #  * `git push origin +main` (plus-refspec force) and `--mirror` — both
+    #    overwrite published history with no force flag in the command.
+    # `--delete`/`-d` is deliberately NOT here: removing a stale remote branch
+    # is routine and rewrites no history, and `test_r5_benign_push_still_
+    # approved` pins it as APPROVE.
+    (r"\bgit\b(?:\s+-{1,2}[A-Za-z][^\s;&|]*(?:\s+[^\s;&|-][^\s;&|]*)?)*\s+push\b"
+     r"(?:(?:[^|;&\n]|\\\n)*?\s)?"
+     r"(?:--force-with-lease(?:=[^\s;&|]*)?|--force|--mirror"
+     r"|-[a-zA-Z]*f|\+[^\s;&|]+)"
+     r"(?=[\s;&|'\"()]|$)", "git_push_force"),
 ]
 
-# Readable `rule_triggered` ids for the entries above. The loop falls back to
-# the raw pattern string, which is what every pre-existing entry still records
-# (their ids are asserted by tests), so this only names the ones where a
-# 90-character regex in a permission_decisions row would be useless forensics.
-_HIGH_RISK_RULE_IDS = {
-    HIGH_RISK_PATTERNS[-1]: "git_push_force",
-}
+# [S4] Branches whose deletion via `git push --delete`/`-d`/a `:<ref>` empty-
+# source refspec must DENY even though it carries no --force flag (the
+# force-push matcher above deliberately treats `--delete` as routine — it
+# is, for a throwaway feature branch, but not for one of these).
+PROTECTED_BRANCHES = frozenset({
+    "main", "master", "production", "release", "develop", "trunk",
+    "staging", "prod", "premium-main", "premium-full",
+})
+_PROTECTED_BRANCH_PREFIXES = ("release/", "hotfix/")
+
+
+def _is_protected_branch(ref: str) -> bool:
+    ref = ref.strip("'\" ").split(":", 1)[-1]
+    ref = ref.rsplit("/", 1)[-1] if not ref.startswith(_PROTECTED_BRANCH_PREFIXES) else ref
+    if ref in PROTECTED_BRANCHES:
+        return True
+    return ref.startswith(_PROTECTED_BRANCH_PREFIXES)
+
+
+def _git_push_deleted_ref(cmd: str) -> str | None:
+    """The branch name a `git push` deletes (`--delete`/`-d <ref>`, or the
+    empty-source `:<ref>` refspec form), or None if this isn't a deleting
+    push at all. [S4]"""
+    if not re.search(r"\bgit\b(?:\s+\S+)*?\s+push\b", cmd):
+        return None
+    m = re.search(r"(?:--delete|-d)\s+([^\s;&|'\"]+)", cmd)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?:^|[\s])(?:[\w.\-]+/)?:([^\s;&|'\"]+)", cmd)
+    if m:
+        return m.group(1)
+    return None
+# Rule ids [panel-review, P1]: each entry above carries its own stable id as
+# a (regex, rule_id) tuple, not a parallel dict keyed by position
+# (HIGH_RISK_PATTERNS[-1]). A positional key silently re-points itself every
+# time a new pattern is appended or inserted — the id and the id-holder can
+# never drift apart once they're one tuple. Add the id in the same edit that
+# adds the pattern.
 
 ALLOWED_DELETIONS = [
     "node_modules",
@@ -1207,8 +1435,11 @@ DENIAL_HINTS: dict[str, str] = {
         "No agent can edit this file."
     ),
     "high_risk_pattern": (
-        "Use specific relative paths instead of wildcards. "
-        "Or add the pattern to ALLOWED_DELETIONS if it is cache cleanup."
+        "Narrow the action: name explicit paths instead of wildcards, bound the "
+        "SQL with a WHERE clause, or push without --force. If a deletion is "
+        "genuine cache cleanup, ask the user to add the name to "
+        "ALLOWED_DELETIONS in permission_analyzer.py — that file is "
+        "governance-escalated, so you cannot add it yourself."
     ),
     "budget_exceeded": (
         "Split the objective into smaller subtasks. "
@@ -1236,12 +1467,29 @@ class PermissionAnalyzer:
         The allowed token must be the final path component — not a substring
         anywhere in the command string.
         """
-        allowed = set()
+        # ALLOWED_DELETIONS tokens come in three shapes and each needs its own
+        # comparison. The previous single-bucket normalisation used
+        # `lstrip("./")`, which strips every leading '.'/'/' CHARACTER rather
+        # than the literal prefix: `.pytest_cache` became `pytest_cache` (so the
+        # documented dotfile carve-outs never matched a real target and were
+        # DENIED), `*.pyc` became `.pyc` (never equal to `foo.pyc`), and
+        # `plugins/cache/` collapsed to a bare `cache` (approving
+        # `<anything>/cache` — wider than documented).
+        allowed_names: set[str] = set()      # exact final path component
+        allowed_suffixes: set[str] = set()   # from `*.ext` globs
+        allowed_tails: set[str] = set()      # multi-component relative tails
         for tok in ALLOWED_DELETIONS:
-            t = tok.strip().strip("/").lstrip("./").replace("*", "")
-            t = t.rsplit("/", 1)[-1]
-            if t:
-                allowed.add(t)
+            t = tok.strip().strip("/")
+            if not t:
+                continue
+            if t.startswith("*"):
+                suffix = t[1:]
+                if suffix:
+                    allowed_suffixes.add(suffix)
+            elif "/" in t:
+                allowed_tails.add(t)
+            else:
+                allowed_names.add(t)
 
         targets: list[str] = []
         for m in re.finditer(r'\brm\b((?:\s+-{1,2}[a-zA-Z]+)*)((?:\s+[^\s;&|]+)+)', cmd):
@@ -1262,9 +1510,21 @@ class PermissionAnalyzer:
                 real_tgt = os.path.realpath(os.path.normpath(tgt))
                 if not any(real_tgt.startswith(os.path.realpath(safe)) for safe in SAFE_PROJECT_DIRS):
                     return False
-            last = tgt.rstrip("/").rsplit("/", 1)[-1].replace("*", "")
-            if last not in allowed:
-                return False
+            norm = tgt.rstrip("/")
+            last = norm.rsplit("/", 1)[-1]
+            if last in allowed_names:
+                continue
+            if any(
+                last.endswith(suffix) and len(last) > len(suffix)
+                for suffix in allowed_suffixes
+            ):
+                continue
+            if any(
+                norm == tail or norm.endswith("/" + tail)
+                for tail in allowed_tails
+            ):
+                continue
+            return False
         return True
 
     def _bash_touches_blocked(self, cmd: str, tool: str = "Bash") -> dict | None:
@@ -1287,7 +1547,7 @@ class PermissionAnalyzer:
                     f"bash_credential_path:{cred}",
                     "Use os.environ.get() for secrets. Never reference credential files in Bash.",
                 )
-        # 1b. Widened credential match (v3.3). The literal loop above needs a
+        # 1b. Widened credential match. The literal loop above needs a
         # boundary character immediately before the token, so 'cat prod.env',
         # 'cat config/app.env' and 'base64 certs/server.pem' slipped through.
         # Tokenize and reuse the same matcher the read family uses, so Bash and
@@ -1410,7 +1670,7 @@ class PermissionAnalyzer:
                     f"bash_write_blocked_path:{blocked}",
                     "Use Write/Edit tool for file modifications. Bash cannot bypass path restrictions.",
                 )
-            # Governance corpus via shell (v3.5): same policy as the Edit/Write
+            # Governance corpus via shell: same policy as the Edit/Write
             # and MCP routes — escalate, never silently allow.
             gov = next((h for h in (_governance_path_hit(t) for t in _targets) if h), None)
             if gov:
@@ -1441,6 +1701,35 @@ class PermissionAnalyzer:
                         f"bash_write_governance_glob:{gg_hit}",
                         "Confirm the governance change with the user before writing.",
                     )
+        # [S9d] sqlite3/psql/mysql/mariadb invocations reach the filesystem via
+        # ATTACH DATABASE / VACUUM INTO / path-shaped literals the same way an
+        # MCP sql/query/statement argument does (_candidate_paths already
+        # routes those through _sql_candidate_paths) — this was previously
+        # wired only for MCP, so the identical SQL text run through a Bash DB
+        # client bypassed the blocked/governance path check entirely.
+        _db_sql = _bash_db_client_sql_text(cmd)
+        if _db_sql:
+            _sql_cwd = _bash_effective_cwd(cmd)
+            for _p in _sql_candidate_paths(_db_sql):
+                _norm = os.path.normpath(_p if _p.startswith("/") else os.path.join(_sql_cwd, _p))
+                _bh = _blocked_path_hit(_norm)
+                if _bh:
+                    return self._deny(
+                        tool, cmd,
+                        f"Blocked path '{_bh}' targeted by a DB-client SQL statement.",
+                        "CRITICAL", f"bash_sql_blocked_path:{_bh}",
+                        "Do not ATTACH/VACUUM INTO a protected path from a DB client.",
+                    )
+                _gh = _governance_path_hit(_norm)
+                if _gh:
+                    return self._escalate(
+                        tool, cmd[:80],
+                        f"DB-client SQL statement targets the DQIII8 governance "
+                        f"corpus ('{_gh}') — human confirmation required.",
+                        f"bash_sql_governance_path:{_gh}",
+                        "Confirm the governance change with the user before writing.",
+                    )
+
         # 3. Web-egress bypass via Bash — every socket-opening shape, not just
         # curl/wget; _NETWORK_EGRESS_BASH_RE above is the list.
         if _NETWORK_EGRESS_BASH_RE.search(cmd):
@@ -1556,7 +1845,7 @@ class PermissionAnalyzer:
         )
 
     def _read_family_credential_block(self, tool: str, inp: dict) -> dict | None:
-        """Credential gate for Read / Grep / Glob (v3.3).
+        """Credential gate for Read / Grep / Glob.
 
         Read — file_path.
         Grep — path (a file, a directory, or omitted meaning cwd) *and* the
@@ -1586,7 +1875,7 @@ class PermissionAnalyzer:
         return None
 
     def _web_egress_block(self, tool: str, inp: dict) -> dict | None:
-        """Egress gate for WebFetch / WebSearch (v3.4).
+        """Egress gate for the URL- and query-carrying tools.
 
         WebFetch — the URL is the payload channel. Denied when it names a
             request-capture sink, a cloud metadata endpoint, a non-http scheme,
@@ -1635,7 +1924,7 @@ class PermissionAnalyzer:
         except Exception:
             return self._deny(
                 tool, url[:80],
-                "WebFetch blocked: URL could not be parsed for egress review.",
+                f"{tool} blocked: URL could not be parsed for egress review.",
                 "HIGH", "web_egress_unparseable",
                 "Supply a plain https:// URL.",
             )
@@ -1644,15 +1933,15 @@ class PermissionAnalyzer:
         if scheme and scheme not in _WEB_ALLOWED_SCHEMES:
             return self._deny(
                 tool, url[:80],
-                f"WebFetch blocked: scheme '{scheme}' is not http/https.",
+                f"{tool} blocked: scheme '{scheme}' is not http/https.",
                 "CRITICAL", f"web_egress_scheme:{scheme}",
-                "Use Read for local files. WebFetch is for http(s) pages only.",
+                "Use Read for local files. This tool accepts http(s) URLs only.",
             )
 
         if parsed.username or parsed.password:
             return self._deny(
                 tool, url[:80],
-                "WebFetch blocked: URL embeds userinfo credentials (user:pass@host).",
+                f"{tool} blocked: URL embeds userinfo credentials (user:pass@host).",
                 "CRITICAL", "web_egress_userinfo",
                 "Fetch the public URL. Authenticated URLs are not supported here.",
             )
@@ -1661,7 +1950,7 @@ class PermissionAnalyzer:
         if secret:
             return self._deny(
                 tool, url[:80],
-                f"WebFetch blocked: URL carries credential material ('{secret}') — "
+                f"{tool} blocked: URL carries credential material ('{secret}') — "
                 "this is exfiltration, not a lookup.",
                 "CRITICAL", f"web_egress_secret:{secret}",
                 "Never place a key, token or private key in an outbound URL.",
@@ -1673,7 +1962,7 @@ class PermissionAnalyzer:
             if kind == "sink":
                 return self._deny(
                     tool, url[:80],
-                    f"WebFetch blocked: '{token}' is a request-capture endpoint "
+                    f"{tool} blocked: '{token}' is a request-capture endpoint "
                     "whose only purpose is receiving exfiltrated data.",
                     "CRITICAL", f"web_egress_sink_host:{token}",
                     "Fetch the real documentation or API host instead.",
@@ -1681,26 +1970,25 @@ class PermissionAnalyzer:
             if kind == "metadata":
                 return self._deny(
                     tool, url[:80],
-                    f"WebFetch blocked: '{token}' is a link-local/cloud-metadata "
+                    f"{tool} blocked: '{token}' is a link-local/cloud-metadata "
                     "address (SSRF credential grab).",
                     "CRITICAL", f"web_egress_metadata_host:{token}",
                     "Instance metadata is never a legitimate research target.",
                 )
             return self._escalate(
                 tool, url[:80],
-                f"WebFetch to private/loopback host '{token}' — needs human review.",
+                f"{tool} to private/loopback host '{token}' — needs human review.",
                 f"web_egress_private_host:{token}",
-                "Local services are reached with Bash curl, not WebFetch, so the "
-                "request is visible in the transcript. Bash curl/wget still "
-                "enforces the secret-in-command, env-dump, and pipe-to-shell "
-                "checks — this does not bypass those.",
+                "Local services are reached with Bash curl, not a fetch tool, so "
+                "the request is visible in the transcript. Bash runs the full "
+                "egress gate on that command — this does not bypass anything.",
             )
 
         blob = _opaque_blob_hit(raw)
         if blob:
             return self._escalate(
                 tool, url[:80],
-                f"WebFetch carries an opaque {len(blob)}+ char token "
+                f"{tool} carries an opaque {len(blob)}+ char token "
                 f"('{blob[:32]}…') — possible encoded payload. Human review required.",
                 "web_egress_opaque_blob",
                 "If this is a legitimate document/dataset id, fetch it via a "
@@ -1763,7 +2051,7 @@ class PermissionAnalyzer:
         if budget_deny:
             return budget_deny
 
-        # 3. Blocked / governance paths — EVERY tool that names a path (v3.5).
+        # 3. Blocked / governance paths — EVERY tool that names a path.
         # Runs ahead of learned_approvals (4a) and the autonomous auto-approve
         # (5), so neither can whitelist a blocked or governance write.
         try:
@@ -1881,7 +2169,7 @@ class PermissionAnalyzer:
                     "Retry, or ask the user to perform this call manually.",
                 )
 
-        # 3e. Egress enforcement for the web family (v3.4). Same placement rule
+        # 3e. Egress enforcement for the web family. Same placement rule
         # as 3c/3d: BEFORE 4a (learned_approvals), so a repeatedly-attempted
         # exfiltration URL can never be auto-whitelisted past the gate.
         # Any MCP tool carrying a `url` is the same egress channel: `mcp__fetch`
@@ -1959,6 +2247,15 @@ class PermissionAnalyzer:
             _mcp_sql_text = ""
         _pattern_scope = tool == "Bash" or tool in _CTX_MODE_EXEC_TOOLS or bool(_mcp_sql_text)
 
+        # [S9a] Comment-stripped SQL text, checked in ADDITION to the raw cmd
+        # below (never a replacement) — scoped to _mcp_sql_text or a
+        # recognised DB-client Bash invocation's quoted arg only, so a
+        # DROP/DELETE hidden behind a '--' or '/* */' comment still matches.
+        _sql_comment_src = _mcp_sql_text or (
+            _bash_db_client_sql_text(_bash_cmd) if tool == "Bash" and _bash_cmd else ""
+        )
+        _sql_decommented = _strip_sql_comments(_sql_comment_src) if _sql_comment_src else ""
+
         # 4. Always-CRITICAL commands (no mode exception, no ALLOWED_DELETIONS)
         if _pattern_scope:
             try:
@@ -1975,7 +2272,9 @@ class PermissionAnalyzer:
                             "This command is irreversible and catastrophic.",
                         )
                 for pattern in CRITICAL_PATTERNS:
-                    if re.search(pattern, cmd, re.IGNORECASE):
+                    if re.search(pattern, cmd, re.IGNORECASE) or (
+                        _sql_decommented and re.search(pattern, _sql_decommented, re.IGNORECASE)
+                    ):
                         return self._deny(
                             tool, cmd,
                             f"Catastrophic command blocked: '{cmd[:80]}'",
@@ -2014,10 +2313,44 @@ class PermissionAnalyzer:
                             "CRITICAL", "high_risk_pattern:rm_rf",
                             "This command is destructive and irreversible.",
                         )
+                # [S4] git push --delete / :<ref> targeting a protected
+                # branch — DENY even without --force, since the ordinary
+                # git_push_force pattern deliberately treats --delete as
+                # routine (it is, for a disposable feature branch).
+                if tool == "Bash":
+                    _del_ref = _git_push_deleted_ref(cmd)
+                    if _del_ref and _is_protected_branch(_del_ref):
+                        return self._deny(
+                            tool, cmd,
+                            f"git push deletes protected branch '{_del_ref}': '{cmd[:80]}'",
+                            "CRITICAL", "high_risk_pattern:git_push_delete_protected_branch",
+                            "Protected branches (main/master/production/release/"
+                            "develop/trunk/staging/prod/premium-main/premium-full, "
+                            "release/*, hotfix/*) cannot be deleted from a session.",
+                        )
+                # [S9b] VACUUM INTO copies the whole live DB to an arbitrary
+                # destination — unconditional ESCALATE regardless of where it
+                # lands (a copy outside the project is a data-exfil path even
+                # to a destination that isn't itself BLOCKED/GOVERNANCE); a
+                # blocked/governance destination still DENYs/ESCALATEs first
+                # via the S9d check above (for Bash) or the MCP path check —
+                # this is the residual case neither of those covers.
+                for _vac_sql in (cmd, _sql_decommented):
+                    if _vac_sql and _SQL_VACUUM_INTO_RE.search(_vac_sql):
+                        return self._escalate(
+                            tool, cmd[:80],
+                            "VACUUM INTO copies the entire database to an "
+                            "arbitrary destination — human confirmation required.",
+                            "sql_vacuum_into_arbitrary_copy",
+                            "Confirm the destination and purpose with the user "
+                            "before running VACUUM INTO.",
+                        )
                 # Literal-vs-literal always-true DELETE predicate (`WHERE 2>1`).
                 # Not expressible as a HIGH_RISK_PATTERNS regex — the truth of
                 # the comparison has to be computed, see _sql_literal_tautology.
-                _lit = _sql_literal_tautology(cmd)
+                _lit = _sql_literal_tautology(cmd) or (
+                    _sql_decommented and _sql_literal_tautology(_sql_decommented)
+                )
                 if _lit:
                     return self._deny(
                         tool, cmd,
@@ -2027,12 +2360,10 @@ class PermissionAnalyzer:
                         "Bound the DELETE with a real predicate, or use "
                         "bin/core/action_log.py for legitimate writes.",
                     )
-                for pattern in HIGH_RISK_PATTERNS:
-                    if re.search(pattern, cmd, re.IGNORECASE):
-                        is_safe_deletion = self._rm_target_is_allowed(cmd)
-                        if is_safe_deletion:
-                            break
-                        _rule = _HIGH_RISK_RULE_IDS.get(pattern, pattern)
+                for pattern, _rule in HIGH_RISK_PATTERNS:
+                    if re.search(pattern, cmd, re.IGNORECASE) or (
+                        _sql_decommented and re.search(pattern, _sql_decommented, re.IGNORECASE)
+                    ):
                         if DQIII8_MODE == "autonomous":
                             return self._deny(
                                 tool, cmd,
@@ -2259,7 +2590,17 @@ class PermissionAnalyzer:
                     "Wait 30 min or ask the owning agent to release the resource.",
                 )
         except Exception as e:
+            # Fail CLOSED, same contract as block 4b: a check that ran and
+            # errored is not a check that passed. Returning None here made the
+            # multi-agent write lock silently cease to exist whenever the DB was
+            # locked/missing/corrupt.
             log.warning("permission_analyzer: _check_resource_claim query failed: %s", e, exc_info=True)
+            return self._deny(
+                tool, path,
+                "Internal analyzer error during resource-claim check — denying as precaution.",
+                "HIGH", "analyzer_internal_error",
+                "Retry once the permissions DB is reachable.",
+            )
         return None
 
     def _check_budget(self, session_id: str) -> dict | None:
@@ -2286,7 +2627,17 @@ class PermissionAnalyzer:
                     "Start a new session with j --autonomous",
                 )
         except Exception as e:
+            # Fail CLOSED. The budget gate is a DENY row in the decision table of
+            # 02_hooks_and_permissions.md with its own DENIAL_HINTS key; returning
+            # None on error deleted that gate whenever SQLite was locked/missing/
+            # corrupt, which is not a theoretical state under a concurrent writer.
             log.warning("permission_analyzer: _check_budget query failed: %s", e, exc_info=True)
+            return self._deny(
+                "budget", session_id,
+                "Internal analyzer error during budget check — denying as precaution.",
+                "HIGH", "analyzer_internal_error",
+                "Retry once the permissions DB is reachable.",
+            )
         return None
 
 
@@ -2406,7 +2757,7 @@ def record_rejection(tool: str, inp: dict, result: dict, session_id: str | None 
         # with the actual destination instead of an empty string. Deliberately
         # NOT mirrored into record_decision(): that path feeds learned_approvals,
         # and approved research URLs must not accumulate as auto-approve rules.
-        # `path`/`sql` added in v3.5: MCP filesystem and DB tools carry their
+        # `path`/`sql` are included because MCP filesystem and DB tools carry their
         # target there, so without them a blocked/escalated MCP write reached
         # the operator as an empty action_detail.
         "action_detail": str(

@@ -506,11 +506,18 @@ def _render_injection(rd, aliases) -> str:
 def _reachable_alias_sets(rd) -> list[tuple[str, list[str]]]:
     """Every alias set get_rules() can emit, DERIVED FROM THE DISPATCHER TABLES.
 
-    Exhaustive by construction rather than by luck: a new `_BASH_KEYWORD_RULES`
-    row, a new `_EXT_RULES` extension or a new `_TOOL_RULES` entry enters the
-    ceiling automatically. The prior hand-written probe string could not do this
-    — it hit every alias group only by coincidence, so any added trigger would
-    have silently under-measured the ceiling forever.
+    Exhaustive by construction for the three declarative tables: a new
+    `_BASH_KEYWORD_RULES` row, `_EXT_RULES` extension or `_TOOL_RULES` entry
+    enters the ceiling automatically. The prior hand-written probe string could
+    not do this — it hit every alias group only by coincidence, so any added
+    trigger would have silently under-measured the ceiling forever.
+
+    One exception, NOT exhaustive by construction: get_rules()'s Edit/Write
+    path-substring branches (`.claude/hooks`, `openrouter_wrapper`/`director.py`/
+    `domain_agent`, `database/`) live as inline `if` statements in the AST, not
+    a table — this function mirrors them by hand in `_EDIT_PATH_BRANCH_ALIASES`.
+    A new path-substring branch added to get_rules() needs a matching manual
+    update here too, or the ceiling silently under-measures again.
     """
     always = list(rd._ALWAYS)
     sets: list[tuple[str, list[str]]] = [("floor:_ALWAYS-only", always)]

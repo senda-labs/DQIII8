@@ -10,7 +10,7 @@ El número de archivos del registro no se cita aquí: el recuento vivo es
 
 RANGO CANÓNICO (medido con token_estimate(), cl100k_base real vía tiktoken):
 **suelo 1060** (solo _ALWAYS = ops + core-behavior), **techo 8117**.
-**suelo de sesión 2807** = ese suelo + CLAUDE.md + DYNAMIC.md, los dos ficheros que
+**suelo de sesión 2840** = ese suelo + CLAUDE.md + DYNAMIC.md, los dos ficheros que
 Claude Code auto-inyecta en toda sesión; es el impuesto de contexto real por sesión.
 
 El techo es el MÁXIMO REALMENTE ALCANZABLE, no el peor caso de la matriz

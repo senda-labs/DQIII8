@@ -4,10 +4,11 @@
 
 PROHIBIDO modificar o exportar ANTHROPIC_API_KEY en producción.
 Siempre OAuth (Claude Max). Subprocess: env={"ANTHROPIC_API_KEY": ""}
-Si "Credit balance too low": verificar que ANTHROPIC_API_KEY="" en subprocess.
+Convención de operador, no invariante forzada por código (`dispatch.py`/`director.py` no tocan
+esta var). Si "Credit balance too low": verificar a mano que ANTHROPIC_API_KEY="" en subprocess.
 
 Rules contextuales inyectadas por rules_dispatcher.py (llamado desde pre_tool_use.py) — nunca
-el registro entero. Rango canónico: 1060–8117 tokens; suelo de sesión 2807. Mecanismo completo,
+el registro entero. Rango canónico: 1060–8117 tokens; suelo de sesión 2840. Mecanismo completo,
 re-medición y qué cuenta como suelo/techo: SSOT es el docstring de rules_dispatcher.py; ver
 también 02_hooks_and_permissions.md §Rules Dispatcher.
 PROHIBIDO: episodic-memory (consume 48K tokens sin valor).

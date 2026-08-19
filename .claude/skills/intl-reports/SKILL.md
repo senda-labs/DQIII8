@@ -186,7 +186,7 @@ Max 2 retries Haiku por sección. Soft failures: no bloquean DOCX.
 |---|---|
 | `ACIS GATE BLOCKED — completeness 81.8` | Ejecutar cobrowsing session → genera company_intelligence.json |
 | `ssot.json missing` | `python3 -m tools.ssot.ssot_builder --slug {slug}` |
-| `Credit balance too low` | OAuth — `ANTHROPIC_API_KEY` debe ser `""` en subprocess |
+| `Credit balance too low` | OAuth — comprobar a mano que `ANTHROPIC_API_KEY` es `""` en el subprocess (convención de operador, no invariante forzada por código) |
 | `CLAUDECODE=1 blocks` | Lanzar desde tmux externo, NUNCA desde Claude Code activo |
 | Rate limit en batch | Esperar, relanzar script (salta automáticamente las ya completadas) |
 

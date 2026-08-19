@@ -37,7 +37,15 @@ def check_tier_b():
 
 
 def check_tier_a():
-    """Tier A: Claude API. Returns None when not needed for configured tier."""
+    """Tier A: Claude API. Returns None when not needed for configured tier.
+
+    Checks the OPERATOR's shell env (does the operator have a direct API key
+    available at all, as a non-OAuth fallback) — a different question from
+    bin/tools/check_env.py's WARN, which checks whether that same var leaked
+    into a Claude Code SUBPROCESS's env (it must be "" there for OAuth). Both
+    react to ANTHROPIC_API_KEY but aren't contradictory: this one is about
+    availability, that one is about accidental propagation.
+    """
     key = os.environ.get("ANTHROPIC_API_KEY", "")
     if key:
         return True, "ANTHROPIC_API_KEY configured"

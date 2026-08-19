@@ -195,24 +195,11 @@ BUDGET_MATRIX = [
 # The two structurally distinct maxima an agent can actually hit in one call.
 # The matrix worst case is a Bash command; the Edit branch is a separate ridge
 # the Bash probe cannot see. The published ceiling must bound BOTH.
-TRUE_MAX_PROBES = [
-    (
-        "Bash",
-        {
-            "command": "git python3 sqlite3 schema_v2 systemctl claude agent "
-            "orchestrator tmux intl-reports firecrawl"
-        },
-        "bash-all-keywords",
-    ),
-    (
-        "Edit",
-        {
-            "file_path": "/root/dqiii8/database/.claude/hooks/"
-            "openrouter_wrapper_domain_agent.py"
-        },
-        "edit-hooks-tiering-db-py",
-    ),
-]
+# Reused from validate_rules_registry.py's _CEILING_PROBES (same probes, same
+# achievability role) instead of a second hand-maintained copy — the two used
+# to drift silently (found 2026-08-19: a Bash trigger change needed updating
+# both, and only one got updated).
+TRUE_MAX_PROBES = list(vrr._CEILING_PROBES)
 
 
 @pytest.mark.parametrize("tool,tool_input,label", BUDGET_MATRIX)

@@ -34,6 +34,11 @@ for key in OPTIONAL:
 
 anthropic = os.environ.get("ANTHROPIC_API_KEY", "")
 if anthropic.strip():
+    # Not contradictory with bin/core/validate_env.py::check_tier_a() treating
+    # this same var as GOOD: that check asks whether the operator has a direct
+    # API key available at all (non-OAuth fallback); this WARN is about the
+    # var leaking into a Claude Code subprocess's env, where OAuth requires it
+    # to be "".
     print("[WARN] ANTHROPIC_API_KEY is set — must be \"\" in subprocess env for OAuth")
 
 if missing:

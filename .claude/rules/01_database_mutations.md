@@ -27,7 +27,13 @@ Tables that do **not** exist — don't write to them, don't "restore" them:
 
 ## SQLite Access Patterns
 - Use full path: `sqlite3 /root/dqiii8/database/dqiii8.db "…"` — no aliases in non-interactive shells.
-- `error_log` lives in `dqiii8.db` ONLY — not in `dqiii8_knowledge.db`.
+- `error_log` in `dqiii8.db` (1698 rows, live, growing — `severity` column present) is the SSOT
+  for writes; every active writer (`stop.py`, `post_tool_use*.py`, `bin/tools/*`) targets it.
+  A second, **stale** copy exists in `dqiii8_knowledge.db` (856 rows, no `severity` column,
+  frozen at the 2026-08-14 consolidation — see `database/backups/pre-consolidation-20260814T134859Z/`)
+  and nothing writes to it anymore. Confirmed bug: `bin/ui/dashboard.py` reads `error_log` from
+  `dqiii8_knowledge.db`, so its error view is stale/incomplete by ~842 rows and has been since
+  the consolidation — not yet fixed, flag before trusting dashboard error counts.
 - Use `timeout=30` for batch/background/one-off scripts that mutate the production DB (migrations, backfills, `bin/tools/*`). **Hot-path callers (hooks) deliberately use shorter tiered timeouts (0.5–10s)** to fail open fast under lock contention instead of blocking a tool call; each pairs with a graceful-degradation `try/except`. Don't "fix" a short hook timeout to 30 without checking it isn't this pattern.
 - WAL mode is enabled on per-company `orchestrator_state.db` files — writes must use `asyncio.to_thread()`.
 

@@ -499,6 +499,10 @@ def _pricing_for_model(model_id: str):
 
 
 def _tier_for_model(model_id: str) -> str | None:
+    # Deliberately hook-local, not shared with pre_tool_use.py's near-identical
+    # _tier_text()/_model_tier(): each hook runs as its own subprocess and a
+    # shared bin/core import adds sys.path fragility for a ~10-line function.
+    # If the tier taxonomy (C/B/A/S) ever changes, update both.
     m = (model_id or "").lower()
     if "opus" in m:
         return "S"

@@ -464,7 +464,7 @@ _CEILING_PROBES = (
     (
         "Bash",
         {
-            "command": "git python3 sqlite3 schema_v2 systemctl claude agent "
+            "command": "git python3 sqlite3 schema_v2 systemctl claude "
             "orchestrator tmux intl-reports firecrawl"
         },
         "bash-all-keywords",
@@ -1397,24 +1397,31 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
 PERMISSION_ANALYZER = ".claude/hooks/permission_analyzer.py"
 
 
-def _code_blocked_paths(src: Source) -> list[str] | None:
-    """The live `BLOCKED_PATHS` list from permission_analyzer.py, as string
-    literals in source order. `None` if the file can't be read or the list
-    can't be found (caller reports that as a problem, not a silent skip)."""
+def _code_string_list(src: Source, const_name: str) -> list[str] | None:
+    """A top-level `NAME = [...]` string-literal list from permission_analyzer.py,
+    in source order. `None` if the file can't be read or the list can't be
+    found (caller reports that as a problem, not a silent skip)."""
     text = src.read(PERMISSION_ANALYZER)
     if text is None:
         return None
-    m = re.search(r"^BLOCKED_PATHS = \[(.*?)^\]", text, re.S | re.M)
+    m = re.search(rf"^{const_name} = \[(.*?)^\]", text, re.S | re.M)
     if not m:
         return None
     return re.findall(r'"([^"]+)"', m.group(1))
 
 
+def _code_blocked_paths(src: Source) -> list[str] | None:
+    """The live `BLOCKED_PATHS` list from permission_analyzer.py, as string
+    literals in source order. `None` if the file can't be read or the list
+    can't be found (caller reports that as a problem, not a silent skip)."""
+    return _code_string_list(src, "BLOCKED_PATHS")
+
+
 def check_constant_lists_match_prose(src: Source) -> tuple[list[str], list[str]]:
-    """`02_hooks_and_permissions.md`'s "Blocked paths" line restates
-    `BLOCKED_PATHS` inline (backtick-comma list) instead of linking to code:
-    the list has grown from 11 to 23 entries across several edits and the doc line had to be
-    hand-edited to keep up, with nothing that would fail if a future edit
+    """`02_hooks_and_permissions.md` restates three security lists inline
+    (backtick-comma prose) instead of linking to code: `BLOCKED_PATHS` (grown
+    from 11 to 23 entries across several edits), `GOVERNANCE_PATHS`, and
+    `ALLOWED_DELETIONS`. Each had nothing that would fail if a future edit
     forgot one side. Hard-fail: an out-of-sync prose restatement of a security
     allow/deny list is a doc that lies about what the code actually blocks.
     """
@@ -1458,7 +1465,83 @@ def check_constant_lists_match_prose(src: Source) -> tuple[list[str], list[str]]
                     "(stale or invented entry)."
                 )
 
+    problems.extend(_check_governance_paths_prose(src))
+    problems.extend(_check_allowed_deletions_prose(src))
+
     return problems, warnings
+
+
+def _check_governance_paths_prose(src: Source) -> list[str]:
+    """`02_hooks_and_permissions.md`'s "Governance paths" line restates
+    `GOVERNANCE_PATHS` inline, same drift risk as BLOCKED_PATHS above."""
+    problems: list[str] = []
+    code_paths = _code_string_list(src, "GOVERNANCE_PATHS")
+    if code_paths is None:
+        problems.append(f"cannot find GOVERNANCE_PATHS in {PERMISSION_ANALYZER}")
+        return problems
+    doc_text = src.read(HOOKS_PERMS_MD)
+    if doc_text is None:
+        problems.append(f"cannot read {HOOKS_PERMS_MD}")
+        return problems
+
+    for path in code_paths:
+        if f"`{path}`" not in doc_text:
+            problems.append(
+                f"{HOOKS_PERMS_MD}: GOVERNANCE_PATHS entry `{path}` (in "
+                f"{PERMISSION_ANALYZER}) is not cited in the doc's Governance "
+                "paths restatement."
+            )
+
+    code_set = set(code_paths)
+    m = re.search(r"\*\*Governance paths.*?\n(?=This corpus)", doc_text, re.S)
+    if m:
+        for cited in re.findall(r"`([^`]+)`", m.group(0)):
+            if cited in ("GOVERNANCE_PATHS", "permission_analyzer.py"):
+                continue
+            if cited not in code_set:
+                problems.append(
+                    f"{HOOKS_PERMS_MD}: cites `{cited}` in the Governance paths "
+                    f"list, which is not in GOVERNANCE_PATHS in "
+                    f"{PERMISSION_ANALYZER} (stale or invented entry)."
+                )
+    return problems
+
+
+def _check_allowed_deletions_prose(src: Source) -> list[str]:
+    """`02_hooks_and_permissions.md`'s carve-out paragraph restates
+    `ALLOWED_DELETIONS` inline mid-sentence — narrower span than the other two
+    (the surrounding prose is full of unrelated backtick-quoted function/
+    constant names), so the reverse-direction scan targets only the clause
+    between "allowed-deletion name —" and the following sentence boundary."""
+    problems: list[str] = []
+    code_paths = _code_string_list(src, "ALLOWED_DELETIONS")
+    if code_paths is None:
+        problems.append(f"cannot find ALLOWED_DELETIONS in {PERMISSION_ANALYZER}")
+        return problems
+    doc_text = src.read(HOOKS_PERMS_MD)
+    if doc_text is None:
+        problems.append(f"cannot read {HOOKS_PERMS_MD}")
+        return problems
+
+    for path in code_paths:
+        if f"`{path}`" not in doc_text:
+            problems.append(
+                f"{HOOKS_PERMS_MD}: ALLOWED_DELETIONS entry `{path}` (in "
+                f"{PERMISSION_ANALYZER}) is not cited in the doc's carve-out "
+                "restatement."
+            )
+
+    code_set = set(code_paths)
+    m = re.search(r"allowed-deletion name —(.*?)\. All-or-nothing", doc_text, re.S)
+    if m:
+        for cited in re.findall(r"`([^`]+)`", m.group(0)):
+            if cited not in code_set:
+                problems.append(
+                    f"{HOOKS_PERMS_MD}: cites `{cited}` in the ALLOWED_DELETIONS "
+                    f"list, which is not in ALLOWED_DELETIONS in "
+                    f"{PERMISSION_ANALYZER} (stale or invented entry)."
+                )
+    return problems
 
 
 # ── check 9: no unresolved audit-ID comments ─────────────────────────────────
@@ -1611,33 +1694,20 @@ def check_alias_reach_counts(src: Source) -> tuple[list[str], list[str]]:
 _AUDIT_DOC_PREFIXES = ("docs/audits/", "database/audit_reports/")
 
 
-def check_no_new_audit_docs(src: Source) -> tuple[list[str], list[str]]:
-    """No newly-added file under docs/audits/ or database/audit_reports/ in the
-    staged changeset. Both directories are gitignored with no negation
-    (CLAUDE.md's exception is a one-time, already-closed archival decision, not
-    a standing carve-out)."""
+def _added_audit_doc_problems(name_status_z: str) -> list[str]:
+    """Shared core: given `-z`-separated `git diff --name-status` output, flag
+    every added/renamed-into path under an audit-doc prefix. Used by both the
+    pre-commit path (staged diff) and the CI path (base...target diff) so the
+    two enforcement points can't drift apart.
+
+    -z (NUL-separated, no quoting/octal-escaping of non-ASCII or space-bearing
+    paths) with rename detection left on: a rename/copy record is STATUS\0OLD\0NEW\0,
+    a plain record is STATUS\0PATH\0. Renames land the new path under the audit
+    prefix without ever going through "A" (git's default rename detection emits
+    R<score>, not A+D) — treat R/C's *new* path the same as a fresh add.
+    """
     problems: list[str] = []
-    warnings: list[str] = []
-
-    if not src.staged:
-        return problems, warnings  # only meaningful at commit time
-
-    # -z (NUL-separated, no quoting/octal-escaping of non-ASCII or space-bearing
-    # paths) with rename detection left on: a rename/copy record is STATUS\0OLD\0NEW\0,
-    # a plain record is STATUS\0PATH\0. Renames land the new path under the audit
-    # prefix without ever going through "A" (git's default rename detection emits
-    # R<score>, not A+D) — treat R/C's *new* path the same as a fresh add.
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--name-status", "-z"],
-        cwd=src.root,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if result.returncode != 0:
-        return [f"git diff --cached --name-status failed: {result.stderr.strip()}"], warnings
-
-    fields = result.stdout.split("\0")[:-1]  # trailing NUL leaves one empty field
+    fields = name_status_z.split("\0")[:-1]  # trailing NUL leaves one empty field
     i = 0
     while i < len(fields):
         status = fields[i]
@@ -1652,15 +1722,62 @@ def check_no_new_audit_docs(src: Source) -> tuple[list[str], list[str]]:
             continue
         if path.startswith(_AUDIT_DOC_PREFIXES):
             problems.append(
-                f"{path}: newly staged (status {status}) under a gitignored "
+                f"{path}: newly added (status {status}) under a gitignored "
                 "audit-doc prefix — these paths are never committed (CLAUDE.md "
                 "§ New audit reports and audit docs). If this really is an "
                 "intentional, one-time archival exception like af869db, get the "
                 "same explicit human call and update CLAUDE.md's exception "
                 "note, don't just add -f (or git mv) around this check."
             )
+    return problems
 
-    return problems, warnings
+
+def check_no_new_audit_docs(src: Source) -> tuple[list[str], list[str]]:
+    """No newly-added file under docs/audits/ or database/audit_reports/ in the
+    staged changeset. Both directories are gitignored with no negation
+    (CLAUDE.md's exception is a one-time, already-closed archival decision, not
+    a standing carve-out).
+
+    Staged-diff mode only — this is the pre-commit enforcement point. It has no
+    reach outside a local commit (bypassed by --no-verify, or by a checkout
+    that never ran the hook at all, e.g. CI). `check_no_new_audit_docs_range()`
+    below is the base...target counterpart wired into `.github/workflows/ci.yml`
+    to cover that gap.
+    """
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    if not src.staged:
+        return problems, warnings  # only meaningful at commit time
+
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-status", "-z"],
+        cwd=src.root,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if result.returncode != 0:
+        return [f"git diff --cached --name-status failed: {result.stderr.strip()}"], warnings
+
+    return _added_audit_doc_problems(result.stdout), warnings
+
+
+def check_no_new_audit_docs_range(root: Path, base: str, target: str) -> list[str]:
+    """CI counterpart of check_no_new_audit_docs(): same prefix rule, but over
+    a `base...target` commit range instead of the staging area, since a CI
+    checkout has no staged changes to inspect. Wired into
+    `.github/workflows/ci.yml`'s `no-audit-docs` job."""
+    result = subprocess.run(
+        ["git", "diff", "--name-status", "-z", f"{base}...{target}"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if result.returncode != 0:
+        return [f"git diff --name-status failed: {result.stderr.strip()}"]
+    return _added_audit_doc_problems(result.stdout)
 
 
 # ── entrypoint ───────────────────────────────────────────────────────────────
@@ -1693,6 +1810,20 @@ def run_all(src: Source) -> tuple[list[str], list[str]]:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if "--audit-docs-range" in argv:
+        idx = argv.index("--audit-docs-range")
+        if idx + 2 >= len(argv):
+            print("[validate-rules] --audit-docs-range requires BASE TARGET", file=sys.stderr)
+            return 2
+        base, target = argv[idx + 1], argv[idx + 2]
+        problems = check_no_new_audit_docs_range(ROOT, base, target)
+        if problems:
+            print(f"[validate-rules] {len(problems)} problem(s):")
+            for p in problems:
+                print(f"  - {p}")
+            return 1
+        print("[validate-rules] OK — no newly-added audit docs in range")
+        return 0
     staged = "--staged" in argv
     if staged:
         argv.remove("--staged")

@@ -1,0 +1,33 @@
+name: no-audit-docs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve base ref
+        id: base
+        run: |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif git rev-parse --verify "${{ github.event.before }}" >/dev/null 2>&1; then
+            echo "sha=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$(git rev-list --max-parents=0 HEAD | tail -1)" >> "$GITHUB_OUTPUT"
+          fi
+
+      # CI-side counterpart of the pre-commit check_no_new_audit_docs() (which
+      # only sees the staging area and is bypassed by --no-verify or a checkout
+      # that never had the hook installed). Blocks a merge that adds a file
+      # under docs/audits/ or database/audit_reports/ — both gitignored, never
+      # committed (CLAUDE.md § New audit reports and audit docs).
+      - name: Check for newly-added audit docs
+        run: python3 bin/tools/validate_rules_registry.py --audit-docs-range "${{ steps.base.outputs.sha }}" "${{ github.sha }}"

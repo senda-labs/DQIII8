@@ -3210,6 +3210,40 @@ def _notify_telegram_activation(tool_name: str, pattern: str) -> None:
         log.warning("permission_analyzer: _notify_telegram_activation send failed: %s", e, exc_info=True)  # never block the pipeline
 
 
+def _notify_telegram_escalation(entry: dict) -> None:
+    """Fire-and-forget Telegram alert for an ESCALATE verdict.
+
+    DENY is final and needs no operator action, so this only fires for
+    ESCALATE — the one verdict `02_hooks_and_permissions.md`'s table says is
+    "routed to the operator... resume only after the human confirms". Before
+    this, ESCALATE only reached `tasks/permission_rejection.json`, which
+    nothing reads (no `OrchestratorLoop` class exists in this codebase).
+    """
+    try:
+        import requests
+        from dotenv import load_dotenv
+
+        load_dotenv(str(DQIII8_ROOT / ".env"))
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+        if not token or not chat_id:
+            return
+        msg = (
+            "🚧 *Permission ESCALATE*\n"
+            f"`{entry['tool_name']}` → `{entry['action_detail'][:150]}`\n"
+            f"Reason: {entry['reason'] or '(none)'}\n"
+            f"Rule: {entry['rule_triggered'] or '(none)'}\n"
+            "Blocked until a human confirms in a new session."
+        )
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
+            timeout=5,
+        )
+    except Exception as e:
+        log.warning("permission_analyzer: _notify_telegram_escalation send failed: %s", e, exc_info=True)  # never block the pipeline
+
+
 def record_decision(tool: str, inp: dict, result: dict) -> None:
     """
     Records APPROVE decisions in the DB.
@@ -3271,9 +3305,14 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
 
 def record_rejection(tool: str, inp: dict, result: dict, session_id: str | None = None) -> None:
     """
-    Records DENY and ESCALATE in two channels:
+    Records DENY and ESCALATE in three channels:
     Channel 1 — DB: permission_decisions table
-    Channel 2 — JSON mailbox: tasks/permission_rejection.json (read by OrchestratorLoop)
+    Channel 2 — JSON mailbox: tasks/permission_rejection.json (append-only audit
+        trail; nothing polls this file today — the file itself is not the
+        operator notification, Channel 3 is)
+    Channel 3 — Telegram, ESCALATE only (`_notify_telegram_escalation`): DENY
+        is final and needs no operator action, ESCALATE blocks until a human
+        confirms, so that's the one verdict that needs to reach someone live.
 
     session_id: defaults to the module-level SESSION_ID constant, which is
     only ever set from CLAUDE_SESSION_ID — a variable never populated
@@ -3359,3 +3398,7 @@ def record_rejection(tool: str, inp: dict, result: dict, session_id: str | None 
         )
     except Exception as e:
         log.warning("permission_analyzer: record_rejection JSON mailbox write failed: %s", e, exc_info=True)
+
+    # Channel 3: Telegram (ESCALATE only — DENY is final, needs no operator action)
+    if entry["decision"] == "ESCALATE":
+        _notify_telegram_escalation(entry)

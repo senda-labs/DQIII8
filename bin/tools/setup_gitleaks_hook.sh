@@ -82,11 +82,11 @@ chmod +x "${HOOK_PATH}"
 # This installer must produce a hook with exactly these 5 gates, in this
 # order: gitignore_invariant.sh, gitleaks, watermark_scan.py,
 # validate_hooks_config.py, validate_rules_registry.py --staged. The live
-# hook and this heredoc drifted once already (2026-08-18: the rules-registry
-# gate existed live but was never added here, so re-running this installer
-# would have silently deleted it on next provisioning — cat-4 finding B,
-# 2026-08-17 re-audit). tests/test_setup_gitleaks_hook.py asserts this
-# invariant against a scratch hook path; keep both in sync by hand until
-# then, and never remove a gate here without removing it from that test too.
+# hook and this heredoc drifted once already: the rules-registry gate existed
+# live but was never added here, so re-running this installer would have
+# silently deleted it on next provisioning. tests/test_setup_gitleaks_hook.py
+# asserts this invariant against a scratch hook path; keep both in sync by
+# hand until then, and never remove a gate here without removing it from that
+# test too.
 echo "[gitleaks-setup] Done. Hook active at ${HOOK_PATH}"
 echo "[gitleaks-setup] Test with: git commit -m 'test' (should be blocked if staged secrets)"

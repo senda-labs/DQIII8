@@ -27,7 +27,12 @@ import validate_rules_registry as vrr  # noqa: E402
 
 # Only the surface the validator actually reads; keeps each fixture repo cheap.
 _COPY_TREES = (".claude/hooks", ".claude/rules", ".claude/rules_db", ".claude/agents")
-_COPY_FILES = ("bin/core/openrouter_wrapper.py", "CLAUDE.md")
+_COPY_FILES = (
+    "bin/core/openrouter_wrapper.py",
+    "CLAUDE.md",
+    "bin/tools/validate_rules_registry.py",
+    "bin/tools/setup_gitleaks_hook.sh",
+)
 
 
 @pytest.fixture
@@ -602,3 +607,82 @@ def test_real_handover_pair_is_a_clean_pointer():
     problems, warnings = vrr.check_command_skill_parity(vrr.Source())
     assert not any("handover" in p for p in problems), problems
     assert warnings == []
+
+
+# ── check 8: constant lists match prose ──────────────────────────────────────
+
+
+def test_real_blocked_paths_prose_matches_code():
+    """The F4 fix itself: the live BLOCKED_PATHS restatement in
+    02_hooks_and_permissions.md must match the live BLOCKED_PATHS list."""
+    problems, warnings = vrr.check_constant_lists_match_prose(vrr.Source())
+    assert problems == []
+    assert warnings == []
+
+
+def test_code_entry_missing_from_doc_is_a_problem(repo: Path):
+    """A BLOCKED_PATHS entry added to code but never restated in the doc."""
+    edit(
+        repo,
+        vrr.PERMISSION_ANALYZER,
+        'BLOCKED_PATHS = [\n    "CLAUDE.md",',
+        'BLOCKED_PATHS = [\n    "CLAUDE.md",\n    "totally-new-secret-file",',
+    )
+    problems, _ = vrr.check_constant_lists_match_prose(src(repo))
+    assert any("totally-new-secret-file" in p for p in problems), problems
+
+
+def test_stale_doc_entry_not_in_code_is_a_problem(repo: Path):
+    """A path cited in the doc's Blocked paths paragraph that code no longer
+    blocks — the doc lies about what's actually denied."""
+    edit(
+        repo,
+        vrr.HOOKS_MD,
+        "`CLAUDE.md`, `.env`,",
+        "`CLAUDE.md`, `.env`, `a-removed-path-nobody-blocks-anymore`,",
+    )
+    problems, _ = vrr.check_constant_lists_match_prose(src(repo))
+    assert any("a-removed-path-nobody-blocks-anymore" in p for p in problems), problems
+
+
+def test_unrelated_backtick_paths_elsewhere_in_the_doc_are_not_flagged(repo: Path):
+    """`dqiii8-ops.md` is cited in the paragraph right after the Blocked paths
+    list (unrelated cross-reference) and must not be mistaken for a stale
+    BLOCKED_PATHS entry."""
+    problems, _ = vrr.check_constant_lists_match_prose(src(repo))
+    assert not any("dqiii8-ops.md" in p for p in problems), problems
+
+
+# ── check 9: no unresolved audit-ID comments ─────────────────────────────────
+
+
+def test_real_repo_has_no_dangling_audit_id_comments():
+    """The F-13 fix itself: neither of the two scanned files still carries a
+    dangling audit-ID citation."""
+    problems, warnings = vrr.check_no_audit_id_comments(vrr.Source())
+    assert problems == []
+    assert warnings == []
+
+
+def test_audit_id_shorthand_in_this_file_is_a_problem(repo: Path):
+    target = repo / vrr.THIS_FILE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# left over from RC9 audit\n", encoding="utf-8")
+    problems, _ = vrr.check_no_audit_id_comments(src(repo))
+    assert any("RC9" in p for p in problems), problems
+
+
+def test_audit_id_shorthand_in_gitleaks_setup_is_a_problem(repo: Path):
+    gitleaks = repo / vrr.GITLEAKS_HOOK_SETUP
+    gitleaks.parent.mkdir(parents=True, exist_ok=True)
+    gitleaks.write_text("#!/bin/bash\n# see F6 for context\n", encoding="utf-8")
+    problems, _ = vrr.check_no_audit_id_comments(src(repo))
+    assert any("F6" in p for p in problems), problems
+
+
+def test_noqa_lint_code_is_not_mistaken_for_an_audit_id(repo: Path):
+    target = repo / vrr.THIS_FILE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("import os  # noqa: F401\n", encoding="utf-8")
+    problems, _ = vrr.check_no_audit_id_comments(src(repo))
+    assert not any("F401" in p for p in problems), problems

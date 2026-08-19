@@ -21,6 +21,16 @@ system prompt (`load_agent_system_prompt()`), pero **ignora su `model:`** — el
 dispatch sale siempre de `AGENT_ROUTING`. Por eso un mismo nombre puede legítimamente
 correr en dos modelos distintos según el runtime.
 
+Consecuencia práctica (F5, 2026-08-19): `python-specialist.md`, `web-specialist.md` y
+`research-analyst.md` declaran `model:` con slugs `ollama/...`/`groq/...` — restos de la
+cadena multi-tier dormante, no slugs de Claude Code. Esto es **intencional, no una
+desincronización pendiente de arreglar**: ese `model:` nunca se lee por el runtime del Agent
+tool (que ignora el campo y usa Tier A por defecto) ni por el wrapper (dormante bajo REGLA
+NIM). `check_model_slugs_match_code()` en `validate_rules_registry.py` no escanea
+`.claude/agents/*.md` a propósito — sincronizarlo forzaría o bien reactivar el wrapper
+dormante o bien reescribir estos tres ficheros sin ganancia real hasta que la reactivación
+ocurra.
+
 ### Cómo resolver un nombre de agente (no memorizar listas)
 
 - ¿Es válido para dispatch por Bash? → **claves de `AGENT_ROUTING`**:

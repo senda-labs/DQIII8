@@ -2,11 +2,10 @@
 """Validate the rules/routing governance surface: registry, token budget, agent
 names and model slugs.
 
-Phase 2 of the 2026-08-17 doc-governance remediation. Phase 1 fixed 18 concrete
-gaps by hand; every one of them was a *silent* drift between a declaration in
-code and a statement in a rule file, discoverable only by a human reading both
-sides at once. This script turns the four highest-frequency drifts into
-mechanical pre-commit checks so they cannot come back:
+Manual doc-governance remediation kept finding the same shape of bug: a *silent*
+drift between a declaration in code and a statement in a rule file, discoverable
+only by a human reading both sides at once. This script turns the highest-
+frequency drifts into mechanical pre-commit checks so they cannot come back:
 
   1. check_registry_reachability()  — no orphan/dangling `_REGISTRY` alias.
      (`routing`, `performance`, `git-workflow`, `workflow`, `testing` were all
@@ -17,12 +16,16 @@ mechanical pre-commit checks so they cannot come back:
   3. check_agent_names_exist()      — an agent cited in a routing table must
      exist in `AGENT_ROUTING` or as a `.claude/agents/*.md` file.
   4. check_model_slugs_match_code() — a model slug a rule file presents as
-     configured must actually appear in the wrapper's routing tables. This is
-     Gap 2's exact failure mode: the doc fix was written, the code fix never was.
+     configured must actually appear in the wrapper's routing tables. A doc
+     fix can be written while the matching code fix never lands, and nothing
+     else notices.
   5. check_command_skill_parity()   — `.claude/commands/<name>.md` and
      `.claude/skills/<name>/SKILL.md` must not be two forked copies of the same
      slash command. `handover` had drifted into two *different* procedures, one
-     of which pushed to `master` unattended (F6, 2026-08-18).
+     of which pushed to `master` unattended.
+  6. check_constant_lists_match_prose() — a rule file's inline restatement of a
+     code constant (e.g. `BLOCKED_PATHS`) must match the constant exactly; the
+     alternative is a doc that lies about what the code actually blocks.
 
 Contract, cloned from bin/tools/validate_hooks_config.py:
   * `--staged` (used by .git/hooks/pre-commit) reads content from the git index
@@ -130,8 +133,8 @@ class Source:
     def list_governance_md(self) -> list[str]:
         """Every markdown file in governance scope: `.claude/**` plus the
         repo-root `CLAUDE.md` — `list_md(".claude")` alone always missed the
-        apex always-loaded file, so its own stale counts (RC3) and any model
-        slug or agent name it cites went unchecked (RC11.6, 2026-08-18)."""
+        apex always-loaded file, so its own stale counts and any model slug or
+        agent name it cites went unchecked."""
         paths = self.list_md(".claude")
         root_claude = self.root / "CLAUDE.md"
         has_root_claude = (
@@ -818,10 +821,10 @@ def _inventory_line_numbers(text: str) -> set[int]:
 def check_model_slugs_match_code(src: Source) -> tuple[list[str], list[str]]:
     """A rule file must not present a model slug that the wrapper never uses.
 
-    Gap 2's exact failure mode: 03_tiering_and_routing.md was updated to name
-    the replacement model, the wrapper never was, and nothing noticed. Direction
-    matters — doc-cites-but-code-lacks is a lie about the running system
-    (problem); code-has-but-doc-omits is merely undocumented (warning).
+    A doc can be updated to name a replacement model while the matching code
+    change never lands, and nothing notices. Direction matters — doc-cites-
+    but-code-lacks is a lie about the running system (problem); code-has-but-
+    doc-omits is merely undocumented (warning).
     """
     models, providers, problems = _code_slugs(src)
     warnings: list[str] = []
@@ -830,10 +833,10 @@ def check_model_slugs_match_code(src: Source) -> tuple[list[str], list[str]]:
 
     scan_targets = {CORE_BEHAVIOR_MD, TIERING_MD, "CLAUDE.md"}
     for rel in src.list_governance_md():
-        # .claude/rules_db/archive/ is explicitly historical/dormant content
-        # (RC9, 2026-08-18) — it is never re-synced with live code by design,
-        # so scanning it here would force either perpetual false positives or
-        # someone "fixing" a doc that's supposed to preserve a past state.
+        # .claude/rules_db/archive/ is explicitly historical/dormant content,
+        # never re-synced with live code by design — scanning it here would
+        # force either perpetual false positives or someone "fixing" a doc
+        # that's supposed to preserve a past state.
         if rel.startswith(".claude/rules_db/archive/"):
             continue
         if rel.startswith(".claude/rules_db/") or (
@@ -899,9 +902,9 @@ def check_model_slugs_match_code(src: Source) -> tuple[list[str], list[str]]:
                         "the doc names a model nothing routes to."
                     )
 
-    # Dormant multi-tier slugs (RC9, 2026-08-18) live on in the archive under
-    # their bare form (no `nim/`/`openrouter/` provider prefix) — that's
-    # "documented, just not in the hot path", not silence. Only warn for
+    # Dormant multi-tier slugs live on in the archive under their bare form
+    # (no `nim/`/`openrouter/` provider prefix) — that's "documented, just
+    # not in the hot path", not silence. Only warn for
     # slugs the archive doesn't mention either.
     archive_text = src.read(_ARCHIVE_MD) or ""
     for slug in sorted(models - cited):
@@ -964,9 +967,9 @@ def _dir_has_any_file(src: Source, dirpath: str) -> bool:
 
 def check_claude_md_counts(src: Source) -> tuple[list[str], list[str]]:
     """`CLAUDE.md`'s Hooks/Skills/Agents/Contextual-rules counts must match the
-    live filesystem exactly (RC3, cited 5x across the 2026-08-17 audit reports
-    — the highest-cited single defect). User decision: keep exact counts, but
-    validator-enforce them so they cannot silently drift a 6th time.
+    live filesystem exactly — this was the most frequently rediscovered stale-
+    count defect across manual audits. User decision: keep exact counts, but
+    validator-enforce them so they cannot silently drift again.
 
     Definitions, chosen to match what each count is actually claiming:
       * Hooks: `.py` files directly under `.claude/hooks/` (flat, not recursive).
@@ -976,7 +979,7 @@ def check_claude_md_counts(src: Source) -> tuple[list[str], list[str]]:
       * Contextual rules: `_REGISTRY` aliases in `rules_dispatcher.py` that
         resolve into `.claude/rules_db/` — the deterministic `.claude/rules/*.md`
         modules are a separate, already-counted-elsewhere surface, and archived
-        aliases are dormant by design (RC9), not part of the live count.
+        aliases are dormant by design, not part of the live count.
 
     A count whose source directory is entirely absent from `src` (e.g. a test
     fixture that only mirrors a subset of `.claude/`) is skipped rather than
@@ -1057,7 +1060,8 @@ SCHEMA_SQL = "database/schema_v2.sql"
 # Deliberately phrase-driven rather than line-anchored: README restates the same
 # counts in the intro, the design-principles list, the ASCII architecture
 # diagram, a section heading, the directory tree and the installer steps, and new
-# restatements keep appearing (F3 found the hook count wrong in 4 places at once).
+# restatements keep appearing — one sweep found the hook count wrong in 4
+# places at once.
 _README_COUNT_RE = re.compile(
     r"(\d+)\s+(?:live\s+)?"
     r"(lifecycle hooks|hooks|slash-command skills|skills|specialist agents"
@@ -1082,11 +1086,11 @@ def check_readme_counts(src: Source) -> tuple[list[str], list[str]]:
     """`README.md`'s hook / skill / agent / table / view counts must match the
     live tree, exactly as `check_claude_md_counts()` pins `CLAUDE.md:16`.
 
-    F3 of the 2026-08-18 panel-6 audit: README is the repo's most public
-    document, restates the same governance counts six times, and every check in
-    this file stopped at `.claude/` + `CLAUDE.md` — so "14 hooks" survived in
-    four places while the live count was 15, alongside `46 tables + 20 views`
-    against a 60/29 schema. `list_governance_md()` was widened once, for
+    README is the repo's most public document, restates the same governance
+    counts six times, and every check in this file used to stop at `.claude/`
+    + `CLAUDE.md` — so "14 hooks" survived in four places while the live count
+    was 15, alongside `46 tables + 20 views` against a 60/29 schema.
+    `list_governance_md()` was widened once, for
     `CLAUDE.md`; the same reasoning applies here.
 
     Counts come from `_live_component_counts()` (shared with the CLAUDE.md
@@ -1238,9 +1242,9 @@ def _frontmatter_fields(text: str) -> dict[str, str]:
 
 
 # Frontmatter keys that decide *who may run this and when* — a mismatch here is
-# a behavioral fork even when the prose is byte-identical (F2: `instinct-status`
-# declared `allowed_tools`, a key no runtime reads, while the skill declared
-# `allowed-tools` + `user-invocable: false`).
+# a behavioral fork even when the prose is byte-identical (a real instance:
+# a command file declared `allowed_tools`, a key no runtime reads, while its
+# skill declared `allowed-tools` + `user-invocable: false`).
 _PARITY_FRONTMATTER_KEYS = ("allowed-tools", "user-invocable", "auto-invoke", "model")
 
 
@@ -1257,8 +1261,8 @@ def _pointer_body(text: str) -> list[str]:
     """Like `_parity_body()` but **keeps** blockquote lines. The pointer test
     must not strip them: a command file whose entire substance sits inside a
     blockquote otherwise measures ~1 line and is waved through as a "pointer"
-    no matter what the blockquote instructs (F2 loophole, verified with a
-    blockquote reading `run git push --force origin master`).
+    no matter what the blockquote instructs — verified with a blockquote
+    reading `run git push --force origin master`.
     """
     return [s for ln in _split_frontmatter(text)[1] if (s := ln.strip())]
 
@@ -1289,9 +1293,9 @@ def _fenced_lines(text: str) -> set[str]:
 
 def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
     """`.claude/commands/<name>.md` and `.claude/skills/<name>/SKILL.md` are
-    11 pairs of the same slash-command definition with no parity check anywhere
-    (F6, panel 6 maintainability audit). The confirmed worst case was
-    `handover`, whose two copies described genuinely *different* procedures —
+    11 pairs of the same slash-command definition with no parity check anywhere.
+    The confirmed worst case was `handover`, whose two copies described
+    genuinely *different* procedures —
     one pushed to `master` unattended, the other stopped to ask first — so an
     agent that read the wrong copy would auto-push when it should have asked.
 
@@ -1300,9 +1304,9 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
     cannot hide a full procedure inside a `>` block and still read as a pointer.
 
     Otherwise three independent signals are compared, because prose similarity
-    alone has a measured ~67% false-negative rate on this corpus (F2, 2026-08-18
-    audit): an adversarial fork that inverts only the behaviour of a SKILL.md
-    scores 0.95 and passes. The two it misses are added here:
+    alone has a measured ~67% false-negative rate on this corpus: an
+    adversarial fork that inverts only the behaviour of a SKILL.md scores 0.95
+    and passes. The two it misses are added here:
 
       1. **Prose similarity** — catches wholesale rewrites (`skill-create` 0.06).
       2. **Fenced code lines** — the commands actually executed, compared as
@@ -1314,9 +1318,8 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
          this and when. `_parity_body()` strips frontmatter, so before this
          these fields were compared by nothing.
 
-    Hard-fail (F6, 2026-08-19): all 11 pairs were reduced to pure pointers or
-    reconciled, so a fresh divergence — not pre-existing debt — is what this
-    now blocks.
+    Hard-fail: all 11 pairs were reduced to pure pointers or reconciled, so a
+    fresh divergence — not pre-existing debt — is what this now blocks.
     """
     problems: list[str] = []
     warnings: list[str] = []
@@ -1361,7 +1364,7 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
         if not cmd_fm:
             # No frontmatter at all: every governance field lives on one side
             # only. One line, not one per key — the warning channel has to stay
-            # small enough that a new entry is actually read (F6).
+            # small enough that a new entry is actually read.
             absent = [k for k in _PARITY_FRONTMATTER_KEYS if k in skill_fm]
             if absent:
                 problems.append(
@@ -1382,6 +1385,121 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
     return problems, warnings
 
 
+# ── check 8: constant lists match prose ──────────────────────────────────────
+
+PERMISSION_ANALYZER = ".claude/hooks/permission_analyzer.py"
+HOOKS_MD = ".claude/rules/02_hooks_and_permissions.md"
+
+
+def _code_blocked_paths(src: Source) -> list[str] | None:
+    """The live `BLOCKED_PATHS` list from permission_analyzer.py, as string
+    literals in source order. `None` if the file can't be read or the list
+    can't be found (caller reports that as a problem, not a silent skip)."""
+    text = src.read(PERMISSION_ANALYZER)
+    if text is None:
+        return None
+    m = re.search(r"^BLOCKED_PATHS = \[(.*?)^\]", text, re.S | re.M)
+    if not m:
+        return None
+    return re.findall(r'"([^"]+)"', m.group(1))
+
+
+def check_constant_lists_match_prose(src: Source) -> tuple[list[str], list[str]]:
+    """`02_hooks_and_permissions.md`'s "Blocked paths" line restates
+    `BLOCKED_PATHS` inline (backtick-comma list) instead of linking to code:
+    the list grew from 11 to 21 entries in one edit and the doc line had to be
+    hand-edited to keep up, with nothing that would fail if a future edit
+    forgot one side. Hard-fail: an out-of-sync prose restatement of a security
+    allow/deny list is a doc that lies about what the code actually blocks.
+    """
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    code_paths = _code_blocked_paths(src)
+    if code_paths is None:
+        problems.append(f"cannot find BLOCKED_PATHS in {PERMISSION_ANALYZER}")
+        return problems, warnings
+
+    doc_text = src.read(HOOKS_MD)
+    if doc_text is None:
+        problems.append(f"cannot read {HOOKS_MD}")
+        return problems, warnings
+
+    for path in code_paths:
+        if f"`{path}`" not in doc_text:
+            problems.append(
+                f"{HOOKS_MD}: BLOCKED_PATHS entry `{path}` (in {PERMISSION_ANALYZER}) "
+                "is not cited in the doc's Blocked paths restatement."
+            )
+
+    # Reverse direction: a backtick-quoted entry in the Blocked paths
+    # paragraph that isn't in BLOCKED_PATHS is stale or invented. Narrowed to
+    # that one paragraph (not the whole doc) and to bare-token backticks —
+    # `_BACKTICK_PATH` requires a directory component + known extension, which
+    # excludes exactly the bare filenames (`CLAUDE.md` has no `/`, `secrets`
+    # has no extension) that make up most of this list, so it can't be reused
+    # here.
+    code_set = set(code_paths)
+    m = re.search(r"\*\*Blocked paths.*?\n(?=No exception)", doc_text, re.S)
+    if m:
+        for cited in re.findall(r"`([^`]+)`", m.group(0)):
+            if cited in ("BLOCKED_PATHS", "permission_analyzer.py"):
+                continue
+            if cited not in code_set:
+                problems.append(
+                    f"{HOOKS_MD}: cites `{cited}` in the Blocked paths list, "
+                    f"which is not in BLOCKED_PATHS in {PERMISSION_ANALYZER} "
+                    "(stale or invented entry)."
+                )
+
+    return problems, warnings
+
+
+# ── check 9: no unresolved audit-ID comments ─────────────────────────────────
+
+THIS_FILE = "bin/tools/validate_rules_registry.py"
+GITLEAKS_HOOK_SETUP = "bin/tools/setup_gitleaks_hook.sh"
+
+# Short audit-report shorthand (a letter-prefixed number, or "Gap"/"Phase"
+# plus a number) reads fine to whoever wrote it, next to the gitignored audit
+# report it points at — but that report never survives to `git log`, so six
+# months later the shorthand is a dead end and the comment has to be
+# re-derived from scratch. Every instance found this way was rewritten to
+# state its reason directly instead. A ruff lint-suppression code is excluded
+# below so this doesn't misfire on ordinary `noqa` comments — see `_NOQA_CODE`.
+_AUDIT_ID = re.compile(
+    r"\b(?:RC\d[\d.]*|INV\d+|SEC\d+|Gap \d+|Phase \d+ of|F\d+)\b"
+)
+_NOQA_CODE = re.compile(r"noqa:\s*F\d+")
+
+
+def check_no_audit_id_comments(src: Source) -> tuple[list[str], list[str]]:
+    """No dangling audit-report shorthand (see `_AUDIT_ID`) in the files this
+    validator and its installer are made of. A citation like this is a
+    pointer into a gitignored, ephemeral audit report — durable in the room
+    where it was written, a dead end for anyone reading the comment later.
+    State the reason inline instead.
+    """
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    for rel in (THIS_FILE, GITLEAKS_HOOK_SETUP):
+        text = src.read(rel)
+        if text is None:
+            problems.append(f"cannot read {rel}")
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            stripped = _NOQA_CODE.sub("", line)
+            m = _AUDIT_ID.search(stripped)
+            if m:
+                problems.append(
+                    f"{rel}:{n}: dangling audit-ID citation `{m.group(0)}` — "
+                    "state the reason directly instead of citing an ID."
+                )
+
+    return problems, warnings
+
+
 # ── entrypoint ───────────────────────────────────────────────────────────────
 
 CHECKS = (
@@ -1393,6 +1511,8 @@ CHECKS = (
     ("readme-counts", check_readme_counts),
     ("file-citations", check_file_citations_exist),
     ("command-skill-parity", check_command_skill_parity),
+    ("constant-lists-match-prose", check_constant_lists_match_prose),
+    ("no-audit-id-comments", check_no_audit_id_comments),
 )
 
 

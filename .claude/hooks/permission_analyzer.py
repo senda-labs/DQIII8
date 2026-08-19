@@ -1644,6 +1644,24 @@ def _git_push_deleted_ref(cmd: str) -> str | None:
 # never drift apart once they're one tuple. Add the id in the same edit that
 # adds the pattern.
 
+# [output-quality F1] Human-readable label per HIGH_RISK_PATTERNS rule_id, for
+# the generic DENY message loop below — same fix as _CRITICAL_PATTERN_LABELS
+# above, keyed by rule_id (already a stable per-entry key here) rather than by
+# regex string. An unlabeled future rule_id falls back to the truncated
+# command instead of raising.
+_HIGH_RISK_PATTERN_LABELS = {
+    "drop_table": "DROP TABLE",
+    "drop_database": "DROP DATABASE",
+    "drop_trigger": "DROP TRIGGER (removes an audit-table append-only guard)",
+    "delete_unbounded_audit_table": "unbounded DELETE against a protected audit table",
+    "delete_tautology_audit_table": "tautological-WHERE DELETE against a protected audit table",
+    "mutate_protected_table": "mutating verb (UPDATE/ALTER/TRUNCATE/REPLACE/INSERT) against a protected table",
+    "sql_create_table_as_select_protected": "CREATE TABLE ... AS SELECT copying a protected table's rows",
+    "pragma_writable_schema": "PRAGMA writable_schema",
+    "chmod_777_root": "chmod 777 on a root-level path",
+    "git_push_force": "git push --force",
+}
+
 ALLOWED_DELETIONS = [
     "node_modules",
     "dist",
@@ -2456,7 +2474,8 @@ class PermissionAnalyzer:
             log.warning("permission_analyzer: _candidate_paths failed: %s", _cpe)
             return self._deny(
                 tool, str(detail)[:80],
-                "Internal analyzer error during path extraction — denying as precaution.",
+                f"Internal analyzer error ({type(_cpe).__name__}) during path "
+                "extraction — denying as precaution.",
                 "HIGH", "analyzer_internal_error",
                 "Retry, or ask the user to perform this write manually.",
             )
@@ -2523,7 +2542,8 @@ class PermissionAnalyzer:
                 log.warning("permission_analyzer: _bash_touches_blocked failed: %s", _bte)
                 return self._deny(
                     tool, str(cmd)[:80],
-                    "Internal analyzer error during blocked-path check — denying as precaution.",
+                    f"Internal analyzer error ({type(_bte).__name__}) during "
+                    "blocked-path check — denying as precaution.",
                     "HIGH", "analyzer_internal_error",
                     "Retry, or ask the user to run this command manually.",
                 )
@@ -2540,7 +2560,8 @@ class PermissionAnalyzer:
                 log.warning("permission_analyzer: _read_family_credential_block failed: %s", _rte)
                 return self._deny(
                     tool, str(inp.get("file_path", inp.get("path", "")))[:80],
-                    "Internal analyzer error during credential check — denying as precaution.",
+                    f"Internal analyzer error ({type(_rte).__name__}) during "
+                    "credential check — denying as precaution.",
                     "HIGH", "analyzer_internal_error",
                     "Retry, or ask the user to check this file manually.",
                 )
@@ -2560,7 +2581,8 @@ class PermissionAnalyzer:
                 log.warning("permission_analyzer: MCP credential check failed: %s", _mce)
                 return self._deny(
                     tool, str(detail)[:80],
-                    "Internal analyzer error during MCP credential check — denying as precaution.",
+                    f"Internal analyzer error ({type(_mce).__name__}) during "
+                    "MCP credential check — denying as precaution.",
                     "HIGH", "analyzer_internal_error",
                     "Retry, or ask the user to perform this call manually.",
                 )
@@ -2605,7 +2627,8 @@ class PermissionAnalyzer:
                 log.warning("permission_analyzer: _web_egress_block failed: %s", _wee)
                 return self._deny(
                     tool, str(inp.get("url", ""))[:80],
-                    "Internal analyzer error during web egress check — denying as precaution.",
+                    f"Internal analyzer error ({type(_wee).__name__}) during "
+                    "web egress check — denying as precaution.",
                     "HIGH", "analyzer_internal_error",
                     "Retry, or ask the user to fetch this URL manually.",
                 )
@@ -2738,7 +2761,8 @@ class PermissionAnalyzer:
                 log.warning("permission_analyzer: CRITICAL pattern check failed: %s", _ce)
                 return self._deny(
                     tool, str(inp.get("command", ""))[:80],
-                    "Internal analyzer error during critical check — denying as precaution.",
+                    f"Internal analyzer error ({type(_ce).__name__}) during "
+                    "critical check — denying as precaution.",
                     "HIGH", "analyzer_internal_error",
                     "Retry with a valid command string.",
                 )
@@ -2817,17 +2841,18 @@ class PermissionAnalyzer:
                     if re.search(pattern, cmd, re.IGNORECASE) or (
                         _sql_decommented and re.search(pattern, _sql_decommented, re.IGNORECASE)
                     ):
+                        _label = _HIGH_RISK_PATTERN_LABELS.get(_rule, "unlabeled high-risk pattern")
                         if DQIII8_MODE == "autonomous":
                             return self._deny(
                                 tool, cmd,
-                                f"High-risk command in autonomous mode: {cmd[:80]}",
+                                f"High-risk command in autonomous mode ({_label}): {cmd[:80]}",
                                 "HIGH", f"high_risk_pattern:{_rule}",
                                 "Use ALLOWED_DELETIONS or run in supervised mode.",
                             )
                         else:
                             return self._deny(
                                 tool, cmd,
-                                f"Blocked command: '{cmd[:80]}'",
+                                f"Blocked command ({_label}): '{cmd[:80]}'",
                                 "CRITICAL", f"high_risk_pattern:{_rule}",
                                 "This command is destructive and irreversible.",
                             )
@@ -2835,7 +2860,8 @@ class PermissionAnalyzer:
                 log.warning("permission_analyzer: HIGH_RISK pattern check failed: %s", _he)
                 return self._deny(
                     tool, str(inp.get("command", ""))[:80],
-                    "Internal analyzer error during high-risk check — denying as precaution.",
+                    f"Internal analyzer error ({type(_he).__name__}) during "
+                    "high-risk check — denying as precaution.",
                     "HIGH", "analyzer_internal_error",
                     "Retry with a valid command string.",
                 )
@@ -3050,7 +3076,8 @@ class PermissionAnalyzer:
             log.warning("permission_analyzer: _check_resource_claim query failed: %s", e, exc_info=True)
             return self._deny(
                 tool, path,
-                "Internal analyzer error during resource-claim check — denying as precaution.",
+                f"Internal analyzer error ({type(e).__name__}) during "
+                "resource-claim check — denying as precaution.",
                 "HIGH", "analyzer_internal_error",
                 "Retry once the permissions DB is reachable.",
             )
@@ -3087,7 +3114,8 @@ class PermissionAnalyzer:
             log.warning("permission_analyzer: _check_budget query failed: %s", e, exc_info=True)
             return self._deny(
                 "budget", session_id,
-                "Internal analyzer error during budget check — denying as precaution.",
+                f"Internal analyzer error ({type(e).__name__}) during "
+                "budget check — denying as precaution.",
                 "HIGH", "analyzer_internal_error",
                 "Retry once the permissions DB is reachable.",
             )

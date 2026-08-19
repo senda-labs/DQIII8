@@ -409,7 +409,7 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
         if len(found) < expected_min:
             problems.append(
                 f"{rel}: expected at least {expected_min} citation(s) of the "
-                f"token range '{floor}-{ceiling}', found {len(found)}. The four "
+                f"token range '{floor}-{ceiling}', found {len(found)}. The two "
                 "sites that quote this number must be updated together."
             )
         for raw_lo, raw_hi in found:
@@ -439,7 +439,7 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
 
     # 02_hooks_and_permissions.md is itself injected and itself counts toward
     # the ceiling it used to describe. It must point at the docstring, never
-    # restate the numbers — a fourth citation site is a fourth thing to drift.
+    # restate the numbers — a third citation site is a third thing to drift.
     hp_text = src.read(HOOKS_PERMS_MD)
     if hp_text is None:
         problems.append(f"cannot read {HOOKS_PERMS_MD}")
@@ -1500,6 +1500,148 @@ def check_no_audit_id_comments(src: Source) -> tuple[list[str], list[str]]:
     return problems, warnings
 
 
+# ── check: alias-reach counts ("2 / 13 / 4") ─────────────────────────────────
+# [maintainability-ssot finding 1] The floor (2 _ALWAYS aliases), reachable
+# ceiling (13, one Bash command hitting every _BASH_KEYWORD_RULES pattern) and
+# `git status`'s own injection count (4) are hardcoded, unenforced prose in
+# CLAUDE.md, 02_hooks_and_permissions.md and DYNAMIC.md. Derived analytically
+# from the dispatcher's own tables (same primitives as _measured_range_problems
+# above) rather than a hand re-count, so a new _BASH_KEYWORD_RULES row or
+# registry alias updates the live numbers automatically.
+
+_ALIAS_COUNT_PATTERNS = {
+    "CLAUDE.md": {
+        "floor": re.compile(r"(\d+) files minimum"),
+        "ceiling": re.compile(r"(\d+) in the reachable ceiling case"),
+    },
+    HOOKS_PERMS_MD: {
+        "floor": re.compile(r"floor is the (\d+) `_ALWAYS`"),
+        "ceiling": re.compile(r"reachable ceiling is (\d+)"),
+        "git_status": re.compile(r"git status.? already injects (\d+)"),
+    },
+    DYNAMIC_MD: {
+        "floor": re.compile(r"mínimo:\s*(\d+) ficheros"),
+        "ceiling": re.compile(r"máximo alcanzable:\s*(\d+) ficheros"),
+        "git_status": re.compile(r"git status.? ya inyecta (\d+)"),
+    },
+}
+
+
+def _alias_count_for_set(rd, aliases: list[str]) -> int:
+    """Unique, registry-resolvable alias count for one reachable set — same
+    dedup rule get_rules() applies before rendering, but counting instead of
+    reading file content."""
+    seen: set[str] = set()
+    for alias in aliases:
+        if alias in rd._REGISTRY:
+            seen.add(alias)
+    return len(seen)
+
+
+def _alias_count_via_get_rules(rd, tool: str, tool_input: dict) -> int:
+    """Live unique-alias count get_rules() would inject for one call, measured
+    by making `_read` return the bare alias name (no internal "\\n\\n") so the
+    "\\n\\n"-joined block's separator count equals the alias count exactly."""
+    orig_read = rd._read
+    try:
+        rd._read = lambda alias: alias
+        text = rd.get_rules(tool, tool_input)
+    finally:
+        rd._read = orig_read
+    return text.count("\n\n") if text else 0
+
+
+def check_alias_reach_counts(src: Source) -> tuple[list[str], list[str]]:
+    """CLAUDE.md / 02_hooks_and_permissions.md / DYNAMIC.md must each state the
+    live "2 / 13 / 4" alias-reach facts, not a stale hand-written guess."""
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    if src.root.resolve() != ROOT.resolve():
+        return problems, warnings  # only the real repo can be measured
+
+    try:
+        import rules_dispatcher as rd  # noqa: PLC0415
+    except Exception as exc:
+        return [f"cannot import rules_dispatcher to measure alias-reach counts: {exc}"], warnings
+
+    live = {
+        "floor": len(rd._ALWAYS),
+        "ceiling": max(
+            (_alias_count_for_set(rd, aliases) for _label, aliases in _reachable_alias_sets(rd)),
+            default=0,
+        ),
+        "git_status": _alias_count_via_get_rules(rd, "Bash", {"command": "git status"}),
+    }
+
+    for rel, patterns in _ALIAS_COUNT_PATTERNS.items():
+        text = src.read(rel)
+        if text is None:
+            problems.append(f"cannot read {rel}")
+            continue
+        for label, pat in patterns.items():
+            m = pat.search(text)
+            if not m:
+                continue  # this file doesn't cite that particular number
+            declared = int(m.group(1))
+            if declared != live[label]:
+                problems.append(
+                    f"{rel}: states {label}={declared} but the live measured "
+                    f"{label} is {live[label]} — re-measure and update."
+                )
+
+    return problems, warnings
+
+
+# ── check: no newly-committed audit docs ─────────────────────────────────────
+# CLAUDE.md's "never committed — full stop" rule was prose only, with no
+# mechanical enforcement — every neighboring invariant in this governance
+# corpus is validator- or DB-trigger-backed, this one wasn't.
+# --staged-only: a newly-*added* (git status "A") file under either gitignored
+# audit-doc prefix means it was force-added (`git add -f`), bypassing
+# .gitignore. The grandfathered `af869db` corpus is untouched — those 35
+# files, if ever edited, show as "M" (modified), never "A".
+_AUDIT_DOC_PREFIXES = ("docs/audits/", "database/audit_reports/")
+
+
+def check_no_new_audit_docs(src: Source) -> tuple[list[str], list[str]]:
+    """No newly-added file under docs/audits/ or database/audit_reports/ in the
+    staged changeset. Both directories are gitignored with no negation
+    (CLAUDE.md's exception is a one-time, already-closed archival decision, not
+    a standing carve-out)."""
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    if not src.staged:
+        return problems, warnings  # only meaningful at commit time
+
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-status"],
+        cwd=src.root,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if result.returncode != 0:
+        return [f"git diff --cached --name-status failed: {result.stderr.strip()}"], warnings
+
+    for line in result.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2 or parts[0] != "A":
+            continue
+        path = parts[-1]
+        if path.startswith(_AUDIT_DOC_PREFIXES):
+            problems.append(
+                f"{path}: newly staged under a gitignored audit-doc prefix — "
+                "these paths are never committed (CLAUDE.md § New audit reports "
+                "and audit docs). If this really is an intentional, one-time "
+                "archival exception like af869db, get the same explicit human "
+                "call and update CLAUDE.md's exception note, don't just add -f."
+            )
+
+    return problems, warnings
+
+
 # ── entrypoint ───────────────────────────────────────────────────────────────
 
 CHECKS = (
@@ -1513,6 +1655,8 @@ CHECKS = (
     ("command-skill-parity", check_command_skill_parity),
     ("constant-lists-match-prose", check_constant_lists_match_prose),
     ("no-audit-id-comments", check_no_audit_id_comments),
+    ("alias-reach-counts", check_alias_reach_counts),
+    ("no-new-audit-docs", check_no_new_audit_docs),
 )
 
 

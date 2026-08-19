@@ -1212,6 +1212,20 @@ def test_every_critical_pattern_has_a_sample():
         ), f"no sample command exercises CRITICAL pattern {pattern!r}"
 
 
+def test_every_critical_pattern_has_a_label():
+    """_CRITICAL_PATTERN_LABELS must cover exactly CRITICAL_PATTERNS — an
+    added/removed pattern with no matching label edit fails here instead of
+    silently falling back to 'unlabeled catastrophic pattern' in prod."""
+    assert set(_pa.CRITICAL_PATTERNS) == set(_pa._CRITICAL_PATTERN_LABELS)
+
+
+def test_every_high_risk_pattern_has_a_label():
+    """_HIGH_RISK_PATTERN_LABELS must cover exactly the rule_ids in
+    HIGH_RISK_PATTERNS — same guard as above, keyed by rule_id."""
+    rule_ids = {rule_id for _pattern, rule_id in _pa.HIGH_RISK_PATTERNS}
+    assert rule_ids == set(_pa._HIGH_RISK_PATTERN_LABELS)
+
+
 @pytest.mark.parametrize(
     "cmd",
     [

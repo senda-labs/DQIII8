@@ -10,7 +10,7 @@ El número de archivos del registro no se cita aquí: el recuento vivo es
 
 RANGO CANÓNICO (medido con token_estimate(), cl100k_base real vía tiktoken):
 **suelo 1060** (solo _ALWAYS = ops + core-behavior), **techo 8004**.
-**suelo de sesión 2921** = ese suelo + CLAUDE.md + DYNAMIC.md, los dos ficheros que
+**suelo de sesión 2807** = ese suelo + CLAUDE.md + DYNAMIC.md, los dos ficheros que
 Claude Code auto-inyecta en toda sesión; es el impuesto de contexto real por sesión.
 
 El techo es el MÁXIMO REALMENTE ALCANZABLE, no el peor caso de la matriz
@@ -95,8 +95,8 @@ _BASH_KEYWORD_RULES: list[tuple[re.Pattern, list[str]]] = [
     # schema migration commands
     (re.compile(r"apply_migrations|schema_v2"),     ["db-mutations"]),
     (re.compile(r"\bsystemctl\b|\bservice\b"),       ["prevention"]),
-    (re.compile(r"\bclaude\b|\bcc\b"),               ["tools"]),
-    (re.compile(r"\bagent\b|\borchestrat"),          ["tiering", "agents", "plan-gate"]),
+    (re.compile(r"\bclaude\b"),                      ["tools"]),
+    (re.compile(r"bin/agents|Agent\(|dispatch_agent|\borchestrat"), ["tiering", "agents", "plan-gate"]),
     (re.compile(r"\btmux\b|\byazi\b|bin/workspace|launch_(swarm|beeswarm|monitor)"), ["workspace"]),
     (re.compile(r"generate_company|save_response|intl.writer|intl.reports"), ["intl-reports"]),
     (re.compile(r"\bfirecrawl\b"),                   ["web-tools"]),

@@ -699,9 +699,12 @@ except Exception as e:
     _log.warning("auto-commit failed", exc_info=True)
 
 # ── 2b. Git push after auto-commit ────────────────────────────────
+# premium (not origin): origin is the public repo and must stay vanilla —
+# only tasks/lessons.md + projects/*.md are auto-committed above and both are
+# gitignored today, but a push target must not depend on that staying true.
 try:
     result = subprocess.run(
-        ["git", "push", "origin", "master"],
+        ["git", "push", "premium", "main"],
         cwd=str(JARVIS),
         capture_output=True,
         timeout=30,
@@ -846,7 +849,7 @@ duration: {_duration_str}
                 )
             if not _already_committed_today:
                 subprocess.run(
-                    ["git", "-C", str(JARVIS), "push", "origin", "master"],
+                    ["git", "-C", str(JARVIS), "push", "premium", "main"],
                     capture_output=True,
                     timeout=20,
                 )

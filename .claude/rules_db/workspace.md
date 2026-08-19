@@ -1,6 +1,8 @@
 # DQIII8 — Workspace Layouts (tmux + Yazi)
 
-Scripts in `bin/workspace/`. Launch from any terminal with the aliases.
+Scripts in `bin/workspace/`. Launch from any terminal with the aliases — **human/interactive
+use only**; a non-interactive agent session has no aliases (`git-safety.md` §Bash rules) and
+must use the full `bash bin/workspace/*.sh` paths below.
 
 ## Layouts
 

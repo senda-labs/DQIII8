@@ -44,7 +44,7 @@ Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
 | intl-reports pipeline | `my-projects/intl-reports/RULE` (reglas absolutas + pipeline) |
 
 ## Inviolable Rules
-- NEVER write to `.env` or `CLAUDE.md` from generated code. `database/schema_v2.sql` is the schema SSOT — additive changes only, via reviewed migrations; destructive schema changes → flag, never execute. (`database/schema.sql` no longer exists.)
+- NEVER write to `.env` or `CLAUDE.md` — both are blocked paths, no exception, including a direct hand-authored edit (SSOT `.claude/rules/02_hooks_and_permissions.md` § Blocked paths). `database/schema_v2.sql` is the schema SSOT — additive changes only, via reviewed migrations; destructive schema changes → flag, never execute. (`database/schema.sql` no longer exists.)
 - NEVER hardcode API keys — all keys via `os.environ.get("VAR")` only.
 - NEVER commit `*.db` files — gitignored. Use `database/schema_v2.sql` for fresh installs.
 - `ANTHROPIC_API_KEY` must be `""` in subprocess env when using Claude Code OAuth.

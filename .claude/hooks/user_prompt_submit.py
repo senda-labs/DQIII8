@@ -206,14 +206,12 @@ def _relevant_lessons(keywords: list[str], max_lines: int = 3) -> list[str]:
         lines = LESSONS_FILE.read_text(encoding="utf-8").splitlines()
     except Exception:
         return []
-    # Read from bottom (most recent first)
     matched = []
     for line in reversed(lines):
         if not line.strip() or not line.startswith("-"):
             continue
         line_lower = line.lower()
         if any(kw in line_lower for kw in keywords):
-            # Strip the leading "- " and keep compact
             matched.append(line.lstrip("- ").strip()[:160])
             if len(matched) >= max_lines:
                 break

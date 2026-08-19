@@ -54,7 +54,6 @@ try:
         timeout=30,
     )
 
-    # Parse JSON output
     critico = alto = medio = 0
     findings_summary = []
     try:
@@ -76,19 +75,16 @@ try:
         # semgrep not available or parse error — skip score update silently
         sys.exit(0)
 
-    # Compute Shannon score
     score = max(0.0, 10.0 - 2 * critico - 1.0 * alto - 0.3 * medio)
 
-    # Print summary to stdout (visible in Claude context)
     short = os.path.basename(path)
     status = "OK" if score >= 8 else ("WARN" if score >= 6 else "CRITICO")
     print(
         f"[Shannon] {short} — score {score:.1f}/10 [{status}] " f"| C:{critico} A:{alto} M:{medio}"
     )
-    for line in findings_summary[:5]:  # cap at 5 lines
+    for line in findings_summary[:5]:
         print(line)
 
-    # Upsert vault_memory.shannon_score
     if DB.exists():
         try:
             conn = sqlite3.connect(str(DB), timeout=2)

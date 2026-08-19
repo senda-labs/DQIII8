@@ -90,6 +90,25 @@ for kw, pattern, conf, applied, successful, proj, created in rows:
 "
 ```
 
+## Expected output
+
+ASCII only — the bar is `X`/`.`, not Unicode blocks, and consolidation is a plain word:
+
+```
+============================================================
+  INSTINCT STATUS -- 5 total
+============================================================
+
+## DQIII8-CORE
+  XXXXXXXX..  80%  [nested-claude] consolidated
+    applied: 3x  successful: 100%  since: 2026-03-12
+    [2026-03-12] [nested-claude] use claude CLI inside session -> use OpenRouter
+
+## GLOBAL
+  XXXXX.....  50%  [encoding]
+    applied: 1x  successful: 0%  since: 2026-03-12
+```
+
 ## Notes
 
 - Source: `database/dqiii8.db` table `instincts`

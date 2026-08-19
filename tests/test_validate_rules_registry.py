@@ -53,6 +53,15 @@ def edit(repo: Path, rel: str, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+# The token-budget fixtures below mutate real citation sites, so they must key
+# off the CURRENT canonical range rather than a hardcoded snapshot — the range
+# gets re-measured and republished periodically (RC11, 2026-08-18), and a
+# hardcoded literal here goes stale on every republish instead of on drift.
+_FLOOR, _CEIL = vrr._canonical_range(
+    (ROOT / ".claude/hooks/rules_dispatcher.py").read_text(encoding="utf-8")
+)
+
+
 # ── the sanity check that matters most ──────────────────────────────────────
 
 
@@ -130,7 +139,7 @@ def test_registered_alias_with_missing_file_is_a_problem(repo: Path):
 
 
 def test_token_range_mismatch_in_dynamic_md_is_a_problem(repo: Path):
-    edit(repo, ".claude/rules/DYNAMIC.md", "946–7751", "1999–7751")
+    edit(repo, ".claude/rules/DYNAMIC.md", f"{_FLOOR}–{_CEIL}", f"1999–{_CEIL}")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("DYNAMIC.md" in p and "disagrees" in p for p in problems), problems
 
@@ -139,7 +148,7 @@ def test_restating_the_range_in_hooks_perms_is_a_problem(repo: Path):
     """02_hooks_and_permissions.md is itself injected — it must point at the
     docstring, never restate the numbers. It did, and drifted (2026-08-18)."""
     path = repo / ".claude/rules/02_hooks_and_permissions.md"
-    path.write_text(path.read_text() + "\n~946–7751 tokens\n", encoding="utf-8")
+    path.write_text(path.read_text() + f"\n~{_FLOOR}–{_CEIL} tokens\n", encoding="utf-8")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("must NOT restate the token range" in p for p in problems), problems
 
@@ -147,33 +156,33 @@ def test_restating_the_range_in_hooks_perms_is_a_problem(repo: Path):
 def test_prose_bound_restatement_in_hooks_perms_is_a_problem(repo: Path):
     """Even a prose 'suelo de N' restatement is a citation site."""
     path = repo / ".claude/rules/02_hooks_and_permissions.md"
-    path.write_text(path.read_text() + "\nel suelo de 946 es ops + core-behavior\n", encoding="utf-8")
+    path.write_text(path.read_text() + f"\nel suelo de {_FLOOR} es ops + core-behavior\n", encoding="utf-8")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("must NOT restate the token range" in p for p in problems), problems
 
 
 def test_canonical_range_change_alone_breaks_the_docs(repo: Path):
     """Re-measuring the dispatcher without updating DYNAMIC.md fails."""
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 946**", "**suelo 2000**")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", f"**suelo {_FLOOR}**", "**suelo 2000**")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("disagrees" in p for p in problems), problems
 
 
 def test_missing_canonical_markers_is_a_problem(repo: Path):
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "**suelo 946**", "**floor 946**")
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "**techo 7751**", "**ceiling 7751**")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", f"**suelo {_FLOOR}**", f"**floor {_FLOOR}**")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", f"**techo {_CEIL}**", f"**ceiling {_CEIL}**")
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("cannot locate the canonical token range" in p for p in problems), problems
 
 
 def test_rounded_prose_range_in_docstring_is_accepted(repo: Path):
-    """'~946–7751' is a legitimate (exact) rounding of the canonical 946-7751 — no warning."""
+    """'~floor-ceiling' is a legitimate (exact) rounding of the canonical range — no warning."""
     _, warnings = vrr.check_token_budget(src(repo))
     assert not [w for w in warnings if "not a rounding" in w], warnings
 
 
 def test_badly_rounded_prose_range_in_docstring_is_a_warning(repo: Path):
-    edit(repo, ".claude/hooks/rules_dispatcher.py", "~946–7751 tokens", "~1000–7751 tokens")
+    edit(repo, ".claude/hooks/rules_dispatcher.py", f"~{_FLOOR}–{_CEIL} tokens", f"~1000–{_CEIL} tokens")
     problems, warnings = vrr.check_token_budget(src(repo))
     assert any("not a rounding" in w for w in warnings), warnings
     assert not problems, problems
@@ -490,7 +499,7 @@ def test_cli_exits_zero_on_the_real_repo(capsys):
 
 
 def test_cli_exits_one_on_problems(repo: Path, capsys):
-    edit(repo, ".claude/rules/DYNAMIC.md", "946–7751", "1999–7751")
+    edit(repo, ".claude/rules/DYNAMIC.md", f"{_FLOOR}–{_CEIL}", f"1999–{_CEIL}")
     assert vrr.main(["--root", str(repo)]) == 1
     assert "problem(s)" in capsys.readouterr().out
 
@@ -571,7 +580,11 @@ def test_command_without_matching_skill_is_ignored(repo: Path):
 
 def test_frontmatter_is_not_counted_as_divergence(repo: Path):
     """Skills carry YAML frontmatter and command files do not; stripping it is
-    what keeps that structural difference from reading as a content fork."""
+    what keeps that structural difference from reading as a content fork — the
+    ratio/fenced-code checks must not fire on it. The separate, intended
+    missing-frontmatter warning (signal 3, `_PARITY_FRONTMATTER_KEYS`) still
+    fires; that one is what makes the gap visible instead of comparing it to
+    nothing, per this function's own docstring."""
     _pair(
         repo,
         "fm",
@@ -579,7 +592,9 @@ def test_frontmatter_is_not_counted_as_divergence(repo: Path):
         "---\nname: fm\ndescription: x\nallowed-tools: [Bash]\n---\n\n# /fm\n\n"
         + _PROCEDURE,
     )
-    assert vrr.check_command_skill_parity(src(repo)) == ([], [])
+    problems, warnings = vrr.check_command_skill_parity(src(repo))
+    assert problems == []
+    assert not any("diverged" in w or "fenced code" in w for w in warnings), warnings
 
 
 def test_real_handover_pair_is_a_clean_pointer():

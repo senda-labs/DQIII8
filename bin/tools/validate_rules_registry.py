@@ -313,6 +313,10 @@ def check_registry_reachability(src: Source) -> tuple[list[str], list[str]]:
 
 # ── check 2: token budget ────────────────────────────────────────────────────
 
+# "suelo de sesión N" is matched FIRST and its span removed, so the generic
+# `suelo` pattern below can never mistake the session number for the dispatcher
+# floor (the two are deliberately different quantities).
+_SESSION_FLOOR = re.compile(r"suelo\s+de\s+sesi[oó]n\s+\*{0,2}([\d.,]+)", re.IGNORECASE)
 _CANON_FLOOR = re.compile(r"suelo\s+(?:de\s+)?\*{0,2}([\d.,]+)", re.IGNORECASE)
 _CANON_CEIL = re.compile(r"techo\s+(?:de\s+)?\*{0,2}([\d.,]+)", re.IGNORECASE)
 _RANGE = re.compile(r"([\d][\d.,]*)\s*[-–—]\s*([\d][\d.,]*)\s*tokens")
@@ -321,13 +325,21 @@ _RANGE = re.compile(r"([\d][\d.,]*)\s*[-–—]\s*([\d][\d.,]*)\s*tokens")
 def _canonical_range(dispatcher_src: str) -> tuple[int, int] | None:
     """The ONE canonical range, taken from the rules_dispatcher docstring."""
     doc = ast.get_docstring(ast.parse(dispatcher_src)) or ""
-    floors = [_num(m) for m in _CANON_FLOOR.findall(doc)]
+    floors = [_num(m) for m in _CANON_FLOOR.findall(_SESSION_FLOOR.sub(" ", doc))]
     ceils = [_num(m) for m in _CANON_CEIL.findall(doc)]
     floors = [f for f in floors if f]
     ceils = [c for c in ceils if c]
     if not floors or not ceils:
         return None
     return floors[0], ceils[0]
+
+
+def _canonical_session_floor(dispatcher_src: str) -> int | None:
+    """The published per-session floor (dispatcher floor + the two auto-injected
+    files), or None if the docstring does not publish one."""
+    doc = ast.get_docstring(ast.parse(dispatcher_src)) or ""
+    values = [v for v in (_num(m) for m in _SESSION_FLOOR.findall(doc)) if v]
+    return values[0] if values else None
 
 
 def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
@@ -338,9 +350,10 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
     Places stating this number drifted twice on 2026-08-17 alone, and again on
     2026-08-18 — that last time in BOTH directions while this check still
     printed "consistent", because it only cross-checked prose against prose.
-    It now also MEASURES: the real floor and the two real ceiling paths (Bash
-    all-keywords, and the Edit branch into .claude/hooks/**.py, which no
-    Bash-only probe can reach). Measurement reads the worktree even under
+    It now also MEASURES, holding BOTH bounds to exact equality: the real floor,
+    the maximum reachable injection (derived from the dispatcher's own tables,
+    not from a hand-written probe), and the per-session floor that includes the
+    two files Claude Code auto-injects. Measurement reads the worktree even under
     --staged: token_estimate() needs real files on disk.
     """
     problems: list[str] = []
@@ -360,6 +373,15 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
             warnings,
         )
     floor, ceiling = canon
+    session_floor = _canonical_session_floor(dispatcher_src)
+    if session_floor is None:
+        problems.append(
+            f"{DISPATCHER}: the docstring publishes 'suelo {floor}' (dispatcher-only) "
+            "but no 'suelo de sesión N'. CLAUDE.md and DYNAMIC.md are auto-injected "
+            "into every session and nothing else measures them, so the dispatcher "
+            "floor alone reads as a ~2.6x understatement of the real context tax "
+            "(C8, 2026-08-18). Publish both."
+        )
 
     # The docstring also restates the range in rounded prose ("~1.430-4.470
     # tokens"). Rounding to the nearest 10 is legitimate; anything further off
@@ -394,12 +416,17 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
                     f"{rel}: token range '{raw_lo}-{raw_hi}' disagrees with the "
                     f"canonical '{floor}-{ceiling}' in {DISPATCHER}'s docstring."
                 )
-        # Prose restatements of either bound ("el suelo de 1.432 es ...").
-        for pattern, expected, label in (
-            (_CANON_FLOOR, floor, "suelo"),
-            (_CANON_CEIL, ceiling, "techo"),
+        # Prose restatements of any published bound ("el suelo de 1.432 es ...").
+        # The session floor is stripped before the generic `suelo` sweep so the
+        # two numbers cannot be confused for each other.
+        for pattern, expected, label, scan in (
+            (_SESSION_FLOOR, session_floor, "suelo de sesión", text),
+            (_CANON_FLOOR, floor, "suelo", _SESSION_FLOOR.sub(" ", text)),
+            (_CANON_CEIL, ceiling, "techo", text),
         ):
-            for raw in pattern.findall(text):
+            if expected is None:
+                continue
+            for raw in pattern.findall(scan):
                 value = _num(raw)
                 if value is not None and value != expected:
                     problems.append(
@@ -421,14 +448,15 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
                 f"(found {stray!r}) — point at {DISPATCHER}'s docstring instead."
             )
 
-    problems.extend(_measured_range_problems(src, floor, ceiling))
+    problems.extend(_measured_range_problems(src, floor, ceiling, session_floor))
     return problems, warnings
 
 
-# Probes for the two structurally distinct ceiling paths. The Bash probe
-# combines every _BASH_KEYWORD_RULES trigger; the Edit probe is the ONLY way to
-# reach `hooks-perms`/`tiering`/`db-mutations`, which are wired to path
-# substrings inside get_rules() and are unreachable from any Bash command.
+# Concrete probes kept as an *achievability* cross-check on the analytic maximum
+# below: a hand-written probe proves the alias set the tables allow is actually
+# producible by a real tool call. They are no longer the source of the ceiling —
+# a hand-written probe can only ever under-measure once a new trigger is added
+# (which is exactly how 7751 stayed published while reality was 7681).
 _CEILING_PROBES = (
     (
         "Bash",
@@ -448,9 +476,103 @@ _CEILING_PROBES = (
     ),
 )
 
+# Path substrings inside get_rules()'s Edit/Write branch. Not a table in the
+# dispatcher, so it is mirrored here; check_registry_reachability() already
+# fails if any of these stops being a real alias.
+_EDIT_PATH_BRANCH_ALIASES = ("hooks-perms", "tiering", "db-mutations")
 
-def _measured_range_problems(src: Source, floor: int, ceiling: int) -> list[str]:
-    """Measure the live corpus and hold the published range to it.
+
+def _render_injection(rd, aliases) -> str:
+    """Rebuild get_rules()'s output block for an arbitrary alias list.
+
+    Mirrors get_rules()'s dedupe-then-join, so the token cost of a *derived*
+    alias set is measured exactly the way the runtime would emit it.
+    """
+    seen: set[str] = set()
+    parts = ["[DQIII8 Rules — context-specific]"]
+    for alias in aliases:
+        if alias in seen or alias not in rd._REGISTRY:
+            continue
+        seen.add(alias)
+        content = rd._read(alias)
+        if content:
+            parts.append(content)
+    return "\n\n".join(parts) if len(parts) > 1 else ""
+
+
+def _reachable_alias_sets(rd) -> list[tuple[str, list[str]]]:
+    """Every alias set get_rules() can emit, DERIVED FROM THE DISPATCHER TABLES.
+
+    Exhaustive by construction rather than by luck: a new `_BASH_KEYWORD_RULES`
+    row, a new `_EXT_RULES` extension or a new `_TOOL_RULES` entry enters the
+    ceiling automatically. The prior hand-written probe string could not do this
+    — it hit every alias group only by coincidence, so any added trigger would
+    have silently under-measured the ceiling forever.
+    """
+    always = list(rd._ALWAYS)
+    sets: list[tuple[str, list[str]]] = [("floor:_ALWAYS-only", always)]
+
+    # Bash: every keyword row can fire in a single command (they are OR-ed, not
+    # exclusive), so their union is genuinely reachable.
+    bash = always + list(rd._TOOL_RULES.get("Bash", []))
+    for _pattern, rule_list in rd._BASH_KEYWORD_RULES:
+        bash.extend(rule_list)
+    sets.append(("Bash:all-keywords", bash))
+
+    # Edit/Write: exactly one extension per call, but every path-substring
+    # branch can co-fire with it (".claude/hooks" + "domain_agent" + "database/"
+    # in one path).
+    for ext, rule_list in rd._EXT_RULES.items():
+        sets.append(
+            (f"Edit:{ext}+path-branches", always + rule_list + list(_EDIT_PATH_BRANCH_ALIASES))
+        )
+    sets.append(("Edit:no-ext+path-branches", always + list(_EDIT_PATH_BRANCH_ALIASES)))
+
+    for tool, rule_list in rd._TOOL_RULES.items():
+        if tool in ("Bash", "Edit", "Write"):
+            continue
+        sets.append((f"{tool}", always + rule_list))
+    return sets
+
+
+def _measured_ceiling(rd) -> tuple[int, str]:
+    """(max reachable injection tokens, label of the path that reaches it)."""
+    best = (0, "none")
+    for label, aliases in _reachable_alias_sets(rd):
+        tokens = rd.token_estimate(_render_injection(rd, aliases))
+        if tokens > best[0]:
+            best = (tokens, label)
+    return best
+
+
+def _session_floor(rd, root: Path) -> int | None:
+    """Dispatcher floor + the two files Claude Code auto-injects every session.
+
+    `CLAUDE.md` and `.claude/rules/DYNAMIC.md` are outside rules_dispatcher's
+    control and nothing measured them before (C8, 2026-08-18), so the published
+    946 read as "minimum context tax per session" while the real figure was
+    ~2.6x that. Measuring them here means they cannot grow unobserved either.
+    """
+    total = rd.token_estimate(rd.get_rules("Glob", {}))
+    for rel in ("CLAUDE.md", DYNAMIC_MD):
+        try:
+            total += rd.token_estimate((root / rel).read_text(encoding="utf-8").strip())
+        except OSError:
+            return None
+    return total
+
+
+def _measured_range_problems(
+    src: Source, floor: int, ceiling: int, session_floor: int | None
+) -> list[str]:
+    """Measure the live corpus and hold the published numbers to it.
+
+    Both bounds are held to EXACT equality. The ceiling check used to be
+    one-sided (`measured > ceiling`), which let a stale-*high* ceiling — an
+    inflated budget claim that is simply false — pass silently forever; that is
+    exactly what happened on the commit that published 7751 against a real 7681
+    (C1, 2026-08-18). An over-published ceiling is as much a lie about the system
+    as an under-published one, so drift in either direction now fails.
 
     rules_dispatcher resolves its rule files from DQIII8_ROOT on disk, so this
     can only measure the real repo. Synthetic fixture repos (unit tests) get
@@ -472,13 +594,39 @@ def _measured_range_problems(src: Source, floor: int, ceiling: int) -> list[str]
             f"the docstring and {DYNAMIC_MD} together."
         )
 
-    for tool, tool_input, label in _CEILING_PROBES:
+    measured_ceiling, label = _measured_ceiling(rd)
+    if measured_ceiling != ceiling:
+        direction = "stale-high (an inflated budget claim)" if measured_ceiling < ceiling else "exceeded"
+        problems.append(
+            f"{DISPATCHER}: docstring ceiling is {ceiling} but the maximum "
+            f"reachable injection ('{label}') measures {measured_ceiling} — "
+            f"{direction}. Re-publish the ceiling in the docstring and "
+            f"{DYNAMIC_MD} together, AFTER the last edit to any injected file."
+        )
+
+    # Achievability: the analytic maximum must be producible by a real tool call.
+    for tool, tool_input, probe_label in _CEILING_PROBES:
         measured = rd.token_estimate(rd.get_rules(tool, tool_input))
-        if measured > ceiling:
+        if measured > measured_ceiling:
             problems.append(
-                f"{DISPATCHER}: docstring ceiling is {ceiling} but the reachable "
-                f"'{label}' path measures {measured}. Shrink the rule files or "
-                f"re-publish the ceiling in the docstring and {DYNAMIC_MD}."
+                f"{DISPATCHER}: concrete probe '{probe_label}' measures {measured}, "
+                f"above the analytic maximum {measured_ceiling} — _reachable_alias_sets() "
+                "is missing a branch that get_rules() can actually take."
+            )
+
+    if session_floor is not None:
+        measured_session = _session_floor(rd, src.root)
+        if measured_session is None:
+            problems.append(
+                f"{DISPATCHER}: cannot measure the session floor (CLAUDE.md or "
+                f"{DYNAMIC_MD} unreadable)."
+            )
+        elif measured_session != session_floor:
+            problems.append(
+                f"{DISPATCHER}: published session floor is {session_floor} but "
+                f"dispatcher floor + CLAUDE.md + {DYNAMIC_MD} measures "
+                f"{measured_session}. Re-measure and update the docstring and "
+                f"{DYNAMIC_MD} together."
             )
     return problems
 
@@ -850,6 +998,26 @@ def check_claude_md_counts(src: Source) -> tuple[list[str], list[str]]:
     if not declared:
         return problems, warnings  # counts not present — nothing to check
 
+    live = _live_component_counts(src)
+    for label, declared_n in declared.items():
+        live_n = live.get(label)
+        if live_n is None:
+            continue
+        if declared_n != live_n:
+            problems.append(
+                f"CLAUDE.md: declares '{label} ({declared_n})' but the live "
+                f"count is {live_n} — update CLAUDE.md or the live count drifted."
+            )
+
+    return problems, warnings
+
+
+def _live_component_counts(src: Source) -> dict[str, int | None]:
+    """Live Hooks/Skills/Agents/Contextual-rules counts, or None per entry when
+    this `src` does not carry that subtree at all (test fixtures mirror only a
+    subset of `.claude/`). Shared by `check_claude_md_counts()` and
+    `check_readme_counts()` so the two never disagree about what "live" means.
+    """
     hooks_live = len(_glob_paths(src, ".claude/hooks/*.py"))
     skill_files_live = len(_glob_paths(src, ".claude/skills/*/SKILL.md"))
     # Not src.list_agent_stems(): its staged-mode `git ls-files -- "*.md"`
@@ -872,21 +1040,89 @@ def check_claude_md_counts(src: Source) -> tuple[list[str], list[str]]:
         except Exception:
             pass  # check_registry_reachability() already reports load failures
 
-    live = {
+    return {
         "Hooks": hooks_live if _dir_has_any_file(src, ".claude/hooks") else None,
         "Skills": skill_files_live if _dir_has_any_file(src, ".claude/skills") else None,
         "Agents": agents_live if _dir_has_any_file(src, AGENTS_DIR) else None,
         "Contextual rules": rules_db_aliases_live,
     }
-    for label, declared_n in declared.items():
-        live_n = live.get(label)
-        if live_n is None:
-            continue
-        if declared_n != live_n:
-            problems.append(
-                f"CLAUDE.md: declares '{label} ({declared_n})' but the live "
-                f"count is {live_n} — update CLAUDE.md or the live count drifted."
-            )
+
+
+# ── check 5b: README.md counts ───────────────────────────────────────────────
+
+README_MD = "README.md"
+SCHEMA_SQL = "database/schema_v2.sql"
+
+# Every "<N> <thing>" shape README uses for a count this repo can introspect.
+# Deliberately phrase-driven rather than line-anchored: README restates the same
+# counts in the intro, the design-principles list, the ASCII architecture
+# diagram, a section heading, the directory tree and the installer steps, and new
+# restatements keep appearing (F3 found the hook count wrong in 4 places at once).
+_README_COUNT_RE = re.compile(
+    r"(\d+)\s+(?:live\s+)?"
+    r"(lifecycle hooks|hooks|slash-command skills|skills|specialist agents"
+    r"|specialist agent definitions|agents|tables|views)\b"
+)
+_README_LABEL = {
+    "lifecycle hooks": "Hooks",
+    "hooks": "Hooks",
+    "slash-command skills": "Skills",
+    "skills": "Skills",
+    "specialist agents": "Agents",
+    "specialist agent definitions": "Agents",
+    "agents": "Agents",
+    "tables": "Tables",
+    "views": "Views",
+}
+_CREATE_TABLE_RE = re.compile(r"^\s*CREATE\s+TABLE\b", re.IGNORECASE | re.MULTILINE)
+_CREATE_VIEW_RE = re.compile(r"^\s*CREATE\s+VIEW\b", re.IGNORECASE | re.MULTILINE)
+
+
+def check_readme_counts(src: Source) -> tuple[list[str], list[str]]:
+    """`README.md`'s hook / skill / agent / table / view counts must match the
+    live tree, exactly as `check_claude_md_counts()` pins `CLAUDE.md:16`.
+
+    F3 of the 2026-08-18 panel-6 audit: README is the repo's most public
+    document, restates the same governance counts six times, and every check in
+    this file stopped at `.claude/` + `CLAUDE.md` — so "14 hooks" survived in
+    four places while the live count was 15, alongside `46 tables + 20 views`
+    against a 60/29 schema. `list_governance_md()` was widened once, for
+    `CLAUDE.md`; the same reasoning applies here.
+
+    Counts come from `_live_component_counts()` (shared with the CLAUDE.md
+    check, so the two can never disagree about what "live" means) plus
+    `CREATE TABLE`/`CREATE VIEW` statements in `schema_v2.sql` — the schema file
+    rather than `dqiii8.db`, because the DB is gitignored, absent on a fresh
+    clone, and carries runtime-created tables (`learning_metrics`,
+    `harvest_log`) that a README describing the *installer* must not count.
+
+    Hard problems, not warnings: every number here is mechanically derivable, so
+    a mismatch is always a real defect and never a judgement call.
+    """
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    text = src.read(README_MD)
+    if text is None:
+        return problems, warnings  # no README in this source (test fixtures)
+
+    live: dict[str, int | None] = dict(_live_component_counts(src))
+    schema = src.read(SCHEMA_SQL)
+    live["Tables"] = len(_CREATE_TABLE_RE.findall(schema)) if schema else None
+    live["Views"] = len(_CREATE_VIEW_RE.findall(schema)) if schema else None
+
+    for n, line in enumerate(text.splitlines(), 1):
+        for m in _README_COUNT_RE.finditer(line):
+            label = _README_LABEL[m.group(2).lower()]
+            live_n = live.get(label)
+            if live_n is None:
+                continue
+            declared_n = int(m.group(1))
+            if declared_n != live_n:
+                problems.append(
+                    f"{README_MD}:{n}: claims '{m.group(0)}' but the live count "
+                    f"is {live_n} — update README.md (or the count drifted)."
+                )
 
     return problems, warnings
 
@@ -971,18 +1207,84 @@ _POINTER_MAX_LINES = 15
 _PARITY_MIN_RATIO = 0.60
 
 
-def _parity_body(text: str) -> list[str]:
-    """Substantive lines only: no YAML frontmatter, no blank lines, no
-    blockquote annotations (the `> **SSOT: ...**` cross-reference convention is
-    metadata about the duplication, not part of the procedure)."""
+def _split_frontmatter(text: str) -> tuple[list[str], list[str]]:
+    """(frontmatter lines, remaining lines). Empty frontmatter when absent."""
     lines = text.splitlines()
     if lines and lines[0].strip() == "---":
         end = next((i for i, ln in enumerate(lines[1:], 1) if ln.strip() == "---"), None)
         if end is not None:
-            lines = lines[end + 1 :]
+            return lines[1:end], lines[end + 1 :]
+    return [], lines
+
+
+def _frontmatter_fields(text: str) -> dict[str, str]:
+    """Top-level `key: value` pairs of a file's YAML frontmatter, values
+    normalised to a single-spaced string. Nested/list continuation lines are
+    folded into the key they belong to, so `auto-invoke:` blocks compare as a
+    unit — this is a drift detector, not a YAML parser.
+    """
+    fields: dict[str, str] = {}
+    key: str | None = None
+    for raw in _split_frontmatter(text)[0]:
+        if not raw.strip():
+            continue
+        if raw[:1].strip() and ":" in raw and not raw.lstrip().startswith("-"):
+            key, _, value = raw.partition(":")
+            key = key.strip()
+            fields[key] = " ".join(value.split())
+        elif key is not None:
+            fields[key] = (fields[key] + " " + " ".join(raw.split())).strip()
+    return fields
+
+
+# Frontmatter keys that decide *who may run this and when* — a mismatch here is
+# a behavioral fork even when the prose is byte-identical (F2: `instinct-status`
+# declared `allowed_tools`, a key no runtime reads, while the skill declared
+# `allowed-tools` + `user-invocable: false`).
+_PARITY_FRONTMATTER_KEYS = ("allowed-tools", "user-invocable", "auto-invoke", "model")
+
+
+def _parity_body(text: str) -> list[str]:
+    """Substantive lines only: no YAML frontmatter, no blank lines, no
+    blockquote annotations (the `> **SSOT: ...**` cross-reference convention is
+    metadata about the duplication, not part of the procedure)."""
     return [
-        s for ln in lines if (s := ln.strip()) and not s.startswith(">")
+        s for ln in _split_frontmatter(text)[1] if (s := ln.strip()) and not s.startswith(">")
     ]
+
+
+def _pointer_body(text: str) -> list[str]:
+    """Like `_parity_body()` but **keeps** blockquote lines. The pointer test
+    must not strip them: a command file whose entire substance sits inside a
+    blockquote otherwise measures ~1 line and is waved through as a "pointer"
+    no matter what the blockquote instructs (F2 loophole, verified with a
+    blockquote reading `run git push --force origin master`).
+    """
+    return [s for ln in _split_frontmatter(text)[1] if (s := ln.strip())]
+
+
+_SHELL_FENCE = re.compile(r"^\s*(?:```|~~~)\s*[A-Za-z0-9_+.\-]*\s*$")
+
+
+def _fenced_lines(text: str) -> set[str]:
+    """Every non-comment line inside a fenced code block, as a set.
+
+    The cheap semantic proxy the audit asked for: prose similarity cannot see
+    that one copy runs `ruff check --select E,F,W` and the other
+    `--select E,F,W,PLE2510,…`, because a flag list is a tiny fraction of a
+    large document — but as a *line set* the two differ outright. Same for a
+    missing `[ -f … ] || touch …` guard.
+    """
+    out: set[str] = set()
+    inside = False
+    for ln in _split_frontmatter(text)[1]:
+        if _SHELL_FENCE.match(ln):
+            inside = not inside
+            continue
+        s = ln.strip()
+        if inside and s and not s.startswith("#"):
+            out.add(s)
+    return out
 
 
 def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
@@ -994,10 +1296,26 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
     agent that read the wrong copy would auto-push when it should have asked.
 
     A pair is clean when the command file is a pure pointer at the skill (the
-    SSOT pattern). Otherwise the two bodies are compared and a divergence below
-    `_PARITY_MIN_RATIO` is reported. Warn-only by design: the remaining 10
-    duplicated pairs are known pre-existing debt slated for their own batch, and
-    hard-failing on them would break every commit in the repo.
+    SSOT pattern) — measured over the body *including* blockquotes, so a file
+    cannot hide a full procedure inside a `>` block and still read as a pointer.
+
+    Otherwise three independent signals are compared, because prose similarity
+    alone has a measured ~67% false-negative rate on this corpus (F2, 2026-08-18
+    audit): an adversarial fork that inverts only the behaviour of a SKILL.md
+    scores 0.95 and passes. The two it misses are added here:
+
+      1. **Prose similarity** — catches wholesale rewrites (`skill-create` 0.06).
+      2. **Fenced code lines** — the commands actually executed, compared as
+         sets. This is what would have caught `quality-gate`'s
+         `--select E,F,W` vs `--select E,F,W,PLE2510-2515` (a dropped
+         trojan-source defense that still reported PASS) and `checkpoint`'s
+         missing `touch` guard.
+      3. **Invocation frontmatter** (`_PARITY_FRONTMATTER_KEYS`) — who may run
+         this and when. `_parity_body()` strips frontmatter, so before this
+         these fields were compared by nothing.
+
+    Warn-only by design: the remaining duplicated pairs are known pre-existing
+    debt, and hard-failing on them would break every commit in the repo.
     """
     problems: list[str] = []
     warnings: list[str] = []
@@ -1010,19 +1328,55 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
         if cmd_text is None or skill_text is None:
             continue  # unpaired command or skill — nothing to compare
 
-        cmd_body = _parity_body(cmd_text)
-        if len(cmd_body) <= _POINTER_MAX_LINES and skill_rel in cmd_text:
+        if len(_pointer_body(cmd_text)) <= _POINTER_MAX_LINES and skill_rel in cmd_text:
             continue  # pure pointer at the SSOT — the intended end state
 
         ratio = difflib.SequenceMatcher(
-            None, cmd_body, _parity_body(skill_text)
+            None, _parity_body(cmd_text), _parity_body(skill_text)
         ).ratio()
-        if ratio < _PARITY_MIN_RATIO:
+        diverged = ratio < _PARITY_MIN_RATIO
+        if diverged:
             warnings.append(
                 f"{rel} duplicates {skill_rel} and has diverged "
                 f"(similarity {ratio:.2f} < {_PARITY_MIN_RATIO:.2f}) — reconcile "
                 f"them, or reduce the command file to a pointer at the skill."
             )
+
+        # Only for pairs the ratio waves through: a wholesale rewrite is already
+        # reported above, and re-reporting its code blocks adds noise without
+        # information. The point of this signal is the *near-identical* pair
+        # whose one divergent command line the ratio cannot see.
+        cmd_cmds, skill_cmds = _fenced_lines(cmd_text), _fenced_lines(skill_text)
+        if not diverged and cmd_cmds != skill_cmds:
+            sample = sorted(cmd_cmds ^ skill_cmds)[:2]
+            warnings.append(
+                f"{rel} duplicates {skill_rel} but their fenced code blocks "
+                f"differ in {len(cmd_cmds ^ skill_cmds)} line(s) — one copy runs "
+                f"commands the other does not, e.g. {sample}. Reconcile the "
+                f"behaviour, or reduce the command file to a pointer."
+            )
+
+        cmd_fm, skill_fm = _frontmatter_fields(cmd_text), _frontmatter_fields(skill_text)
+        if not cmd_fm:
+            # No frontmatter at all: every governance field lives on one side
+            # only. One line, not one per key — the warning channel has to stay
+            # small enough that a new entry is actually read (F6).
+            absent = [k for k in _PARITY_FRONTMATTER_KEYS if k in skill_fm]
+            if absent:
+                warnings.append(
+                    f"{rel} duplicates {skill_rel} but declares no frontmatter, so "
+                    f"{', '.join(f'`{k}`' for k in absent)} exist only in the skill "
+                    f"— nothing states who may invoke the command form."
+                )
+        else:
+            for key in _PARITY_FRONTMATTER_KEYS:
+                if cmd_fm.get(key) != skill_fm.get(key):
+                    warnings.append(
+                        f"{rel} duplicates {skill_rel} but their `{key}:` "
+                        f"frontmatter differs ({cmd_fm.get(key)!r} vs "
+                        f"{skill_fm.get(key)!r}) — this field governs who may "
+                        f"invoke the command and when."
+                    )
 
     return problems, warnings
 
@@ -1035,6 +1389,7 @@ CHECKS = (
     ("agent-names", check_agent_names_exist),
     ("model-slugs", check_model_slugs_match_code),
     ("claude-md-counts", check_claude_md_counts),
+    ("readme-counts", check_readme_counts),
     ("file-citations", check_file_citations_exist),
     ("command-skill-parity", check_command_skill_parity),
 )

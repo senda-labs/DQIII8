@@ -36,8 +36,15 @@ and based on it implements:
 def kelly_criterion(win_prob: float, win_loss_ratio: float, half_kelly: bool = True) -> float:
     """
     Calculates the optimal position size according to Kelly Criterion.
+    ...
     """
 ```
+
+Implementation requirements:
+- Full type hints
+- Input validation (0 < win_prob < 1, win_loss_ratio > 0)
+- Half-Kelly support (default True — more conservative)
+- Usage example in docstring with real trading values
 
 Writes result to: `tasks/results/python-kelly-[timestamp].md`
 
@@ -50,10 +57,12 @@ python-specialist reads that file → implements function
 ```
 
 The python-specialist does NOT start until research-analyst has written its result.
+This validates sequential coordination of Agent Teams.
 
 ## Execution
 
-Launch both agents as a coordinated team. When done, show:
+Launch both agents as a coordinated team. The orchestrator waits for the result
+from research-analyst before passing context to python-specialist. When done, show:
 1. Research summary (formula + parameters)
 2. Implemented Python code
 3. Confirmation: `[TEAM] Kelly Criterion — research + impl complete`

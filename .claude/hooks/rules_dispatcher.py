@@ -95,7 +95,6 @@ _BASH_KEYWORD_RULES: list[tuple[re.Pattern, list[str]]] = [
     # schema migration commands
     (re.compile(r"apply_migrations|schema_v2"),     ["db-mutations"]),
     (re.compile(r"\bsystemctl\b|\bservice\b"),       ["prevention"]),
-    (re.compile(r"\bnohup\b|\bbg\b"),               []),
     (re.compile(r"\bclaude\b|\bcc\b"),               ["tools"]),
     (re.compile(r"\bagent\b|\borchestrat"),          ["tiering", "agents", "plan-gate"]),
     (re.compile(r"\btmux\b|\byazi\b|bin/workspace|launch_(swarm|beeswarm|monitor)"), ["workspace"]),
@@ -106,7 +105,7 @@ _BASH_KEYWORD_RULES: list[tuple[re.Pattern, list[str]]] = [
 # ── File extension → rules ───────────────────────────────────────────────────
 _EXT_RULES: dict[str, list[str]] = {
     ".py":   ["python", "quality"],
-    ".md":   ["ops"],
+    ".md":   [],
     ".json": [],
     ".sql":  ["db-mutations", "prevention"],  # SQL edits always get DB mutation rules
     ".sh":   ["git-safety"],
@@ -121,7 +120,7 @@ def _read(alias: str) -> str:
 
     Fail-open by contract (hook errors must degrade to APPROVE), but emit a
     degraded-signal warning to stderr so missing/broken rule files are visible
-    in hook logs instead of silently injecting nothing (audit P3-15, 2026-07-05).
+    in hook logs instead of silently injecting nothing.
     """
     rel = _REGISTRY.get(alias, "")
     if not rel:
@@ -206,7 +205,7 @@ def token_estimate(text: str) -> int:
     """Real cl100k_base token count (tiktoken). Falls back to the word-count
     heuristic only if tiktoken/its encoding data is unavailable — that
     heuristic undercounts real BPE tokens by ~30-40% on this corpus and must
-    never be the source of a number cited in docs (RC8, 2026-08-17/18)."""
+    never be the source of a number cited in docs."""
     global _ENCODING
     if _ENCODING is None:
         try:

@@ -1981,9 +1981,12 @@ class PermissionAnalyzer:
             if _ENV_DUMP_TO_NET_RE.search(cmd):
                 return self._deny(
                     tool, cmd,
-                    "Command pipes the full process environment into a network tool.",
+                    "Command sends the full process environment over the "
+                    "network, either piped into a network tool or "
+                    "redirected straight to a socket file descriptor.",
                     "CRITICAL", "bash_web_egress_env_dump",
-                    "Never pipe printenv/env output to curl/wget/nc.",
+                    "Never pipe printenv/env output to curl/wget/nc, and "
+                    "never redirect it (>&N) to a socket fd.",
                 )
             # Payload-shape check, independent of the destination host: a
             # request carrying os.environ is an environment dump whether it
@@ -2112,11 +2115,26 @@ class PermissionAnalyzer:
         WebSearch — no attacker-chosen destination exists, so only the secret
             shape is checked: a key pasted into a third-party search backend's
             logs is a disclosure even though nobody chose the recipient.
-        Any other MCP search-shaped tool (a `query` key, no `url` key — e.g.
-            mcp__exa__web_search_exa) is the same case as
-            WebSearch: a third-party backend, no attacker-chosen destination.
+        Any other MCP search-shaped tool (a `query` key, no `url` key, no
+            `sql`/`statement` key — e.g. mcp__exa__web_search_exa) is the
+            same case as WebSearch: a third-party backend, no
+            attacker-chosen destination. A `query` key accompanied by
+            `sql`/`statement` is a DB call that happens to reuse the name
+            "query" for its statement text, not a search — routing it
+            through the secret-only check here would skip the
+            CRITICAL/HIGH_RISK SQL pattern checks below. Excluding it here
+            loses no coverage: the payload-wide MCP credential scan and the
+            `_mcp_sql_text` extraction that feeds the CRITICAL/HIGH_RISK SQL
+            pattern checks (both further down `evaluate()`) already read the
+            same `sql`/`query`/`statement` keys regardless of which branch
+            here runs.
         """
-        if tool == "WebSearch" or (tool.startswith("mcp__") and inp.get("query") and not inp.get("url")):
+        if tool == "WebSearch" or (
+            tool.startswith("mcp__")
+            and inp.get("query")
+            and not inp.get("url")
+            and not (inp.get("sql") or inp.get("statement"))
+        ):
             query = str(inp.get("query", "") or "")
             secret = _url_secret_hit(query)
             if secret:
@@ -3016,7 +3034,6 @@ def record_rejection(tool: str, inp: dict, result: dict, session_id: str | None 
     Records DENY and ESCALATE in two channels:
     Channel 1 — DB: permission_decisions table
     Channel 2 — JSON mailbox: tasks/permission_rejection.json (read by OrchestratorLoop)
-    FIX A: added JSON channel.
 
     session_id (2026-08-18): defaults to the module-level
     SESSION_ID constant, which is only ever set from CLAUDE_SESSION_ID — a

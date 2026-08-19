@@ -1388,7 +1388,6 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
 # ── check 8: constant lists match prose ──────────────────────────────────────
 
 PERMISSION_ANALYZER = ".claude/hooks/permission_analyzer.py"
-HOOKS_MD = ".claude/rules/02_hooks_and_permissions.md"
 
 
 def _code_blocked_paths(src: Source) -> list[str] | None:
@@ -1407,7 +1406,7 @@ def _code_blocked_paths(src: Source) -> list[str] | None:
 def check_constant_lists_match_prose(src: Source) -> tuple[list[str], list[str]]:
     """`02_hooks_and_permissions.md`'s "Blocked paths" line restates
     `BLOCKED_PATHS` inline (backtick-comma list) instead of linking to code:
-    the list grew from 11 to 21 entries in one edit and the doc line had to be
+    the list has grown from 11 to 23 entries across several edits and the doc line had to be
     hand-edited to keep up, with nothing that would fail if a future edit
     forgot one side. Hard-fail: an out-of-sync prose restatement of a security
     allow/deny list is a doc that lies about what the code actually blocks.
@@ -1420,15 +1419,15 @@ def check_constant_lists_match_prose(src: Source) -> tuple[list[str], list[str]]
         problems.append(f"cannot find BLOCKED_PATHS in {PERMISSION_ANALYZER}")
         return problems, warnings
 
-    doc_text = src.read(HOOKS_MD)
+    doc_text = src.read(HOOKS_PERMS_MD)
     if doc_text is None:
-        problems.append(f"cannot read {HOOKS_MD}")
+        problems.append(f"cannot read {HOOKS_PERMS_MD}")
         return problems, warnings
 
     for path in code_paths:
         if f"`{path}`" not in doc_text:
             problems.append(
-                f"{HOOKS_MD}: BLOCKED_PATHS entry `{path}` (in {PERMISSION_ANALYZER}) "
+                f"{HOOKS_PERMS_MD}: BLOCKED_PATHS entry `{path}` (in {PERMISSION_ANALYZER}) "
                 "is not cited in the doc's Blocked paths restatement."
             )
 
@@ -1447,7 +1446,7 @@ def check_constant_lists_match_prose(src: Source) -> tuple[list[str], list[str]]
                 continue
             if cited not in code_set:
                 problems.append(
-                    f"{HOOKS_MD}: cites `{cited}` in the Blocked paths list, "
+                    f"{HOOKS_PERMS_MD}: cites `{cited}` in the Blocked paths list, "
                     f"which is not in BLOCKED_PATHS in {PERMISSION_ANALYZER} "
                     "(stale or invented entry)."
                 )
@@ -1501,13 +1500,19 @@ def check_no_audit_id_comments(src: Source) -> tuple[list[str], list[str]]:
 
 
 # ── check: alias-reach counts ("2 / 13 / 4") ─────────────────────────────────
-# [maintainability-ssot finding 1] The floor (2 _ALWAYS aliases), reachable
-# ceiling (13, one Bash command hitting every _BASH_KEYWORD_RULES pattern) and
-# `git status`'s own injection count (4) are hardcoded, unenforced prose in
-# CLAUDE.md, 02_hooks_and_permissions.md and DYNAMIC.md. Derived analytically
-# from the dispatcher's own tables (same primitives as _measured_range_problems
-# above) rather than a hand re-count, so a new _BASH_KEYWORD_RULES row or
-# registry alias updates the live numbers automatically.
+# The floor (2 _ALWAYS aliases), reachable ceiling (13, one Bash command hitting
+# every _BASH_KEYWORD_RULES pattern) and `git status`'s own injection count (4)
+# are hardcoded, unenforced prose in CLAUDE.md and 02_hooks_and_permissions.md.
+# Derived analytically from the dispatcher's own tables (same primitives as
+# _measured_range_problems above) rather than a hand re-count, so a new
+# _BASH_KEYWORD_RULES row or registry alias updates the live numbers
+# automatically. DYNAMIC.md deliberately does NOT restate these numbers (it
+# points at rules_dispatcher.py's docstring instead, to keep its own token
+# footprint down) — do not add a DYNAMIC_MD entry here unless DYNAMIC.md's
+# prose is made to cite a number again; an entry whose regex can never match
+# passes silently and gives no real coverage (this happened once already,
+# 2026-08-19, when the prose it matched was trimmed in the same commit that
+# added the pattern — see test_every_alias_count_pattern_matches below).
 
 _ALIAS_COUNT_PATTERNS = {
     "CLAUDE.md": {
@@ -1518,11 +1523,6 @@ _ALIAS_COUNT_PATTERNS = {
         "floor": re.compile(r"floor is the (\d+) `_ALWAYS`"),
         "ceiling": re.compile(r"reachable ceiling is (\d+)"),
         "git_status": re.compile(r"git status.? already injects (\d+)"),
-    },
-    DYNAMIC_MD: {
-        "floor": re.compile(r"mínimo:\s*(\d+) ficheros"),
-        "ceiling": re.compile(r"máximo alcanzable:\s*(\d+) ficheros"),
-        "git_status": re.compile(r"git status.? ya inyecta (\d+)"),
     },
 }
 
@@ -1552,8 +1552,8 @@ def _alias_count_via_get_rules(rd, tool: str, tool_input: dict) -> int:
 
 
 def check_alias_reach_counts(src: Source) -> tuple[list[str], list[str]]:
-    """CLAUDE.md / 02_hooks_and_permissions.md / DYNAMIC.md must each state the
-    live "2 / 13 / 4" alias-reach facts, not a stale hand-written guess."""
+    """CLAUDE.md / 02_hooks_and_permissions.md must each state the live
+    "2 / 13 / 4" alias-reach facts, not a stale hand-written guess."""
     problems: list[str] = []
     warnings: list[str] = []
 
@@ -1615,8 +1615,13 @@ def check_no_new_audit_docs(src: Source) -> tuple[list[str], list[str]]:
     if not src.staged:
         return problems, warnings  # only meaningful at commit time
 
+    # -z (NUL-separated, no quoting/octal-escaping of non-ASCII or space-bearing
+    # paths) with rename detection left on: a rename/copy record is STATUS\0OLD\0NEW\0,
+    # a plain record is STATUS\0PATH\0. Renames land the new path under the audit
+    # prefix without ever going through "A" (git's default rename detection emits
+    # R<score>, not A+D) — treat R/C's *new* path the same as a fresh add.
     result = subprocess.run(
-        ["git", "diff", "--cached", "--name-status"],
+        ["git", "diff", "--cached", "--name-status", "-z"],
         cwd=src.root,
         capture_output=True,
         text=True,
@@ -1625,18 +1630,27 @@ def check_no_new_audit_docs(src: Source) -> tuple[list[str], list[str]]:
     if result.returncode != 0:
         return [f"git diff --cached --name-status failed: {result.stderr.strip()}"], warnings
 
-    for line in result.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 2 or parts[0] != "A":
+    fields = result.stdout.split("\0")[:-1]  # trailing NUL leaves one empty field
+    i = 0
+    while i < len(fields):
+        status = fields[i]
+        code = status[0] if status else ""
+        if code in ("R", "C"):
+            path = fields[i + 2] if i + 2 < len(fields) else ""
+            i += 3
+        else:
+            path = fields[i + 1] if i + 1 < len(fields) else ""
+            i += 2
+        if code not in ("A", "R", "C") or not path:
             continue
-        path = parts[-1]
         if path.startswith(_AUDIT_DOC_PREFIXES):
             problems.append(
-                f"{path}: newly staged under a gitignored audit-doc prefix — "
-                "these paths are never committed (CLAUDE.md § New audit reports "
-                "and audit docs). If this really is an intentional, one-time "
-                "archival exception like af869db, get the same explicit human "
-                "call and update CLAUDE.md's exception note, don't just add -f."
+                f"{path}: newly staged (status {status}) under a gitignored "
+                "audit-doc prefix — these paths are never committed (CLAUDE.md "
+                "§ New audit reports and audit docs). If this really is an "
+                "intentional, one-time archival exception like af869db, get the "
+                "same explicit human call and update CLAUDE.md's exception "
+                "note, don't just add -f (or git mv) around this check."
             )
 
     return problems, warnings

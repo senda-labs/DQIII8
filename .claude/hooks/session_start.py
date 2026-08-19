@@ -199,7 +199,7 @@ try:
 except Exception as e:
     _log.debug("memory-manager skipped: %s", e)
 
-model = os.environ.get("DQIII8_MODEL", "qwen2.5-coder:7b (Ollama)")
+model = os.environ.get("DQIII8_MODEL", "claude-sonnet-5")
 
 # ── Personality Mode ────────────────────────────────────────────────
 _MODE_BEHAVIORS = {

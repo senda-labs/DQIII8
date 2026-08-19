@@ -1368,11 +1368,12 @@ CRITICAL_PATTERNS = [
     r":\(\)\s*\{.*:\|:.*\}",  # fork bomb
 ]
 
-# [output-quality F3] Human-readable label per CRITICAL_PATTERNS entry, used
-# only in the DENY message text — CRITICAL_PATTERNS itself stays a plain
-# regex list (test_every_critical_pattern_has_a_sample iterates it as such).
+# Human-readable label per CRITICAL_PATTERNS entry, used only in the DENY
+# message text — CRITICAL_PATTERNS itself stays a plain regex list
+# (test_every_critical_pattern_has_a_sample iterates it as such).
 # Keyed by the exact regex string, so an unlabeled future addition falls back
-# to the truncated command instead of raising.
+# to the literal string "unlabeled catastrophic pattern" instead of raising —
+# unreachable today (test_every_critical_pattern_has_a_label would fail first).
 _CRITICAL_PATTERN_LABELS = {
     CRITICAL_PATTERNS[0]: "redirect into a raw disk device",
     CRITICAL_PATTERNS[1]: "filesystem format (mkfs)",
@@ -1644,11 +1645,13 @@ def _git_push_deleted_ref(cmd: str) -> str | None:
 # never drift apart once they're one tuple. Add the id in the same edit that
 # adds the pattern.
 
-# [output-quality F1] Human-readable label per HIGH_RISK_PATTERNS rule_id, for
-# the generic DENY message loop below — same fix as _CRITICAL_PATTERN_LABELS
-# above, keyed by rule_id (already a stable per-entry key here) rather than by
-# regex string. An unlabeled future rule_id falls back to the truncated
-# command instead of raising.
+# Human-readable label per HIGH_RISK_PATTERNS rule_id, for the generic DENY
+# message loop below — same fix as _CRITICAL_PATTERN_LABELS above, keyed by
+# rule_id (already a stable per-entry key here) rather than by
+# regex string. An unlabeled future rule_id falls back to the literal string
+# "unlabeled high-risk pattern" instead of raising — unreachable today since
+# every HIGH_RISK_PATTERNS rule_id has an entry (test_every_high_risk_pattern_has_a_label
+# would fail first), but the fallback exists for defense-in-depth.
 _HIGH_RISK_PATTERN_LABELS = {
     "drop_table": "DROP TABLE",
     "drop_database": "DROP DATABASE",
@@ -1722,6 +1725,54 @@ DENIAL_HINTS: dict[str, str] = {
     "blocked_path:context/proposito.md": (
         "The system purpose can only be modified by the user directly. "
         "No agent can edit this file."
+    ),
+    "high_risk_pattern:git_push_force": (
+        "Push without --force/--force-with-lease. If history really needs "
+        "rewriting, that is a human decision outside any agent session — this "
+        "is never unblocked by confirmation."
+    ),
+    "high_risk_pattern:chmod_777_root": (
+        "Scope the chmod to the specific file/dir and the minimum bits it "
+        "actually needs — never 777, never a root-level path."
+    ),
+    "high_risk_pattern:rm_rf": (
+        "If this is genuine cache/build cleanup, ask the user to add the "
+        "target's final path component to ALLOWED_DELETIONS in "
+        "permission_analyzer.py — that file is governance-escalated, so you "
+        "cannot add it yourself. Otherwise this is a real data-loss risk: stop "
+        "and confirm with the user."
+    ),
+    "high_risk_pattern:drop_table": (
+        "Use a reviewed migration under database/migrations/ instead of a raw "
+        "DROP TABLE — see .claude/rules/01_database_mutations.md."
+    ),
+    "high_risk_pattern:drop_database": (
+        "Dropping the database is not recoverable from this session. Stop and "
+        "confirm with the user; do not attempt a workaround."
+    ),
+    "high_risk_pattern:drop_trigger": (
+        "That trigger enforces append-only audit-table semantics — dropping it "
+        "removes a safety guarantee, not just schema. Use a reviewed migration "
+        "and get explicit sign-off, don't just retry."
+    ),
+    "high_risk_pattern:delete_unbounded_audit_table": (
+        "Add a selective WHERE clause — a bare DELETE or a tautological WHERE "
+        "against an audit table is blocked regardless of intent."
+    ),
+    "high_risk_pattern:delete_tautology_audit_table": (
+        "The WHERE clause needs to actually select a subset — "
+        "1=1/TRUE/IS NOT NULL-style conditions are treated as unbounded."
+    ),
+    "high_risk_pattern:mutate_protected_table": (
+        "UPDATE/ALTER/TRUNCATE/REPLACE/INSERT against learned_approvals, "
+        "permission_decisions, agent_actions, instincts, or sqlite_master/"
+        "sqlite_schema is blocked regardless of predicate — those tables are "
+        "audit trails, not general-purpose storage."
+    ),
+    "high_risk_pattern:pragma_writable_schema": (
+        "PRAGMA writable_schema bypasses every DB-enforced trigger in this "
+        "codebase — never needed for a legitimate schema change; use a "
+        "reviewed migration instead."
     ),
     "high_risk_pattern": (
         "Narrow the action: name explicit paths instead of wildcards, bound the "
@@ -2690,23 +2741,27 @@ class PermissionAnalyzer:
         # command never reaches the ordinary approve path.
         if _ansi_c_decoded and _ansi_c_decoded != _bash_cmd:
             _ansi_hit = None
+            _ansi_label = None
             if any(_t == "/" for _t in _rm_destructive_targets(_ansi_c_decoded)):
                 _ansi_hit = "rm_rf_root"
+                _ansi_label = "recursive-force rm targeting root filesystem"
             else:
                 for _pattern in CRITICAL_PATTERNS:
                     if re.search(_pattern, _ansi_c_decoded, re.IGNORECASE):
                         _ansi_hit = _pattern
+                        _ansi_label = _CRITICAL_PATTERN_LABELS.get(_pattern, "unlabeled catastrophic pattern")
                         break
                 if not _ansi_hit:
                     for _pattern, _rule in HIGH_RISK_PATTERNS:
                         if re.search(_pattern, _ansi_c_decoded, re.IGNORECASE):
                             _ansi_hit = _rule
+                            _ansi_label = _HIGH_RISK_PATTERN_LABELS.get(_rule, "unlabeled high-risk pattern")
                             break
             if _ansi_hit:
                 return self._escalate(
                     tool, _bash_cmd[:80],
                     f"Command contains an ANSI-C quoted ($'...') span that "
-                    f"decodes to a high-risk pattern ('{_ansi_hit}') — human "
+                    f"decodes to a high-risk pattern ('{_ansi_label}') — human "
                     "review required.",
                     f"bash_ansi_c_obfuscated:{_ansi_hit}",
                     "Confirm the decoded command's intent with the user "
@@ -2779,14 +2834,16 @@ class PermissionAnalyzer:
                     if DQIII8_MODE == "autonomous":
                         return self._deny(
                             tool, cmd,
-                            f"High-risk command in autonomous mode: {cmd[:80]}",
+                            f"High-risk command in autonomous mode (recursive-force rm "
+                            f"outside ALLOWED_DELETIONS): {cmd[:80]}",
                             "HIGH", "high_risk_pattern:rm_rf",
                             "Use ALLOWED_DELETIONS or run in supervised mode.",
                         )
                     else:
                         return self._deny(
                             tool, cmd,
-                            f"Blocked command: '{cmd[:80]}'",
+                            f"Blocked command (recursive-force rm outside "
+                            f"ALLOWED_DELETIONS): '{cmd[:80]}'",
                             "CRITICAL", "high_risk_pattern:rm_rf",
                             "This command is destructive and irreversible.",
                         )
@@ -2908,10 +2965,13 @@ class PermissionAnalyzer:
         # Enrich reason with self-correction hint
         enriched_reason = reason
         if rule_triggered:
-            for key, hint in DENIAL_HINTS.items():
-                if key in rule_triggered:
-                    enriched_reason = f"{reason} | Alternative: {hint}"
-                    break
+            # Longest matching key wins (not insertion/iteration order) so a
+            # specific "high_risk_pattern:git_push_force"-style key is never
+            # shadowed by the generic "high_risk_pattern" catch-all.
+            _matches = [key for key in DENIAL_HINTS if key in rule_triggered]
+            if _matches:
+                _best = max(_matches, key=len)
+                enriched_reason = f"{reason} | Alternative: {DENIAL_HINTS[_best]}"
         return {
             "decision": "DENY",
             "reason": enriched_reason,

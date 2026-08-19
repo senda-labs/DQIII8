@@ -7,7 +7,7 @@ Referenced by `.claude/rules/03_tiering_and_routing.md` §Escalation to Opus and
 
 Escalate ONLY when `DQIII8_MODE=autonomous` AND the plan meets ≥1 criterion:
 - Prompt < 15 words (vague intent — needs adversarial interpretation).
-- Plan touches ≥5 files.
+- Plan touches ≥3 modules (aligned with `CLAUDE.md` and `00_core_behavior.md` — do not restate a different number here).
 - Architectural decision with multiple valid paths (no single obvious answer).
 
 ## Hard limits

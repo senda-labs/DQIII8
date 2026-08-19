@@ -55,9 +55,9 @@ Report: database/audit_reports/audit-2026-03-11-14.md
 
 | Score | Status | Cadencia recomendada |
 |-------|--------|----------------------|
-| > 80  | HEALTHY | next audit in 7 days |
-| 60-80 | WARNING | next audit in 3 days |
-| < 60  | CRITICAL | next audit in 1 day, notify user |
+| >= 85  | HEALTHY | next audit in 7 days |
+| 70-85 | WARNING | next audit in 3 days |
+| < 70  | CRITICAL | next audit in 1 day, notify user |
 
 ## Auto-trigger
 

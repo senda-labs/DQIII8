@@ -98,12 +98,15 @@ Nothing else in the corpus may state one and imply the other.
 | Writer | `bin/tools/handover.py` (no git code at all) | inline in the hook |
 | Filename | `sessions/YYYY-MM-DD_session_N.md` (N from 1) | `sessions/YYYY-MM-DD_session.md`, then `_2`, `_3`, … |
 | Asks first | yes (`AskUserQuestion`) | no |
-| Git | none — local-only artifact | `git add sessions/` → `git commit -m "session handover {date}"` → `git push origin master`, capped at one per calendar day |
+| Git | none — local-only artifact | `git add sessions/` → `git commit -m "session handover {date}"` → `git push premium <current-branch>`, capped at one per calendar day |
 
 Independently of the handover block, `stop.py` §2 auto-commits `tasks/lessons.md` and
-`projects/*.md`, and §2b then runs an **unconditional, ungated `git push origin master` on
-every session and subagent close**. So "the handover note is never pushed" describes the
-manual path only; the hook layer pushes regardless of which path ran.
+`projects/*.md`, and §2b then runs an **unconditional, ungated `git push premium
+<current-branch>` on every session and subagent close** — never `origin` (public, must stay
+vanilla) and never a hardcoded branch name. So "the handover note is never pushed" describes
+the manual path only; the hook layer pushes regardless of which path ran, though on `main`
+specifically the push is currently rejected non-fast-forward (a known divergence from the
+`premium` remote's `main` branch, unresolved as of 2026-08-19).
 SSOT for the automatic behaviour is `stop.py`; see `.claude/rules/02_hooks_and_permissions.md`.
 
 ## Notes

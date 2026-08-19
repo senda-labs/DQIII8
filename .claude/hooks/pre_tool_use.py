@@ -82,7 +82,7 @@ except Exception as _e:
     log.error("pre_tool_use: PermissionAnalyzer crashed — failing closed: %s", _e, exc_info=True)
     result = {
         "decision": "DENY",
-        "reason": f"analyzer_error:{_e} — failing closed for safety",
+        "reason": f"analyzer_error:{type(_e).__name__} — failing closed for safety",
         "risk_level": "CRITICAL",
         "rule_triggered": "analyzer_crash",
         "suggested_fix": "Fix the analyzer error, then retry.",

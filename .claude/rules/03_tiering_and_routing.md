@@ -52,4 +52,7 @@ falla: exit 2 (`DQIII8_ALLOW_DOWNGRADE=1` para permitirlo explícitamente). Ver
 ## Escalation to Opus (Plan Gate)
 
 Criterios de disparo, límites duros y matices — SSOT único, no replicar aquí:
-`.claude/rules_db/dqiii8-plan-gate.md` (co-inyectado en todo Bash con `agent`/`orchestrat`).
+`.claude/rules_db/dqiii8-plan-gate.md` (co-inyectado en todo Bash que toca
+`bin/agents/`, `bin/core/dispatch` u `orchestrat` — ver `_BASH_KEYWORD_RULES` en
+`rules_dispatcher.py`; el trigger bare `agent` fue retirado 2026-08-19 por ser
+demasiado amplio, no lo restates aquí).

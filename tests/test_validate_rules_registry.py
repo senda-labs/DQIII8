@@ -637,7 +637,7 @@ def test_stale_doc_entry_not_in_code_is_a_problem(repo: Path):
     blocks — the doc lies about what's actually denied."""
     edit(
         repo,
-        vrr.HOOKS_MD,
+        vrr.HOOKS_PERMS_MD,
         "`CLAUDE.md`, `.env`,",
         "`CLAUDE.md`, `.env`, `a-removed-path-nobody-blocks-anymore`,",
     )
@@ -686,3 +686,33 @@ def test_noqa_lint_code_is_not_mistaken_for_an_audit_id(repo: Path):
     target.write_text("import os  # noqa: F401\n", encoding="utf-8")
     problems, _ = vrr.check_no_audit_id_comments(src(repo))
     assert not any("F401" in p for p in problems), problems
+
+
+# ── check: alias-reach counts ("2 / 13 / 4") ─────────────────────────────────
+# check_alias_reach_counts() bails out early for any repo that isn't the real
+# ROOT (it measures rules_dispatcher.py live via import, not a fixture copy),
+# so these tests run against the real repo, like the audit-ID ones above.
+
+
+def test_real_repo_alias_reach_counts_are_consistent():
+    """The real repo's CLAUDE.md / 02_hooks_and_permissions.md cite the live
+    floor/ceiling/git_status alias counts, not a stale hand count."""
+    problems, warnings = vrr.check_alias_reach_counts(vrr.Source())
+    assert problems == []
+    assert warnings == []
+
+
+def test_every_alias_count_pattern_matches():
+    """Every regex in _ALIAS_COUNT_PATTERNS must match at least once against
+    the real file it targets — a pattern that matches nothing (e.g. because
+    the prose it was written for got trimmed away, as happened to the
+    now-removed DYNAMIC.md entry on 2026-08-19) passes check_alias_reach_counts
+    silently and gives zero real coverage. This test makes that failure loud
+    instead of silent."""
+    for rel, patterns in vrr._ALIAS_COUNT_PATTERNS.items():
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for label, pat in patterns.items():
+            assert pat.search(text), (
+                f"{rel}: pattern for {label!r} ({pat.pattern!r}) matches "
+                "nothing in the real file — dead coverage."
+            )

@@ -51,7 +51,6 @@ CRITICAL_PATTERNS = [
 
 POLL_INTERVAL_S = 5
 MAX_WAIT_ESCALATION_S = 600  # 10 minutes for critical actions
-MAX_WAIT_TELEGRAM_S = 300  # 5 min if no Telegram config (doesn't block much)
 
 
 def _allow(reason: str = "") -> None:

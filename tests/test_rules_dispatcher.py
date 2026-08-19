@@ -97,6 +97,21 @@ def test_no_reachable_alias_is_unregistered():
     assert not dangling, f"mappings reference unregistered aliases: {sorted(dangling)}"
 
 
+def test_bash_agent_pattern_matches_real_entry_points_not_bare_agent():
+    """`bin/agents|bin/core/dispatch|\\borchestrat` (RC 2026-08-19) replaced the
+    dead `Agent\\(`/`dispatch_agent` alternatives with the real code paths, and
+    dropped the bare `\\bagent\\b` trigger (retired 2026-08-19, too broad —
+    matched any incidental mention of the English word "agent")."""
+    for cmd in ("ls bin/agents/", "python3 bin/core/dispatch.py --help"):
+        injected = rd.get_rules("Bash", {"command": cmd})
+        assert "Escalation to Opus" in injected or "Plan Gate" in injected, (
+            f"expected plan-gate rules injected for {cmd!r}"
+        )
+    # The bare word alone must NOT trigger — it's not a real code path.
+    injected = rd.get_rules("Bash", {"command": "list every agent in the roster"})
+    assert "Escalation to Opus" not in injected and "Plan Gate" not in injected
+
+
 def test_governance_and_agent_aliases_all_resolve():
     """Every _REGISTRY alias — reachable or not — points at an existing file."""
     missing = {
@@ -131,7 +146,9 @@ BUDGET_MATRIX = [
     ("Bash", {"command": "ls"}, "bash-no-keyword"),
     # NB: keep this command free of other trigger words ("cc", "python3", …) —
     # it is the single-trigger ceiling case, not a combined worst case.
-    ("Bash", {"command": "dq agent orchestrator status"}, "bash-agent-keyword"),
+    # "agent" alone is not a trigger (retired 2026-08-19, too broad); this
+    # command matches via \borchestrat only — label reflects that.
+    ("Bash", {"command": "dq agent orchestrator status"}, "bash-orchestrat-keyword"),
     ("Bash", {"command": "git status"}, "bash-git"),
     ("Bash", {"command": "python3 script.py"}, "bash-python"),
     ("Bash", {"command": "sqlite3 database/dqiii8.db '.tables'"}, "bash-sqlite3"),

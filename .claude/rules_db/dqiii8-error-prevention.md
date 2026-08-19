@@ -13,8 +13,10 @@
 - Never parse dispatch stdout as a clean single response: provider fallback prints the
   failed stream's partial output before the fallback's answer. `agent_actions` is the
   authoritative record.
-- A dispatch `timeout` status does NOT mean the wrapper failed (outer 120s default <
-  per-provider timeouts). Check `agent_actions` before retrying — double-execution risk.
+- A dispatch `timeout` status does NOT mean the wrapper failed (outer `DEFAULT_TIMEOUT` in
+  `dispatch.py` < per-provider timeouts). Check `agent_actions` before retrying — double-execution
+  risk. (Don't cite the outer timeout's number here — it has already drifted once; read the
+  constant.)
 
 ## Session hygiene
 - After compact/resume: re-read the project's own state file — `my-projects/<proyecto>/PROJECT.md`

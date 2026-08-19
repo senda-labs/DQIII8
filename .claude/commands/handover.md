@@ -7,8 +7,9 @@
 > save, no commit, no push) is the correct behaviour for **this manual path**.
 > That deleted copy was *not* pure fiction, as the 2026-08-18 fix wrongly
 > assumed: `.claude/hooks/stop.py` §3 contains a second, automatic handover
-> implementation that does `git add sessions/` → commit → `git push origin
-> master`, and §2b pushes to `master` on every session close regardless. Both
+> implementation that does `git add sessions/` → commit → `git push premium
+> <current-branch>`, and §2b pushes the same way on every session close
+> regardless — never `origin`, never a hardcoded branch. Both
 > are described in `.claude/skills/handover/SKILL.md` §Two implementations and
 > `.claude/rules/02_hooks_and_permissions.md`. "Never committed or pushed" is
-> true of `/handover`, false of the hook. Re-resolved 2026-08-18 (F1).
+> true of `/handover`, false of the hook.

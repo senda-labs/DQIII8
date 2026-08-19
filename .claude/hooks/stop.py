@@ -278,7 +278,6 @@ try:
         _vdur_min = ((_vtime.time() * 1000 - _vfirst_ms) / 60000) if _vfirst_ms else 0
 
         if _vdur_min >= 10:
-            # Collect modified files from git diff
             _vdiff = subprocess.run(
                 ["git", "-C", str(JARVIS), "diff", "--stat", "HEAD"],
                 capture_output=True,
@@ -365,7 +364,6 @@ try:
             "SELECT id, keyword, confidence, times_applied, last_applied FROM instincts"
         ).fetchall()
         if _instincts:
-            # Build vault corpus (all entries as searchable text)
             _vault_corpus = " ".join(
                 f"{r[0]} {r[1]} {r[2]}"
                 for r in _ic.execute(
@@ -678,7 +676,6 @@ try:
             capture_output=True,
             timeout=10,
         )
-        # Only commit if there are staged changes
         status = subprocess.run(
             ["git", "-C", str(JARVIS), "status", "--porcelain"],
             capture_output=True,
@@ -749,7 +746,6 @@ try:
             )
             _already_committed_today = bool(_log_today.stdout.strip())
 
-            # Collect modified files via git diff
             _diff = subprocess.run(
                 ["git", "-C", str(JARVIS), "diff", "--stat", "HEAD"],
                 capture_output=True,
@@ -762,10 +758,8 @@ try:
                 if "|" in l and not l.strip().startswith("Bin")
             ]
 
-            # Determine active project
             _project = _resolve_project()
 
-            # Next step from project file
             _next = "Ver projects/{}.md".format(_project)
             _pm = JARVIS / "projects" / f"{_project}.md"
             if _pm.exists():
@@ -779,7 +773,6 @@ try:
                                 break
                         break
 
-            # Write session handover file
             _sessions_dir = JARVIS / "sessions"
             _sessions_dir.mkdir(exist_ok=True)
             _date = NOW[:10]
@@ -819,15 +812,14 @@ duration: {_duration_str}
 """
             _session_path.write_text(_session_md, encoding="utf-8")
 
-            # Git add + commit + push (maximum 1 handover commit per day)
-            # Opus red-team review (2026-08-13, P2): `_pm` is JARVIS/"projects"/f"{project}.md",
-            # a directory that doesn't exist (Correction C — real docs are under
-            # my-projects/<slug>/PROJECT.md), so `_pm.exists()` was always False and
-            # this silently fell through to "." — staging the ENTIRE working tree
-            # (including database/legacy/*.sql and any uncommitted in-progress work)
-            # into an unreviewed auto-commit that a later `git push` could publish.
-            # sessions/ is gitignored by design (handover notes are local-only, see
-            # .claude/skills/handover/SKILL.md) — only stage that path.
+            # Stage sessions/ explicitly, never ".": `_pm` points at
+            # JARVIS/"projects"/<project>.md, a directory that does not exist (real
+            # docs live at my-projects/<slug>/PROJECT.md), so `_pm.exists()` is
+            # always False. A "." fallback here stages the ENTIRE working tree —
+            # including uncommitted in-progress work — into an unreviewed
+            # auto-commit that the push below would publish. sessions/ is
+            # gitignored by design (handover notes are local-only, see
+            # .claude/skills/handover/SKILL.md).
             subprocess.run(
                 [
                     "git",

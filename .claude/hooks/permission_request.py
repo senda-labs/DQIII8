@@ -9,15 +9,8 @@ In autonomous mode:
       timeout → automatic deny.
     - Anything else → allow (logged as "autonomous-allow-all").
 
-INV1 (2026-08-18): this used to document a 3-layer design (READ_PREFIXES
-fast-path, then an LLM supervisor call, then this escalation). Layers 1-2
-were removed from main() at some earlier point ("Layer 1/2 removed: no LLM
-supervisor calls in autonomous mode" — see the autonomous-mode branch below)
-but the supporting code (READ_PREFIXES, READ_ONLY_TOOLS, _is_read_prefix,
-_call_llm_supervisor) and this docstring were left describing the removed
-design. Confirmed via grep: nothing outside this file imports any of those
-names, and no test exercises them. Deleted rather than kept as fictional
-documentation of dead code.
+No LLM supervisor runs here: escalation is the only path, and a human on
+Telegram is the only approver.
 
 Input via stdin: {"tool_name": X, "tool_input": {...}, "session_id": Y, "request_id": Z}
 Output via stdout: {"decision": "allow"|"deny", "reason": "..."}
@@ -57,7 +50,7 @@ CRITICAL_PATTERNS = [
 ]
 
 POLL_INTERVAL_S = 5
-MAX_WAIT_LAYER3_S = 600  # 10 minutes for critical actions
+MAX_WAIT_ESCALATION_S = 600  # 10 minutes for critical actions
 MAX_WAIT_TELEGRAM_S = 300  # 5 min if no Telegram config (doesn't block much)
 
 
@@ -79,7 +72,7 @@ def _has_critical_pattern(tool_input: dict) -> str | None:
 
 
 def _send_telegram(message: str) -> bool:
-    """Layer 3: Send Telegram message. Returns True on success."""
+    """Send the escalation Telegram message. Returns True on success."""
     token = os.environ.get("DQIII8_BOT_TOKEN", "") or os.environ.get(
         "JARVIS_BOT_TOKEN", ""
     )
@@ -140,7 +133,7 @@ def _log_decision(
         log.warning("permission_request: _log_decision DB write failed: %s", e, exc_info=True)
 
 
-def _layer3_telegram_flow(
+def _escalation_telegram_flow(
     session_id: str,
     tool_name: str,
     tool_input: dict,
@@ -148,7 +141,7 @@ def _layer3_telegram_flow(
     label: str,
     trigger_reason: str,
 ) -> None:
-    """Common Layer 3 escalation flow: Telegram + 10min polling + deny on timeout."""
+    """Escalation flow: Telegram + 10min polling + deny on timeout."""
     perm_id = os.urandom(4).hex()
     perm_file = Path(f"/tmp/dqiii8_perm_{perm_id}.json")
     inp_summary = json.dumps(tool_input, ensure_ascii=False)[:200]
@@ -171,20 +164,20 @@ def _layer3_telegram_flow(
             session_id,
             tool_name,
             "deny",
-            f"layer3-telegram-unavailable:{trigger_reason}",
+            f"escalation-telegram-unavailable:{trigger_reason}",
             elapsed,
         )
         _deny(f"Escalation required ({label}) — Telegram unavailable → automatic deny")
         return
 
-    response = _poll_for_response(perm_file, start, MAX_WAIT_LAYER3_S)
+    response = _poll_for_response(perm_file, start, MAX_WAIT_ESCALATION_S)
     elapsed = time.time() - start
 
     if response is not None:
         decision = response.get("decision", "deny")
         reason = response.get("reason", "user-response")
         _log_decision(
-            session_id, tool_name, decision, f"layer3-human:{reason}", elapsed
+            session_id, tool_name, decision, f"escalation-human:{reason}", elapsed
         )
         if decision == "allow":
             _allow(reason)
@@ -195,7 +188,7 @@ def _layer3_telegram_flow(
             session_id,
             tool_name,
             "deny",
-            f"layer3-timeout-10min:{trigger_reason}",
+            f"escalation-timeout-10min:{trigger_reason}",
             elapsed,
         )
         _deny(f"Escalation {label} — 10min timeout → automatic deny")
@@ -221,10 +214,10 @@ def main() -> None:
 
     start = time.time()
 
-    # ── Layer 3: CRITICAL_PATTERNS — always escalate to human ─────────────────
+    # ── CRITICAL_PATTERNS — always escalate to human ──────────────────────────
     critical = _has_critical_pattern(tool_input)
     if critical:
-        _layer3_telegram_flow(
+        _escalation_telegram_flow(
             session_id,
             tool_name,
             tool_input,
@@ -235,7 +228,7 @@ def main() -> None:
         return
 
     # ── Autonomous mode: allow everything except CRITICAL_PATTERNS ────────────
-    # Layer 1/2 removed: no LLM supervisor calls in autonomous mode.
+    # Everything else is allowed: no LLM supervisor call in autonomous mode.
     # Eliminates per-tool-use openrouter calls and Telegram ESCALA prompts.
     _log_decision(session_id, tool_name, "allow", "autonomous-allow-all", 0.0)
     _allow("autonomous-allow-all")

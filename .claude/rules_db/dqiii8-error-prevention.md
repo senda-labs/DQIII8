@@ -1,13 +1,9 @@
 # Error Prevention — Recurring Failure Modes (DQIII8)
 
-## Environment / auth
-- `ANTHROPIC_API_KEY` must be `""` in subprocess env when using Claude Code OAuth.
-  Symptom of violation: "Credit balance too low". (DYNAMIC.md, universal rule)
-
 ## SQLite
-- `sqlite3.connect(path, timeout=30)` for batch/background scripts — the driver default (5s)
-  produces `SQLITE_BUSY` under parallel dispatch. Hooks intentionally use shorter timeouts:
-  `01_database_mutations.md` §SQLite Access Patterns.
+- Connection timeouts (batch 30s vs. hooks' shorter tiered ones): SSOT
+  `01_database_mutations.md` §SQLite Access Patterns. Symptom of getting it wrong:
+  `SQLITE_BUSY` under parallel dispatch.
 - WAL mode is set persistently; never disable it. Check `-wal` size before assuming
   a write landed.
 - DB inventory (live / knowledge / frozen) → `CLAUDE.md` §System Map. Do NOT create tables
@@ -21,5 +17,6 @@
   per-provider timeouts). Check `agent_actions` before retrying — double-execution risk.
 
 ## Session hygiene
-- After compact/resume: read `PROJECT.md` + phase/status before ANY action
-  (feedback_intl_post_compact). Never re-derive state from memory alone.
+- After compact/resume: re-read the project's own state file — `my-projects/<proyecto>/PROJECT.md`
+  — plus whatever status command that project documents, before ANY action. Never re-derive state
+  from memory alone.

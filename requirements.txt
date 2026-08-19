@@ -6,6 +6,11 @@ sqlite-vec==0.1.7
 python-dotenv>=1.0.0
 httpx>=0.27.0
 PyYAML>=6.0.1
+# rules_dispatcher.py's token_estimate() needs this for exact cl100k_base
+# counts; its own docstring says the word-count fallback (30-40% undercount)
+# "must never be the source of a number cited in docs" — so this dependency
+# is load-bearing for every token-budget claim in CLAUDE.md/rules, not optional.
+tiktoken>=0.12.0
 
 # Telegram bot (optional — only for remote control)
 python-telegram-bot>=21.0

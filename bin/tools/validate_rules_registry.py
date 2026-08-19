@@ -1314,8 +1314,9 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
          this and when. `_parity_body()` strips frontmatter, so before this
          these fields were compared by nothing.
 
-    Warn-only by design: the remaining duplicated pairs are known pre-existing
-    debt, and hard-failing on them would break every commit in the repo.
+    Hard-fail (F6, 2026-08-19): all 11 pairs were reduced to pure pointers or
+    reconciled, so a fresh divergence — not pre-existing debt — is what this
+    now blocks.
     """
     problems: list[str] = []
     warnings: list[str] = []
@@ -1336,7 +1337,7 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
         ).ratio()
         diverged = ratio < _PARITY_MIN_RATIO
         if diverged:
-            warnings.append(
+            problems.append(
                 f"{rel} duplicates {skill_rel} and has diverged "
                 f"(similarity {ratio:.2f} < {_PARITY_MIN_RATIO:.2f}) — reconcile "
                 f"them, or reduce the command file to a pointer at the skill."
@@ -1349,7 +1350,7 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
         cmd_cmds, skill_cmds = _fenced_lines(cmd_text), _fenced_lines(skill_text)
         if not diverged and cmd_cmds != skill_cmds:
             sample = sorted(cmd_cmds ^ skill_cmds)[:2]
-            warnings.append(
+            problems.append(
                 f"{rel} duplicates {skill_rel} but their fenced code blocks "
                 f"differ in {len(cmd_cmds ^ skill_cmds)} line(s) — one copy runs "
                 f"commands the other does not, e.g. {sample}. Reconcile the "
@@ -1363,7 +1364,7 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
             # small enough that a new entry is actually read (F6).
             absent = [k for k in _PARITY_FRONTMATTER_KEYS if k in skill_fm]
             if absent:
-                warnings.append(
+                problems.append(
                     f"{rel} duplicates {skill_rel} but declares no frontmatter, so "
                     f"{', '.join(f'`{k}`' for k in absent)} exist only in the skill "
                     f"— nothing states who may invoke the command form."
@@ -1371,7 +1372,7 @@ def check_command_skill_parity(src: Source) -> tuple[list[str], list[str]]:
         else:
             for key in _PARITY_FRONTMATTER_KEYS:
                 if cmd_fm.get(key) != skill_fm.get(key):
-                    warnings.append(
+                    problems.append(
                         f"{rel} duplicates {skill_rel} but their `{key}:` "
                         f"frontmatter differs ({cmd_fm.get(key)!r} vs "
                         f"{skill_fm.get(key)!r}) — this field governs who may "

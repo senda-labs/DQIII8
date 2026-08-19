@@ -543,8 +543,8 @@ def test_forked_command_skill_pair_warns(repo: Path):
         "# /forky\n\n" + "\n".join(f"- totally different line {i}" for i in range(30)),
     )
     problems, warnings = vrr.check_command_skill_parity(src(repo))
-    assert problems == []
-    assert any("forky" in w and "diverged" in w for w in warnings), warnings
+    assert warnings == []
+    assert any("forky" in p and "diverged" in p for p in problems), problems
 
 
 def test_near_identical_pair_does_not_warn(repo: Path):
@@ -568,8 +568,8 @@ def test_short_command_file_without_the_skill_reference_still_warns(repo: Path):
     """Brevity alone is not pointer-hood — it must actually cite the SKILL.md,
     otherwise a truncated/stub command file would silently pass."""
     _pair(repo, "stub", "# /stub\n\nrun the thing\n", "# /stub\n\n" + _PROCEDURE)
-    _, warnings = vrr.check_command_skill_parity(src(repo))
-    assert any("stub" in w for w in warnings), warnings
+    problems, _ = vrr.check_command_skill_parity(src(repo))
+    assert any("stub" in p for p in problems), problems
 
 
 def test_command_without_matching_skill_is_ignored(repo: Path):
@@ -593,12 +593,12 @@ def test_frontmatter_is_not_counted_as_divergence(repo: Path):
         + _PROCEDURE,
     )
     problems, warnings = vrr.check_command_skill_parity(src(repo))
-    assert problems == []
-    assert not any("diverged" in w or "fenced code" in w for w in warnings), warnings
+    assert not any("diverged" in p or "fenced code" in p for p in problems), problems
+    assert warnings == []
 
 
 def test_real_handover_pair_is_a_clean_pointer():
     """The F6 fix itself, asserted against the live repo."""
     problems, warnings = vrr.check_command_skill_parity(vrr.Source())
-    assert problems == []
-    assert not any("handover" in w for w in warnings), warnings
+    assert not any("handover" in p for p in problems), problems
+    assert warnings == []

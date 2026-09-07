@@ -48,7 +48,7 @@ def main():
     git_status = run("git status --short")
     tests = run("python3 -m pytest tests/test_smoke.py -q 2>&1 | tail -3")
     services = run(
-        "systemctl is-active dqiii8-bot dq-dashboard autoreporte ollama 2>/dev/null || echo 'systemctl not available'"
+        "systemctl is-active dqiii8-bot dq-dashboard ollama 2>/dev/null || echo 'systemctl not available'"
     )
 
     today = date.today().isoformat()

@@ -29,9 +29,12 @@ from pathlib import Path
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 sys.path.insert(0, str(DQIII8_ROOT))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
-DB = DQIII8_ROOT / "database" / "dqiii8.db"  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
+DB = (
+    DQIII8_ROOT / "database" / "dqiii8.db"
+)  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
 REPORT_DIR = DQIII8_ROOT / "database" / "audit_reports"
 BASELINE_FILE = REPORT_DIR / "weekly_baseline.json"
 
@@ -121,10 +124,8 @@ def collect_routing_health(conn: sqlite3.Connection) -> list[dict]:
 
 def collect_service_status() -> dict[str, str]:
     status = {}
-    for svc in ["autoreporte", "dqiii8-bot", "dq-dashboard", "ollama"]:
-        result = subprocess.run(
-            ["systemctl", "is-active", svc], capture_output=True, text=True
-        )
+    for svc in ["dqiii8-bot", "dq-dashboard", "ollama"]:
+        result = subprocess.run(["systemctl", "is-active", svc], capture_output=True, text=True)
         status[svc] = result.stdout.strip()
     return status
 
@@ -137,15 +138,13 @@ def load_baseline() -> dict:
         try:
             return json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
         except Exception as _exc:
-            log.warning('%s: %s', __name__, _exc)
+            log.warning("%s: %s", __name__, _exc)
     return {}
 
 
 def save_baseline(metrics: dict) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    BASELINE_FILE.write_text(
-        json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    BASELINE_FILE.write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def detect_alerts(
@@ -174,9 +173,7 @@ def detect_alerts(
     # Instincts at risk
     if instincts_at_risk:
         kws = ", ".join(i["keyword"] for i in instincts_at_risk[:5])
-        alerts.append(
-            f"{len(instincts_at_risk)} instinct(s) at risk (confidence<0.3): {kws}"
-        )
+        alerts.append(f"{len(instincts_at_risk)} instinct(s) at risk (confidence<0.3): {kws}")
 
     return alerts
 
@@ -279,7 +276,7 @@ def main() -> None:
                 f"({_crep.get('savings_pct', 0):.1f}%)"
             )
     except Exception as _exc:
-        log.warning('%s: %s', __name__, _exc)
+        log.warning("%s: %s", __name__, _exc)
 
     report = build_report(metrics, errors, routing, services, alerts, baseline)
     if cost_summary:

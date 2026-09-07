@@ -27,13 +27,16 @@ Tables that do **not** exist — don't write to them, don't "restore" them:
 
 ## SQLite Access Patterns
 - Use full path: `sqlite3 /root/dqiii8/database/dqiii8.db "…"` — no aliases in non-interactive shells.
-- `error_log` in `dqiii8.db` (1698 rows, live, growing — `severity` column present) is the SSOT
+- `error_log` in `dqiii8.db` (live, growing — `severity` column present; re-measure the row
+  count rather than trusting a number here, it has already drifted once) is the SSOT
   for writes; every active writer (`stop.py`, `post_tool_use*.py`, `bin/tools/*`) targets it.
   A second, **stale** copy exists in `dqiii8_knowledge.db` (856 rows, no `severity` column,
   frozen at the 2026-08-14 consolidation — see `database/backups/pre-consolidation-20260814T134859Z/`)
-  and nothing writes to it anymore. Confirmed bug: `bin/ui/dashboard.py` reads `error_log` from
-  `dqiii8_knowledge.db`, so its error view is stale/incomplete by ~842 rows and has been since
-  the consolidation — not yet fixed, flag before trusting dashboard error counts.
+  and nothing writes to it anymore. `bin/ui/dashboard.py` reads the **live** DB: its `error_log`
+  query runs on `get_db()` (`bin/core/db.py`), verified against the deployed `/api/health`. A
+  "confirmed bug" claiming the opposite stood here until 2026-08-20 — its cause was two distinct
+  module constants both named `DB_PATH`; the dashboard's is now `CHAT_DB_PATH`, chat-only. Resolve
+  the connection a call site opens, not the nearest same-named constant.
 - Use `timeout=30` for batch/background/one-off scripts that mutate the production DB (migrations, backfills, `bin/tools/*`). **Hot-path callers (hooks) deliberately use shorter tiered timeouts (0.5–10s)** to fail open fast under lock contention instead of blocking a tool call; each pairs with a graceful-degradation `try/except`. Don't "fix" a short hook timeout to 30 without checking it isn't this pattern.
 - WAL mode is enabled on per-company `orchestrator_state.db` files — writes must use `asyncio.to_thread()`.
 

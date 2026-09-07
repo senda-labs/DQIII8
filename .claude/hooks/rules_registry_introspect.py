@@ -87,8 +87,7 @@ def inline_aliases(source: str, registry: dict[str, str]) -> set[str]:
         (
             n
             for n in ast.walk(tree)
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name == "get_rules"
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "get_rules"
         ),
         None,
     )
@@ -97,9 +96,7 @@ def inline_aliases(source: str, registry: dict[str, str]) -> set[str]:
     return {
         n.value
         for n in ast.walk(fn)
-        if isinstance(n, ast.Constant)
-        and isinstance(n.value, str)
-        and n.value in registry
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value in registry
     }
 
 

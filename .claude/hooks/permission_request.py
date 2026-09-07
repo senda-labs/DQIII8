@@ -18,6 +18,7 @@ Output via stdout: {"decision": "allow"|"deny", "reason": "..."}
 
 import json
 import logging
+import logging.handlers
 import os
 import sqlite3
 import sys
@@ -25,6 +26,19 @@ import time
 from pathlib import Path
 
 log = logging.getLogger("dqiii8." + __name__)
+if not log.handlers:
+    log.setLevel(logging.DEBUG)
+    _log_dir = Path("/var/log/dqiii8")
+    if _log_dir.exists():
+        _fh = logging.handlers.RotatingFileHandler(
+            str(_log_dir / "hooks.log"), maxBytes=2_000_000, backupCount=3
+        )
+        _fh.setFormatter(
+            logging.Formatter("%(asctime)s [permission_request] %(levelname)s %(message)s")
+        )
+        log.addHandler(_fh)
+    else:
+        log.addHandler(logging.NullHandler())
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
@@ -49,7 +63,7 @@ CRITICAL_PATTERNS = [
     ":(){:|:&};:",
 ]
 
-POLL_INTERVAL_S = 5
+POLL_INTERVAL_S = 1
 MAX_WAIT_ESCALATION_S = 600  # 10 minutes for critical actions
 
 
@@ -72,9 +86,7 @@ def _has_critical_pattern(tool_input: dict) -> str | None:
 
 def _send_telegram(message: str) -> bool:
     """Send the escalation Telegram message. Returns True on success."""
-    token = os.environ.get("DQIII8_BOT_TOKEN", "") or os.environ.get(
-        "JARVIS_BOT_TOKEN", ""
-    )
+    token = os.environ.get("DQIII8_BOT_TOKEN", "") or os.environ.get("JARVIS_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
         return False
@@ -175,9 +187,7 @@ def _escalation_telegram_flow(
     if response is not None:
         decision = response.get("decision", "deny")
         reason = response.get("reason", "user-response")
-        _log_decision(
-            session_id, tool_name, decision, f"escalation-human:{reason}", elapsed
-        )
+        _log_decision(session_id, tool_name, decision, f"escalation-human:{reason}", elapsed)
         if decision == "allow":
             _allow(reason)
         else:

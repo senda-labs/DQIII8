@@ -11,3 +11,10 @@
 - Keep going after something breaks — STOP → re-plan → ask if uncertain.
 
 **CLAUDE.md**: ≤100 lines, quick-reference map, blocked-path (solo humano). Detalle → `my-projects/<proyecto>/PROJECT.md`, `sessions/*.md`, `.claude/checkpoints.log`.
+
+**API KEY y OAuth (universal)**: PROHIBIDO modificar o exportar `ANTHROPIC_API_KEY` en
+producción. Siempre OAuth (Claude Max). Subprocess: `env={"ANTHROPIC_API_KEY": ""}`. Convención
+de operador, no invariante forzada por código (`dispatch.py`/`director.py` no tocan esta var).
+Si "Credit balance too low": verificar a mano que `ANTHROPIC_API_KEY=""` en el subprocess antes
+de nada más. PROHIBIDO: episodic-memory (consume 48K tokens sin valor). Estado de una empresa:
+`python3 -m core.cli status --slug {SLUG}`.

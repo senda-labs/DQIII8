@@ -43,3 +43,19 @@ is a summary, don't extend it here).
 **`git add -A` and `git add .` are still NOT blocked** — no matcher, either
 mode. The "Git add protocol" and "NEVER" lines above are self-discipline, not
 an enforced guardrail.
+
+## Parallel-agent sessions on the shared tree (Rango 3, 2026-08-19 red-team audit)
+Worktree isolation only auto-applies to 3 agent types (`subagent_start.py`) — most
+parallel agents write git state directly on the main tree, with no lock. Confirmed
+live: `git worktree list` showed only the main tree while sibling agents were
+active. Decision (explicit, not a code fix): keep this as-is — mandatory worktree
+for every agent type was rejected as too costly to current work velocity. The
+mitigation is operational discipline at session-close time, not a mechanism:
+- Before closing/handing off a session that ran parallel agents, `git status`
+  first — don't assume the tree is clean because your own agent's task finished.
+- Don't start a new write (`git add`/commit/`stop.py`'s auto-commit path) while a
+  sibling agent might still be mid-write on the same tree; check for other live
+  sessions first if unsure.
+- If a collision is suspected (unexpected staged files, a commit that doesn't
+  match what you just did), stop and inspect before committing over it — never
+  force through with `git add -A`/`-f` to "just get past it".

@@ -28,18 +28,38 @@ if not _log.handlers:
         _log.addHandler(logging.NullHandler())
 
 session = data.get("session_id", "unknown")
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB = JARVIS / "database" / "dqiii8.db"
-LESSONS = JARVIS / "tasks" / "lessons.md"
-PROJECTS = JARVIS / "projects"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB = ROOT_DIR / "database" / "dqiii8.db"
+LESSONS = ROOT_DIR / "tasks" / "lessons.md"
+PROJECTS = ROOT_DIR / "projects"
 NOW = datetime.now().isoformat()
+
+# Fase B (task boundary, /root/.claude/plans/parsed-swinging-donut.md): close
+# the agent_registry row on SubagentStop. Payload shape for this event is
+# unverified (no hook in this repo reads it today) — best-effort, never blocks
+# the rest of this script's Stop-event logic, which runs unchanged either way.
+if data.get("hook_event_name") == "SubagentStop":
+    _sa_agent_id = data.get("agent_id", "")
+    if _sa_agent_id:
+        try:
+            import sqlite3 as _sa_sqlite3
+
+            _sa_conn = _sa_sqlite3.connect(str(DB), timeout=5)
+            _sa_conn.execute(
+                "UPDATE agent_registry SET end_time=? WHERE agent_id=? AND end_time IS NULL",
+                (NOW, _sa_agent_id),
+            )
+            _sa_conn.commit()
+            _sa_conn.close()
+        except Exception as _sa_exc:
+            _log.warning("SubagentStop: agent_registry close failed: %s", _sa_exc)
 
 
 def _resolve_project() -> str:
     """DB-backed project resolution — replaces the dead DQIII8_PROJECT env
     var, which no writer sets."""
     try:
-        _bin_root = str(JARVIS / "bin")
+        _bin_root = str(ROOT_DIR / "bin")
         if _bin_root not in sys.path:
             sys.path.insert(0, _bin_root)
         from core.action_log import resolve_project_safe
@@ -48,13 +68,14 @@ def _resolve_project() -> str:
     except Exception:
         return "dqiii8-core"
 
+
 # ── 0. Count lessons added this session ───────────────────────────
 lessons_added = 0
 result = None  # kept for instinct extraction in step 0b
 try:
     # git diff for instincts (step 0b) — not used for the main count
     result = subprocess.run(
-        ["git", "-C", str(JARVIS), "diff", "HEAD", "--", "tasks/lessons.md"],
+        ["git", "-C", str(ROOT_DIR), "diff", "HEAD", "--", "tasks/lessons.md"],
         capture_output=True,
         text=True,
         timeout=5,
@@ -66,14 +87,12 @@ try:
 
     def _count_lesson_lines(text: str) -> int:
         """Count lesson lines with format [YYYY-...]"""
-        return sum(
-            1 for l in text.splitlines() if l.startswith("- [20") or l.startswith("[20")
-        )
+        return sum(1 for l in text.splitlines() if l.startswith("- [20") or l.startswith("[20"))
 
     # Correct pattern: lines_before (HEAD) vs lines_after (working tree)
     lines_before = 0
     head_show = subprocess.run(
-        ["git", "-C", str(JARVIS), "show", "HEAD:tasks/lessons.md"],
+        ["git", "-C", str(ROOT_DIR), "show", "HEAD:tasks/lessons.md"],
         capture_output=True,
         text=True,
         timeout=5,
@@ -82,18 +101,14 @@ try:
         lines_before = _count_lesson_lines(head_show.stdout)
 
     lines_after = (
-        _count_lesson_lines(LESSONS.read_text(encoding="utf-8"))
-        if LESSONS.exists()
-        else 0
+        _count_lesson_lines(LESSONS.read_text(encoding="utf-8")) if LESSONS.exists() else 0
     )
 
     lessons_added = max(0, lines_after - lines_before)
 
     # Fallback 1: git diff of working tree
     if lessons_added == 0:
-        diff_count = sum(
-            1 for line in result.stdout.splitlines() if _is_lesson_line(line)
-        )
+        diff_count = sum(1 for line in result.stdout.splitlines() if _is_lesson_line(line))
         if diff_count > 0:
             lessons_added = diff_count
 
@@ -104,16 +119,14 @@ try:
         try:
             _ts_file = Path("/tmp/dqiii8_session_start.txt")
             if _ts_file.exists():
-                _fb2_start = datetime.fromisoformat(
-                    _ts_file.read_text(encoding="utf-8").strip()
-                )
+                _fb2_start = datetime.fromisoformat(_ts_file.read_text(encoding="utf-8").strip())
         except Exception as _e:
             _log.debug("session-ts parse: %s", _e)
         log_result = subprocess.run(
             [
                 "git",
                 "-C",
-                str(JARVIS),
+                str(ROOT_DIR),
                 "log",
                 "--format=%H %aI",
                 "-10",
@@ -131,9 +144,7 @@ try:
             sha, commit_ts_str = parts[0], parts[1].strip()
             if _fb2_start:
                 try:
-                    commit_dt = datetime.fromisoformat(commit_ts_str).replace(
-                        tzinfo=None
-                    )
+                    commit_dt = datetime.fromisoformat(commit_ts_str).replace(tzinfo=None)
                     if commit_dt < _fb2_start:
                         continue  # commit pre-dates this session — skip
                 except Exception as _e:
@@ -142,7 +153,7 @@ try:
                 [
                     "git",
                     "-C",
-                    str(JARVIS),
+                    str(ROOT_DIR),
                     "diff",
                     f"{sha}~1",
                     sha,
@@ -153,9 +164,7 @@ try:
                 text=True,
                 timeout=5,
             )
-            count2 = sum(
-                1 for line in result2.stdout.splitlines() if _is_lesson_line(line)
-            )
+            count2 = sum(1 for line in result2.stdout.splitlines() if _is_lesson_line(line))
             if count2 > 0:
                 lessons_added = count2
                 result = result2  # update for instincts
@@ -174,9 +183,7 @@ try:
             (session,),
         ).fetchone()
         if _start_row and _start_row[0]:
-            _start_iso = datetime.fromtimestamp(_start_row[0] / 1000).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            _start_iso = datetime.fromtimestamp(_start_row[0] / 1000).strftime("%Y-%m-%d %H:%M:%S")
             _vault_count = _vc.execute(
                 "SELECT COUNT(*) FROM vault_memory"
                 " WHERE source='post_tool_use' AND created_at >= ?",
@@ -194,16 +201,14 @@ _patterns_count = 0
 try:
     import sys as _als
 
-    if str(JARVIS) not in _als.path:
-        _als.path.insert(0, str(JARVIS))
+    if str(ROOT_DIR) not in _als.path:
+        _als.path.insert(0, str(ROOT_DIR))
     from bin.tools.auto_learner import detect_auto_lessons as _detect
 
     _auto_count, _patterns_count = _detect(session_id=session, db_path=str(DB))
     if _auto_count:
         lessons_added += _auto_count
-        print(
-            f"[DQIII8] {_auto_count} auto-lesson(s) detected ({_patterns_count} patterns)"
-        )
+        print(f"[DQIII8] {_auto_count} auto-lesson(s) detected ({_patterns_count} patterns)")
 except Exception as _ale:
     _log.debug("auto_learner unavailable: %s", _ale)
 
@@ -232,9 +237,7 @@ try:
                 continue
             _kw = _m.group(1).strip().lower()
             _pat = _dl.strip()
-            _ex = _ic.execute(
-                "SELECT id FROM instincts WHERE keyword=?", (_kw,)
-            ).fetchone()
+            _ex = _ic.execute("SELECT id FROM instincts WHERE keyword=?", (_kw,)).fetchone()
             if _ex:
                 _ic.execute(
                     "UPDATE instincts SET times_applied=times_applied+1, last_applied=? WHERE keyword=?",
@@ -279,7 +282,7 @@ try:
 
         if _vdur_min >= 10:
             _vdiff = subprocess.run(
-                ["git", "-C", str(JARVIS), "diff", "--stat", "HEAD"],
+                ["git", "-C", str(ROOT_DIR), "diff", "--stat", "HEAD"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -376,9 +379,7 @@ try:
                 _iconf = _iconf or 0.5
                 _root = _kw.split("-")[0].lower()
                 # Boost: keyword root appears 2+ times in vault_memory
-                _matches = len(
-                    _ire.findall(r"\b" + _ire.escape(_root) + r"\b", _vault_corpus)
-                )
+                _matches = len(_ire.findall(r"\b" + _ire.escape(_root) + r"\b", _vault_corpus))
                 if _matches >= 2:
                     _iconf = min(0.95, _iconf + 0.05)
                     _updated += 1
@@ -397,9 +398,7 @@ try:
                             _updated += 1
                     except Exception as _e:
                         _log.debug("instinct-date parse: %s", _e)
-                _ic.execute(
-                    "UPDATE instincts SET confidence=? WHERE id=?", (_iconf, _iid)
-                )
+                _ic.execute("UPDATE instincts SET confidence=? WHERE id=?", (_iconf, _iid))
             _ic.commit()
             _ic.close()
             if _updated:
@@ -516,7 +515,7 @@ def _tier_for_model(model_id: str) -> str | None:
 try:
     _transcript_path = data.get("transcript_path", "")
     if not _transcript_path:
-        _cwd_str = str(Path(data.get("cwd", str(JARVIS))).resolve())
+        _cwd_str = str(Path(data.get("cwd", str(ROOT_DIR))).resolve())
         _slug = _cwd_str.replace("/", "-")
         _cand = Path.home() / ".claude" / "projects" / _slug / f"{session}.jsonl"
         _transcript_path = str(_cand) if _cand.exists() else ""
@@ -603,7 +602,9 @@ try:
             )
             _tconn.commit()
             _tconn.close()
-            print(f"[DQIII8] transcript cost capture: {_grand_total} tokens across {len(_per_model)} model(s)")
+            print(
+                f"[DQIII8] transcript cost capture: {_grand_total} tokens across {len(_per_model)} model(s)"
+            )
 except Exception as e:
     _log.warning("transcript cost capture failed", exc_info=True)
 
@@ -612,7 +613,7 @@ try:
     import subprocess as _rec_sub
 
     _rec = _rec_sub.run(
-        ["python3", str(JARVIS / "bin" / "tools" / "reconcile_errors.py")],
+        ["python3", str(ROOT_DIR / "bin" / "tools" / "reconcile_errors.py")],
         capture_output=True,
         text=True,
         timeout=15,
@@ -652,11 +653,13 @@ except Exception as e:
 # -- 1d. Cleanup auto-installed Tier 3 plugins
 try:
     import sys as _pm_sys
-    _pm_sys.path.insert(0, str(JARVIS / 'bin'))
+
+    _pm_sys.path.insert(0, str(ROOT_DIR / "bin"))
     from plugin_manager import cleanup_auto_installed
+
     _pm_removed = cleanup_auto_installed()
     if _pm_removed:
-        print(f'[DQIII8] {_pm_removed} Tier 3 plugin(s) auto-uninstalled')
+        print(f"[DQIII8] {_pm_removed} Tier 3 plugin(s) auto-uninstalled")
 except Exception as _pm_e:
     _log.debug("plugin-cleanup skipped: %s", _pm_e)
 
@@ -668,7 +671,7 @@ try:
     trackable = []
     for f in files:
         check = subprocess.run(
-            ["git", "-C", str(JARVIS), "check-ignore", "-q", f],
+            ["git", "-C", str(ROOT_DIR), "check-ignore", "-q", f],
             capture_output=True,
             timeout=5,
         )
@@ -676,12 +679,12 @@ try:
             trackable.append(f)
     if trackable:
         subprocess.run(
-            ["git", "-C", str(JARVIS), "add"] + trackable,
+            ["git", "-C", str(ROOT_DIR), "add"] + trackable,
             capture_output=True,
             timeout=10,
         )
         status = subprocess.run(
-            ["git", "-C", str(JARVIS), "status", "--porcelain"],
+            ["git", "-C", str(ROOT_DIR), "status", "--porcelain"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -691,7 +694,7 @@ try:
                 [
                     "git",
                     "-C",
-                    str(JARVIS),
+                    str(ROOT_DIR),
                     "commit",
                     "-m",
                     f"chore(auto): session {session[:8]} {NOW[:10]}",
@@ -714,7 +717,7 @@ except Exception as e:
 try:
     branch = (
         subprocess.run(
-            ["git", "-C", str(JARVIS), "rev-parse", "--abbrev-ref", "HEAD"],
+            ["git", "-C", str(ROOT_DIR), "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -723,7 +726,7 @@ try:
     )
     result = subprocess.run(
         ["git", "push", "premium", branch],
-        cwd=str(JARVIS),
+        cwd=str(ROOT_DIR),
         capture_output=True,
         timeout=30,
     )
@@ -748,66 +751,50 @@ try:
         _duration_min = ((_time.time() * 1000 - _first_ms) / 60000) if _first_ms else 0
 
         if _duration_min >= 15:
-            # Guard: maximum 1 handover commit per calendar date
+            # Guard: maximum 1 handover per calendar date, checked BEFORE any
+            # work is done. Previously only the git commit/push were gated;
+            # the session_N.md write itself was unconditional, so it kept
+            # firing on every Stop/SubagentStop past the 15-min mark even
+            # after gating the commit (93 orphan files on 2026-09-04 alone).
             _today = NOW[:10]
-            _log_today = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(JARVIS),
-                    "log",
-                    "--oneline",
-                    "--since=midnight",
-                    "--grep",
-                    f"session handover {_today}",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            _already_committed_today = bool(_log_today.stdout.strip())
+            _sentinel = ROOT_DIR / "sessions" / f".handover_done_{_today}"
 
-            _diff = subprocess.run(
-                ["git", "-C", str(JARVIS), "diff", "--stat", "HEAD"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            _files = [
-                l.split("|")[0].strip()
-                for l in _diff.stdout.splitlines()
-                if "|" in l and not l.strip().startswith("Bin")
-            ]
+            if not _sentinel.exists():
+                _diff = subprocess.run(
+                    ["git", "-C", str(ROOT_DIR), "diff", "--stat", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                _files = [
+                    l.split("|")[0].strip()
+                    for l in _diff.stdout.splitlines()
+                    if "|" in l and not l.strip().startswith("Bin")
+                ]
 
-            _project = _resolve_project()
+                _project = _resolve_project()
 
-            _next = "Ver projects/{}.md".format(_project)
-            _pm = JARVIS / "projects" / f"{_project}.md"
-            if _pm.exists():
-                _lines = _pm.read_text(encoding="utf-8").splitlines()
-                for _i, _l in enumerate(_lines):
-                    if "Next step" in _l:
-                        for _j in range(_i + 1, min(_i + 4, len(_lines))):
-                            _t = _lines[_j].strip().lstrip("-").lstrip("*").strip()
-                            if _t:
-                                _next = _t
-                                break
-                        break
+                _next = "Ver projects/{}.md".format(_project)
+                _pm = ROOT_DIR / "projects" / f"{_project}.md"
+                if _pm.exists():
+                    _lines = _pm.read_text(encoding="utf-8").splitlines()
+                    for _i, _l in enumerate(_lines):
+                        if "Next step" in _l:
+                            for _j in range(_i + 1, min(_i + 4, len(_lines))):
+                                _t = _lines[_j].strip().lstrip("-").lstrip("*").strip()
+                                if _t:
+                                    _next = _t
+                                    break
+                            break
 
-            _sessions_dir = JARVIS / "sessions"
-            _sessions_dir.mkdir(exist_ok=True)
-            _date = NOW[:10]
-            _session_path = _sessions_dir / f"{_date}_session.md"
-            _idx = 2
-            while _session_path.exists():
-                _session_path = _sessions_dir / f"{_date}_session_{_idx}.md"
-                _idx += 1
+                _sessions_dir = ROOT_DIR / "sessions"
+                _sessions_dir.mkdir(exist_ok=True)
+                _date = NOW[:10]
+                _session_path = _sessions_dir / f"{_date}_session.md"
 
-            _files_block = (
-                "\n".join(f"- `{f}`" for f in _files[:20]) or "- (no committed changes)"
-            )
-            _duration_str = f"{int(_duration_min)}m"
-            _session_md = f"""---
+                _files_block = "\n".join(f"- `{f}`" for f in _files[:20]) or "- (no committed changes)"
+                _duration_str = f"{int(_duration_min)}m"
+                _session_md = f"""---
 date: {_date}
 time: {NOW[11:16]}
 project: {_project}
@@ -819,7 +806,7 @@ duration: {_duration_str}
 # Session {_date}
 
 ## What we did
-- Session of {_duration_str} · {_project}
+- Session of {_duration_str} \u00b7 {_project}
 - (See modified files below for details)
 
 ## Modified files
@@ -829,35 +816,34 @@ duration: {_duration_str}
 {_next}
 
 ## Lessons learned
-{("- " + chr(10) + "- ").join(["(none this session)"]) if not lessons_added else f"- {lessons_added} lesson(s) added — see tasks/lessons.md"}
+{("- " + chr(10) + "- ").join(["(none this session)"]) if not lessons_added else f"- {lessons_added} lesson(s) added \u2014 see tasks/lessons.md"}
 """
-            _session_path.write_text(_session_md, encoding="utf-8")
+                _session_path.write_text(_session_md, encoding="utf-8")
 
-            # Stage sessions/ explicitly, never ".": `_pm` points at
-            # JARVIS/"projects"/<project>.md, a directory that does not exist (real
-            # docs live at my-projects/<slug>/PROJECT.md), so `_pm.exists()` is
-            # always False. A "." fallback here stages the ENTIRE working tree —
-            # including uncommitted in-progress work — into an unreviewed
-            # auto-commit that the push below would publish. sessions/ is
-            # gitignored by design (handover notes are local-only, see
-            # .claude/skills/handover/SKILL.md).
-            subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(JARVIS),
-                    "add",
-                    str(_sessions_dir),
-                ],
-                capture_output=True,
-                timeout=10,
-            )
-            if not _already_committed_today:
+                # Stage sessions/ explicitly, never ".": `_pm` points at
+                # ROOT_DIR/"projects"/<project>.md, a directory that does not exist (real
+                # docs live at my-projects/<slug>/PROJECT.md), so `_pm.exists()` is
+                # always False. A "." fallback here stages the ENTIRE working tree \u2014
+                # including uncommitted in-progress work \u2014 into an unreviewed
+                # auto-commit that the push below would publish. sessions/ is
+                # gitignored by design (handover notes are local-only, see
+                # .claude/skills/handover/SKILL.md).
                 subprocess.run(
                     [
                         "git",
                         "-C",
-                        str(JARVIS),
+                        str(ROOT_DIR),
+                        "add",
+                        str(_sessions_dir),
+                    ],
+                    capture_output=True,
+                    timeout=10,
+                )
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(ROOT_DIR),
                         "commit",
                         "-m",
                         f"session handover {_date}",
@@ -865,10 +851,9 @@ duration: {_duration_str}
                     capture_output=True,
                     timeout=10,
                 )
-            if not _already_committed_today:
                 _branch = (
                     subprocess.run(
-                        ["git", "-C", str(JARVIS), "rev-parse", "--abbrev-ref", "HEAD"],
+                        ["git", "-C", str(ROOT_DIR), "rev-parse", "--abbrev-ref", "HEAD"],
                         capture_output=True,
                         text=True,
                         timeout=5,
@@ -876,10 +861,11 @@ duration: {_duration_str}
                     or "main"
                 )
                 subprocess.run(
-                    ["git", "-C", str(JARVIS), "push", "premium", _branch],
+                    ["git", "-C", str(ROOT_DIR), "push", "premium", _branch],
                     capture_output=True,
                     timeout=20,
                 )
+                _sentinel.write_text(_date, encoding="utf-8")
 
 except Exception as e:
     _log.warning("handover failed", exc_info=True)
@@ -888,14 +874,14 @@ except Exception as e:
 try:
     import sys as _spc_sys
 
-    _spc_sys.path.insert(0, str(JARVIS))
+    _spc_sys.path.insert(0, str(ROOT_DIR))
     from bin.monitoring.audit_trigger import check_triggers
 
     _spc_result = check_triggers(session_id=session)
     if _spc_result.get("trigger"):
         _reason = _spc_result.get("reason", "SPC trigger")
         _priority = _spc_result.get("priority", "MEDIUM")
-        (JARVIS / "tasks" / "audit_pending.flag").write_text(
+        (ROOT_DIR / "tasks" / "audit_pending.flag").write_text(
             f"Audit pending [{_priority}] — {_reason}\n"
             "Run /audit at the start of the next session."
         )
@@ -907,18 +893,14 @@ except Exception as _spc_e:
 
         if DB.exists():
             _fb_conn = _fb_sql.connect(str(DB), timeout=3)
-            _fb_row = _fb_conn.execute(
-                "SELECT MAX(timestamp) FROM audit_reports"
-            ).fetchone()
+            _fb_row = _fb_conn.execute("SELECT MAX(timestamp) FROM audit_reports").fetchone()
             _fb_conn.close()
             _fb_last = _fb_row[0] if _fb_row and _fb_row[0] else None
             _fb_needs = True
             if _fb_last:
-                _fb_needs = (
-                    datetime.now() - datetime.fromisoformat(_fb_last)
-                ) > timedelta(days=7)
+                _fb_needs = (datetime.now() - datetime.fromisoformat(_fb_last)) > timedelta(days=7)
             if _fb_needs:
-                (JARVIS / "tasks" / "audit_pending.flag").write_text(
+                (ROOT_DIR / "tasks" / "audit_pending.flag").write_text(
                     "Audit pending — run /audit at the start of the next session."
                 )
     except Exception as _e:
@@ -929,14 +911,12 @@ try:
     import json as _json
     from datetime import datetime as _dt
 
-    _db_path = JARVIS / "database" / "dqiii8.db"
-    _progress_file = JARVIS / "claude-progress.txt"
+    _db_path = ROOT_DIR / "database" / "dqiii8.db"
+    _progress_file = ROOT_DIR / "claude-progress.txt"
 
     if _db_path.exists():
         with _get_db(timeout=3) as _conn:
-            _total_sessions = _conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[
-                0
-            ]
+            _total_sessions = _conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
 
             _audit_row = _conn.execute(
                 "SELECT overall_score, timestamp, recommendations FROM audit_reports ORDER BY timestamp DESC LIMIT 1"
@@ -976,7 +956,7 @@ try:
             _lines.append("(none yet)\n")
 
         _lines.append("\n## Consolidated patterns\n")
-        _lessons_file = JARVIS / "tasks" / "lessons.md"
+        _lessons_file = ROOT_DIR / "tasks" / "lessons.md"
         if _lessons_file.exists():
             import re as _re
 

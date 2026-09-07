@@ -19,13 +19,28 @@ Timeout: 2s hard limit.
 
 import json
 import logging
+import logging.handlers
 import os
 import signal
 import sqlite3
 import sys
 import time
+from pathlib import Path
 
 log = logging.getLogger("dqiii8." + __name__)
+if not log.handlers:
+    log.setLevel(logging.DEBUG)
+    _log_dir = Path("/var/log/dqiii8")
+    if _log_dir.exists():
+        _fh = logging.handlers.RotatingFileHandler(
+            str(_log_dir / "hooks.log"), maxBytes=2_000_000, backupCount=3
+        )
+        _fh.setFormatter(
+            logging.Formatter("%(asctime)s [post_tool_use_failure] %(levelname)s %(message)s")
+        )
+        log.addHandler(_fh)
+    else:
+        log.addHandler(logging.NullHandler())
 
 DQIII8_ROOT = os.environ.get("DQIII8_ROOT", "/root/dqiii8")
 DB = os.path.join(DQIII8_ROOT, "database", "dqiii8.db")
@@ -120,8 +135,16 @@ def _resolve_agent(data: dict) -> str:
                     agent = json.load(_f).get("agent_type", "")
             else:
                 _rconn = sqlite3.connect(DB, timeout=2)
+                # end_time IS NULL: only a still-open subagent registration is a
+                # valid attribution — without this filter, a closed Plan/subagent
+                # context from earlier in the session (e.g. an already-exited
+                # EnterPlanMode excursion) kept winning this lookup and mislabeling
+                # every later, unrelated failure as that stale agent (observed
+                # live: real claude-sonnet-5 failures logged as "Plan" long after
+                # plan mode had ended).
                 _rrow = _rconn.execute(
-                    "SELECT agent_id FROM agent_registry WHERE parent_session=? "
+                    "SELECT agent_id FROM agent_registry "
+                    "WHERE parent_session=? AND end_time IS NULL "
                     "ORDER BY start_time DESC LIMIT 1",
                     (session,),
                 ).fetchone()
@@ -185,6 +208,21 @@ def main() -> None:
     # gets its own connection/transaction to keep them independent.
     try:
         conn = sqlite3.connect(DB, timeout=10)
+        # PostToolUse (success=0 branch) and PostToolUseFailure both fire for
+        # the same real tool failure more often than this hook's own docstring
+        # assumes (observed live: a plain Bash exit!=0 and a Read-file-missing
+        # both tripped both events) — without this guard every such failure
+        # was double-logged, inflating T2's error-rate SPC trigger 2x. Skip if
+        # the other hook (or a prior run of this one) already recorded the
+        # same (session, error_message) in the last 5s.
+        _dup = conn.execute(
+            "SELECT 1 FROM error_log WHERE session_id=? AND error_message=? "
+            "AND timestamp >= datetime('now', '-5 seconds') LIMIT 1",
+            (session, error_message),
+        ).fetchone()
+        if _dup:
+            conn.close()
+            sys.exit(0)
         conn.execute(
             "INSERT INTO error_log "
             "(timestamp, session_id, agent_name, error_type, error_message, "
@@ -201,7 +239,9 @@ def main() -> None:
         conn.commit()
         conn.close()
     except Exception as e:
-        log.warning("post_tool_use_failure: error_log INSERT failed: %s", e, exc_info=True)  # never block on logging failure
+        log.warning(
+            "post_tool_use_failure: error_log INSERT failed: %s", e, exc_info=True
+        )  # never block on logging failure
 
     try:
         conn2 = sqlite3.connect(DB, timeout=10)
@@ -228,7 +268,9 @@ def main() -> None:
         # logged distinctly so the race's real frequency stays observable.
         log.info("post_tool_use_failure: agent_actions already closed (double-close race): %s", e)
     except Exception as e:
-        log.warning("post_tool_use_failure: agent_actions UPDATE failed: %s", e, exc_info=True)  # never block on logging failure
+        log.warning(
+            "post_tool_use_failure: agent_actions UPDATE failed: %s", e, exc_info=True
+        )  # never block on logging failure
 
     sys.exit(0)
 

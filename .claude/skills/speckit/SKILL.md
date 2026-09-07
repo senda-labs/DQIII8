@@ -217,5 +217,5 @@ echo "y" | specify init --here --integration claude
 
 ## Ejemplo de referencia
 
-Primer uso completo: `my-projects/pokemon-genesis-chaos`, feature `001-tileforge-saas`.
+Primer uso completo: my-projects/pokemon-genesis-chaos (repo individual del proyecto, no dentro de dqiii8), feature `001-tileforge-saas`.
 Spec completo en `specs/001-tileforge-saas/` — consultar como plantilla de calidad.

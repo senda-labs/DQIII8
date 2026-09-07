@@ -7,7 +7,10 @@
 - WAL mode is set persistently; never disable it. Check `-wal` size before assuming
   a write landed.
 - DB inventory (live / knowledge / frozen) → `CLAUDE.md` §System Map. Do NOT create tables
-  in the wrong file — `routing_feedback` already exists forked in two DBs (known debt).
+  in the wrong file — 30 tables were silently forked between dqiii8.db and
+  dqiii8_knowledge.db by a 2026-08-14 consolidation clone, purged 2026-08-21 (see
+  docs/ARCHITECTURE.md). `routing_feedback` was checked directly and does NOT exist in
+  dqiii8_knowledge.db — the old "forked in two DBs" claim for it was stale.
 
 ## Dispatch / wrapper
 - Never parse dispatch stdout as a clean single response: provider fallback prints the

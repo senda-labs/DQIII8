@@ -1,27 +1,42 @@
 #!/usr/bin/env python3
 """
 DQIII8 Hook — PostCompact
-Re-injects essential context after context compaction.
+Re-injects the minimum operational baseline after context compaction.
 
 Fires AFTER context-mode finishes compaction.
-Restores: active model, active project, last 3 lessons, audit score.
-Reads precompact_state.json written by precompact.py to recover previous state.
-Always exits 0 — never abort.
+Restores: active model, active project, next step, audit score (only if
+pending), recent-activity resume snippet (only if any agent_actions rows
+exist for this session) — see "Injection rules" comment below. Reads the
+session-scoped tasks/precompact_state_{session_id}.json written by
+precompact.py to recover previous state, then deletes it. Always exits
+0 — never abort.
 """
 
 import json
 import logging
 import logging.handlers
 import os
+import re
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB = JARVIS / "database" / "dqiii8.db"
-LESSONS = JARVIS / "tasks" / "lessons.md"
-STATE_FILE = JARVIS / "tasks" / "precompact_state.json"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB = ROOT_DIR / "database" / "dqiii8.db"
+
+# Rango 2 fix (2026-08-19 red-team audit) — mirrors precompact.py's
+# per-session state file. The lookup key MUST come from this hook's own
+# stdin session_id, never from the state file's own recorded session_id —
+# trusting the file's content to find itself is exactly how the old shared
+# tasks/precompact_state.json leaked one session's state into another's.
+_SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def _state_file_for(session_id: str) -> Path:
+    safe_id = _SAFE_ID_RE.sub("_", session_id)[:128] or "unknown"
+    return ROOT_DIR / "tasks" / f"precompact_state_{safe_id}.json"
+
 
 _log = logging.getLogger("dqiii8.postcompact")
 if not _log.handlers:
@@ -41,59 +56,72 @@ try:
 except Exception:
     data = {}
 
+# ── Session id — from THIS hook's own stdin (same pattern as
+# session_start.py / subagent_start.py / precompact.py), needed BEFORE
+# we can locate the session-scoped state file below. Deriving it from
+# the state file's own contents instead — as this hook used to do — is
+# exactly what let one session's PostCompact read another's state.
+session_id = data.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))
+STATE_FILE = _state_file_for(session_id)
+
 # ── Recover pre-compact state ────────────────────────────────────────
 pre_state: dict = {}
 try:
     if STATE_FILE.exists():
         pre_state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        # Best-effort cleanup: this file's only reader is this hook, and
+        # it has just been read — leaving it around only accumulates one
+        # stale file per compact event, forever, in tasks/.
+        try:
+            STATE_FILE.unlink()
+        except OSError:
+            pass
 except Exception as e:
     _log.warning("pre-compact state unreadable: %s", e)
-
-# ── Session id (needed by project resolution below) ──────────────────
-session_id = pre_state.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))
 
 # ── Active project ───────────────────────────────────────────────────
 # DQIII8_PROJECT env var has no writer — resolve via the DB-backed SSOT instead.
 try:
-    _bin_root = str(JARVIS / "bin")
+    _bin_root = str(ROOT_DIR / "bin")
     if _bin_root not in sys.path:
         sys.path.insert(0, _bin_root)
     from core.action_log import resolve_project_safe
 
-    project = pre_state.get("project") or resolve_project_safe(session_id, cwd=data.get("cwd")) or "dqiii8-core"
+    project = (
+        pre_state.get("project")
+        or resolve_project_safe(session_id, cwd=data.get("cwd"))
+        or "dqiii8-core"
+    )
 except Exception:
     project = pre_state.get("project") or "dqiii8-core"
 
 # ── Active model ─────────────────────────────────────────────────────
 model = os.environ.get("DQIII8_MODEL", "claude-sonnet-5")
 
-# ── Last 3 lessons ───────────────────────────────────────────────────
-lessons: list[str] = []
-try:
-    if LESSONS.exists():
-        all_lines = LESSONS.read_text(encoding="utf-8").splitlines()
-        lessons = [l for l in all_lines if l.strip().startswith("[20")][-3:]
-except Exception as e:
-    _log.debug("lessons unreadable: %s", e)
-
-# ── Latest audit score ───────────────────────────────────────────────
-audit_info = "No audit"
-try:
-    if DB.exists():
-        conn = sqlite3.connect(str(DB), timeout=2)
-        row = conn.execute(
-            "SELECT timestamp, overall_score FROM audit_reports "
-            "ORDER BY timestamp DESC LIMIT 1"
-        ).fetchone()
-        conn.close()
-        if row:
-            audit_info = f"{row[0][:10]} | Score: {row[1]}/100"
-except Exception as e:
-    _log.warning("audit-score DB failed: %s", e)
+# ── Latest audit score — ONLY IF an audit is pending (a score with
+# nothing pending isn't actionable right after a compact) ─────────────
+AUDIT_FLAG = ROOT_DIR / "tasks" / "audit_pending.flag"
+audit_info = ""
+if AUDIT_FLAG.exists():
+    try:
+        if DB.exists():
+            conn = sqlite3.connect(str(DB), timeout=2)
+            row = conn.execute(
+                "SELECT timestamp, overall_score FROM audit_reports "
+                "ORDER BY timestamp DESC LIMIT 1"
+            ).fetchone()
+            conn.close()
+            if row:
+                audit_info = f"\nAudit  : {row[0][:10]} | Score: {row[1]}/100 — pending, run /audit"
+    except Exception as e:
+        _log.warning("audit-score DB failed: %s", e)
 
 # ── Project next step ────────────────────────────────────────────────
+# Rango 8 fix (2026-08-19 red-team audit): same path bug as session_start.py
+# — ROOT_DIR/"projects"/<x>.md never existed; real docs are at
+# my-projects/<slug>/PROJECT.md.
 next_step = "Not defined"
-pm = JARVIS / "projects" / f"{project}.md"
+pm = ROOT_DIR / "my-projects" / project / "PROJECT.md"
 try:
     if pm.exists():
         lines = pm.read_text(encoding="utf-8").splitlines()
@@ -102,37 +130,52 @@ try:
                 if i + 1 < len(lines) and lines[i + 1].strip():
                     next_step = lines[i + 1].strip()
                 break
+    elif project != "dqiii8-core":
+        _log.warning("postcompact: PROJECT.md not found at %s", pm)
 except Exception as e:
     _log.debug("next-step unreadable: %s", e)
 
 # ── Session stats before compact ─────────────────────────────────────
 actions_before = pre_state.get("actions_count", "?")
 
+# ── Recent-activity resume snippet (Rango 9 fix) ───────────────────────
+resume_snippet = pre_state.get("resume_snippet", "")
+resume_block = f"\nRecent activity:\n{resume_snippet}" if resume_snippet else ""
+
 # ── Compact hint heuristic ────────────────────────────────────────────
 compact_hint = ""
 try:
     n = int(actions_before)
     if n > 100:
-        compact_hint = (
-            f"\n[COMPACT] Sesión muy larga ({n} acciones) — /compact recomendado"
-        )
+        compact_hint = f"\n[COMPACT] Sesión muy larga ({n} acciones) — /compact recomendado"
     elif n > 50:
         compact_hint = f"\n[COMPACT] Sesión larga ({n} acciones) — considerar /compact"
 except (ValueError, TypeError):
     pass
 
+# ── Injection rules (exact, by necessity) ─────────────────────────────
+# model, project, next_step : ALWAYS (minimum operational baseline)
+# audit_info                : ONLY IF tasks/audit_pending.flag exists
+# compact_hint               : ONLY IF actions_before > 50 (already conditional)
+# resume_block               : ONLY IF precompact.py found agent_actions rows
+#                               for this session (Rango 9 replacement for the
+#                               retired context-mode continuity snapshot —
+#                               see precompact.py's resume_snippet comment)
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DQIII8 — PostCompact {datetime.now().strftime('%H:%M')}
 Context compacted — state restored
 Model  : {model}
 Project: {project}
-Next   : {next_step}
-Audit  : {audit_info}
-Session actions: {actions_before}{compact_hint}
-
-LAST LESSONS:
-{chr(10).join(lessons) if lessons else '  (none recorded)'}
+Next   : {next_step}{audit_info}
+Session actions: {actions_before}{compact_hint}{resume_block}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
+_log.info(
+    "injected session=%s audit=%s hint=%s chars=%d",
+    session_id,
+    bool(audit_info),
+    bool(compact_hint),
+    len(ctx),
+)
 print(json.dumps({"additionalContext": ctx}))
 sys.exit(0)

@@ -1,7 +1,9 @@
 ---
 name: auditor
+description: Analyzes database/dqiii8.db to produce a structured health report — failure patterns, slow agents, unresolved errors, skill issues. Triggered by /audit, "analyze metrics", "what's failing", "error report", "system performance", "audit report".
 model: claude-sonnet-5
 tools: ["Read", "Grep", "Glob", "Bash"]
+# Coincide con AGENT_ROUTING["auditor"] = ("anthropic", "claude-sonnet-5") — ver 03_tiering_and_routing.md.
 ---
 
 # Auditor Agent

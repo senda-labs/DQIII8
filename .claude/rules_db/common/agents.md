@@ -67,6 +67,15 @@ no hay tier gratuito al que bajar, así que la regla se aplica **dentro** de Ant
 Sonnet por defecto, Haiku donde baste, Opus solo revisión adversarial final. Nunca "ahorrar"
 saltando al wrapper: está dormante (REGLA NIM).
 
+## SendMessage — sin secretos crudos (Rango 15, red-team 2026-08-19)
+
+`SendMessage` entre agentes es un canal sin auditar (no pasa por `PermissionAnalyzer`,
+no se loguea en `agent_actions`). Nunca relayar por ahí secretos/tokens/IPs/credenciales
+en crudo — ni citando un hallazgo, ni "para que el otro agente lo verifique". Usa una
+referencia redactada (nombre de la variable de entorno, ruta del fichero, últimos 4
+caracteres) y deja que el destinatario lea el valor real de su propia fuente si lo
+necesita. Mismo criterio que ya aplica a logs y a mensajes de commit.
+
 ## Cómo repartir el trabajo
 
 - Paralelo para operaciones independientes (sin estado compartido ni dependencias);

@@ -100,7 +100,9 @@ try:
             conn.commit()
             conn.close()
         except Exception as e:
-            log.warning("semgrep_scan: vault_memory shannon_score upsert failed: %s", e, exc_info=True)  # never block on logging failure
+            log.warning(
+                "semgrep_scan: vault_memory shannon_score upsert failed: %s", e, exc_info=True
+            )  # never block on logging failure
 
 except Exception as e:
     log.warning("semgrep_scan: semgrep subprocess scan failed: %s", e, exc_info=True)

@@ -10,9 +10,10 @@ frequency drifts into mechanical pre-commit checks so they cannot come back:
   1. check_registry_reachability()  — no orphan/dangling `_REGISTRY` alias.
      (`routing`, `performance`, `git-workflow`, `workflow`, `testing` were all
      registered-but-unreachable; two of them also redefined canonical taxonomy.)
-  2. check_token_budget()           — the dispatcher docstring, DYNAMIC.md and
-     02_hooks_and_permissions.md (x2) must quote ONE range. It went stale twice
-     on 2026-08-17 alone, which is exactly what a mechanical check is for.
+  2. check_token_budget()           — the dispatcher docstring is the single
+     source for the token range; 02_hooks_and_permissions.md must not restate
+     it. It went stale twice on 2026-08-17 alone (back when a second file also
+     quoted it), which is exactly what a mechanical check is for.
   3. check_agent_names_exist()      — an agent cited in a routing table must
      exist in `AGENT_ROUTING` or as a `.claude/agents/*.md` file.
   4. check_model_slugs_match_code() — a model slug a rule file presents as
@@ -58,7 +59,6 @@ import rules_registry_introspect as intro  # noqa: E402
 
 DISPATCHER = ".claude/hooks/rules_dispatcher.py"
 WRAPPER = "bin/core/openrouter_wrapper.py"
-DYNAMIC_MD = ".claude/rules/DYNAMIC.md"
 HOOKS_PERMS_MD = ".claude/rules/02_hooks_and_permissions.md"
 CORE_BEHAVIOR_MD = ".claude/rules/00_core_behavior.md"
 TIERING_MD = ".claude/rules/03_tiering_and_routing.md"
@@ -123,12 +123,8 @@ class Source:
             names = result.stdout.split() if result.returncode == 0 else []
         else:
             base = self.root / subdir
-            names = [
-                str(p.relative_to(self.root)) for p in base.rglob("*.md") if p.is_file()
-            ]
-        return sorted(
-            n for n in names if not any(n.startswith(x) for x in MD_SCAN_EXCLUDE)
-        )
+            names = [str(p.relative_to(self.root)) for p in base.rglob("*.md") if p.is_file()]
+        return sorted(n for n in names if not any(n.startswith(x) for x in MD_SCAN_EXCLUDE))
 
     def list_governance_md(self) -> list[str]:
         """Every markdown file in governance scope: `.claude/**` plus the
@@ -166,9 +162,7 @@ class Source:
         else:
             base = self.root / AGENTS_DIR
             names = (
-                [str(p.relative_to(self.root)) for p in base.glob("*.md")]
-                if base.is_dir()
-                else []
+                [str(p.relative_to(self.root)) for p in base.glob("*.md")] if base.is_dir() else []
             )
         return {Path(n).stem for n in names}
 
@@ -347,17 +341,16 @@ def _canonical_session_floor(dispatcher_src: str) -> int | None:
 
 def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
     """The dispatcher docstring is the single source for the measured token
-    range; DYNAMIC.md must quote it verbatim, and
-    02_hooks_and_permissions.md must not quote it at all.
+    range; 02_hooks_and_permissions.md must not quote it at all.
 
     Places stating this number drifted twice on 2026-08-17 alone, and again on
     2026-08-18 — that last time in BOTH directions while this check still
     printed "consistent", because it only cross-checked prose against prose.
     It now also MEASURES, holding BOTH bounds to exact equality: the real floor,
     the maximum reachable injection (derived from the dispatcher's own tables,
-    not from a hand-written probe), and the per-session floor that includes the
-    two files Claude Code auto-injects. Measurement reads the worktree even under
-    --staged: token_estimate() needs real files on disk.
+    not from a hand-written probe), and the per-session floor that includes
+    the one file Claude Code auto-injects (CLAUDE.md). Measurement reads the
+    worktree even under --staged: token_estimate() needs real files on disk.
     """
     problems: list[str] = []
     warnings: list[str] = []
@@ -380,10 +373,9 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
     if session_floor is None:
         problems.append(
             f"{DISPATCHER}: the docstring publishes 'suelo {floor}' (dispatcher-only) "
-            "but no 'suelo de sesión N'. CLAUDE.md and DYNAMIC.md are auto-injected "
-            "into every session and nothing else measures them, so the dispatcher "
-            "floor alone reads as a ~2.6x understatement of the real context tax "
-            "(C8, 2026-08-18). Publish both."
+            "but no 'suelo de sesión N'. CLAUDE.md is auto-injected into every "
+            "session and nothing else measures it, so the dispatcher floor alone "
+            "understates the real context tax (C8, 2026-08-18). Publish both."
         )
 
     # The docstring also restates the range in rounded prose ("~1.430-4.470
@@ -399,44 +391,6 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
                 f"of the canonical {floor}-{ceiling}."
             )
 
-    # DYNAMIC.md: >=1 occurrence, and it must match the canonical range.
-    for rel, expected_min in ((DYNAMIC_MD, 1),):
-        text = src.read(rel)
-        if text is None:
-            problems.append(f"cannot read {rel}")
-            continue
-        found = _RANGE.findall(text)
-        if len(found) < expected_min:
-            problems.append(
-                f"{rel}: expected at least {expected_min} citation(s) of the "
-                f"token range '{floor}-{ceiling}', found {len(found)}. The two "
-                "sites that quote this number must be updated together."
-            )
-        for raw_lo, raw_hi in found:
-            lo, hi = _num(raw_lo), _num(raw_hi)
-            if (lo, hi) != (floor, ceiling):
-                problems.append(
-                    f"{rel}: token range '{raw_lo}-{raw_hi}' disagrees with the "
-                    f"canonical '{floor}-{ceiling}' in {DISPATCHER}'s docstring."
-                )
-        # Prose restatements of any published bound ("el suelo de 1.432 es ...").
-        # The session floor is stripped before the generic `suelo` sweep so the
-        # two numbers cannot be confused for each other.
-        for pattern, expected, label, scan in (
-            (_SESSION_FLOOR, session_floor, "suelo de sesión", text),
-            (_CANON_FLOOR, floor, "suelo", _SESSION_FLOOR.sub(" ", text)),
-            (_CANON_CEIL, ceiling, "techo", text),
-        ):
-            if expected is None:
-                continue
-            for raw in pattern.findall(scan):
-                value = _num(raw)
-                if value is not None and value != expected:
-                    problems.append(
-                        f"{rel}: {label} stated as {raw} but the canonical "
-                        f"{label} is {expected}."
-                    )
-
     # 02_hooks_and_permissions.md is itself injected and itself counts toward
     # the ceiling it used to describe. It must point at the docstring, never
     # restate the numbers — a third citation site is a third thing to drift.
@@ -444,7 +398,9 @@ def check_token_budget(src: Source) -> tuple[list[str], list[str]]:
     if hp_text is None:
         problems.append(f"cannot read {HOOKS_PERMS_MD}")
     else:
-        stray = _RANGE.findall(hp_text) + _CANON_FLOOR.findall(hp_text) + _CANON_CEIL.findall(hp_text)
+        stray = (
+            _RANGE.findall(hp_text) + _CANON_FLOOR.findall(hp_text) + _CANON_CEIL.findall(hp_text)
+        )
         if stray:
             problems.append(
                 f"{HOOKS_PERMS_MD}: must NOT restate the token range "
@@ -471,10 +427,7 @@ _CEILING_PROBES = (
     ),
     (
         "Edit",
-        {
-            "file_path": "/root/dqiii8/database/.claude/hooks/"
-            "openrouter_wrapper_domain_agent.py"
-        },
+        {"file_path": "/root/dqiii8/database/.claude/hooks/" "openrouter_wrapper_domain_agent.py"},
         "edit-hooks-tiering-db-py",
     ),
 )
@@ -556,19 +509,18 @@ def _measured_ceiling(rd) -> tuple[int, str]:
 
 
 def _session_floor(rd, root: Path) -> int | None:
-    """Dispatcher floor + the two files Claude Code auto-injects every session.
+    """Dispatcher floor + the one file Claude Code auto-injects every session.
 
-    `CLAUDE.md` and `.claude/rules/DYNAMIC.md` are outside rules_dispatcher's
-    control and nothing measured them before (C8, 2026-08-18), so the published
-    946 read as "minimum context tax per session" while the real figure was
-    ~2.6x that. Measuring them here means they cannot grow unobserved either.
+    `CLAUDE.md` is outside rules_dispatcher's control and nothing measured it
+    before (C8, 2026-08-18), so the published floor read as "minimum context
+    tax per session" while the real figure was higher. Measuring it here means
+    it cannot grow unobserved.
     """
     total = rd.token_estimate(rd.get_rules("Glob", {}))
-    for rel in ("CLAUDE.md", DYNAMIC_MD):
-        try:
-            total += rd.token_estimate((root / rel).read_text(encoding="utf-8").strip())
-        except OSError:
-            return None
+    try:
+        total += rd.token_estimate((root / "CLAUDE.md").read_text(encoding="utf-8").strip())
+    except OSError:
+        return None
     return total
 
 
@@ -601,17 +553,19 @@ def _measured_range_problems(
         problems.append(
             f"{DISPATCHER}: docstring floor is {floor} but the measured "
             f"_ALWAYS-only injection is {measured_floor}. Re-measure and update "
-            f"the docstring and {DYNAMIC_MD} together."
+            "the docstring."
         )
 
     measured_ceiling, label = _measured_ceiling(rd)
     if measured_ceiling != ceiling:
-        direction = "stale-high (an inflated budget claim)" if measured_ceiling < ceiling else "exceeded"
+        direction = (
+            "stale-high (an inflated budget claim)" if measured_ceiling < ceiling else "exceeded"
+        )
         problems.append(
             f"{DISPATCHER}: docstring ceiling is {ceiling} but the maximum "
             f"reachable injection ('{label}') measures {measured_ceiling} — "
-            f"{direction}. Re-publish the ceiling in the docstring and "
-            f"{DYNAMIC_MD} together, AFTER the last edit to any injected file."
+            f"{direction}. Re-publish the ceiling in the docstring, AFTER the "
+            "last edit to any injected file."
         )
 
     # Achievability: the analytic maximum must be producible by a real tool call.
@@ -628,15 +582,13 @@ def _measured_range_problems(
         measured_session = _session_floor(rd, src.root)
         if measured_session is None:
             problems.append(
-                f"{DISPATCHER}: cannot measure the session floor (CLAUDE.md or "
-                f"{DYNAMIC_MD} unreadable)."
+                f"{DISPATCHER}: cannot measure the session floor (CLAUDE.md " "unreadable)."
             )
         elif measured_session != session_floor:
             problems.append(
                 f"{DISPATCHER}: published session floor is {session_floor} but "
-                f"dispatcher floor + CLAUDE.md + {DYNAMIC_MD} measures "
-                f"{measured_session}. Re-measure and update the docstring and "
-                f"{DYNAMIC_MD} together."
+                f"dispatcher floor + CLAUDE.md measures {measured_session}. "
+                "Re-measure and update the docstring."
             )
     return problems
 
@@ -751,10 +703,22 @@ def check_agent_names_exist(src: Source) -> tuple[list[str], list[str]]:
 # Only backticked code spans: a slug is a configuration value, and every rule
 # file in this repo already writes them as `provider/model`. Bare prose is not
 # scanned — the false-positive rate on "and/or", dates and paths is far too high.
-_SLUG = re.compile(r"`([A-Za-z0-9][A-Za-z0-9_.\-]*/[A-Za-z0-9][A-Za-z0-9_.\-]*(?::[A-Za-z0-9_.\-]+)?)`")
+_SLUG = re.compile(
+    r"`([A-Za-z0-9][A-Za-z0-9_.\-]*/[A-Za-z0-9][A-Za-z0-9_.\-]*(?::[A-Za-z0-9_.\-]+)?)`"
+)
 _PATHISH_SUFFIX = (
-    ".py", ".md", ".json", ".sh", ".sql", ".toml", ".yaml", ".yml", ".txt", ".db",
-    ".flag", ".conf",
+    ".py",
+    ".md",
+    ".json",
+    ".sh",
+    ".sql",
+    ".toml",
+    ".yaml",
+    ".yml",
+    ".txt",
+    ".db",
+    ".flag",
+    ".conf",
 )
 # Lines that explicitly document a slug as dead/wrong are citing it in order to
 # warn about it. Requiring such a slug to exist in code would be backwards.
@@ -967,8 +931,10 @@ def _dir_has_any_file(src: Source, dirpath: str) -> bool:
     """
     # Staged mode: git pathspec `*` crosses directory separators (unlike a
     # worktree glob), so `dirpath/*` alone already matches recursively.
-    return len(_glob_paths(src, f"{dirpath}/*")) > 0 if src.staged else (
-        (src.root / dirpath).is_dir() and any((src.root / dirpath).iterdir())
+    return (
+        len(_glob_paths(src, f"{dirpath}/*")) > 0
+        if src.staged
+        else ((src.root / dirpath).is_dir() and any((src.root / dirpath).iterdir()))
     )
 
 
@@ -1140,9 +1106,7 @@ def check_readme_counts(src: Source) -> tuple[list[str], list[str]]:
 
 # ── check 6: file-path citations ─────────────────────────────────────────────
 
-_BACKTICK_PATH = re.compile(
-    r"`((?:[\w.\-]+/)+[\w.\-]+\.(?:md|py|json|sh|sql|toml|ya?ml|txt|db))`"
-)
+_BACKTICK_PATH = re.compile(r"`((?:[\w.\-]+/)+[\w.\-]+\.(?:md|py|json|sh|sql|toml|ya?ml|txt|db))`")
 
 
 def _path_citation_exists(src: Source, path_str: str) -> bool:
@@ -1160,6 +1124,61 @@ def _path_citation_exists(src: Source, path_str: str) -> bool:
         return False
     rel = str(candidate.relative_to(src.root))
     return src._staged_file_exists(rel) if src.staged else candidate.is_file()
+
+
+# A citation's own line disclosing that the path is expected-missing, not
+# stale. Narrow and conservative on purpose — each phrase was matched against
+# a real citation confirmed by hand (2026-09-07 investigation, see the 3
+# `file-citations` warnings audited that day) to be self-documented, not a
+# migration/drift casualty: a fallback instruction naming what to run if the
+# path "is missing" (`code-review/SKILL.md`), an explicit note that a runtime
+# worklist is transient and "ya consumido" once its batch finishes
+# (`intl-reports/SKILL.md`), or an imperative telling the reader to create a
+# per-project scaffold file (`rellena`, `speckit/SKILL.md`). Anything not
+# matching one of these stays warn-only, same as the "this was deleted"
+# historical-note class below.
+_DISCLOSED_ABSENT_RE = re.compile(r"is missing|ya consumido|\brellena\b", re.IGNORECASE)
+
+
+def _citation_is_expectedly_absent(src: Source, path_str: str, line: str = "") -> bool:
+    """True when a missing citation is provably not evidence of drift.
+
+    Measured 2026-08-20: 16 of 19 warnings were the first two classes below,
+    which buried the 3 real hits. A signal that is 84% noise gets skimmed and
+    then ignored, so filtering them makes the check *more* useful, not laxer.
+
+      - filename templates (`sessions/YYYY-MM-DD_session.md`) name a pattern,
+        never a file, so no repo state could satisfy them;
+      - paths gitignored by design (`tasks/todo.md`) are created at runtime and
+        absent from a clean tree on purpose;
+      - the citing line itself discloses the path is optional/transient/a
+        scaffold-to-create (`_DISCLOSED_ABSENT_RE` above) — added 2026-09-07
+        after confirming all 3 live `file-citations` warnings at the time were
+        this class, not Hostinger→Netcup migration casualties as first
+        suspected.
+
+    Deliberately does NOT filter the fourth class the docstring above implies —
+    "this was deleted" historical notes with no disclosure on the same line.
+    Those really are indistinguishable from a stale citation by regex, so they
+    stay warn-only.
+    """
+    if "YYYY" in path_str:
+        return True
+    if _DISCLOSED_ABSENT_RE.search(line):
+        return True
+    try:
+        return (
+            subprocess.run(
+                ["git", "-C", str(src.root), "check-ignore", "-q", path_str],
+                capture_output=True,
+                timeout=5,
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.SubprocessError):
+        # Not a git tree (pytest fixture root): keep the pre-2026-08-20
+        # behaviour rather than silently suppressing a real warning.
+        return False
 
 
 def check_file_citations_exist(src: Source) -> tuple[list[str], list[str]]:
@@ -1192,10 +1211,13 @@ def check_file_citations_exist(src: Source) -> tuple[list[str], list[str]]:
             continue
         for m in _BACKTICK_PATH.finditer(text):
             path_str = m.group(1)
-            if not _path_citation_exists(src, path_str):
-                warnings.append(
-                    f"{rel}: cites `{path_str}`, which does not exist in this repo."
-                )
+            line_start = text.rfind("\n", 0, m.start()) + 1
+            line_end = text.find("\n", m.end())
+            line = text[line_start : line_end if line_end != -1 else None]
+            if not _path_citation_exists(src, path_str) and not _citation_is_expectedly_absent(
+                src, path_str, line
+            ):
+                warnings.append(f"{rel}: cites `{path_str}`, which does not exist in this repo.")
 
     return problems, warnings
 
@@ -1262,9 +1284,7 @@ def _parity_body(text: str) -> list[str]:
     """Substantive lines only: no YAML frontmatter, no blank lines, no
     blockquote annotations (the `> **SSOT: ...**` cross-reference convention is
     metadata about the duplication, not part of the procedure)."""
-    return [
-        s for ln in _split_frontmatter(text)[1] if (s := ln.strip()) and not s.startswith(">")
-    ]
+    return [s for ln in _split_frontmatter(text)[1] if (s := ln.strip()) and not s.startswith(">")]
 
 
 def _pointer_body(text: str) -> list[str]:
@@ -1410,7 +1430,14 @@ def _code_string_list(src: Source, const_name: str) -> list[str] | None:
     m = re.search(rf"^{const_name} = \[(.*?)^\]", text, re.S | re.M)
     if not m:
         return None
-    return re.findall(r'"([^"]+)"', m.group(1))
+    # Strip '#'-to-end-of-line comments before extracting quoted strings — a
+    # quoted example inside an explanatory comment (e.g. a JSON payload shape
+    # like {"status": "approved"}) is not a list element, and without this the
+    # quote regex below would treat it as one and produce false "entry not
+    # cited in prose" warnings for words that were never actually added to
+    # the list.
+    block = re.sub(r"#.*$", "", m.group(1), flags=re.M)
+    return re.findall(r'"([^"]+)"', block)
 
 
 def _code_blocked_paths(src: Source) -> list[str] | None:
@@ -1559,9 +1586,7 @@ GITLEAKS_HOOK_SETUP = "bin/tools/setup_gitleaks_hook.sh"
 # re-derived from scratch. Every instance found this way was rewritten to
 # state its reason directly instead. A ruff lint-suppression code is excluded
 # below so this doesn't misfire on ordinary `noqa` comments — see `_NOQA_CODE`.
-_AUDIT_ID = re.compile(
-    r"\b(?:RC\d[\d.]*|INV\d+|SEC\d+|Gap \d+|Phase \d+ of|F\d+)\b"
-)
+_AUDIT_ID = re.compile(r"\b(?:RC\d[\d.]*|INV\d+|SEC\d+|Gap \d+|Phase \d+ of|F\d+)\b")
 _NOQA_CODE = re.compile(r"noqa:\s*F\d+")
 
 
@@ -1599,13 +1624,10 @@ def check_no_audit_id_comments(src: Source) -> tuple[list[str], list[str]]:
 # Derived analytically from the dispatcher's own tables (same primitives as
 # _measured_range_problems above) rather than a hand re-count, so a new
 # _BASH_KEYWORD_RULES row or registry alias updates the live numbers
-# automatically. DYNAMIC.md deliberately does NOT restate these numbers (it
-# points at rules_dispatcher.py's docstring instead, to keep its own token
-# footprint down) — do not add a DYNAMIC_MD entry here unless DYNAMIC.md's
-# prose is made to cite a number again; an entry whose regex can never match
-# passes silently and gives no real coverage (this happened once already,
-# 2026-08-19, when the prose it matched was trimmed in the same commit that
-# added the pattern — see test_every_alias_count_pattern_matches below).
+# automatically. An entry here whose regex can never match passes silently
+# and gives no real coverage (this happened once already, 2026-08-19, when
+# the prose it matched was trimmed in the same commit that added the pattern
+# — see test_every_alias_count_pattern_matches below).
 
 _ALIAS_COUNT_PATTERNS = {
     "CLAUDE.md": {

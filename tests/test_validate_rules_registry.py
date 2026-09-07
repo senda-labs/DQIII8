@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,7 +22,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "bin" / "tools"))
 
 import validate_rules_registry as vrr  # noqa: E402
-
 
 # ── fixtures ────────────────────────────────────────────────────────────────
 
@@ -67,15 +67,54 @@ _FLOOR, _CEIL = vrr._canonical_range(
 )
 
 
+def _routing_line(agent: str) -> str:
+    """The real `AGENT_ROUTING` line for `agent`, read from source.
+
+    Same reasoning as the token range above: a literal pasted from the source
+    encodes incidental whitespace. One did, and black's renormalisation of the
+    manual column alignment around the colon broke these fixtures on 2026-08-20.
+    """
+    text = (ROOT / "bin/core/openrouter_wrapper.py").read_text(encoding="utf-8")
+    matches = [ln.strip() for ln in text.splitlines() if f'"{agent}":' in ln and "(" in ln]
+    assert len(matches) == 1, f"expected exactly 1 AGENT_ROUTING line for {agent!r}, got {matches}"
+    return matches[0]
+
+
+_GIT_SPECIALIST_ROUTE = _routing_line("git-specialist")
+_GIT_SPECIALIST_ROUTE_UNDOCUMENTED = _GIT_SPECIALIST_ROUTE.replace(
+    "qwen2.5-coder:7b", "vendor/undocumented-model-1b"
+)
+
+
+def _registry_line(alias: str) -> str:
+    """The real `_REGISTRY` line for `alias`, read from the dispatcher source."""
+    text = (ROOT / ".claude/hooks/rules_dispatcher.py").read_text(encoding="utf-8")
+    matches = [ln.strip() for ln in text.splitlines() if ln.strip().startswith(f'"{alias}":')]
+    assert len(matches) == 1, f"expected exactly 1 _REGISTRY line for {alias!r}, got {matches}"
+    return matches[0]
+
+
+_QUALITY_ENTRY = _registry_line("quality")
+_QUALITY_PLUS_ORPHAN = _QUALITY_ENTRY + '\n    "orphan-fixture": "orphan-fixture.md",'
+_READ_MAPPING = _registry_line("Read")
+assert '["prevention"]' in _READ_MAPPING, (
+    f"the Read mapping no longer reads exactly ['prevention'] ({_READ_MAPPING!r}) — "
+    "pick another single-alias mapping for the dangling-alias fixture"
+)
+
+assert _GIT_SPECIALIST_ROUTE_UNDOCUMENTED != _GIT_SPECIALIST_ROUTE, (
+    "the git-specialist route no longer pins qwen2.5-coder:7b — "
+    "pick another undocumented-slug fixture"
+)
+
+
 # ── the sanity check that matters most ──────────────────────────────────────
 
 
 def test_clean_repo_state_has_no_problems():
     """Zero problems against the REAL current (post Phase-1) worktree."""
     problems, _warnings = vrr.run_all(vrr.Source(root=ROOT, staged=False))
-    assert not problems, "validator reports problems on the clean repo:\n" + "\n".join(
-        problems
-    )
+    assert not problems, "validator reports problems on the clean repo:\n" + "\n".join(problems)
 
 
 def test_clean_repo_fixture_copy_is_also_clean(repo: Path):
@@ -93,8 +132,8 @@ def test_orphan_alias_is_a_problem(repo: Path):
     edit(
         repo,
         ".claude/hooks/rules_dispatcher.py",
-        '"quality":        "common/quality.md",',
-        '"quality":        "common/quality.md",\n    "orphan-fixture": "orphan-fixture.md",',
+        _QUALITY_ENTRY,
+        _QUALITY_PLUS_ORPHAN,
     )
     problems, _ = vrr.check_registry_reachability(src(repo))
     assert any("orphan-fixture" in p and "orphaned" in p for p in problems), problems
@@ -127,8 +166,8 @@ def test_dangling_mapping_alias_is_a_problem(repo: Path):
     edit(
         repo,
         ".claude/hooks/rules_dispatcher.py",
-        '"Read":       ["prevention"],',
-        '"Read":       ["prevention", "typo-alias"],',
+        _READ_MAPPING,
+        _READ_MAPPING.replace('["prevention"]', '["prevention", "typo-alias"]'),
     )
     problems, _ = vrr.check_registry_reachability(src(repo))
     assert any("typo-alias" in p and "unregistered" in p for p in problems), problems
@@ -143,12 +182,6 @@ def test_registered_alias_with_missing_file_is_a_problem(repo: Path):
 # ── check 2: token budget ───────────────────────────────────────────────────
 
 
-def test_token_range_mismatch_in_dynamic_md_is_a_problem(repo: Path):
-    edit(repo, ".claude/rules/DYNAMIC.md", f"{_FLOOR}–{_CEIL}", f"1999–{_CEIL}")
-    problems, _ = vrr.check_token_budget(src(repo))
-    assert any("DYNAMIC.md" in p and "disagrees" in p for p in problems), problems
-
-
 def test_restating_the_range_in_hooks_perms_is_a_problem(repo: Path):
     """02_hooks_and_permissions.md is itself injected — it must point at the
     docstring, never restate the numbers. It did, and drifted (2026-08-18)."""
@@ -161,16 +194,11 @@ def test_restating_the_range_in_hooks_perms_is_a_problem(repo: Path):
 def test_prose_bound_restatement_in_hooks_perms_is_a_problem(repo: Path):
     """Even a prose 'suelo de N' restatement is a citation site."""
     path = repo / ".claude/rules/02_hooks_and_permissions.md"
-    path.write_text(path.read_text() + f"\nel suelo de {_FLOOR} es ops + core-behavior\n", encoding="utf-8")
+    path.write_text(
+        path.read_text() + f"\nel suelo de {_FLOOR} es ops + core-behavior\n", encoding="utf-8"
+    )
     problems, _ = vrr.check_token_budget(src(repo))
     assert any("must NOT restate the token range" in p for p in problems), problems
-
-
-def test_canonical_range_change_alone_breaks_the_docs(repo: Path):
-    """Re-measuring the dispatcher without updating DYNAMIC.md fails."""
-    edit(repo, ".claude/hooks/rules_dispatcher.py", f"**suelo {_FLOOR}**", "**suelo 2000**")
-    problems, _ = vrr.check_token_budget(src(repo))
-    assert any("disagrees" in p for p in problems), problems
 
 
 def test_missing_canonical_markers_is_a_problem(repo: Path):
@@ -187,7 +215,12 @@ def test_rounded_prose_range_in_docstring_is_accepted(repo: Path):
 
 
 def test_badly_rounded_prose_range_in_docstring_is_a_warning(repo: Path):
-    edit(repo, ".claude/hooks/rules_dispatcher.py", f"~{_FLOOR}–{_CEIL} tokens", f"~1000–{_CEIL} tokens")
+    edit(
+        repo,
+        ".claude/hooks/rules_dispatcher.py",
+        f"~{_FLOOR}–{_CEIL} tokens",
+        f"~1000–{_CEIL} tokens",
+    )
     problems, warnings = vrr.check_token_budget(src(repo))
     assert any("not a rounding" in w for w in warnings), warnings
     assert not problems, problems
@@ -279,8 +312,7 @@ def test_doc_slug_absent_from_code_is_a_problem(repo: Path):
     """Gap 2's failure mode: the doc names a model nothing routes to."""
     path = repo / ".claude/rules/00_core_behavior.md"
     path.write_text(
-        path.read_text(encoding="utf-8")
-        + "\n\nRazonamiento: `nvidia/llama-9.9-imaginary-999b`.\n",
+        path.read_text(encoding="utf-8") + "\n\nRazonamiento: `nvidia/llama-9.9-imaginary-999b`.\n",
         encoding="utf-8",
     )
     problems, _ = vrr.check_model_slugs_match_code(src(repo))
@@ -292,8 +324,8 @@ def test_code_slug_absent_from_docs_is_only_a_warning(repo: Path):
     edit(
         repo,
         "bin/core/openrouter_wrapper.py",
-        '"git-specialist":    ("ollama", "qwen2.5-coder:7b"),',
-        '"git-specialist":    ("ollama", "vendor/undocumented-model-1b"),',
+        _GIT_SPECIALIST_ROUTE,
+        _GIT_SPECIALIST_ROUTE_UNDOCUMENTED,
     )
     problems, warnings = vrr.check_model_slugs_match_code(src(repo))
     assert not [p for p in problems if "undocumented-model-1b" in p], problems
@@ -374,13 +406,13 @@ def test_skills_count_drift_is_detected_when_the_directory_is_present(repo: Path
     skills_dir = repo / ".claude/skills/example"
     skills_dir.mkdir(parents=True, exist_ok=True)
     (skills_dir / "SKILL.md").write_text("# example\n", encoding="utf-8")
-    assert "Skills (22)" in (repo / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Skills (25)" in (repo / "CLAUDE.md").read_text(encoding="utf-8")
     problems, _ = vrr.check_claude_md_counts(src(repo))
-    assert any("Skills (22)" in p and "live count is 1" in p for p in problems), problems
+    assert any("Skills (25)" in p and "live count is 1" in p for p in problems), problems
 
 
 def test_contextual_rules_count_drift_is_a_problem(repo: Path):
-    edit(repo, "CLAUDE.md", "Contextual rules (11)", "Contextual rules (0)")
+    edit(repo, "CLAUDE.md", "Contextual rules (12)", "Contextual rules (0)")
     problems, _ = vrr.check_claude_md_counts(src(repo))
     assert any("Contextual rules (0)" in p for p in problems), problems
 
@@ -449,8 +481,8 @@ def test_staged_mode_detects_a_problem_only_present_in_the_index(tmp_path: Path)
 
     good = (tmp_path / ".claude/hooks/rules_dispatcher.py").read_text(encoding="utf-8")
     bad = good.replace(
-        '"quality":        "common/quality.md",',
-        '"quality":        "common/quality.md",\n    "orphan-fixture": "orphan-fixture.md",',
+        _QUALITY_ENTRY,
+        _QUALITY_PLUS_ORPHAN,
     )
     assert bad != good
     (tmp_path / ".claude/rules_db/orphan-fixture.md").write_text("# orphan\n")
@@ -459,9 +491,7 @@ def test_staged_mode_detects_a_problem_only_present_in_the_index(tmp_path: Path)
     (tmp_path / ".claude/hooks/rules_dispatcher.py").write_text(good, encoding="utf-8")
 
     worktree_problems, _ = vrr.check_registry_reachability(vrr.Source(root=tmp_path))
-    staged_problems, _ = vrr.check_registry_reachability(
-        vrr.Source(root=tmp_path, staged=True)
-    )
+    staged_problems, _ = vrr.check_registry_reachability(vrr.Source(root=tmp_path, staged=True))
     assert not worktree_problems, worktree_problems
     assert any("orphan-fixture" in p for p in staged_problems), staged_problems
 
@@ -477,7 +507,9 @@ def test_nonexistent_backtick_path_is_a_warning_not_a_problem(repo: Path):
     )
     problems, warnings = vrr.check_file_citations_exist(src(repo))
     assert not [p for p in problems if "DOES_NOT_EXIST" in p], problems
-    assert any("DOES_NOT_EXIST" in w and "does not exist in this repo" in w for w in warnings), warnings
+    assert any(
+        "DOES_NOT_EXIST" in w and "does not exist in this repo" in w for w in warnings
+    ), warnings
 
 
 def test_real_backtick_path_is_clean(repo: Path):
@@ -504,7 +536,8 @@ def test_cli_exits_zero_on_the_real_repo(capsys):
 
 
 def test_cli_exits_one_on_problems(repo: Path, capsys):
-    edit(repo, ".claude/rules/DYNAMIC.md", f"{_FLOOR}–{_CEIL}", f"1999–{_CEIL}")
+    path = repo / ".claude/rules/02_hooks_and_permissions.md"
+    path.write_text(path.read_text() + f"\n~{_FLOOR}–{_CEIL} tokens\n", encoding="utf-8")
     assert vrr.main(["--root", str(repo)]) == 1
     assert "problem(s)" in capsys.readouterr().out
 
@@ -517,8 +550,8 @@ def test_warnings_never_cause_a_nonzero_exit(repo: Path, capsys):
     edit(
         repo,
         "bin/core/openrouter_wrapper.py",
-        '"git-specialist":    ("ollama", "qwen2.5-coder:7b"),',
-        '"git-specialist":    ("ollama", "vendor/undocumented-model-1b"),',
+        _GIT_SPECIALIST_ROUTE,
+        _GIT_SPECIALIST_ROUTE_UNDOCUMENTED,
     )
     assert vrr.main(["--root", str(repo)]) == 0
     assert "WARNING" in capsys.readouterr().out
@@ -594,8 +627,7 @@ def test_frontmatter_is_not_counted_as_divergence(repo: Path):
         repo,
         "fm",
         "# /fm\n\n" + _PROCEDURE,
-        "---\nname: fm\ndescription: x\nallowed-tools: [Bash]\n---\n\n# /fm\n\n"
-        + _PROCEDURE,
+        "---\nname: fm\ndescription: x\nallowed-tools: [Bash]\n---\n\n# /fm\n\n" + _PROCEDURE,
     )
     problems, warnings = vrr.check_command_skill_parity(src(repo))
     assert not any("diverged" in p or "fenced code" in p for p in problems), problems
@@ -716,3 +748,41 @@ def test_every_alias_count_pattern_matches():
                 f"{rel}: pattern for {label!r} ({pat.pattern!r}) matches "
                 "nothing in the real file — dead coverage."
             )
+
+
+# ── file-citation noise filter (2026-08-20) ─────────────────────────────────
+# Both directions, per this file's own contract: the two provably-absent classes
+# must be filtered, and a genuinely stale citation must still get through.
+
+
+def _src_at(root):
+    """_citation_is_expectedly_absent only reads `.root`."""
+    return SimpleNamespace(root=root)
+
+
+def _git_repo(tmp_path, gitignore_body):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".gitignore").write_text(gitignore_body, encoding="utf-8")
+    return tmp_path
+
+
+def test_template_citation_is_not_drift(tmp_path):
+    """`sessions/YYYY-MM-DD_session.md` names a pattern; no repo state satisfies it."""
+    assert vrr._citation_is_expectedly_absent(_src_at(tmp_path), "sessions/YYYY-MM-DD_session.md")
+
+
+def test_gitignored_citation_is_not_drift(tmp_path):
+    """`tasks/todo.md` exists at runtime and is absent from a clean tree by design."""
+    root = _git_repo(tmp_path, "tasks/\n")
+    assert vrr._citation_is_expectedly_absent(_src_at(root), "tasks/todo.md")
+
+
+def test_genuinely_stale_citation_still_warns(tmp_path):
+    """The drift the check exists to catch must survive the filter."""
+    root = _git_repo(tmp_path, "tasks/\n")
+    assert not vrr._citation_is_expectedly_absent(_src_at(root), "bin/gone.py")
+
+
+def test_non_git_root_keeps_the_old_behaviour(tmp_path):
+    """A pytest fixture root is not a git tree; fail toward warning, not silence."""
+    assert not vrr._citation_is_expectedly_absent(_src_at(tmp_path), "bin/gone.py")

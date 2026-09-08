@@ -3,19 +3,19 @@ DQIII8 — Rules Dispatcher (RAG de Reglas Dinámico)
 Inyecta SÓLO las reglas relevantes al contexto del tool en curso.
 
 En lugar de cargar el corpus de reglas entero en cada turno, este módulo mapea
-tool + input → subconjunto mínimo de reglas (~1211–9203 tokens, cl100k_base real).
+tool + input → subconjunto mínimo de reglas (~828–6080 tokens, cl100k_base real).
 El número de archivos del registro no se cita aquí: el recuento vivo es
 `len(_REGISTRY)` y su parte de rules_db/ está fijada en CLAUDE.md
 ("Contextual rules (N)"), validada por check_claude_md_counts().
 
 RANGO CANÓNICO (medido con token_estimate(), cl100k_base real vía tiktoken):
-**suelo 1211** (solo _ALWAYS = ops + core-behavior), **techo 9203**. Suelo de
-sesión 2591 (suelo + CLAUDE.md, el único fichero que Claude Code auto-inyecta en
-toda sesión) — re-medido 2026-08-21 tras trim del parentético stale de schema.sql
-en CLAUDE.md (era 2599 el 2026-08-19, tras la eliminación de DYNAMIC.md). Techo
-re-medido 2026-08-20 tras editar 01_database_mutations.md y
-02_hooks_and_permissions.md; el margen sobre el valor anterior era cero, así que
-cualquier añadido a un fichero inyectado obliga a repetir esta medida.
+**suelo 828** (solo _ALWAYS = ops + core-behavior), **techo 6080**. Suelo de
+sesión 1683 (suelo + CLAUDE.md, el único fichero que Claude Code auto-inyecta en
+toda sesión) — re-medido 2026-09-07 tras las adiciones de esta sesión (skills
+infra-red-team/infra-blue-team, infra_findings en schema_v2.sql, conteo de
+skills 23→25 en CLAUDE.md); los tres números previos (1211/9203/2591, de
+2026-08-20/21) habían quedado stale-alto, detectado por validate_rules_registry.py.
+Cualquier añadido a un fichero inyectado obliga a repetir esta medida.
 
 El techo es el MÁXIMO REALMENTE ALCANZABLE, no el peor caso de la matriz
 representativa: un Bash que combina todas las keywords de _BASH_KEYWORD_RULES

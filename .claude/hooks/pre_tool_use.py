@@ -31,9 +31,7 @@ if not log.handlers:
         _fh = logging.handlers.RotatingFileHandler(
             str(_log_dir / "hooks.log"), maxBytes=2_000_000, backupCount=3
         )
-        _fh.setFormatter(
-            logging.Formatter("%(asctime)s [pre_tool_use] %(levelname)s %(message)s")
-        )
+        _fh.setFormatter(logging.Formatter("%(asctime)s [pre_tool_use] %(levelname)s %(message)s"))
         log.addHandler(_fh)
     else:
         log.addHandler(logging.NullHandler())
@@ -127,8 +125,7 @@ except Exception as _e:
 
 if result["decision"] in ("DENY", "ESCALATE"):
     _is_gov_write = result["decision"] == "ESCALATE" and any(
-        (result.get("rule_triggered") or "").startswith(p)
-        for p in _GOVERNANCE_WRITE_RULE_PREFIXES
+        (result.get("rule_triggered") or "").startswith(p) for p in _GOVERNANCE_WRITE_RULE_PREFIXES
     )
     _action_detail = str(inp.get("file_path", inp.get("command", "")))[:200]
     _anchor = _dedup_anchor(_action_detail) if _is_gov_write else None
@@ -146,8 +143,7 @@ if result["decision"] in ("DENY", "ESCALATE"):
         result = {
             "decision": "APPROVE",
             "reason": (
-                f"human_approved_via_telegram_earlier_this_session:"
-                f"{result['rule_triggered']}"
+                f"human_approved_via_telegram_earlier_this_session:" f"{result['rule_triggered']}"
             ),
             "risk_level": result["risk_level"],
             "rule_triggered": result["rule_triggered"],
@@ -173,9 +169,7 @@ if result["decision"] in ("DENY", "ESCALATE"):
             }
             decision = _request_governance_approval(entry)
         except Exception as e:
-            log.warning(
-                "pre_tool_use: governance approval wait failed: %s", e, exc_info=True
-            )
+            log.warning("pre_tool_use: governance approval wait failed: %s", e, exc_info=True)
         if decision is True:
             result = {
                 "decision": "APPROVE",
@@ -265,9 +259,7 @@ try:
     # core.action_log is installed code, fixed at this hook's own location —
     # it must resolve from _HOOKS_DIR, not DQIII8_ROOT (which callers/tests
     # legitimately override to relocate only the writable DB root).
-    sys.path.insert(
-        0, os.path.join(os.path.dirname(os.path.dirname(_HOOKS_DIR)), "bin")
-    )
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(_HOOKS_DIR)), "bin"))
     from core.action_log import resolve_project_safe, generate_request_id
     from core.model_map import resolve_model
 
@@ -306,9 +298,7 @@ try:
         _conn.commit()
         _conn.close()
 except Exception as e:
-    log.warning(
-        "pre_tool_use: agent_actions metrics insert failed: %s", e, exc_info=True
-    )
+    log.warning("pre_tool_use: agent_actions metrics insert failed: %s", e, exc_info=True)
 
 # ── OAuth protection (allowlist model) ───────────────────────────────────────
 # Any Bash command referencing an OAuth file is DENIED unless it is a bare
@@ -327,9 +317,7 @@ except Exception as e:
 _OAUTH_FILES = ["/root/.claude.json", "/root/.claude/.credentials.json"]
 _OAUTH_READ_TOOLS = {"Read", "Grep", "Glob", "LS", "NotebookRead"}
 _OAUTH_PATH_KEYS = ("file_path", "path", "notebook_path", "pattern")
-_OAUTH_ALLOWED_RE = re.compile(
-    r"^\s*(?:ls(?:\s+-[a-zA-Z]+)*|stat|test\s+-[ef]|\[\s+-[ef])\s+\S"
-)
+_OAUTH_ALLOWED_RE = re.compile(r"^\s*(?:ls(?:\s+-[a-zA-Z]+)*|stat|test\s+-[ef]|\[\s+-[ef])\s+\S")
 _OAUTH_TOKEN_SPLIT_RE = re.compile(r"""[\s'"();|&<>=`,]+""")
 
 
@@ -377,8 +365,7 @@ if tool == "Bash":
         _f in _cmd_scan for _f in _OAUTH_FILES
     ):
         _has_chain = any(
-            op in _cmd_check
-            for op in ("|", ";", "&&", "||", ">", "<", "`", "$(", "\n", "\r")
+            op in _cmd_check for op in ("|", ";", "&&", "||", ">", "<", "`", "$(", "\n", "\r")
         )
         if _has_chain or not _OAUTH_ALLOWED_RE.match(_cmd_check):
             _deny_oauth("Bash")

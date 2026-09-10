@@ -73,6 +73,12 @@ BLOCKED_PATHS = [
     "/etc/profile",
     "/etc/rc.local",
     "/etc/ld.so.preload",
+    # Staged, hardened copy of a city-block agent tree (2026-09-09, Lier
+    # calibracion plan). It runs as a dedicated non-root systemd user
+    # specifically so untrusted agent-writable code can't execute as root —
+    # but root itself could still overwrite the staged copy via an ordinary
+    # approved Write/Edit, silently reintroducing that same trust boundary.
+    "/opt/lier-calibracion",
     "/root/.bashrc",
     "/root/.bash_profile",
     "/root/.profile",
@@ -1300,11 +1306,7 @@ def _bash_resolved_write_targets(
     masked_collapsed = _mask_heredoc_bodies(collapsed)
     # A3b: con restrict_to, el comando crudo deja de ser candidato — el llamante
     # ya ha determinado que lo unico que se escribe es ese destino.
-    out = (
-        []
-        if restrict_to is not None
-        else [_mask_heredoc_bodies(cmd), masked_collapsed]
-    )
+    out = [] if restrict_to is not None else [_mask_heredoc_bodies(cmd), masked_collapsed]
     if restrict_to is None:
         out.extend(_archive_dest_dirs(masked_collapsed))
     for raw_tok in _BASH_TOKEN_SPLIT_RE.split(masked_collapsed):
@@ -2257,9 +2259,7 @@ def _bash_db_client_sql_text(cmd: str) -> str:
 # unconditionally. Ambiguous cases (no recognised DB-client invocation, or a
 # flag/non-literal in the path-argument position) fail CLOSED — the
 # protection stays active — per this file's existing house style.
-_DB_CLIENT_PATH_ARG_RE = re.compile(
-    r'\b(?:sqlite3|psql|mysql|mariadb|duckdb)\b\s+(?!["\'])(\S+)'
-)
+_DB_CLIENT_PATH_ARG_RE = re.compile(r'\b(?:sqlite3|psql|mysql|mariadb|duckdb)\b\s+(?!["\'])(\S+)')
 
 
 def _bash_db_client_target_path(cmd: str) -> str | None:

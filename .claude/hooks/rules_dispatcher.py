@@ -11,10 +11,12 @@ El número de archivos del registro no se cita aquí: el recuento vivo es
 RANGO CANÓNICO (medido con token_estimate(), cl100k_base real vía tiktoken):
 **suelo 828** (solo _ALWAYS = ops + core-behavior), **techo 6080**. Suelo de
 sesión 1683 (suelo + CLAUDE.md, el único fichero que Claude Code auto-inyecta en
-toda sesión) — re-medido 2026-09-07 tras las adiciones de esta sesión (skills
-infra-red-team/infra-blue-team, infra_findings en schema_v2.sql, conteo de
-skills 23→25 en CLAUDE.md); los tres números previos (1211/9203/2591, de
-2026-08-20/21) habían quedado stale-alto, detectado por validate_rules_registry.py.
+toda sesión) — re-medido 2026-09-10, confirmado sin drift desde 2026-09-07
+(plan foamy-sniffing-dongarra, panel-review, infra-red-team/blue-team
+reports); un intento anterior de repúblicar estos números el 2026-09-08
+invirtió los valores (publicó cifras más altas que no correspondían a
+ninguna medición real) — detectado por validate_rules_registry.py antes de
+comitear, revertido a los valores medidos correctamente.
 Cualquier añadido a un fichero inyectado obliga a repetir esta medida.
 
 El techo es el MÁXIMO REALMENTE ALCANZABLE, no el peor caso de la matriz

@@ -792,7 +792,9 @@ try:
                 _date = NOW[:10]
                 _session_path = _sessions_dir / f"{_date}_session.md"
 
-                _files_block = "\n".join(f"- `{f}`" for f in _files[:20]) or "- (no committed changes)"
+                _files_block = (
+                    "\n".join(f"- `{f}`" for f in _files[:20]) or "- (no committed changes)"
+                )
                 _duration_str = f"{int(_duration_min)}m"
                 _session_md = f"""---
 date: {_date}

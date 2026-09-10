@@ -1,61 +1,72 @@
-# DQIII8 — Architecture Kernel
+# DQIII8 — Working Charter
 
-Autonomous AI orchestration engine (VPS, SSH-only).
-UI: Telegram @YourBotName | CLI: `dq cc` / `dq loop` / `dq status`
+Autonomous AI orchestration engine (VPS, SSH-only). Enfoque, metodología y exigencias viven
+aquí. Estado del sistema (DBs, excepciones puntuales, backups) vive en `docs/ARCHITECTURE.md`.
+Comportamiento base siempre cargado: `.claude/rules/00_core_behavior.md` — este fichero no lo
+repite, solo añade lo que ese no cubre.
 
-## Routing Tiers (Cost-First — STRICT)
-Anthropic-only vigente (directiva usuario 2026-08-18): Sonnet (default) → Opus (plan-review/
-revisión adversarial final únicamente). Cadena multi-tier gratuita (C→B→B+→B++) DORMANTE, no
-eliminada — ver `.claude/rules_db/archive/multi-tier-dormant-2026-08.md`.
-Full table + decision algorithm → `.claude/rules/03_tiering_and_routing.md`
+## Enfoque — Enterprise-Grade Bar
+- Verifica el artefacto final real (servicio desplegado, respuesta de API, DOCX entregable, fila
+  de DB) — tests y logs no cuentan como verificación.
+- Si algo no se pudo verificar (p.ej. UI sin navegador disponible), dilo explícitamente. Nunca
+  reportes éxito sin haberlo comprobado.
+- El listón es corrección verificada, no volumen: no autoriza a exceder el alcance pedido
+  (Priority Ladder, `00_core_behavior.md`).
+- Un error que se repite exige una comprobación estructural que bloquee la entrega hasta
+  resolverse — no un parche puntual.
 
-## System Map
-- DQ Pipeline (7 steps): Classify → Retrieve → Gate → Amplify → Route → Execute → Memory
-- DB: `database/dqiii8.db` (schema_v2.sql — source of truth, now also holds `session_memory`; sibling: `dqiii8_knowledge.db` knowledge/vector. `dqiii8_history.db` and `dqiii8_metrics.db.old` are frozen post-migration artifacts)
-- Writing to `agent_actions`: use `bin/core/action_log.py`'s shared helpers (`resolve_project_safe()`, `generate_request_id()`) — never hand-build the row. Column families and trigger contract: `.claude/rules/01_database_mutations.md`
-- Hooks (15): `.claude/hooks/` | Skills (22): `.claude/skills/` | Agents (17): `.claude/agents/`
-- Contextual rules (11): `.claude/rules_db/` — not read directly; injected per tool call by `rules_dispatcher.py` — 2 files minimum (`_ALWAYS`), 13 in the reachable ceiling case, drawn from both `.claude/rules_db/` and `.claude/rules/` (see `.claude/rules/02_hooks_and_permissions.md`). Counts on this line are validator-enforced (`check_claude_md_counts()` in `validate_rules_registry.py`).
-- Entry: `bin/core/openrouter_wrapper.py` | Director: `bin/director.py`
-- Dispatch (CC↔dqiii8): `bin/core/dispatch.py` — thin subprocess shim; sync + async via detached worker + atomic JSON envelope
+## Metodología — lo que no cubre 00_core_behavior.md
+- Una ronda de aclaración afilada vale más que varios ciclos de corrección: si el prompt no fija
+  objetivo + alcance + listón de "hecho", pregunta antes de iterar.
+- Feature nueva no trivial → `/speckit` antes de entrar en modo plan (`.claude/rules_db/dqiii8-speckit.md`).
+- Cost-first: el tier más barato capaz. Estado vigente de qué proveedor está operativo hoy no se
+  fija aquí (cambia) — `00_core_behavior.md` § REGLA NIM es la SSOT siempre cargada.
 
-> **New audit reports and audit docs are never committed — full stop.** Both `docs/audits/*.md`
-> and `database/audit_reports/*.md` are gitignored with no negation, so anything written today
-> stays untracked. Their durability does NOT come from git — it comes from two independent
-> off-VPS channels: `bin/tools/backup_audit_docs.sh` (mutual Netcup↔Hostinger rsync, dated
-> snapshots, no `--delete` mirror) and `bin/tools/telegram_audit_backup.py` (per-file upload to
-> a single allowlisted Telegram chat). Both read their targets/credentials from env vars only.
-> Deleting an untracked file under either path is effectively irreversible once both backups
-> roll — treat these files with the same care as tracked ones even though `git status` won't
-> show them.
-> **Exception, already in history:** commit `af869db` (2026-08-18) deliberately force-added 35
-> pre-2026-08-18 files under `database/audit_reports/` as a one-time archival decision — `git
-> ls-tree -r HEAD --name-only database/audit_reports | wc -l` confirms 35 tracked today. That
-> corpus is grandfathered, not a precedent: don't `git add -f` a new audit doc into either
-> directory without the same explicit human call that created this exception.
+## Protocolos de ejecución
+- Plan ≤5 pasos, sin acciones destructivas → ejecuta autónomo, notifica después.
+- Plan toca ≥3 módulos O alcance ambiguo → modo plan primero, espera confirmación, luego
+  `/panel-review <plan-file>` (veredicto asesor, no gate — consume la única escalada a Opus por
+  tarea; SSOT `.claude/skills/panel-review/`).
+- Escritura en corpus de gobernanza (`.claude/{hooks,rules,rules_db,agents,skills}/`) →
+  ESCALATE, espera confirmación humana antes de proceder.
+- Un DENY del PermissionAnalyzer es final: no reintentes, no reordenes, no `--no-verify`/
+  `--force`. Reconduce o pide al humano — nunca lo bordees.
+- Acción destructiva/irreversible (DROP, cambio de schema en vivo, `rm -rf` de datos) → STOP,
+  avisa, espera. Excepciones ya cerradas en código (SSOT `.claude/rules/02_hooks_and_permissions.md`):
+  `rm -rf` de build/cache auto-aprobado; `git push --force` denegado sin excepción.
+- Bug en producción → arréglalo ya: lee logs, aísla la causa, resuelve, verifica. Sin escoltas.
 
-> **Not DQIII8-specific**: `.claude/architecture/` holds a generic reference book on Claude Code's own internals (agent loop, tool execution, etc.), unrelated to DQIII8's architecture. Don't confuse it with DQIII8 docs when orienting.
+## Exigencias no negociables (Inviolable Rules)
+- NUNCA escribas en `.env` ni en `CLAUDE.md` — ambos son blocked paths, sin excepción, ni
+  siquiera edición manual directa. SSOT `.claude/rules/02_hooks_and_permissions.md` § Blocked paths.
+- NUNCA hardcodees API keys — siempre `os.environ.get("VAR")`.
+- NUNCA commitees `*.db` — gitignored por diseño. `database/schema_v2.sql` para instalaciones
+  nuevas.
+- `ANTHROPIC_API_KEY` = `""` en el env de todo subprocess al usar Claude Code OAuth — convención
+  de operador, sin enforcement en código; si "Credit balance too low", verifica esto a mano
+  primero.
+- `database/schema_v2.sql` es la SSOT del schema — solo cambios aditivos vía migraciones
+  revisadas; cambios destructivos de schema se señalan, nunca se ejecutan.
+- `git push --force` — DENY absoluto en cualquier remote, ninguna confirmación lo desbloquea.
 
-## Rule Engine
+## Rule Engine — dónde mirar antes de actuar
 
-| Domain | Read this first |
+| Dominio | Leer primero |
 |---|---|
-| Any action | `.claude/rules/00_core_behavior.md` (always loaded — zero-complacency, scope, cost-first) |
+| Cualquier acción | `.claude/rules/00_core_behavior.md` (siempre cargado) |
+| Estado del sistema (DBs, contadores, excepciones, backups) | `docs/ARCHITECTURE.md` |
 | DB schema / SQL / sqlite3 | `.claude/rules/01_database_mutations.md` |
-| Hooks or PermissionAnalyzer | `.claude/rules/02_hooks_and_permissions.md` |
-| Tiering / routing / agent changes | `.claude/rules/03_tiering_and_routing.md` |
+| Hooks o PermissionAnalyzer | `.claude/rules/02_hooks_and_permissions.md` |
+| Tiering / routing / cambios de agente | `.claude/rules/03_tiering_and_routing.md` |
+| Gate a Opus (cuándo escala una tarea) | `.claude/rules_db/dqiii8-plan-gate.md` |
+| Feature nueva / SDD | `.claude/rules_db/dqiii8-speckit.md` |
 | Delegación a agentes / qué nombres existen | `.claude/rules_db/common/agents.md` § Two runtimes, two SSOTs |
 | Git / Bash safety | `.claude/rules_db/git-safety.md` |
-| Error prevention (recurring) | `.claude/rules_db/dqiii8-error-prevention.md` |
-| intl-reports pipeline | `my-projects/intl-reports/RULE` (reglas absolutas + pipeline) |
+| Prevención de errores recurrentes | `.claude/rules_db/dqiii8-error-prevention.md` |
+| Pipeline intl-reports | `my-projects/intl-reports/RULE` |
 
-## Inviolable Rules
-- NEVER write to `.env` or `CLAUDE.md` — both are blocked paths, no exception, including a direct hand-authored edit (SSOT `.claude/rules/02_hooks_and_permissions.md` § Blocked paths). `database/schema_v2.sql` is the schema SSOT — additive changes only, via reviewed migrations; destructive schema changes → flag, never execute. (`database/schema.sql` no longer exists.)
-- NEVER hardcode API keys — all keys via `os.environ.get("VAR")` only.
-- NEVER commit `*.db` files — gitignored. Use `database/schema_v2.sql` for fresh installs.
-- `ANTHROPIC_API_KEY` must be `""` in subprocess env when using Claude Code OAuth.
-- Plans touching ≥3 modules OR with ambiguous scope → enter plan mode first, then
-  run `/panel-review <plan-file>` before implementation (see `.claude/skills/panel-review/`).
-- Destructive / irreversible actions (DROP, live-schema change, `rm -rf` of data) → STOP, notify, wait.
-  Two exceptions already decided in code (`.claude/rules/02_hooks_and_permissions.md`): `rm -rf` of
-  build/cache artifacts is auto-approved (`ALLOWED_DELETIONS`); `git push --force` is denied outright
-  and user confirmation does not unblock it.
+## System Map (contadores — validator-enforced, no mover de aquí)
+Hooks (15): `.claude/hooks/` | Skills (25): `.claude/skills/` | Agents (17): `.claude/agents/`
+Contextual rules (12): `.claude/rules_db/` — 2 files minimum (`_ALWAYS`), 14 in the reachable ceiling case,
+drawn from both `.claude/rules_db/` and `.claude/rules/` (`.claude/rules/02_hooks_and_permissions.md`).
+Counts validator-enforced by `check_claude_md_counts()` in `bin/tools/validate_rules_registry.py`.

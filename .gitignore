@@ -69,6 +69,12 @@ database/legacy/*.sql
 config/.env
 config/.env.*
 
+# Real infra target/baseline files carry the production VPS IP (gitleaks
+# rule `spanish-ip-vps` blocks that IP from ever being committed) — only
+# the sanitized .example counterparts are tracked.
+infrastructure/redteam_target_allowlist.yaml
+infrastructure/infra_baseline.yaml
+
 # Root-level .env (all variants, incl. dated backups like .env.pre-p2-20260813)
 .env
 .env.local

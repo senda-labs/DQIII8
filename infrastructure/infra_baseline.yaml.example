@@ -1,0 +1,94 @@
+# EXAMPLE FILE — copy to infrastructure/infra_baseline.yaml (gitignored,
+# stays on-server only) and replace the 203.0.113.x placeholder IPs with
+# real ones. The real file must never be committed — see .gitleaks.toml
+# rule `spanish-ip-vps`.
+# ============================================================================
+# BASELINE DECLARATIVO — puertos/servicios/hashes esperados por target.
+#
+# Patrón osquery/Falco: comparar el estado real contra un valor fijo versionado
+# aquí, no solo volcar texto de comandos a un log. Cualquier desviación de lo
+# aquí declarado es candidata a finding en `/infra-blue-team` /
+# `/infra-red-team` — lo que NO está aquí como esperado se trata como
+# desviación, no como "no comprobado".
+#
+# NO editable por un agente en caliente durante una auditoría — un cambio aquí
+# (p.ej. abrir un puerto nuevo a propósito) es un paso humano aparte, igual que
+# el propio `redteam_target_allowlist.yaml`.
+#
+# target_id debe existir en infrastructure/redteam_target_allowlist.yaml —
+# ese YAML sigue siendo la SSOT de qué targets existen, este fichero solo
+# describe su estado esperado.
+# ============================================================================
+
+targets:
+  netcup-rs4000:
+    expected_open_ports:
+      - 22    # SSH
+      - 22000 # Syncthing
+    # RELLENADO 2026-09-07 tras primera ejecución real de `/infra-blue-team`
+    # (report: tasks/audit/infra-blue-team-2026-09-07.md). Primer valor real,
+    # no había uno previo con el que comparar — no es drift, es baseline nuevo.
+    sshd_config_sha256: "7a0e36b239ceeb1cf3d91893e3a55f3661302a2ef0215ca1a66bcfb56975c829"
+    expected_active_services:
+      - ssh.service
+      - crowdsec.service
+      - ufw.service
+      - syncthing@root.service
+    notes: >
+      Ollama (127.0.0.1:11434) no aparece en expected_open_ports porque solo
+      escucha en loopback — un hallazgo de que aparece en 0.0.0.0 es CRITICAL.
+      ufw.service es Type=oneshot/RemainAfterExit=yes: aplica reglas una vez al
+      arrancar y queda ActiveState=inactive/SubState=dead permanentemente — ese
+      es su estado normal, NO significa que el firewall esté caído. Verificar
+      siempre con `ufw status verbose` (Status: active + reglas presentes),
+      nunca solo con `systemctl is-active ufw.service` (ver IBT-001).
+
+  netcup-viejo:
+    # id debe coincidir exactamente con redteam_target_allowlist.yaml — el
+    # nombre usado antes ('netcup') no existía en el allowlist, lo que hacía
+    # que este target auditara sin baseline (falso negativo silencioso, ver
+    # panel-review-2026-09-07-200852-vivid-launching-puzzle.md finding P1).
+    expected_open_ports:
+      - 22
+      - 80    # Caddy (reverse proxy, redirige a 443)
+      - 443   # Caddy (TLS)
+    # RECONCILIADO 2026-09-07 tras primera ejecución real de `/infra-red-team`
+    # (report: tasks/audit/infra-red-team-2026-09-07.md, finding IRT-001).
+    # 22000 y 8090 se quitaron de expected_open_ports porque NO están
+    # externamente abiertos, verificado desde un vector externo real
+    # (nmap -sS -p 22,80,443,8090,22000 -Pn 203.0.113.20 ejecutado desde
+    # netcup-rs4000, host distinto — no auto-escaneo): ambos dieron `filtered`.
+    # Causa confirmada con `ss -tlnp` en el propio host: 8090 (dq-dashboard)
+    # solo escucha en 127.0.0.1, nunca ha sido externo; 22000 (Syncthing)
+    # escucha en *:22000 (todas las interfaces) pero `ufw status verbose` no
+    # tiene ninguna regla ALLOW para ese puerto, solo el default deny — el
+    # servicio está expuesto localmente en el host pero bloqueado por UFW
+    # antes de llegar a la red. Ambos siguen listados como servicios activos
+    # esperados abajo (lo están, y es correcto que lo estén) — la corrección
+    # es solo sobre qué se espera ALCANZABLE desde fuera.
+    # RELLENADO 2026-09-07 tras primera ejecución real de `/infra-blue-team`
+    # (report: tasks/audit/infra-blue-team-2026-09-07.md). Primer valor real,
+    # no había uno previo con el que comparar — no es drift, es baseline nuevo.
+    # ACTUALIZADO 2026-09-08 tras fix IBT-002 (PermitRootLogin yes →
+    # prohibit-password, ver infra_findings id=5).
+    sshd_config_sha256: "1fe1782c539e6ffa3af22806ec003eb35d51184841ad1a04b2729678f5e81b3a"
+    expected_active_services:
+      - ssh.service
+      - crowdsec.service
+      - ufw.service
+      - syncthing@root.service
+      - dqiii8-bot.service
+      - dq-dashboard.service
+      - caddy.service
+    notes: >
+      Server de producción real de dqiii8 — dqiii8-bot.service y
+      dq-dashboard.service deben estar siempre activos aquí, a diferencia de
+      netcup-rs4000 donde dqiii8 todavía no corre en producción. Caddy expone
+      80/443 — un /infra-blue-team que auto-deniega puertos ausentes de esta
+      lista NUNCA debe tocar 80/443 aquí sin paso de reconciliación humana
+      previo. dq-dashboard (8090) y Syncthing (22000) corren y escuchan
+      normalmente, pero no son alcanzables desde fuera (127.0.0.1-only y
+      ausencia de regla UFW ALLOW respectivamente, ver arriba) — un
+      /infra-blue-team NUNCA debe añadir una regla UFW ALLOW para 22000 solo
+      porque el servicio escucha en todas las interfaces; eso sería abrir
+      exposición nueva, no corregir una desviación.

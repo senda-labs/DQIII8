@@ -1,0 +1,49 @@
+# EXAMPLE FILE — copy to infrastructure/redteam_target_allowlist.yaml
+# (gitignored, stays on-server only) and replace the 203.0.113.x placeholder
+# IPs with real ones. The real file must never be committed — see .gitleaks.toml
+# rule `spanish-ip-vps`.
+# ============================================================================
+# ALLOWLIST DE TARGETS AUTORIZADOS — Pentesting/red-team/blue-team (Dominio 3)
+#
+# NO editable por un agente en caliente. Cualquier scan/ataque contra algo que
+# no aparezca aquí se RECHAZA, no se "confirma con el usuario" durante la
+# ejecución — el target se añade aquí primero, en un paso aparte y explícito.
+# Mismo principio que `resumable_actions` en Lier: allowlist server-side,
+# nunca un target libre pasado por prompt.
+#
+# Cada entrada: IP/rango, descripción, fecha de alta, alcance permitido.
+# Todo lo que no sea "propiedad del usuario, con autorización explícita" está
+# fuera de alcance, sin excepción.
+# ============================================================================
+
+targets:
+  - id: netcup-rs4000
+    address: "203.0.113.10"
+    description: "VPS Netcup RS4000 (32GB RAM, 12 vCPU) — aloja Lier + dqiii8"
+    added: "2026-09-07"
+    scope: full   # nmap, auditoría de servicios, revisión Syncthing, blue-team cron
+
+  - id: netcup-viejo
+    address: "203.0.113.20"
+    description: "VPS Netcup RS2000 (server viejo, producción dqiii8 actual)"
+    added: "2026-09-07"
+    scope: full
+
+# ----------------------------------------------------------------------------
+# Pendiente de alta (mencionado por el usuario, sin datos concretos aún):
+#   - Red WiFi de casa/oficina — falta rango/IP pública o SSID concreto.
+#   - IP de móvil del usuario — variable/dinámica, no se puede fijar como
+#     entrada estática; requiere mecanismo distinto (ej. identificación por
+#     dispositivo/MAC en la propia red local, no por IP pública).
+#   - Dispositivos propios (TV, PC, otros) — misma limitación: identificar por
+#     red local/MAC, no por IP pública variable.
+# No añadir ninguno de estos hasta tener el dato concreto del usuario.
+# ----------------------------------------------------------------------------
+
+syncthing_audit_scope:
+  description: >
+    Alcance del audit de "conexiones intermedias de Syncthing": revisar
+    exposición/config del propio Syncthing en los 2 targets de arriba
+    (cifrado, puerto 22000 expuesto, uso de relays de terceros vs conexión
+    directa, exposición de metadata en el discovery server). No introduce
+    targets nuevos fuera de netcup-rs4000 / netcup-viejo.

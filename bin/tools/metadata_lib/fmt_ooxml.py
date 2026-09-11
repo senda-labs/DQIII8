@@ -67,7 +67,9 @@ def guard_zip_metadata(zf: zipfile.ZipFile) -> None:
     """
     infos = zf.infolist()
     if len(infos) > MAX_ZIP_MEMBERS:
-        raise MetadataToolError(ErrorClass.ADVERSARIAL, f"zip has {len(infos)} members, exceeds cap")
+        raise MetadataToolError(
+            ErrorClass.ADVERSARIAL, f"zip has {len(infos)} members, exceeds cap"
+        )
 
     seen_names: set[str] = set()
     total_uncompressed = 0
@@ -79,18 +81,26 @@ def guard_zip_metadata(zf: zipfile.ZipFile) -> None:
 
         norm = posixpath.normpath(name)
         if name.startswith("/") or posixpath.isabs(name) or norm == ".." or norm.startswith("../"):
-            raise MetadataToolError(ErrorClass.ADVERSARIAL, f"path-traversal/absolute entry name: {name}")
+            raise MetadataToolError(
+                ErrorClass.ADVERSARIAL, f"path-traversal/absolute entry name: {name}"
+            )
 
         if info.file_size > MAX_ZIP_MEMBER_BYTES:
             raise MetadataToolError(
-                ErrorClass.ADVERSARIAL, f"member {name} declares {info.file_size} bytes, exceeds per-member cap"
+                ErrorClass.ADVERSARIAL,
+                f"member {name} declares {info.file_size} bytes, exceeds per-member cap",
             )
 
         total_uncompressed += info.file_size
         if total_uncompressed > MAX_ZIP_TOTAL_BYTES:
-            raise MetadataToolError(ErrorClass.ADVERSARIAL, "zip declared uncompressed total exceeds cap")
+            raise MetadataToolError(
+                ErrorClass.ADVERSARIAL, "zip declared uncompressed total exceeds cap"
+            )
 
-        if info.compress_size > 1024 and info.file_size / max(info.compress_size, 1) > MAX_ZIP_RATIO:
+        if (
+            info.compress_size > 1024
+            and info.file_size / max(info.compress_size, 1) > MAX_ZIP_RATIO
+        ):
             raise MetadataToolError(
                 ErrorClass.ADVERSARIAL,
                 f"member {name} exceeds decompression-ratio guard ({info.file_size}/{info.compress_size})",
@@ -121,7 +131,9 @@ def _owning_dir(part: str) -> str:
 def _rels_path_for(part: str) -> str:
     d = _owning_dir(part)
     base = posixpath.basename(part)
-    return posixpath.join(d, "_rels", f"{base}.rels") if d else posixpath.join("_rels", f"{base}.rels")
+    return (
+        posixpath.join(d, "_rels", f"{base}.rels") if d else posixpath.join("_rels", f"{base}.rels")
+    )
 
 
 def _package_root_rels() -> str:
@@ -138,14 +150,28 @@ def inspect(path, raw: bytes, subtype: str) -> list[Finding]:
     except MetadataToolError as e:
         return [
             Finding(
-                path_str, "ooxml", "<package>", "adversarial_input", "safe", "high", False, e.message,
+                path_str,
+                "ooxml",
+                "<package>",
+                "adversarial_input",
+                "safe",
+                "high",
+                False,
+                e.message,
                 error_class=e.error_class,
             )
         ]
     except Exception as e:  # noqa: BLE001
         return [
             Finding(
-                path_str, "ooxml", "<package>", "engine_error", "safe", "high", False, str(e),
+                path_str,
+                "ooxml",
+                "<package>",
+                "engine_error",
+                "safe",
+                "high",
+                False,
+                str(e),
                 error_class=ErrorClass.ENGINE_FAILURE,
             )
         ]
@@ -157,24 +183,70 @@ def inspect(path, raw: bytes, subtype: str) -> list[Finding]:
             identity = [
                 t
                 for t in present
-                if t in ("creator", "lastModifiedBy", "subject", "keywords", "description", "category", "contentStatus")
+                if t
+                in (
+                    "creator",
+                    "lastModifiedBy",
+                    "subject",
+                    "keywords",
+                    "description",
+                    "category",
+                    "contentStatus",
+                )
             ]
             if identity:
-                findings.append(Finding(path_str, "ooxml", "docProps/core.xml", "identity_properties", "safe", "notice", True, ",".join(identity)))
+                findings.append(
+                    Finding(
+                        path_str,
+                        "ooxml",
+                        "docProps/core.xml",
+                        "identity_properties",
+                        "safe",
+                        "notice",
+                        True,
+                        ",".join(identity),
+                    )
+                )
         except Exception:  # noqa: BLE001
             pass
 
     if "docProps/app.xml" in entries:
         try:
             root = parse_xml_hardened(entries["docProps/app.xml"])
-            present = [child.tag.split("}")[-1] for child in root if child.tag.split("}")[-1] in ("Company", "Manager")]
+            present = [
+                child.tag.split("}")[-1]
+                for child in root
+                if child.tag.split("}")[-1] in ("Company", "Manager")
+            ]
             if present:
-                findings.append(Finding(path_str, "ooxml", "docProps/app.xml", "identity_properties", "safe", "notice", True, ",".join(present)))
+                findings.append(
+                    Finding(
+                        path_str,
+                        "ooxml",
+                        "docProps/app.xml",
+                        "identity_properties",
+                        "safe",
+                        "notice",
+                        True,
+                        ",".join(present),
+                    )
+                )
         except Exception:  # noqa: BLE001
             pass
 
     if "docProps/custom.xml" in entries:
-        findings.append(Finding(path_str, "ooxml", "docProps/custom.xml", "custom_properties", "safe", "notice", True, ""))
+        findings.append(
+            Finding(
+                path_str,
+                "ooxml",
+                "docProps/custom.xml",
+                "custom_properties",
+                "safe",
+                "notice",
+                True,
+                "",
+            )
+        )
 
     thumb = next((n for n in entries if n.startswith("docProps/thumbnail")), None)
     if thumb:
@@ -182,7 +254,9 @@ def inspect(path, raw: bytes, subtype: str) -> list[Finding]:
 
     for xmp_name in ("docProps/core.xml",):
         try:
-            findings += fmt_c2pa.detect_xmp_provenance(path_str, "ooxml", entries.get(xmp_name, b""))
+            findings += fmt_c2pa.detect_xmp_provenance(
+                path_str, "ooxml", entries.get(xmp_name, b"")
+            )
         except Exception:  # noqa: BLE001
             pass
 
@@ -199,11 +273,15 @@ def inspect(path, raw: bytes, subtype: str) -> list[Finding]:
     # gate. Applied here at the call site, not inside detect_xmp_provenance(), which
     # the PDF path shares and where a change would disable PDF removal too.
     if subtype != "docx":
-        note = f"{subtype} removal not implemented — detection only; strip it with the authoring app"
+        note = (
+            f"{subtype} removal not implemented — detection only; strip it with the authoring app"
+        )
         findings = [
-            replace(f, removable=False, note=(f"{f.note} — {note}" if f.note else note))
-            if f.removable
-            else f
+            (
+                replace(f, removable=False, note=(f"{f.note} — {note}" if f.note else note))
+                if f.removable
+                else f
+            )
             for f in findings
         ]
 
@@ -219,9 +297,31 @@ def _inspect_docx(path_str: str, entries: dict[str, bytes]) -> list[Finding]:
             has_rsids = root.find(f"{{{W_NS}}}rsids") is not None
             attached = root.find(f"{{{W_NS}}}attachedTemplate")
             if has_proof or has_rsids:
-                findings.append(Finding(path_str, "ooxml", "word/settings.xml", "editing_metadata", "safe", "notice", True, "proofState/rsids"))
+                findings.append(
+                    Finding(
+                        path_str,
+                        "ooxml",
+                        "word/settings.xml",
+                        "editing_metadata",
+                        "safe",
+                        "notice",
+                        True,
+                        "proofState/rsids",
+                    )
+                )
             if attached is not None:
-                findings.append(Finding(path_str, "ooxml", "word/settings.xml", "attached_template", "safe", "notice", True, "may reference an external template path"))
+                findings.append(
+                    Finding(
+                        path_str,
+                        "ooxml",
+                        "word/settings.xml",
+                        "attached_template",
+                        "safe",
+                        "notice",
+                        True,
+                        "may reference an external template path",
+                    )
+                )
         except Exception:  # noqa: BLE001
             pass
 
@@ -232,27 +332,72 @@ def _inspect_docx(path_str: str, entries: dict[str, bytes]) -> list[Finding]:
         ("word/commentsExtensible.xml", "commentsExtensible"),
     ):
         if part in entries:
-            findings.append(Finding(path_str, "ooxml", part, "comment_metadata", "safe", "notice", True, label))
+            findings.append(
+                Finding(path_str, "ooxml", part, "comment_metadata", "safe", "notice", True, label)
+            )
 
     if "word/document.xml" in entries:
         try:
             root = parse_xml_hardened(entries["word/document.xml"])
-            authors = {el.get(f"{{{W_NS}}}author") for el in root.iter() if el.tag.split("}")[-1] in ("ins", "del")}
+            authors = {
+                el.get(f"{{{W_NS}}}author")
+                for el in root.iter()
+                if el.tag.split("}")[-1] in ("ins", "del")
+            }
             authors.discard(None)
             if authors:
-                findings.append(Finding(path_str, "ooxml", "word/document.xml", "tracked_change_authors", "safe", "notice", True, f"{len(authors)} distinct author(s)"))
-            rsid_count = sum(1 for el in root.iter() if any(k.startswith(f"{{{W_NS}}}rsid") for k in el.attrib))
+                findings.append(
+                    Finding(
+                        path_str,
+                        "ooxml",
+                        "word/document.xml",
+                        "tracked_change_authors",
+                        "safe",
+                        "notice",
+                        True,
+                        f"{len(authors)} distinct author(s)",
+                    )
+                )
+            rsid_count = sum(
+                1 for el in root.iter() if any(k.startswith(f"{{{W_NS}}}rsid") for k in el.attrib)
+            )
             if rsid_count:
-                findings.append(Finding(path_str, "ooxml", "word/document.xml", "rsid_attributes", "all", "info", True, f"{rsid_count} element(s)"))
+                findings.append(
+                    Finding(
+                        path_str,
+                        "ooxml",
+                        "word/document.xml",
+                        "rsid_attributes",
+                        "all",
+                        "info",
+                        True,
+                        f"{rsid_count} element(s)",
+                    )
+                )
         except Exception:  # noqa: BLE001
             pass
 
     if "word/comments.xml" in entries:
-        findings.append(Finding(path_str, "ooxml", "word/comments.xml", "comment_content", "all", "notice", True, ""))
+        findings.append(
+            Finding(
+                path_str, "ooxml", "word/comments.xml", "comment_content", "all", "notice", True, ""
+            )
+        )
 
     custom_xml_parts = [n for n in entries if n.startswith("customXml/") and n.endswith(".xml")]
     if custom_xml_parts:
-        findings.append(Finding(path_str, "ooxml", "customXml/", "custom_xml", "all", "notice", True, f"{len(custom_xml_parts)} part(s)"))
+        findings.append(
+            Finding(
+                path_str,
+                "ooxml",
+                "customXml/",
+                "custom_xml",
+                "all",
+                "notice",
+                True,
+                f"{len(custom_xml_parts)} part(s)",
+            )
+        )
 
     return findings
 
@@ -261,18 +406,62 @@ def _inspect_xlsx(path_str: str, entries: dict[str, bytes]) -> list[Finding]:
     findings = []
     persons = [n for n in entries if n.startswith("xl/persons/")]
     if persons:
-        findings.append(Finding(path_str, "ooxml", "xl/persons/", "identity_properties", "safe", "notice", False, f"{len(persons)} part(s) — detection only, xlsx removal deferred"))
+        findings.append(
+            Finding(
+                path_str,
+                "ooxml",
+                "xl/persons/",
+                "identity_properties",
+                "safe",
+                "notice",
+                False,
+                f"{len(persons)} part(s) — detection only, xlsx removal deferred",
+            )
+        )
     tc = [n for n in entries if n.startswith("xl/threadedComments/")]
     if tc:
-        findings.append(Finding(path_str, "ooxml", "xl/threadedComments/", "comment_metadata", "safe", "notice", False, f"{len(tc)} part(s) — detection only"))
+        findings.append(
+            Finding(
+                path_str,
+                "ooxml",
+                "xl/threadedComments/",
+                "comment_metadata",
+                "safe",
+                "notice",
+                False,
+                f"{len(tc)} part(s) — detection only",
+            )
+        )
     ext_links = [n for n in entries if n.startswith("xl/externalLinks/_rels/")]
     if ext_links:
-        findings.append(Finding(path_str, "ooxml", "xl/externalLinks/_rels/", "external_link_paths", "safe", "notice", False, "detection only"))
+        findings.append(
+            Finding(
+                path_str,
+                "ooxml",
+                "xl/externalLinks/_rels/",
+                "external_link_paths",
+                "safe",
+                "notice",
+                False,
+                "detection only",
+            )
+        )
     if "xl/workbook.xml" in entries:
         try:
             root = parse_xml_hardened(entries["xl/workbook.xml"])
             if root.find(".//{*}fileVersion") is not None:
-                findings.append(Finding(path_str, "ooxml", "xl/workbook.xml", "file_version", "safe", "notice", False, "detection only"))
+                findings.append(
+                    Finding(
+                        path_str,
+                        "ooxml",
+                        "xl/workbook.xml",
+                        "file_version",
+                        "safe",
+                        "notice",
+                        False,
+                        "detection only",
+                    )
+                )
         except Exception:  # noqa: BLE001
             pass
     return findings
@@ -281,10 +470,32 @@ def _inspect_xlsx(path_str: str, entries: dict[str, bytes]) -> list[Finding]:
 def _inspect_pptx(path_str: str, entries: dict[str, bytes]) -> list[Finding]:
     findings = []
     if "ppt/authors.xml" in entries:
-        findings.append(Finding(path_str, "ooxml", "ppt/authors.xml", "identity_properties", "safe", "notice", False, "detection only, pptx removal deferred"))
+        findings.append(
+            Finding(
+                path_str,
+                "ooxml",
+                "ppt/authors.xml",
+                "identity_properties",
+                "safe",
+                "notice",
+                False,
+                "detection only, pptx removal deferred",
+            )
+        )
     slide_comments = [n for n in entries if n.startswith("ppt/slides/") and "comment" in n.lower()]
     if slide_comments:
-        findings.append(Finding(path_str, "ooxml", "ppt/slides/*comments*", "comment_metadata", "safe", "notice", False, f"{len(slide_comments)} part(s) — detection only"))
+        findings.append(
+            Finding(
+                path_str,
+                "ooxml",
+                "ppt/slides/*comments*",
+                "comment_metadata",
+                "safe",
+                "notice",
+                False,
+                f"{len(slide_comments)} part(s) — detection only",
+            )
+        )
     return findings
 
 
@@ -333,7 +544,9 @@ def _remove_part(entries: dict[str, bytes], ct_root, part: str) -> None:
                 rroot.remove(rel)
                 changed = True
         if changed:
-            entries[rels_name] = etree.tostring(rroot, xml_declaration=True, encoding="UTF-8", standalone=True)
+            entries[rels_name] = etree.tostring(
+                rroot, xml_declaration=True, encoding="UTF-8", standalone=True
+            )
 
 
 def _strip_element(root, ns: str, local_name: str) -> bool:
@@ -358,7 +571,9 @@ def _clear_core_props(entries: dict[str, bytes]) -> None:
         (CP_NS, "contentStatus"),
     ):
         _strip_element(root, ns, local)
-    entries["docProps/core.xml"] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    entries["docProps/core.xml"] = etree.tostring(
+        root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
 
 
 def _clear_app_props(entries: dict[str, bytes]) -> None:
@@ -367,7 +582,9 @@ def _clear_app_props(entries: dict[str, bytes]) -> None:
     root = parse_xml_hardened(entries["docProps/app.xml"])
     for local in ("Company", "Manager"):
         _strip_element(root, EP_NS, local)
-    entries["docProps/app.xml"] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    entries["docProps/app.xml"] = etree.tostring(
+        root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
 
 
 def _clear_settings(entries: dict[str, bytes]) -> None:
@@ -377,7 +594,9 @@ def _clear_settings(entries: dict[str, bytes]) -> None:
     _strip_element(root, W_NS, "proofState")
     _strip_element(root, W_NS, "rsids")
     _strip_element(root, W_NS, "attachedTemplate")
-    entries["word/settings.xml"] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    entries["word/settings.xml"] = etree.tostring(
+        root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
 
 
 def _anonymize_authors(entries: dict[str, bytes]) -> None:
@@ -394,7 +613,9 @@ def _anonymize_authors(entries: dict[str, bytes]) -> None:
                     el.attrib[attr] = ""
                     changed = True
         if changed:
-            entries[part] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+            entries[part] = etree.tostring(
+                root, xml_declaration=True, encoding="UTF-8", standalone=True
+            )
 
 
 def _strip_rsid_attrs(entries: dict[str, bytes]) -> None:
@@ -407,7 +628,9 @@ def _strip_rsid_attrs(entries: dict[str, bytes]) -> None:
             del el.attrib[key]
             changed = True
     if changed:
-        entries["word/document.xml"] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+        entries["word/document.xml"] = etree.tostring(
+            root, xml_declaration=True, encoding="UTF-8", standalone=True
+        )
 
 
 def remove(raw: bytes, *, all_tier: bool) -> bytes:
@@ -437,7 +660,9 @@ def remove(raw: bytes, *, all_tier: bool) -> bytes:
             if xmp_findings:
                 root = parse_xml_hardened(entries["docProps/core.xml"])
                 _strip_element(root, DCTERMS_NS, "provenance")
-                entries["docProps/core.xml"] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+                entries["docProps/core.xml"] = etree.tostring(
+                    root, xml_declaration=True, encoding="UTF-8", standalone=True
+                )
         except Exception:  # noqa: BLE001
             pass
 
@@ -461,5 +686,7 @@ def remove(raw: bytes, *, all_tier: bool) -> bytes:
             _remove_part(entries, ct_root, "word/comments.xml")
         _strip_rsid_attrs(entries)
 
-    entries["[Content_Types].xml"] = etree.tostring(ct_root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    entries["[Content_Types].xml"] = etree.tostring(
+        ct_root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
     return _write_zip(entries)

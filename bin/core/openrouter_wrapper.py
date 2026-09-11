@@ -24,23 +24,40 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import logging
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
+
 
 # ── Auto-load .env so API keys are available regardless of shell environment ─
 def _load_dotenv() -> None:
-    """Load /root/dqiii8/.env into os.environ (setdefault — never overwrites existing vars)."""
+    """Load /root/dqiii8/.env into os.environ (setdefault — never overwrites existing vars).
+
+    2026-09-12 fix: .env is 0600 root-owned by design (BLOCKED_PATHS privsep) —
+    unreadable for plglobal-isabel/plglobal-mario. This ran at import time
+    with no guard beyond .exists(), so any process importing this module as
+    a non-root operator crashed immediately on PermissionError — confirmed
+    live: broke `/handover`'s embedded test run and plain `pytest
+    tests/test_smoke.py` collection for both operators via the
+    `import openrouter_wrapper` chain. Fail open like every other
+    privsep-restricted read in this codebase — the operator simply doesn't
+    get .env's vars, exactly as intended for these accounts.
+    """
     root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
     env_path = root / ".env"
-    if not env_path.exists():
+    try:
+        text = env_path.read_text(encoding="utf-8")
+    except OSError:
         return
-    for line in env_path.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, _, v = line.partition("=")
         os.environ.setdefault(k.strip(), v.strip())
+
 
 _load_dotenv()
 
@@ -116,9 +133,7 @@ PROVIDERS = {
 }
 
 # Allowlist derived from PROVIDERS — only these hosts are ever called
-_ALLOWED_HOSTS = frozenset(
-    urlparse(cfg["base_url"]).hostname for cfg in PROVIDERS.values()
-)
+_ALLOWED_HOSTS = frozenset(urlparse(cfg["base_url"]).hostname for cfg in PROVIDERS.values())
 
 
 def _validate_url(url: str) -> None:
@@ -131,72 +146,62 @@ def _validate_url(url: str) -> None:
 
 AGENT_ROUTING = {
     # ── Tier C — Ollama local ────────────────────────────────────────────────
-    "git-specialist":    ("ollama", "qwen2.5-coder:7b"),
+    "git-specialist": ("ollama", "qwen2.5-coder:7b"),
     "content-automator": ("ollama", "qwen2.5-coder:7b"),
-
     # ── Tier B+ NIM — Código (DeepSeek V4 Flash: 1.4s, 1M ctx, confirmado) ──
     # Patrón: pseudocódigo → [nim] → code-validator [Opus] revisión estricta
     "python-specialist": ("nim", "deepseek-ai/deepseek-v4-flash-0731"),
-    "web-specialist":    ("nim", "deepseek-ai/deepseek-v4-flash-0731"),
-    "algo-specialist":   ("nim", "deepseek-ai/deepseek-v4-flash-0731"),
-    "code-engineer":     ("nim", "deepseek-ai/deepseek-v4-flash-0731"),   # MetaGPT Engineer role
-    "opt-analyst":       ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),  # optimization analysis
-    "context-probe":     ("anthropic", "claude-haiku-4-5-20251001"),  # Haiku context bombardment
-
+    "web-specialist": ("nim", "deepseek-ai/deepseek-v4-flash-0731"),
+    "algo-specialist": ("nim", "deepseek-ai/deepseek-v4-flash-0731"),
+    "code-engineer": ("nim", "deepseek-ai/deepseek-v4-flash-0731"),  # MetaGPT Engineer role
+    "opt-analyst": ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),  # optimization analysis
+    "context-probe": ("anthropic", "claude-haiku-4-5-20251001"),  # Haiku context bombardment
     # ── Tier B+ NIM — Alta calidad (Nemotron Super 49B v1.5) ────────────────
     # Reemplaza mistral-large-3-675b-instruct-2512, EOL/410 desde 2026-07-23.
-    "research-analyst":  ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
-    "software-specialist":("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
-    "data-specialist":   ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
-    "ai-ml-specialist":  ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
-
+    "research-analyst": ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
+    "software-specialist": ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
+    "data-specialist": ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
+    "ai-ml-specialist": ("nim", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
     # ── Tier B+ NIM — Safety / Moderation (0.1s, confirmados) ───────────────
-    "safety-checker":    ("nim", "nvidia/llama-3.1-nemoguard-8b-content-safety"),
-    "content-safety":    ("nim", "meta/llama-guard-4-12b"),
-    "pii-detector":      ("nim", "nvidia/gliner-pii"),
-
+    "safety-checker": ("nim", "nvidia/llama-3.1-nemoguard-8b-content-safety"),
+    "content-safety": ("nim", "meta/llama-guard-4-12b"),
+    "pii-detector": ("nim", "nvidia/gliner-pii"),
     # ── Tier B+ NIM — Vision (phi-4-multimodal: 0.2s, confirmado) ───────────
     "vision-specialist": ("nim", "microsoft/phi-4-multimodal-instruct"),
-
     # ── Tier B+ NIM — Traducción (riva: 0.2s, confirmado) ───────────────────
     "translate-specialist": ("nim", "nvidia/riva-translate-4b-instruct-v1.1"),
-
     # ── Tier B — Groq (dominio general, baja latencia) ───────────────────────
-    "biology-specialist":   ("groq", "llama-3.3-70b-versatile"),
+    "biology-specialist": ("groq", "llama-3.3-70b-versatile"),
     "chemistry-specialist": ("groq", "llama-3.3-70b-versatile"),
     "economics-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "history-specialist":   ("groq", "llama-3.3-70b-versatile"),
-    "language-specialist":  ("groq", "llama-3.3-70b-versatile"),
-    "legal-specialist":     ("groq", "llama-3.3-70b-versatile"),
-    "logic-specialist":     ("groq", "llama-3.3-70b-versatile"),
+    "history-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "language-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "legal-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "logic-specialist": ("groq", "llama-3.3-70b-versatile"),
     "marketing-specialist": ("groq", "llama-3.3-70b-versatile"),
-    "math-specialist":      ("groq", "llama-3.3-70b-versatile"),
+    "math-specialist": ("groq", "llama-3.3-70b-versatile"),
     "nutrition-specialist": ("groq", "llama-3.3-70b-versatile"),  # palmyra-med 404
-    "philosophy-specialist":("groq", "llama-3.3-70b-versatile"),
-    "physics-specialist":   ("groq", "llama-3.3-70b-versatile"),
-    "stats-specialist":     ("groq", "llama-3.3-70b-versatile"),
-    "writing-specialist":   ("groq", "llama-3.3-70b-versatile"),
-
+    "philosophy-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "physics-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "stats-specialist": ("groq", "llama-3.3-70b-versatile"),
+    "writing-specialist": ("groq", "llama-3.3-70b-versatile"),
     # ── Tier S — Opus: revisión estricta post-generación ────────────────────
     # Recibe código generado + spec original + contexto proyecto. Ataca el código.
-    "code-reviewer":  ("anthropic", "claude-opus-5"),
+    "code-reviewer": ("anthropic", "claude-opus-5"),
     "code-validator": ("anthropic", "claude-opus-5"),
     # hermes — NousResearch Hermes-3 405B (OpenRouter free, $0) — estrategia, analytics, datos
-    "hermes":         ("openrouter", "nousresearch/hermes-3-llama-3.1-405b:free"),
-
+    "hermes": ("openrouter", "nousresearch/hermes-3-llama-3.1-405b:free"),
     # ── Tier A — Sonnet: agentes de alto valor ───────────────────────────────
     "finance-specialist": ("anthropic", "claude-sonnet-5"),
-    "auditor":            ("anthropic", "claude-sonnet-5"),
-    "orchestrator":       ("anthropic", "claude-sonnet-5"),
-
+    "auditor": ("anthropic", "claude-sonnet-5"),
+    "orchestrator": ("anthropic", "claude-sonnet-5"),
     # ── Accounting-ERP ───────────────────────────────────────────────────────
     "customer-accountant": ("groq", "llama-3.3-70b-versatile"),
     "supplier-accountant": ("groq", "llama-3.3-70b-versatile"),
-    "invoice-extractor":   ("groq", "llama-3.3-70b-versatile"),
-    "tax-auditor":         ("anthropic", "claude-sonnet-5"),
-    "closing-specialist":  ("anthropic", "claude-sonnet-5"),
-
-    "default": ("groq", "llama-3.3-70b-versatile"),
+    "invoice-extractor": ("groq", "llama-3.3-70b-versatile"),
+    "tax-auditor": ("anthropic", "claude-sonnet-5"),
+    "closing-specialist": ("anthropic", "claude-sonnet-5"),
+    "default": ("anthropic", "claude-sonnet-5"),
 }
 
 # Agents locked to Tier C (Ollama) regardless of domain — never auto-escalated.
@@ -289,9 +294,15 @@ _RETRY_ATTEMPTS = 3
 _RETRY_BASE_DELAY_S = 1.0
 _BREAKER_THRESHOLD = 3
 _BREAKER_COOLDOWN_S = 120
-_BREAKER_PATH = (
-    Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "var" / "circuit_breaker.json"
-)
+
+# Per-attempt timeout for the Claude Code CLI fallback path (_stream_via_claude_cli).
+# Overridable per-subprocess via DQIII8_CLI_TIMEOUT — dispatch()'s new `cli_timeout`
+# param sets this env var on the wrapper subprocess it launches, so a caller with a
+# genuinely heavier single call (e.g. panel_review.py reviewing a multi-thousand-line
+# plan) can raise the per-attempt budget without touching this file. Default 300
+# preserves prior behavior for every other caller that doesn't opt in.
+_CLI_TIMEOUT_S = int(os.environ.get("DQIII8_CLI_TIMEOUT", "300"))
+_BREAKER_PATH = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8")) / "var" / "circuit_breaker.json"
 
 # Coste por 1K tokens (input, output) en USD — 0.0 = gratuito/local
 TIER_COSTS: dict[str, tuple[float, float]] = {
@@ -510,7 +521,17 @@ def load_agent_system_prompt(agent_name: str, prompt: str = "") -> str:
     For core agents (no `domain:` field), returns the MD body as before.
     """
     if not agent_name or agent_name == "default":
-        return ""
+        # A real --system-prompt, not the human-turn prefix dqiii8_bot.py adds —
+        # without one, the `claude` CLI falls back to its own baked-in Claude
+        # Code identity, which can override the human-turn "You are DQIII8"
+        # text entirely (found 2026-09-07: a real Telegram reply introduced
+        # itself as "Claude Code (agente en VPS)", not DQIII8).
+        return (
+            "You are DQIII8, an autonomous AI orchestration system running on a "
+            "VPS, reachable via Telegram. You are not Claude Code and this is "
+            "not a coding-agent session — do not describe yourself as either. "
+            "Respond directly and technically to the user's message."
+        )
     dqiii8_root = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
     md_path = dqiii8_root / ".claude" / "agents" / f"{agent_name}.md"
     if not md_path.exists():
@@ -544,7 +565,9 @@ def load_agent_system_prompt(agent_name: str, prompt: str = "") -> str:
                 if result.get("system_prompt"):
                     log.debug(
                         "domain lens: agent=%s domain=%s chunks=%s",
-                        agent_name, domain, result["chunks_used"],
+                        agent_name,
+                        domain,
+                        result["chunks_used"],
                     )
                     return result["system_prompt"]
         except Exception as _exc:
@@ -586,12 +609,26 @@ def build_request(provider_name: str, model: str, prompt: str, system_prompt: st
 
 
 def _stream_via_claude_cli(
-    model: str, prompt: str, system_prompt: str = "", echo: bool = True
+    model: str,
+    prompt: str,
+    system_prompt: str = "",
+    echo: bool = True,
+    cli_timeout_s: int = _CLI_TIMEOUT_S,
 ) -> tuple[str, int, int, bool, bool]:
     """Tier A fallback: call Claude Code CLI when ANTHROPIC_API_KEY is not set.
 
     Uses OAuth via ~/.claude/.credentials.json (same as dqiii8_bot /cc).
     Returns (text, tokens_in, tokens_out, success, retryable).
+
+    cli_timeout_s (audit 2026-09-09, panel-review round 22 investigation):
+    was a hardcoded 300 with no way for any caller to raise it — a caller like
+    dispatch(timeout=1100) only controls the OUTER subprocess wrapping this
+    whole wrapper process; that outer budget was disconnected from the INNER
+    per-attempt CLI call's own cap, so a genuinely slow single call (a 4620-line
+    plan review) still hit this 300s wall on every one of its 3 retries
+    regardless of how generous the outer timeout was. Now sourced from
+    DQIII8_CLI_TIMEOUT (see _CLI_TIMEOUT_S below), which dispatch() can set per
+    call via its own `cli_timeout` parameter.
     """
     # prompt goes via stdin, not argv: a single subprocess argument is capped
     # at MAX_ARG_STRLEN (128KB on Linux) regardless of ARG_MAX, and a prompt
@@ -611,7 +648,7 @@ def _stream_via_claude_cli(
             input=prompt,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=cli_timeout_s,
             encoding="utf-8",
             env=env,
         )
@@ -631,7 +668,9 @@ def _stream_via_claude_cli(
             # failed (bad/retired model, auth issue, etc.) — treating that
             # text as a real answer would silently defeat _NO_DOWNGRADE for
             # Tier A/S agents (found by stress test, 2026-08-11).
-            log.warning("claude CLI reported failure (returncode=%s): %s", result.returncode, text[:200])
+            log.warning(
+                "claude CLI reported failure (returncode=%s): %s", result.returncode, text[:200]
+            )
             return "", 0, 0, False, False
         if text:
             if echo:
@@ -658,6 +697,7 @@ def _request_once(
     prompt: str,
     system_prompt: str = "",
     echo: bool = True,
+    cli_timeout_s: int = _CLI_TIMEOUT_S,
 ) -> tuple[str, int, int, bool, bool]:
     """One attempt against one provider.
 
@@ -669,7 +709,9 @@ def _request_once(
     """
     # Anthropic without API key → delegate to Claude Code CLI (OAuth)
     if provider_name == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
-        return _stream_via_claude_cli(model, prompt, system_prompt, echo=echo)
+        return _stream_via_claude_cli(
+            model, prompt, system_prompt, echo=echo, cli_timeout_s=cli_timeout_s
+        )
 
     url, headers, payload = build_request(
         provider_name, model, sanitize_prompt(prompt), system_prompt
@@ -785,14 +827,20 @@ def _breaker_record(provider: str, success: bool) -> None:
         entry["opened_until"] = time.time() + _BREAKER_COOLDOWN_S
         log.warning(
             "circuit OPEN for %s (%d consecutive failures, cooldown %ds)",
-            provider, entry["failures"], _BREAKER_COOLDOWN_S,
+            provider,
+            entry["failures"],
+            _BREAKER_COOLDOWN_S,
         )
     state[provider] = entry
     _breaker_save(state)
 
 
 def _call_with_retry(
-    provider: str, model: str, prompt: str, system_prompt: str = ""
+    provider: str,
+    model: str,
+    prompt: str,
+    system_prompt: str = "",
+    cli_timeout_s: int = _CLI_TIMEOUT_S,
 ) -> tuple[str, int, int, bool]:
     """One provider attempt with retry/backoff + circuit breaker.
 
@@ -806,27 +854,30 @@ def _call_with_retry(
     if not _breaker_allows(provider):
         log.warning(
             "circuit open for %s — skipping provider (cooldown %ds)",
-            provider, _BREAKER_COOLDOWN_S,
+            provider,
+            _BREAKER_COOLDOWN_S,
         )
         return "", 0, 0, False
     text, tokens_in, tokens_out = "", 0, 0
     for attempt in range(1, _RETRY_ATTEMPTS + 1):
         text, tokens_in, tokens_out, ok, retryable = _request_once(
-            provider, model, prompt, system_prompt, echo=False
+            provider, model, prompt, system_prompt, echo=False, cli_timeout_s=cli_timeout_s
         )
         if ok:
             _breaker_record(provider, True)
             return text, tokens_in, tokens_out, True
         if not retryable:
-            log.warning(
-                "%s/%s fatal error (auth/config) — not retrying", provider, model
-            )
+            log.warning("%s/%s fatal error (auth/config) — not retrying", provider, model)
             break
         if attempt < _RETRY_ATTEMPTS:
             delay = _RETRY_BASE_DELAY_S * (2 ** (attempt - 1)) + random.uniform(0, 0.25)
             log.warning(
                 "%s/%s attempt %d/%d failed — retrying in %.1fs",
-                provider, model, attempt, _RETRY_ATTEMPTS, delay,
+                provider,
+                model,
+                attempt,
+                _RETRY_ATTEMPTS,
+                delay,
             )
             time.sleep(delay)
     _breaker_record(provider, False)
@@ -858,8 +909,12 @@ def log_to_db(
         # Correct tier labeling (audit 2026-07-05 MED #8: nim/github/pollinations
         # were all mislabeled "C", corrupting tier/cost analytics)
         _provider_tier = {
-            "ollama": "C", "groq": "B", "openrouter": "B", "pollinations": "B",
-            "nim": "B+", "github": "B++",
+            "ollama": "C",
+            "groq": "B",
+            "openrouter": "B",
+            "pollinations": "B",
+            "nim": "B+",
+            "github": "B++",
         }
         if provider == "anthropic":
             tier = "S" if "opus" in model.lower() else "A"
@@ -1053,9 +1108,7 @@ def print_routing_table() -> None:
     for tier, provider, model, route, _ in ROUTING_TABLE:
         print(f"  {tier:<6} {provider:<12} {model:<30} {route}")
     print()
-    print(
-        "Fallback chain (Tier C): Ollama → OpenRouter → Groq → Pollinations"
-    )
+    print("Fallback chain (Tier C): Ollama → OpenRouter → Groq → Pollinations")
     print()
 
 
@@ -1114,8 +1167,12 @@ def _enforce_sensitive_permissions() -> None:
     # session_memory moved to dqiii8.db (working_memory.py) in the 2026-08-14
     # db-consolidation; dqiii8_history.db is now a frozen pre-migration archive,
     # still chmod'd defensively since it retains a copy of the same data.
-    for rel in (".env", "database/dqiii8.db", "database/dqiii8_history.db",
-                "database/dqiii8_knowledge.db"):
+    for rel in (
+        ".env",
+        "database/dqiii8.db",
+        "database/dqiii8_history.db",
+        "database/dqiii8_knowledge.db",
+    ):
         path = root / rel
         if path.exists() and not path.is_symlink():
             current = path.stat().st_mode & 0o777
@@ -1160,15 +1217,11 @@ def main() -> None:
         default="default",
         help="Agente DQIII8 (define modelo y provider)",
     )
-    parser.add_argument(
-        "--model", "-m", default=None, help="Explicit model (overrides --agent)"
-    )
+    parser.add_argument("--model", "-m", default=None, help="Explicit model (overrides --agent)")
     parser.add_argument(
         "--list", "-l", action="store_true", help="Muestra la tabla de routing y sale"
     )
-    parser.add_argument(
-        "prompt", nargs="?", default=None, help="Prompt (o stdin si no se pasa)"
-    )
+    parser.add_argument("prompt", nargs="?", default=None, help="Prompt (o stdin si no se pasa)")
     parser.add_argument(
         "--no-enrich",
         action="store_true",
@@ -1233,12 +1286,7 @@ def main() -> None:
         _dc_path = Path(__file__).parent.parent / "agents" / "domain_classifier.py"
         _ke_path = Path(__file__).parent.parent / "agents" / "knowledge_enricher.py"
         _ia_path = Path(__file__).parent.parent / "agents" / "intent_amplifier.py"
-        if (
-            (not _skip_enrich)
-            and _dc_path.exists()
-            and _ke_path.exists()
-            and _ia_path.exists()
-        ):
+        if (not _skip_enrich) and _dc_path.exists() and _ke_path.exists() and _ia_path.exists():
             import importlib.util as _ilu
 
             _spec = _ilu.spec_from_file_location("domain_classifier", _dc_path)
@@ -1256,12 +1304,8 @@ def main() -> None:
                 # Skip task_relevance re-ranking for code-specialist agents (Tier C):
                 # their queries are about code, not domain knowledge, so the extra
                 # embedding pass adds latency without benefit.
-                _use_task_relevance = (
-                    args.agent not in _TIER_C_AGENTS if args.agent else True
-                )
-                _intent = (
-                    _decomp.get("action") or "explain" if _use_task_relevance else None
-                )
+                _use_task_relevance = args.agent not in _TIER_C_AGENTS if args.agent else True
+                _intent = _decomp.get("action") or "explain" if _use_task_relevance else None
                 _entity = _decomp.get("entity") if _use_task_relevance else None
 
                 # Step 2b: get chunks — re-ranked by task relevance when intent+entity known
@@ -1285,26 +1329,20 @@ def main() -> None:
                 _gate_tier = (
                     1
                     if args.agent in _TIER_C_AGENTS
-                    else (
-                        3
-                        if AGENT_ROUTING.get(args.agent, (None, None))[0] == "anthropic"
-                        else 2
-                    )
+                    else (3 if AGENT_ROUTING.get(args.agent, (None, None))[0] == "anthropic" else 2)
                 )
                 try:
-                    _cg_path = (
-                        Path(__file__).parent.parent / "agents" / "confidence_gate.py"
-                    )
+                    _cg_path = Path(__file__).parent.parent / "agents" / "confidence_gate.py"
                     if _cg_path.exists():
-                        _spec_cg = _ilu.spec_from_file_location(
-                            "confidence_gate", _cg_path
-                        )
+                        _spec_cg = _ilu.spec_from_file_location("confidence_gate", _cg_path)
                         _cg = _ilu.module_from_spec(_spec_cg)
                         _spec_cg.loader.exec_module(_cg)
                         if not _cg.should_enrich(prompt, _domain, _chunks, _gate_tier):
                             log.debug(
                                 "confidence gate: skip enrichment domain=%s tier=%d chunks=%d",
-                                _domain, _gate_tier, len(_chunks),
+                                _domain,
+                                _gate_tier,
+                                len(_chunks),
                             )
                             _chunks = []
                 except Exception as _exc:
@@ -1324,8 +1362,10 @@ def main() -> None:
                     _enriched_domain = _domain
                     log.debug(
                         "pipeline: domain=%s chunks=%d intent=%s tier=%s",
-                        _domain, _knowledge_chunks,
-                        _ia_result["intent"], _ia_result["tier"],
+                        _domain,
+                        _knowledge_chunks,
+                        _ia_result["intent"],
+                        _ia_result["tier"],
                     )
     except Exception as _exc:
         log.warning("%s: %s", __name__, _exc)
@@ -1337,22 +1377,14 @@ def main() -> None:
         try:
             import importlib.util as _ilu_das
 
-            _das_path = (
-                Path(__file__).parent.parent / "agents" / "domain_agent_selector.py"
-            )
+            _das_path = Path(__file__).parent.parent / "agents" / "domain_agent_selector.py"
             if _das_path.exists():
-                _spec_das = _ilu_das.spec_from_file_location(
-                    "domain_agent_selector", _das_path
-                )
+                _spec_das = _ilu_das.spec_from_file_location("domain_agent_selector", _das_path)
                 _das = _ilu_das.module_from_spec(_spec_das)
                 _spec_das.loader.exec_module(_das)
-                _sel_agent, _domain_system = _das.select_domain_agent(
-                    prompt, _routing_domain
-                )
+                _sel_agent, _domain_system = _das.select_domain_agent(prompt, _routing_domain)
                 if _sel_agent != "default":
-                    log.debug(
-                        "domain selector: %s domain=%s", _sel_agent, _routing_domain
-                    )
+                    log.debug("domain selector: %s domain=%s", _sel_agent, _routing_domain)
         except Exception as _exc:
             log.warning("selector/enricher failed: %s", _exc)
             pass  # selector failure → continue with default system prompt
@@ -1410,11 +1442,7 @@ def main() -> None:
 
     # Working memory: prepend recent session context for Tier B/A calls.
     # Tier C (Ollama/qwen) skips this — small models choke on extra prefix tokens.
-    _wm_tier = (
-        3
-        if primary_provider == "anthropic"
-        else (1 if primary_provider == "ollama" else 2)
-    )
+    _wm_tier = 3 if primary_provider == "anthropic" else (1 if primary_provider == "ollama" else 2)
     if _wm and _session_id and _wm_tier >= 2:
         try:
             _session_ctx = _wm.get_session_context(_session_id, max_exchanges=3)
@@ -1439,9 +1467,7 @@ def main() -> None:
     for provider, model in chain:
         log.info("%s | %s | %s", agent_name, provider, model)
         t0 = int(time.time() * 1000)
-        text, tokens_in, tokens_out, ok = _call_with_retry(
-            provider, model, prompt, system_prompt
-        )
+        text, tokens_in, tokens_out, ok = _call_with_retry(provider, model, prompt, system_prompt)
         duration_ms = int(time.time() * 1000) - t0
 
         err_msg = "" if ok else f"{provider}/{model} failed — no response or HTTP error"
@@ -1470,14 +1496,13 @@ def main() -> None:
             # the request (found by stress test, 2026-08-11).
             print(
                 f"__DQ_META__ {json.dumps({'provider': provider, 'model': model})}",
-                file=sys.stderr, flush=True,
+                file=sys.stderr,
+                flush=True,
             )
             print(text, flush=True)
             if _wm and _session_id:
                 try:
-                    _wm.save_exchange(
-                        _session_id, _original_prompt, text[:300], _enriched_domain
-                    )
+                    _wm.save_exchange(_session_id, _original_prompt, text[:300], _enriched_domain)
                 except Exception as _exc:
                     log.warning("working_memory save_exchange failed: %s", _exc)
                     pass  # fail-open
@@ -1554,8 +1579,7 @@ def get_recommendation(task_type: str) -> tuple[str, float, int]:
         if n >= _ROUTER_MIN_SAMPLES:
             return best_model, round(best_score, 2), n
         blended = round(
-            (best_score * n + _ROUTER_NEUTRAL * (_ROUTER_MIN_SAMPLES - n))
-            / _ROUTER_MIN_SAMPLES,
+            (best_score * n + _ROUTER_NEUTRAL * (_ROUTER_MIN_SAMPLES - n)) / _ROUTER_MIN_SAMPLES,
             2,
         )
         return best_model, blended, n

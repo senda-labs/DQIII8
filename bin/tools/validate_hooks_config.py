@@ -50,6 +50,18 @@ def check_command(command: str) -> tuple[list[str], list[str]]:
     if not tokens:
         return [f"empty command: {command!r}"], warnings
 
+    # shlex strips quotes but does not expand shell variables. Claude Code's
+    # own hook docs use ${CLAUDE_PROJECT_DIR} as the documented, reliable way
+    # to anchor a hook command to the repo root regardless of the invoking
+    # process's cwd (fixes a real bug: relative `.claude/hooks/run.sh` broke
+    # for any subagent/worktree whose cwd wasn't the repo root). Substitute it
+    # here with ROOT before path resolution, or every such command reads as a
+    # literal (and nonexistent) "${CLAUDE_PROJECT_DIR}" subdirectory.
+    tokens = [
+        tok.replace("${CLAUDE_PROJECT_DIR}", str(ROOT)).replace("$CLAUDE_PROJECT_DIR", str(ROOT))
+        for tok in tokens
+    ]
+
     # bash .claude/hooks/run.sh <script> — the dominant pattern in this repo.
     if len(tokens) >= 2 and tokens[0] == "bash" and tokens[1].endswith("run.sh"):
         run_sh = (ROOT / tokens[1]) if not os.path.isabs(tokens[1]) else Path(tokens[1])
@@ -75,7 +87,9 @@ def check_command(command: str) -> tuple[list[str], list[str]]:
             # P3-1): is_relative_to is purely lexical, so an unresolved
             # "/root/dqiii8/../dqiii8-premium/hook.py" token still tested
             # relative-to ROOT and slipped through as in-repo.
-            is_out_of_repo = os.path.isabs(tok) and not Path(tok).resolve().is_relative_to(ROOT.resolve())
+            is_out_of_repo = os.path.isabs(tok) and not Path(tok).resolve().is_relative_to(
+                ROOT.resolve()
+            )
             path = (Path(tok) if os.path.isabs(tok) else (ROOT / tok)).resolve()
             if not path.exists():
                 msg = f"referenced path not found: {path} (via {command!r})"
@@ -122,7 +136,11 @@ def _validate(settings_path: Path, source: str = "worktree") -> tuple[list[str],
     blob instead and could never detect an unstaged break."""
     problems, warnings = [], []
     try:
-        raw = _staged_or_worktree_text(settings_path) if source == "staged" else settings_path.read_text()
+        raw = (
+            _staged_or_worktree_text(settings_path)
+            if source == "staged"
+            else settings_path.read_text()
+        )
     except OSError as exc:
         return [f"cannot read {settings_path}: {exc}"], warnings
 

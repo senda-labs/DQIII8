@@ -75,11 +75,6 @@ else
 fi
 echo ""
 
-# ── 7. Telemetry (opt-in) ──
-echo "## 6. Telemetry"
-python3 "$DQIII8_ROOT/bin/monitoring/telemetry.py" --send 2>&1 || echo "  Telemetry: disabled or failed"
-echo ""
-
 # ── 8. Git commit (no push) ──
 # `|| true` (Opus red-team review, 2026-08-13, P2-4): a pre-commit hook
 # rejecting the commit (e.g. validate_hooks_config.py tripping on a

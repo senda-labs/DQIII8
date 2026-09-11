@@ -2,13 +2,14 @@
 
 See /root/.claude/plans/distributed-wobbling-gem.md for the design rationale.
 """
+
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
-JARVIS = Path(__file__).parent.parent
-sys.path.insert(0, str(JARVIS))
+ROOT_DIR = Path(__file__).parent.parent
+sys.path.insert(0, str(ROOT_DIR))
 
 import bin.core.project_context as pc  # noqa: E402
 
@@ -17,7 +18,7 @@ def _fresh_db(tmp_path):
     db_path = tmp_path / "dqiii8.db"
     subprocess.run(
         ["sqlite3", str(db_path)],
-        input=(JARVIS / "database" / "schema_v2.sql").read_text(),
+        input=(ROOT_DIR / "database" / "schema_v2.sql").read_text(),
         text=True,
         check=True,
     )
@@ -28,13 +29,30 @@ def _patch_db(monkeypatch, db_path):
     monkeypatch.setattr(pc, "DB_PATH", db_path)
 
 
-def _insert_action(conn, project, timestamp, tool_used="Edit", file_path="foo.py",
-                    session_id="sess-1", duration_ms=3_600_000, agent_name="test-agent"):
+def _insert_action(
+    conn,
+    project,
+    timestamp,
+    tool_used="Edit",
+    file_path="foo.py",
+    session_id="sess-1",
+    duration_ms=3_600_000,
+    agent_name="test-agent",
+):
     conn.execute(
         "INSERT INTO agent_actions (project, timestamp, agent_name, tool_used, file_path, session_id, "
         "start_time_ms, end_time_ms, duration_ms, success) "
         "VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 1)",
-        (project, timestamp, agent_name, tool_used, file_path, session_id, duration_ms, duration_ms),
+        (
+            project,
+            timestamp,
+            agent_name,
+            tool_used,
+            file_path,
+            session_id,
+            duration_ms,
+            duration_ms,
+        ),
     )
 
 
@@ -143,7 +161,9 @@ def test_set_project_budget_upserts(monkeypatch, tmp_path):
     pc.set_project_budget("dqiii8-core", 1000.0)
     pc.set_project_budget("dqiii8-core", 2000.0)
     conn = sqlite3.connect(str(db_path))
-    rows = conn.execute("SELECT presupuesto_eur FROM project_budget WHERE project='dqiii8-core'").fetchall()
+    rows = conn.execute(
+        "SELECT presupuesto_eur FROM project_budget WHERE project='dqiii8-core'"
+    ).fetchall()
     conn.close()
     assert rows == [(2000.0,)]
 
@@ -197,9 +217,7 @@ def test_v_infra_cost_weekly_allocates_proportionally_by_agent_hours(monkeypatch
     db_path = _fresh_db(tmp_path)
     _patch_db(monkeypatch, db_path)
     conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        "INSERT INTO infra_costs (item, importe_eur_mes) VALUES ('test-infra', 43.45)"
-    )
+    conn.execute("INSERT INTO infra_costs (item, importe_eur_mes) VALUES ('test-infra', 43.45)")
     _insert_action(conn, "dqiii8-core", "2026-08-13 09:00:00", duration_ms=3_600_000)  # 1h
     _insert_action(conn, "football-value", "2026-08-13 09:00:00", duration_ms=3_600_000 * 3)  # 3h
     conn.commit()
@@ -301,6 +319,7 @@ def test_v_rework_signal_literal_matches_rework_window_constant(monkeypatch, tmp
 
 # Regression tests for the /panel-review Opus findings (2026-08-12), fixed same-day:
 
+
 def test_v_project_roi_counts_human_hours_week_with_no_agent_actions(monkeypatch, tmp_path):
     # P1: v_project_cost_weekly (FROM agent_agg LEFT JOIN human_agg) drops any
     # week with human_hours but zero agent_actions. v_project_roi must not
@@ -309,7 +328,9 @@ def test_v_project_roi_counts_human_hours_week_with_no_agent_actions(monkeypatch
     _patch_db(monkeypatch, db_path)
     pc.set_labor_rate(35.0)
     conn = sqlite3.connect(str(db_path))
-    _insert_human_hours(conn, "dqiii8-core", "2026-08-10 09:00:00", "2026-08-10 12:00:00")  # 3h, no agent_actions
+    _insert_human_hours(
+        conn, "dqiii8-core", "2026-08-10 09:00:00", "2026-08-10 12:00:00"
+    )  # 3h, no agent_actions
     conn.commit()
     conn.close()
     rows = pc.get_project_roi("dqiii8-core")
@@ -324,7 +345,9 @@ def test_v_budget_deviation_counts_human_hours_week_with_no_agent_actions(monkey
     pc.set_labor_rate(35.0)
     pc.set_project_budget("dqiii8-core", 100.0)
     conn = sqlite3.connect(str(db_path))
-    _insert_human_hours(conn, "dqiii8-core", "2026-08-10 09:00:00", "2026-08-10 12:00:00")  # 3h, no agent_actions
+    _insert_human_hours(
+        conn, "dqiii8-core", "2026-08-10 09:00:00", "2026-08-10 12:00:00"
+    )  # 3h, no agent_actions
     conn.commit()
     conn.close()
     rows = pc.get_budget_status("dqiii8-core")

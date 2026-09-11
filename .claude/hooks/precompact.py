@@ -12,7 +12,6 @@ import json
 import logging
 import logging.handlers
 import os
-import re
 import sqlite3
 import sys
 from datetime import datetime
@@ -24,14 +23,15 @@ DB = ROOT_DIR / "database" / "dqiii8.db"
 # Rango 2 fix (2026-08-19 red-team audit): a single shared state file let a
 # second session's PreCompact clobber a first session's state before its own
 # PostCompact read it back — cross-session context leak, confirmed live.
-# Suffix by session_id (sanitized — untrusted stdin value, must not escape
-# tasks/ via path traversal) so concurrent sessions never share a file.
-_SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_-]")
+# Suffix by session_id (sanitized via core.paths.safe_session_id — untrusted
+# stdin value, must not escape tasks/ via path traversal) so concurrent
+# sessions never share a file.
+sys.path.insert(0, str(ROOT_DIR / "bin"))
+from core.paths import safe_session_id
 
 
 def _state_file_for(session_id: str) -> Path:
-    safe_id = _SAFE_ID_RE.sub("_", session_id)[:128] or "unknown"
-    return ROOT_DIR / "tasks" / f"precompact_state_{safe_id}.json"
+    return ROOT_DIR / "tasks" / f"precompact_state_{safe_session_id(session_id)}.json"
 
 
 _log = logging.getLogger("dqiii8.precompact")
@@ -52,11 +52,17 @@ try:
 except Exception:
     data = {}
 
-# Claude Code passes session_id in the hook's stdin JSON, not a
-# CLAUDE_SESSION_ID env var — reading the env var instead is always
-# "unknown", which silently breaks the DB lookup below and the
-# session-scoped project resolution postcompact.py depends on.
-SESSION_ID = data.get("session_id", "unknown")
+# Claude Code passes session_id in the hook's stdin JSON, so the fallback
+# below is rarely hit — but MUST match postcompact.py's fallback exactly
+# (data.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))):
+# _state_file_for() derives the state filename from this value, and the two
+# hooks run as separate processes that never share stdin. A divergent
+# fallback string here (previously the literal "unknown") made the two
+# hooks compute different filenames whenever session_id was absent from
+# stdin in both calls — precompact.py wrote a state file postcompact.py's
+# own fallback could never look up, orphaning it in tasks/ forever (found
+# live: tasks/precompact_state_unknown.json, unread since 2026-09-09).
+SESSION_ID = data.get("session_id", os.environ.get("CLAUDE_SESSION_ID", "?"))
 STATE_FILE = _state_file_for(SESSION_ID)
 
 # Only session_id/project/actions_count/resume_snippet are stored: those

@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path
 
 BIN_DIR = Path(__file__).parent
-JARVIS = BIN_DIR.parent
+ROOT_DIR = BIN_DIR.parent
 for _d in (BIN_DIR, BIN_DIR / "core", BIN_DIR / "agents"):
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
@@ -63,23 +63,24 @@ TEST_PROMPTS = [
 
 # ── Raw result builder (no amplification) ─────────────────────────────────────
 
+
 def _raw_result(prompt: str) -> dict:
     """
     Constructs a minimal amplify()-shaped dict representing the raw prompt
     with no enrichment. Scores reflect what the model receives without amplification.
     """
     return {
-        "original":    prompt,
-        "amplified":   prompt,          # no enrichment
-        "action":      "",
-        "entity":      "",
-        "niche":       "",
-        "intent":      _detect_intent(prompt),
-        "domains":     [],              # no domain scoring
-        "tier":        1,
-        "tier_label":  "local/Ollama",
-        "chunks_used": 0,               # no knowledge chunks
-        "routing":     None,
+        "original": prompt,
+        "amplified": prompt,  # no enrichment
+        "action": "",
+        "entity": "",
+        "niche": "",
+        "intent": _detect_intent(prompt),
+        "domains": [],  # no domain scoring
+        "tier": 1,
+        "tier_label": "local/Ollama",
+        "chunks_used": 0,  # no knowledge chunks
+        "routing": None,
     }
 
 
@@ -110,6 +111,7 @@ def _detect_intent(prompt: str) -> str:
 
 # ── Benchmark runner ───────────────────────────────────────────────────────────
 
+
 def run_benchmark(verbose: bool = False) -> list[dict]:
     results = []
 
@@ -132,33 +134,35 @@ def run_benchmark(verbose: bool = False) -> list[dict]:
         delta_overall = round(amp_scores["overall"] - raw_scores["overall"], 4)
         delta_pct = round(delta_overall / max(raw_scores["overall"], 0.01) * 100, 1)
 
-        results.append({
-            "prompt":           prompt,
-            "prompt_short":     prompt[:55] + "…" if len(prompt) > 55 else prompt,
-            "intent":           amp_result["intent"],
-            "tier":             amp_result["tier"],
-            "raw": {
-                "length":           len(raw_result["amplified"]),
-                "subtask_coverage": raw_scores["subtask_coverage"],
-                "knowledge_present":raw_scores["knowledge_present"],
-                "domain_confidence":raw_scores["domain_confidence"],
-                "overall":          raw_scores["overall"],
-                "grade":            grade(raw_scores["overall"]),
-                "ms":               raw_ms,
-            },
-            "amplified": {
-                "length":           len(amp_result["amplified"]),
-                "subtask_coverage": amp_scores["subtask_coverage"],
-                "knowledge_present":amp_scores["knowledge_present"],
-                "domain_confidence":amp_scores["domain_confidence"],
-                "overall":          amp_scores["overall"],
-                "grade":            grade(amp_scores["overall"]),
-                "ms":               amp_ms,
-                "chunks_used":      amp_result["chunks_used"],
-            },
-            "delta_overall":    delta_overall,
-            "delta_pct":        delta_pct,
-        })
+        results.append(
+            {
+                "prompt": prompt,
+                "prompt_short": prompt[:55] + "…" if len(prompt) > 55 else prompt,
+                "intent": amp_result["intent"],
+                "tier": amp_result["tier"],
+                "raw": {
+                    "length": len(raw_result["amplified"]),
+                    "subtask_coverage": raw_scores["subtask_coverage"],
+                    "knowledge_present": raw_scores["knowledge_present"],
+                    "domain_confidence": raw_scores["domain_confidence"],
+                    "overall": raw_scores["overall"],
+                    "grade": grade(raw_scores["overall"]),
+                    "ms": raw_ms,
+                },
+                "amplified": {
+                    "length": len(amp_result["amplified"]),
+                    "subtask_coverage": amp_scores["subtask_coverage"],
+                    "knowledge_present": amp_scores["knowledge_present"],
+                    "domain_confidence": amp_scores["domain_confidence"],
+                    "overall": amp_scores["overall"],
+                    "grade": grade(amp_scores["overall"]),
+                    "ms": amp_ms,
+                    "chunks_used": amp_result["chunks_used"],
+                },
+                "delta_overall": delta_overall,
+                "delta_pct": delta_pct,
+            }
+        )
 
     return results
 
@@ -166,6 +170,7 @@ def run_benchmark(verbose: bool = False) -> list[dict]:
 # ── Output formatters ──────────────────────────────────────────────────────────
 
 _COL_W = 57  # prompt column width
+
 
 def print_table(results: list[dict]):
     sep = "─" * (_COL_W + 72)
@@ -228,21 +233,27 @@ def print_table(results: list[dict]):
         f"{avg_len_amp:>7}"
     )
     print()
-    print(f"  Amplification boost: {avg_delta_sign}{avg_delta:.2f} overall  "
-          f"({avg_delta_sign}{round(avg_delta / max(avg_raw, 0.01) * 100, 1)}%)")
-    print(f"  Avg prompt length:  {avg_len_raw} chars (raw) → {avg_len_amp} chars (amplified)  "
-          f"({round(avg_len_amp / max(avg_len_raw, 1), 1)}× expansion)")
+    print(
+        f"  Amplification boost: {avg_delta_sign}{avg_delta:.2f} overall  "
+        f"({avg_delta_sign}{round(avg_delta / max(avg_raw, 0.01) * 100, 1)}%)"
+    )
+    print(
+        f"  Avg prompt length:  {avg_len_raw} chars (raw) → {avg_len_amp} chars (amplified)  "
+        f"({round(avg_len_amp / max(avg_len_raw, 1), 1)}× expansion)"
+    )
 
     wins = sum(1 for d in deltas if d > 0)
     ties = sum(1 for d in deltas if d == 0)
     losses = sum(1 for d in deltas if d < 0)
-    print(f"  Amplification wins: {wins}/{len(results)} prompts improved  "
-          f"({ties} ties, {losses} regressions)")
+    print(
+        f"  Amplification wins: {wins}/{len(results)} prompts improved  "
+        f"({ties} ties, {losses} regressions)"
+    )
     print()
 
 
 def save_results(results: list[dict]) -> Path:
-    out_dir = JARVIS / "database" / "benchmarks"
+    out_dir = ROOT_DIR / "database" / "benchmarks"
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = out_dir / f"amplification_benchmark_{ts}.json"
@@ -250,14 +261,14 @@ def save_results(results: list[dict]) -> Path:
     summary = {
         "run_at": datetime.now().isoformat(),
         "n_prompts": len(results),
-        "avg_raw_overall":      round(sum(r["raw"]["overall"] for r in results) / len(results), 4),
-        "avg_amp_overall":      round(sum(r["amplified"]["overall"] for r in results) / len(results), 4),
-        "avg_delta":            round(sum(r["delta_overall"] for r in results) / len(results), 4),
-        "avg_len_raw":          sum(r["raw"]["length"] for r in results) // len(results),
-        "avg_len_amplified":    sum(r["amplified"]["length"] for r in results) // len(results),
-        "wins":                 sum(1 for r in results if r["delta_overall"] > 0),
-        "ties":                 sum(1 for r in results if r["delta_overall"] == 0),
-        "losses":               sum(1 for r in results if r["delta_overall"] < 0),
+        "avg_raw_overall": round(sum(r["raw"]["overall"] for r in results) / len(results), 4),
+        "avg_amp_overall": round(sum(r["amplified"]["overall"] for r in results) / len(results), 4),
+        "avg_delta": round(sum(r["delta_overall"] for r in results) / len(results), 4),
+        "avg_len_raw": sum(r["raw"]["length"] for r in results) // len(results),
+        "avg_len_amplified": sum(r["amplified"]["length"] for r in results) // len(results),
+        "wins": sum(1 for r in results if r["delta_overall"] > 0),
+        "ties": sum(1 for r in results if r["delta_overall"] == 0),
+        "losses": sum(1 for r in results if r["delta_overall"] < 0),
     }
 
     payload = {"summary": summary, "results": results}
@@ -268,6 +279,7 @@ def save_results(results: list[dict]) -> Path:
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
+
 
 def main():
     parser = argparse.ArgumentParser(description="Amplification quality benchmark")

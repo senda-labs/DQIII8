@@ -79,7 +79,9 @@ def _transform(path: Path, raw: bytes, det, *, all_tier: bool) -> bytes:
 
     raise MetadataToolError(
         ErrorClass.UNSUPPORTED,
-        DETECTION_ONLY_NOTE.get(det.format if det.format != "ooxml" else det.subtype, "unsupported format"),
+        DETECTION_ONLY_NOTE.get(
+            det.format if det.format != "ooxml" else det.subtype, "unsupported format"
+        ),
     )
 
 
@@ -136,7 +138,11 @@ def process_file(path: Path, *, apply: bool, all_tier: bool, invocation_id: str)
         return {"status": "no_target_tier_findings", "total_findings": len(findings)}
 
     if not apply:
-        return {"status": "dry_run", "target_findings": len(target_findings), "total_findings": len(findings)}
+        return {
+            "status": "dry_run",
+            "target_findings": len(target_findings),
+            "total_findings": len(findings),
+        }
 
     if safeio.refuses_symlink(path):
         return {"status": "symlink_refused"}
@@ -186,7 +192,9 @@ def process_file(path: Path, *, apply: bool, all_tier: bool, invocation_id: str)
             "sha256_before": validate.sha256(raw),
             "sha256_after": validate.sha256(new_bytes),
             "backup": str(result.backup_path),
-            "removed": [{"location": f.location, "field": f.field, "count": 1} for f in target_findings],
+            "removed": [
+                {"location": f.location, "field": f.field, "count": 1} for f in target_findings
+            ],
             "left_in_place": [
                 {"location": f.location, "field": f.field, "count": 1, "reason": "tier"}
                 for f in findings
@@ -199,12 +207,18 @@ def process_file(path: Path, *, apply: bool, all_tier: bool, invocation_id: str)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--dir", type=Path, help="Recursively process this directory.")
     group.add_argument("--file", type=Path, help="Process a single file.")
-    parser.add_argument("--apply", action="store_true", help="Actually rewrite files. Without it, dry-run only.")
-    parser.add_argument("--all", action="store_true", help="Also remove the --all tier. Requires --yes.")
+    parser.add_argument(
+        "--apply", action="store_true", help="Actually rewrite files. Without it, dry-run only."
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="Also remove the --all tier. Requires --yes."
+    )
     parser.add_argument("--yes", action="store_true", help="Required alongside --apply --all.")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--max-files", type=int, default=5000)
@@ -236,7 +250,10 @@ def main() -> int:
             )
             return 2
     if args.all and args.apply and not args.yes:
-        print("metadata-remove: --apply --all also needs --yes (explicit confirmation).", file=sys.stderr)
+        print(
+            "metadata-remove: --apply --all also needs --yes (explicit confirmation).",
+            file=sys.stderr,
+        )
         return 2
 
     invocation_id = audit_log.new_invocation_id()
@@ -270,7 +287,9 @@ def main() -> int:
     engines = _engine_versions()
     degraded = []
     if engines.get("exiftool") == "absent":
-        degraded.append("exiftool absent — image metadata REMOVAL used the pure-Python fallback (narrower coverage)")
+        degraded.append(
+            "exiftool absent — image metadata REMOVAL used the pure-Python fallback (narrower coverage)"
+        )
 
     if args.json:
         import json
@@ -300,20 +319,30 @@ def main() -> int:
 
         if skip_counts:
             parts = ", ".join(f"{k}={v}" for k, v in sorted(skip_counts.items()))
-            print(f"metadata-remove: skipped {sum(skip_counts.values())} file(s): {parts}", file=sys.stderr)
+            print(
+                f"metadata-remove: skipped {sum(skip_counts.values())} file(s): {parts}",
+                file=sys.stderr,
+            )
 
         for d in degraded:
             print(f"metadata-remove: DEGRADED — {d}", file=sys.stderr)
 
         for r in errors:
-            print(f"  {r['status']}: {r['path']}{' — ' + r.get('note', '') if r.get('note') else ''}", file=sys.stderr)
+            print(
+                f"  {r['status']}: {r['path']}{' — ' + r.get('note', '') if r.get('note') else ''}",
+                file=sys.stderr,
+            )
 
         if args.apply:
             print(f"metadata-remove: wrote {len(written)} file(s). {len(errors)} skipped/errored.")
             # no_target_tier_findings is a "success" status, so a file whose findings
             # this tool cannot remove would otherwise vanish from the summary entirely
             # — quieter, not more honest, than the error line it replaced.
-            unremovable = [r for r in results if r["status"] == "no_target_tier_findings" and r.get("total_findings")]
+            unremovable = [
+                r
+                for r in results
+                if r["status"] == "no_target_tier_findings" and r.get("total_findings")
+            ]
             if unremovable:
                 total = sum(r.get("total_findings", 0) for r in unremovable)
                 print(

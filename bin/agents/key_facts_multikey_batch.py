@@ -146,9 +146,7 @@ def main() -> None:
         "SELECT id, domain, source, text FROM vector_chunks "
         "WHERE text IS NOT NULL AND text != ''"
     ).fetchall()
-    cached = {
-        r[0] for r in conn.execute("SELECT chunk_hash FROM chunk_key_facts").fetchall()
-    }
+    cached = {r[0] for r in conn.execute("SELECT chunk_hash FROM chunk_key_facts").fetchall()}
 
     pending = [dict(c) for c in all_chunks if chunk_hash(c["text"]) not in cached]
     if args.limit > 0:
@@ -235,15 +233,15 @@ def main() -> None:
         ok += 1
 
         if i % 25 == 0 or i == len(pending):
-            log.info("Processed %d/%d ok=%d err=%d key=#%d", i, len(pending), ok, errors, key_idx + 1)
+            log.info(
+                "Processed %d/%d ok=%d err=%d key=#%d", i, len(pending), ok, errors, key_idx + 1
+            )
 
         time.sleep(CALL_DELAY_S)
 
     conn.close()
     final_cached = (
-        sqlite3.connect(str(DB_PATH))
-        .execute("SELECT COUNT(*) FROM chunk_key_facts")
-        .fetchone()[0]
+        sqlite3.connect(str(DB_PATH)).execute("SELECT COUNT(*) FROM chunk_key_facts").fetchone()[0]
     )
     log.info("Done — ok=%d errors=%d total_cached=%d/1309", ok, errors, final_cached)
 

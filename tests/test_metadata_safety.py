@@ -143,7 +143,9 @@ def test_no_ci_or_hook_config_references_metadata_remove():
             candidates.append(p)
     git_hooks_dir = REPO_ROOT / ".git" / "hooks"
     if git_hooks_dir.is_dir():
-        candidates += [p for p in git_hooks_dir.iterdir() if p.is_file() and not p.name.endswith(".sample")]
+        candidates += [
+            p for p in git_hooks_dir.iterdir() if p.is_file() and not p.name.endswith(".sample")
+        ]
 
     for p in candidates:
         text = p.read_text(errors="ignore")
@@ -158,11 +160,35 @@ GOLDEN_FIXTURES = {
     # metadata_audit.py exits 1 when findings exist (see _exit_code()) —
     # that's a deliberate signal, not a failure, since every fixture here
     # is built to have findings.
-    "audit_jpeg_exif": (mf.make_jpeg_with_exif, "a.jpg", TOOLS / "metadata_audit.py", ["--file"], 1),
+    "audit_jpeg_exif": (
+        mf.make_jpeg_with_exif,
+        "a.jpg",
+        TOOLS / "metadata_audit.py",
+        ["--file"],
+        1,
+    ),
     "audit_pdf_simple": (mf.make_pdf_simple, "a.pdf", TOOLS / "metadata_audit.py", ["--file"], 1),
-    "audit_docx_simple": (mf.make_docx_simple, "a.docx", TOOLS / "metadata_audit.py", ["--file"], 1),
-    "remove_jpeg_exif_dry_run": (mf.make_jpeg_with_exif, "a.jpg", TOOLS / "metadata_remove.py", ["--file"], 0),
-    "remove_pdf_simple_dry_run": (mf.make_pdf_simple, "a.pdf", TOOLS / "metadata_remove.py", ["--file"], 0),
+    "audit_docx_simple": (
+        mf.make_docx_simple,
+        "a.docx",
+        TOOLS / "metadata_audit.py",
+        ["--file"],
+        1,
+    ),
+    "remove_jpeg_exif_dry_run": (
+        mf.make_jpeg_with_exif,
+        "a.jpg",
+        TOOLS / "metadata_remove.py",
+        ["--file"],
+        0,
+    ),
+    "remove_pdf_simple_dry_run": (
+        mf.make_pdf_simple,
+        "a.pdf",
+        TOOLS / "metadata_remove.py",
+        ["--file"],
+        0,
+    ),
 }
 
 

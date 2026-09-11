@@ -8,6 +8,7 @@ Launched in background by autonomous_loop.sh. Monitors:
 
 The main loop writes tasks/autonomous_heartbeat.txt at the start of each cycle.
 """
+
 import os
 import sys
 import time
@@ -19,8 +20,8 @@ sys.path.insert(0, str(DQIII8_ROOT))
 from bin.core.notify import notify  # type: ignore
 
 HEARTBEAT_FILE = DQIII8_ROOT / "tasks" / "autonomous_heartbeat.txt"
-CHECK_INTERVAL = 60    # seconds between checks
-HANG_TIMEOUT   = 1800  # 30 min without a new cycle → alert
+CHECK_INTERVAL = 60  # seconds between checks
+HANG_TIMEOUT = 1800  # 30 min without a new cycle → alert
 
 
 def _parent_alive(pid: int) -> bool:

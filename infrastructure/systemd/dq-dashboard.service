@@ -1,0 +1,15 @@
+[Unit]
+Description=DQIII8 Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/dqiii8
+EnvironmentFile=/root/dqiii8/.env
+ExecStart=/usr/bin/python3 bin/ui/dashboard.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

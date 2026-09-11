@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Append-only event ledger for human_pending_tasks (jarvis-control3 v2).
+"""Append-only event ledger for human_pending_tasks (lier v0).
 
 Rationale (07-durable-worker.md): send_telegram() is not idempotent, so a crash
 between a successful send and the status UPDATE would leave a row `pending` with
@@ -12,6 +12,7 @@ enable PRAGMA foreign_keys, so the FK to human_pending_tasks(id) is not enforced
 at runtime — callers must always insert the task row before any of its events
 (already the case, since register_and_notify() commits the INSERT first).
 """
+
 from __future__ import annotations
 
 import json

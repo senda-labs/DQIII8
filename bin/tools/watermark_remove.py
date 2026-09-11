@@ -113,7 +113,9 @@ def collect_files(
             continue
         count += 1
         if count > MAX_DIR_FILES:
-            truncated = f"stopped after {MAX_DIR_FILES} files (more remain under {dir_path}) — narrow --dir"
+            truncated = (
+                f"stopped after {MAX_DIR_FILES} files (more remain under {dir_path}) — narrow --dir"
+            )
             print(f"watermark-remove: {truncated}", file=sys.stderr)
             break
         files.append(path)
@@ -197,18 +199,28 @@ def remove_from_file(path: Path, apply: bool, strip_all: bool) -> tuple[list[dic
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--dir", type=Path, help="Recursively process this directory.")
     group.add_argument("--file", type=Path, help="Process a single file.")
-    parser.add_argument("--apply", action="store_true", help="Actually rewrite files. Without it, this is a dry-run report only.")
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually rewrite files. Without it, this is a dry-run report only.",
+    )
     parser.add_argument(
         "--all",
         action="store_true",
         help="Also strip bidi/tag/linesep/report-only categories, not just the safe tier. "
         "Requires --yes as an explicit second confirmation.",
     )
-    parser.add_argument("--yes", action="store_true", help="Required alongside --apply --all — explicit confirmation for the risky tier.")
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Required alongside --apply --all — explicit confirmation for the risky tier.",
+    )
     args = parser.parse_args()
 
     if args.dir is not None and not args.dir.is_dir():
@@ -246,7 +258,10 @@ def main() -> int:
             )
             return 2
     if args.all and args.apply and not args.yes:
-        print("watermark-remove: --apply --all also needs --yes (explicit confirmation for the risky tier).", file=sys.stderr)
+        print(
+            "watermark-remove: --apply --all also needs --yes (explicit confirmation for the risky tier).",
+            file=sys.stderr,
+        )
         return 2
 
     files, skip_counts, truncated = collect_files(args.dir, args.file)
@@ -269,11 +284,16 @@ def main() -> int:
 
     if skip_counts:
         parts = ", ".join(f"{k}={v}" for k, v in sorted(skip_counts.items()))
-        print(f"watermark-remove: skipped {sum(skip_counts.values())} file(s): {parts}", file=sys.stderr)
+        print(
+            f"watermark-remove: skipped {sum(skip_counts.values())} file(s): {parts}",
+            file=sys.stderr,
+        )
 
     if total_findings == 0 and total_refused == 0:
         if truncated:
-            print("watermark-remove: PARTIAL SCAN — nothing found in the portion scanned, but the scan was truncated.")
+            print(
+                "watermark-remove: PARTIAL SCAN — nothing found in the portion scanned, but the scan was truncated."
+            )
             return EXIT_TRUNCATED
         print("watermark-remove: no hidden/invisible characters found.")
         return 0

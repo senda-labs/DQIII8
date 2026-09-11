@@ -48,7 +48,10 @@ watermark_remove = _load("watermark_remove")
 def _minimal_ooxml(tmp_path: Path, name: str, ctype: str) -> Path:
     p = tmp_path / name
     with zipfile.ZipFile(p, "w") as z:
-        z.writestr("[Content_Types].xml", f'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/x" ContentType="{ctype}"/></Types>')
+        z.writestr(
+            "[Content_Types].xml",
+            f'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/x" ContentType="{ctype}"/></Types>',
+        )
         z.writestr(
             "docProps/core.xml",
             '<?xml version="1.0"?><cp:coreProperties '
@@ -97,7 +100,10 @@ def test_metadata_audit_truncation_reaches_json_and_exit_code(tmp_path, capsys):
 
 def test_metadata_audit_exit_precedence_truncated_outranks_degraded():
     """Truncated AND degraded must be deterministic, not undefined."""
-    assert metadata_audit._exit_code([], ["exiftool absent"], "cap hit") == metadata_audit.EXIT_TRUNCATED
+    assert (
+        metadata_audit._exit_code([], ["exiftool absent"], "cap hit")
+        == metadata_audit.EXIT_TRUNCATED
+    )
     assert metadata_audit._exit_code([], ["exiftool absent"], None) == 2
     assert metadata_audit._exit_code(["f"], [], None) == 1
     assert metadata_audit._exit_code([], [], None) == 0
@@ -203,7 +209,12 @@ def test_png_text_chunk_is_not_touched_by_safe_tier_removal():
     ihdr_len = struct.unpack(">I", raw[8:12])[0]
     end = 8 + 8 + ihdr_len + 4
     payload = b"Comment\x00PNG SECRET COMMENT"
-    chunk = struct.pack(">I", len(payload)) + b"tEXt" + payload + struct.pack(">I", zlib.crc32(b"tEXt" + payload) & 0xFFFFFFFF)
+    chunk = (
+        struct.pack(">I", len(payload))
+        + b"tEXt"
+        + payload
+        + struct.pack(">I", zlib.crc32(b"tEXt" + payload) & 0xFFFFFFFF)
+    )
     raw = raw[:end] + chunk + raw[end:]
 
     findings = fmt_image._inspect_fallback(Path("x.png"), raw, "png")
@@ -215,9 +226,9 @@ def test_png_text_chunk_is_not_touched_by_safe_tier_removal():
 
 
 def test_safe_clear_args_has_no_unconditional_comment():
-    assert "-Comment=" not in fmt_image._SAFE_CLEAR_ARGS, (
-        "the arg list is shared by jpeg/png/webp — -Comment= must be added per-format"
-    )
+    assert (
+        "-Comment=" not in fmt_image._SAFE_CLEAR_ARGS
+    ), "the arg list is shared by jpeg/png/webp — -Comment= must be added per-format"
 
 
 # --------------------------------------------------------------------------
@@ -268,7 +279,9 @@ def test_audit_log_refuses_symlinked_path_without_raising(tmp_path, capsys):
 
     audit_log.append({"x": 1}, log_path=link)  # must not raise
 
-    assert victim.read_text() == "ORIGINAL\n", "log append must not follow a symlink into a victim file"
+    assert (
+        victim.read_text() == "ORIGINAL\n"
+    ), "log append must not follow a symlink into a victim file"
     assert "WARNING" in capsys.readouterr().err
 
 

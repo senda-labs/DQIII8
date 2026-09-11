@@ -15,8 +15,8 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB_PATH = JARVIS / "database" / "dqiii8.db"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB_PATH = ROOT_DIR / "database" / "dqiii8.db"
 
 
 def get_monthly_budget() -> float:
@@ -122,7 +122,7 @@ def print_status() -> None:
 
 if __name__ == "__main__":
     # Load .env if present so DQIII8_MONTHLY_BUDGET is available
-    env_path = JARVIS / ".env"
+    env_path = ROOT_DIR / ".env"
     if env_path.exists():
         for line in env_path.read_text(encoding="utf-8").splitlines():
             line = line.strip()

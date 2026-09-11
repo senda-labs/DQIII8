@@ -156,9 +156,7 @@ def cmd_list() -> None:
     print(f"  {'Model':<30} {'Publisher':<12} {'Latency':>9}  Notes")
     print("  " + "-" * 70)
     for mid, info in CONFIRMED_MODELS.items():
-        print(
-            f"  {mid:<30} {info['publisher']:<12} {info['latency_ms']:>7}ms  {info['notes']}"
-        )
+        print(f"  {mid:<30} {info['publisher']:<12} {info['latency_ms']:>7}ms  {info['notes']}")
     print(f"\nEndpoint: {ENDPOINT}")
     print("Rate limit: 20,000 req / 2,000,000 tokens per period")
 

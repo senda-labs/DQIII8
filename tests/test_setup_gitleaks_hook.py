@@ -2,6 +2,7 @@
 must stay in sync with the live 5-gate .git/hooks/pre-commit. Re-running the
 installer with a stale heredoc would silently delete whichever gate was
 missing from it — this happened once already (2026-08-18, rules-registry gate)."""
+
 import re
 from pathlib import Path
 

@@ -59,6 +59,7 @@ def _load_env_once() -> None:
     if env_file.exists():
         try:
             from dotenv import load_dotenv
+
             load_dotenv(env_file, override=False)
         except ImportError:
             pass
@@ -105,10 +106,12 @@ class DqAgentModel:
         try:
             if provider == "nim":
                 from agno.models.nvidia import Nvidia
+
                 return Nvidia(id=model_id)
 
             if provider == "groq":
                 from agno.models.groq import Groq
+
                 return Groq(id=model_id)
 
             # github / openrouter: OpenAI-compatible, need explicit api_key.
@@ -120,6 +123,7 @@ class DqAgentModel:
                 )
                 return None
             from agno.models.openai import OpenAIChat
+
             return OpenAIChat(id=model_id, base_url=base_url, api_key=api_key, timeout=timeout)
 
         except Exception as _exc:

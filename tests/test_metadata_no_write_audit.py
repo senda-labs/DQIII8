@@ -72,12 +72,16 @@ def test_metadata_audit_imports_no_write_capable_symbol():
     for n in names:
         assert n not in forbidden, f"metadata_audit.py imports a write-capable symbol: {n}"
         for prefix in FORBIDDEN_NAME_PREFIXES:
-            assert not n.startswith(prefix), f"metadata_audit.py references a write-capable symbol: {n}"
+            assert not n.startswith(
+                prefix
+            ), f"metadata_audit.py references a write-capable symbol: {n}"
 
     for a in attrs:
         assert a not in forbidden, f"metadata_audit.py calls a write-capable attribute: {a}"
         for prefix in FORBIDDEN_NAME_PREFIXES:
-            assert not a.startswith(prefix), f"metadata_audit.py calls a write-capable attribute: {a}"
+            assert not a.startswith(
+                prefix
+            ), f"metadata_audit.py calls a write-capable attribute: {a}"
 
 
 def test_guard_actually_covers_the_bare_remove_entry_points():
@@ -103,9 +107,10 @@ def test_metadata_audit_source_has_no_apply_flag():
             if isinstance(func, ast.Attribute) and func.attr == "add_argument":
                 for arg in node.args:
                     if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                        assert arg.value not in ("--apply", "--yes"), (
-                            f"metadata_audit.py must not register a {arg.value} flag"
-                        )
+                        assert arg.value not in (
+                            "--apply",
+                            "--yes",
+                        ), f"metadata_audit.py must not register a {arg.value} flag"
             if isinstance(func, ast.Attribute) and func.attr == "replace":
                 assert not (
                     isinstance(func.value, ast.Name) and func.value.id == "os"
@@ -133,4 +138,6 @@ def test_no_fmt_module_remove_function_is_imported_by_audit():
 
     source = AUDIT_PATH.read_text()
     for sym in forbidden_symbols:
-        assert sym not in source, f"metadata_audit.py source contains write-capable symbol name: {sym}"
+        assert (
+            sym not in source
+        ), f"metadata_audit.py source contains write-capable symbol name: {sym}"

@@ -46,6 +46,15 @@ else
 fi
 _INSTALLED+=("Python deps")
 
+if command -v exiftool &>/dev/null; then
+    ok "exiftool $(exiftool -ver)"
+else
+    warn "exiftool not found — bin/tools/metadata_audit.py degrades to a partial scan" \
+        "without it (missing metadata fields, EXIT_TRUNCATED/degraded exit codes)." \
+        "Install: apt-get install -y libimage-exiftool-perl"
+    _MISSING+=("exiftool (libimage-exiftool-perl)")
+fi
+
 # ── 2. Ollama ─────────────────────────────────────────────────────────
 step "2/8 Ollama (local LLM — Tier C, optional)"
 _OLLAMA_OK=0

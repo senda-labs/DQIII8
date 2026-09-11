@@ -91,9 +91,7 @@ def get_domain_lens(prompt: str, domain: str | None = None) -> dict:
     style = DOMAIN_STYLES.get(domain, DOMAIN_STYLES["applied_sciences"])
 
     subdomain = _classify_subdomain(prompt, domain)
-    role_label = (
-        subdomain.replace("_", " ") if subdomain != domain else domain.replace("_", " ")
-    )
+    role_label = subdomain.replace("_", " ") if subdomain != domain else domain.replace("_", " ")
     system_prompt = f"You are an expert in {role_label}.\n\n"
     system_prompt += f"{style}\n\n"
     if knowledge_context:

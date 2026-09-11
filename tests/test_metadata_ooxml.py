@@ -126,8 +126,12 @@ def test_docx_thumbnail_default_extension_survives_last_part_removal(tmp_path):
     with zipfile.ZipFile(io.BytesIO(cleaned)) as zf:
         assert "docProps/thumbnail.jpeg" not in zf.namelist()
         ct_root = etree.fromstring(zf.read("[Content_Types].xml"))
-        defaults = {el.get("Extension", "").lower() for el in ct_root.findall(f"{{{CT_NS}}}Default")}
-        assert "jpeg" in defaults, "Default Extension=jpeg must survive even with zero matching parts"
+        defaults = {
+            el.get("Extension", "").lower() for el in ct_root.findall(f"{{{CT_NS}}}Default")
+        }
+        assert (
+            "jpeg" in defaults
+        ), "Default Extension=jpeg must survive even with zero matching parts"
 
     validate.validate_ooxml_structural(cleaned)  # must NOT raise over the now-zero-match Default
     validate.validate_ooxml_reparse(cleaned, "docx")
@@ -144,7 +148,7 @@ def test_docx_external_attached_template_never_resolved(tmp_path):
     # External relationship must survive untouched — never resolved against the package
     with zipfile.ZipFile(io.BytesIO(cleaned)) as zf:
         rels = zf.read("word/_rels/settings.xml.rels")
-    assert b"TargetMode=\"External\"" in rels
+    assert b'TargetMode="External"' in rels
     assert b"Normal.dotm" in rels
 
     validate.validate_ooxml_structural(cleaned)
@@ -168,7 +172,9 @@ def test_docx_preexisting_dangling_relationship_not_fixed_and_output_accepted(tm
 
     with zipfile.ZipFile(io.BytesIO(cleaned)) as zf:
         rels_after = zf.read("_rels/.rels")
-    assert b"does-not-exist.xml" in rels_after, "tool must not silently 'fix' a pre-existing dangling relationship"
+    assert (
+        b"does-not-exist.xml" in rels_after
+    ), "tool must not silently 'fix' a pre-existing dangling relationship"
 
     # Must not raise: an input-side pre-existing dangling relationship is
     # not something the tool introduced, so its own structural gate must

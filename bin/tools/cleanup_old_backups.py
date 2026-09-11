@@ -4,6 +4,7 @@ passed (mtime-based). Generic — covers any future *-consolidation-style
 retired DB, not just today's dqiii8_metrics.db.old. Cron-safe: logs what it
 deletes, never errors on "nothing to do".
 """
+
 import time
 from pathlib import Path
 
@@ -17,7 +18,9 @@ def main():
     for f in DB_DIR.glob("*.db.old"):
         age_h = (now - f.stat().st_mtime) / 3600
         if age_h >= RETENTION_HOURS:
-            print(f"cleanup_old_backups: removing {f.name} (age {age_h:.1f}h >= {RETENTION_HOURS}h)")
+            print(
+                f"cleanup_old_backups: removing {f.name} (age {age_h:.1f}h >= {RETENTION_HOURS}h)"
+            )
             f.unlink()
         else:
             print(f"cleanup_old_backups: keeping {f.name} (age {age_h:.1f}h < {RETENTION_HOURS}h)")

@@ -29,13 +29,8 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
-_DQIII8_ROOT = Path(
-    os.environ.get("DQIII8_ROOT", str(Path(__file__).parent.parent.parent))
-)
-for _d in [
-    _DQIII8_ROOT / "bin" / s
-    for s in ["", "core", "agents", "monitoring", "tools", "ui"]
-]:
+_DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", str(Path(__file__).parent.parent.parent)))
+for _d in [_DQIII8_ROOT / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
 
@@ -44,9 +39,10 @@ from db import get_db
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
-JARVIS = Path(os.environ.get("DQIII8_ROOT", str(_DQIII8_ROOT)))
-KNOWLEDGE_DIR = JARVIS / "knowledge"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", str(_DQIII8_ROOT)))
+KNOWLEDGE_DIR = ROOT_DIR / "knowledge"
 
 # ── Configuration ─────────────────────────────────────────────────────────
 
@@ -364,9 +360,7 @@ def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dic
         return _fallback_result(user_input)
 
     domain_names = sorted(centroids.keys())
-    raw_scores = [
-        cosine_similarity(prompt_embedding, centroids[d]) for d in domain_names
-    ]
+    raw_scores = [cosine_similarity(prompt_embedding, centroids[d]) for d in domain_names]
     weights = softmax_with_temperature(raw_scores, TAU_1)
 
     level1 = {domain_names[i]: round(weights[i], 4) for i in range(len(domain_names))}
@@ -421,11 +415,7 @@ def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dic
                 desc = agents[agent_name].get("description", agent_name)
                 try:
                     desc_emb = get_embedding(desc)
-                    score = (
-                        cosine_similarity(prompt_embedding, desc_emb)
-                        if desc_emb
-                        else 0.0
-                    )
+                    score = cosine_similarity(prompt_embedding, desc_emb) if desc_emb else 0.0
                 except Exception:
                     score = 0.0
             agent_scores.append(score)
@@ -473,9 +463,7 @@ def classify_hierarchical(user_input: str, prompt_embedding: list = None) -> dic
     }
 
 
-def classify_hierarchical_cached(
-    user_input: str, prompt_embedding: list = None
-) -> dict:
+def classify_hierarchical_cached(user_input: str, prompt_embedding: list = None) -> dict:
     """Cached version of classify_hierarchical.
     Returns cached result if a similar query was classified within TTL.
     Cache key is based on first 20 embedding dimensions."""
@@ -513,9 +501,7 @@ def classify_hierarchical_cached(
     return result
 
 
-def retrieve_knowledge_by_routing(
-    routing_result: dict, prompt_embedding: list = None
-) -> str:
+def retrieve_knowledge_by_routing(routing_result: dict, prompt_embedding: list = None) -> str:
     """Retrieve knowledge chunks based on hierarchical routing result.
     Returns formatted knowledge text for the amplified prompt."""
 
@@ -628,20 +614,14 @@ def print_routing(result: dict):
     for domain, weight in sorted(result["level1"].items(), key=lambda x: -x[1]):
         bar = "█" * int(weight * 40) + "░" * (40 - int(weight * 40))
         active = (
-            " ◀ ACTIVE"
-            if any(c["domain"] == domain for c in result["active_centroids"])
-            else ""
+            " ◀ ACTIVE" if any(c["domain"] == domain for c in result["active_centroids"]) else ""
         )
         queued = (
-            " ⏳ QUEUED"
-            if any(c["domain"] == domain for c in result["queued_centroids"])
-            else ""
+            " ⏳ QUEUED" if any(c["domain"] == domain for c in result["queued_centroids"]) else ""
         )
         print(f"  {domain:20s} {bar} {weight:.3f}{active}{queued}")
 
-    print(
-        f"\nActive centroids ({len(result['active_centroids'])}/{MAX_ACTIVE_CENTROIDS} max):"
-    )
+    print(f"\nActive centroids ({len(result['active_centroids'])}/{MAX_ACTIVE_CENTROIDS} max):")
     for centroid in result["active_centroids"]:
         print(
             f"\n  +- {centroid['domain']} "

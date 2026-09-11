@@ -95,7 +95,11 @@ def process(root: Path, *, apply: bool, yes: bool, max_files: int) -> list[dict]
     entries = _load_log_entries()
     results = []
     for bak_path in _find_backups(root, max_files):
-        target = bak_path.with_suffix("") if bak_path.suffix == ".bak" else Path(str(bak_path)[: -len(".bak")])
+        target = (
+            bak_path.with_suffix("")
+            if bak_path.suffix == ".bak"
+            else Path(str(bak_path)[: -len(".bak")])
+        )
         if not target.exists() or target.is_symlink():
             results.append({"bak": str(bak_path), "status": "orphan_no_target"})
             continue
@@ -131,13 +135,22 @@ def process(root: Path, *, apply: bool, yes: bool, max_files: int) -> list[dict]
         except OSError as e:
             results.append({"bak": str(bak_path), "status": "delete_failed", "note": str(e)})
             continue
-        results.append({"bak": str(bak_path), "status": "deleted", "target": str(target), "removed": removed_summary})
+        results.append(
+            {
+                "bak": str(bak_path),
+                "status": "deleted",
+                "target": str(target),
+                "removed": removed_summary,
+            }
+        )
 
     return results
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--dir", type=Path, required=True)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--yes", action="store_true")
@@ -149,7 +162,10 @@ def main() -> int:
         print(f"metadata-purge-backups: not a directory: {args.dir}", file=sys.stderr)
         return 2
     if args.apply and not args.yes:
-        print("metadata-purge-backups: --apply also needs --yes (explicit confirmation).", file=sys.stderr)
+        print(
+            "metadata-purge-backups: --apply also needs --yes (explicit confirmation).",
+            file=sys.stderr,
+        )
         return 2
 
     results = process(args.dir, apply=args.apply, yes=args.yes, max_files=args.max_files)
@@ -161,11 +177,18 @@ def main() -> int:
         dry = [r for r in results if r["status"] == "dry_run"]
         skipped = [r for r in results if r["status"] not in ("deleted", "dry_run")]
         for r in skipped:
-            print(f"  skip ({r['status']}): {r['bak']}{' — ' + r.get('note', '') if r.get('note') else ''}", file=sys.stderr)
+            print(
+                f"  skip ({r['status']}): {r['bak']}{' — ' + r.get('note', '') if r.get('note') else ''}",
+                file=sys.stderr,
+            )
         if args.apply:
-            print(f"metadata-purge-backups: deleted {len(deleted)} backup(s). {len(skipped)} skipped.")
+            print(
+                f"metadata-purge-backups: deleted {len(deleted)} backup(s). {len(skipped)} skipped."
+            )
         else:
-            print(f"metadata-purge-backups: DRY RUN — {len(dry)} backup(s) eligible for deletion, {len(skipped)} skipped. Re-run with --apply --yes to delete.")
+            print(
+                f"metadata-purge-backups: DRY RUN — {len(dry)} backup(s) eligible for deletion, {len(skipped)} skipped. Re-run with --apply --yes to delete."
+            )
 
     return 0
 

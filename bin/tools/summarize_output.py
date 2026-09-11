@@ -30,7 +30,7 @@ DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 _HOOKS_DIR = DQIII8_ROOT / ".claude" / "hooks"
 _ENV_PATH = DQIII8_ROOT / ".env"
 
-MAX_INPUT_CHARS = 8_000   # ~2k tokens of input to the cheap model
+MAX_INPUT_CHARS = 8_000  # ~2k tokens of input to the cheap model
 MAX_OUTPUT_TOKENS = 200
 
 
@@ -121,7 +121,9 @@ async def _summarize(text: str, query: str) -> None:
     char_count = len(text)
     token_est = round(char_count / 4)
 
-    print(f"[summarize_output] Input: {char_count:,} chars (~{token_est:,} tokens)", file=sys.stderr)
+    print(
+        f"[summarize_output] Input: {char_count:,} chars (~{token_est:,} tokens)", file=sys.stderr
+    )
     print(f"[summarize_output] Query: {query}", file=sys.stderr)
 
     answer, model = await _call_openrouter(text, query)
@@ -138,12 +140,15 @@ async def _summarize(text: str, query: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Summarize large output using cheap LLM")
-    parser.add_argument("--query", "-q", required=True,
-                        help="The specific question to answer about the output")
-    parser.add_argument("--text", "-t", default="",
-                        help="Text to analyze (if not using stdin or --file)")
-    parser.add_argument("--file", "-f", default="",
-                        help="Path to file containing the output to analyze")
+    parser.add_argument(
+        "--query", "-q", required=True, help="The specific question to answer about the output"
+    )
+    parser.add_argument(
+        "--text", "-t", default="", help="Text to analyze (if not using stdin or --file)"
+    )
+    parser.add_argument(
+        "--file", "-f", default="", help="Path to file containing the output to analyze"
+    )
     args = parser.parse_args()
 
     # ── Determine input text ──────────────────────────────────────────────────

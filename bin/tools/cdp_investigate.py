@@ -17,6 +17,7 @@ Outcomes printed as a single JSON line to stdout:
   {"ok": false, "error": "cdp_busy", ...}      # another investigation in flight, normal outcome
   {"ok": true, "text_path": ..., "html_path": ..., "screenshot_path": ..., "inline": {...}}
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,9 +75,17 @@ def _audit(url: str, extract_mode: str, outcome: str) -> None:
     try:
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         with open(AUDIT_LOG, "a") as f:
-            f.write(json.dumps({
-                "ts": time.time(), "url": url, "extract_mode": extract_mode, "outcome": outcome,
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "ts": time.time(),
+                        "url": url,
+                        "extract_mode": extract_mode,
+                        "outcome": outcome,
+                    }
+                )
+                + "\n"
+            )
     except Exception:
         pass  # audit log must never break the investigation
 
@@ -112,6 +121,7 @@ class Watchdog:
         if self._tab_id:
             try:
                 import requests
+
                 requests.get(f"http://localhost:{self._port}/json/close/{self._tab_id}", timeout=2)
             except Exception:
                 pass
@@ -119,6 +129,7 @@ class Watchdog:
         _emit({"ok": False, "error": "watchdog_timeout"})
         sys.stdout.flush()
         import os
+
         os._exit(1)
 
     def start(self) -> None:
@@ -204,11 +215,15 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--url", required=True)
     parser.add_argument("--extract", required=True, choices=EXTRACT_MODES)
     parser.add_argument("--port", type=int, default=9333)
-    parser.add_argument("--settle", type=float, default=4.0, help="Seconds to wait for page load before extracting")
+    parser.add_argument(
+        "--settle", type=float, default=4.0, help="Seconds to wait for page load before extracting"
+    )
     parser.add_argument("--out-dir", default=str(CDP_INVESTIGATE_OUT_DIR))
     parser.add_argument("--max-total-s", type=float, default=60.0, dest="max_total_s")
     parser.add_argument("--full-page", action="store_true", dest="full_page")

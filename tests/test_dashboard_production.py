@@ -1,4 +1,5 @@
 """tests/test_dashboard_production.py — GET /api/production."""
+
 import os
 import subprocess
 import sys
@@ -7,7 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-JARVIS = Path(__file__).parent.parent
+ROOT_DIR = Path(__file__).parent.parent
 
 
 @pytest.fixture
@@ -16,7 +17,7 @@ def client(tmp_path, monkeypatch):
     real_db_path = tmp_path / "database" / "dqiii8.db"
     subprocess.run(
         ["sqlite3", str(real_db_path)],
-        input=(JARVIS / "database" / "schema_v2.sql").read_text(),
+        input=(ROOT_DIR / "database" / "schema_v2.sql").read_text(),
         text=True,
         check=True,
     )
@@ -42,12 +43,12 @@ def client(tmp_path, monkeypatch):
     # ran afterward (e.g. hierarchical_router/intent_amplifier/embeddings
     # resolving empty domain data — exactly what test_module_namespace.py
     # exists to catch).
-    monkeypatch.syspath_prepend(str(JARVIS / "bin" / "ui"))
+    monkeypatch.syspath_prepend(str(ROOT_DIR / "bin" / "ui"))
     # dashboard.py's own sys.path bootstrap uses DQIII8_ROOT (now tmp_path,
     # for DB isolation) to locate bin/core, so the real bin/core/db.py
     # wouldn't be found via that logic in this test. Add the real repo's
     # bin/core explicitly so "from db import get_db" resolves to actual code.
-    monkeypatch.syspath_prepend(str(JARVIS / "bin" / "core"))
+    monkeypatch.syspath_prepend(str(ROOT_DIR / "bin" / "core"))
     # Both dashboard.py AND bin/core/db.py compute their DB path from
     # DQIII8_ROOT at import time (db.py's get_db() reads a module-level
     # DB_PATH set once on import) — popping only "dashboard" from
@@ -81,7 +82,8 @@ def client(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
-    with TestClient(dash_module.app) as tc:
+    token = dash_module.get_or_create_dashboard_token()
+    with TestClient(dash_module.app, headers={"Authorization": f"Bearer {token}"}) as tc:
         yield tc
 
     # db.py caches DB_PATH as a module-level global read from DQIII8_ROOT at

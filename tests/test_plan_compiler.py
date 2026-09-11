@@ -1,4 +1,5 @@
 """tests/test_plan_compiler.py — Execution Plan Compiler contract + templates."""
+
 import sys
 from pathlib import Path
 
@@ -93,9 +94,22 @@ def test_unknown_forced_pattern_raises():
 
 
 def test_amplifier_intent_map_total():
-    amplifier_ids = {"analyze", "generate", "optimize", "debug", "research",
-                     "summarize", "compare", "forecast", "explain", "transform",
-                     "validate", "plan", "automate", "report"}
+    amplifier_ids = {
+        "analyze",
+        "generate",
+        "optimize",
+        "debug",
+        "research",
+        "summarize",
+        "compare",
+        "forecast",
+        "explain",
+        "transform",
+        "validate",
+        "plan",
+        "automate",
+        "report",
+    }
     assert set(AMPLIFIER_INTENT_MAP) == amplifier_ids
     assert set(AMPLIFIER_INTENT_MAP.values()) <= set(_T)
 
@@ -155,10 +169,14 @@ def test_tier_a_prompt_carries_execution_plan():
     (Ollama/bge-m3 not available in test env — same issue noted by Opus in A1).
     """
     import intent_amplifier as ia
+
     amplified, _ = ia._build_amplified_prompt(
         "planifica la migracion del bot de Telegram a webhooks",
         {"action": "plan", "entity": "Telegram", "niche": "", "tokens": []},
         {"id": "plan", "score": 2, "tier": 3},
-        [{"domain": "applied_sciences", "score": 0.9}], [], None, tier=3,
+        [{"domain": "applied_sciences", "score": 0.9}],
+        [],
+        None,
+        tier=3,
     )
     assert "[EXECUTION PLAN" in amplified

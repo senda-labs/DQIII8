@@ -286,9 +286,7 @@ def call_gemini(prompt: str) -> str:
                 "generationConfig": {"maxOutputTokens": 2000},
             }
         ).encode()
-        req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json"}
-        )
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
         response = urllib.request.urlopen(req, timeout=90)
         result = json.loads(response.read())
         return result["candidates"][0]["content"]["parts"][0]["text"][:3000]
@@ -468,9 +466,7 @@ def generate_and_send_report(results: dict, report_path: Path) -> None:
     elif global_delta > 0:
         lines.append("AMARILLO: DQ mejora ligeramente los modelos gratis.")
     else:
-        lines.append(
-            "ROJO: DQ no mejora los modelos gratis. Revisar enricher pipeline."
-        )
+        lines.append("ROJO: DQ no mejora los modelos gratis. Revisar enricher pipeline.")
 
     halluc_ratio = total_halluc / (n_tasks * 5) if n_tasks else 0
     lines.extend(
@@ -492,9 +488,7 @@ def generate_and_send_report(results: dict, report_path: Path) -> None:
         d = task["domain"]
         domain_deltas.setdefault(d, []).append(on - off)
 
-    for domain, deltas in sorted(
-        domain_deltas.items(), key=lambda x: -(sum(x[1]) / len(x[1]))
-    ):
+    for domain, deltas in sorted(domain_deltas.items(), key=lambda x: -(sum(x[1]) / len(x[1]))):
         avg_d = sum(deltas) / len(deltas)
         tag = "VERDE" if avg_d > 2 else "AMARILLO" if avg_d > -2 else "ROJO"
         lines.append(f"- {tag} {domain}: {'+' if avg_d >= 0 else ''}{avg_d:.1f} puntos")
@@ -514,9 +508,7 @@ def generate_and_send_report(results: dict, report_path: Path) -> None:
     md_path.write_text(report_md, encoding="utf-8")
     print(f"[REPORT] Saved: {md_path}")
 
-    bot_token = os.environ.get(
-        "TELEGRAM_BOT_TOKEN", os.environ.get("DQIII8_BOT_TOKEN", "")
-    )
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", os.environ.get("DQIII8_BOT_TOKEN", ""))
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
 
     if bot_token and chat_id:
@@ -578,10 +570,7 @@ def print_summary(results: dict) -> None:
             f"  DQ OFF avg: {avg_off:.1f}/50 | variance: {variance_off:.1f}"
             f" | hallucinations: {hallucinations}"
         )
-        print(
-            f"  DQ ON  avg: {avg_on:.1f}/50 | delta:"
-            f" {'+' if delta >= 0 else ''}{delta:.1f}"
-        )
+        print(f"  DQ ON  avg: {avg_on:.1f}/50 | delta:" f" {'+' if delta >= 0 else ''}{delta:.1f}")
         impact = "POSITIVE" if delta > 2 else "NEUTRAL" if delta > -2 else "NEGATIVE"
         print(f"  Enricher impact: {impact}")
 

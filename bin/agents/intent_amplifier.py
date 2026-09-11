@@ -39,10 +39,8 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-for _d in [
-    JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]
-]:
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+for _d in [ROOT_DIR / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
 
@@ -52,7 +50,7 @@ from embeddings import bytes_to_embedding, cosine_similarity, get_embedding
 
 def load_env() -> None:
     """Load .env into os.environ (setdefault — does not overwrite existing vars)."""
-    env = JARVIS / ".env"
+    env = ROOT_DIR / ".env"
     if env.exists():
         for line in env.read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.startswith("#"):
@@ -151,9 +149,7 @@ def _decompose(prompt: str) -> dict:
     action = ""
     for pattern in INTENT_PATTERNS:
         for kw in pattern["keywords"]:
-            if kw in tokens or any(
-                t.startswith(kw[:5]) for t in tokens if len(kw) >= 5
-            ):
+            if kw in tokens or any(t.startswith(kw[:5]) for t in tokens if len(kw) >= 5):
                 action = pattern["id"]
                 break
         if action:
@@ -212,9 +208,7 @@ def _decompose(prompt: str) -> dict:
             "genera",
             "generate",
         }
-        candidates = [
-            t for t in prompt.lower().split() if len(t) > 4 and t not in _stopwords
-        ]
+        candidates = [t for t in prompt.lower().split() if len(t) > 4 and t not in _stopwords]
         if candidates:
             entity = max(candidates, key=len)
 
@@ -286,8 +280,7 @@ def _match_intent(tokens: list[str], prompt_lower: str) -> dict:
         score = sum(
             1
             for kw in pattern["keywords"]
-            if kw in prompt_lower
-            or any(t.startswith(kw[:5]) for t in tokens if len(kw) >= 5)
+            if kw in prompt_lower or any(t.startswith(kw[:5]) for t in tokens if len(kw) >= 5)
         )
         if score > best["score"]:
             best = {"id": pattern["id"], "score": score, "tier": pattern["tier"]}
@@ -504,9 +497,7 @@ def _build_prompt_tier_a(original: str, chunks: list, context_block: str = "") -
         return f"{context_block}\n\n---\n\n{original}"
     if not chunks:
         return original
-    knowledge_block = "\n---\n".join(
-        c["text"] if isinstance(c, dict) else str(c) for c in chunks
-    )
+    knowledge_block = "\n---\n".join(c["text"] if isinstance(c, dict) else str(c) for c in chunks)
     if not knowledge_block.strip():
         return original
     return f"{knowledge_block}\n\n---\n\n{original}"
@@ -568,9 +559,7 @@ def _build_amplified_prompt(
         if intent_suffix:
             # Replace generic CoT with intent-specific instruction to avoid duplication.
             if "Think step by step." in amplified:
-                amplified = amplified.replace(
-                    "Think step by step.", intent_suffix.strip()
-                )
+                amplified = amplified.replace("Think step by step.", intent_suffix.strip())
             else:
                 amplified += intent_suffix
         return amplified, len(effective_chunks)
@@ -594,7 +583,10 @@ def _build_amplified_prompt(
         plan_block = ""
         try:
             from plan_compiler import dq_compile
-            plan_block = dq_compile(original, intent_pattern=intent.get("id") if intent else None).render()
+
+            plan_block = dq_compile(
+                original, intent_pattern=intent.get("id") if intent else None
+            ).render()
         except Exception:
             pass
         base = _build_prompt_tier_a(original, effective_chunks, context_block=_ctx_block)
@@ -621,9 +613,7 @@ def _build_amplified_prompt(
             agents_str = ", ".join(a["name"] for a in c.get("agents", []))
             label = c["domain"].replace("_", " ").title()
             domain_lines.append(f"- {label} ({c['weight']:.0%}): {agents_str}")
-        ctx_lines.append(
-            "Domain analysis (multi-centroid):\n" + "\n".join(domain_lines)
-        )
+        ctx_lines.append("Domain analysis (multi-centroid):\n" + "\n".join(domain_lines))
     elif domains:
         top_domains = ", ".join(f"{d['domain']}({d['score']:.2f})" for d in domains[:2])
         ctx_lines.append(f"Relevant domains: {top_domains}")
@@ -805,9 +795,7 @@ def amplify(
                     {"domain": c["domain"], "score": c["weight"]}
                     for c in routing["active_centroids"]
                 ]
-                _log(
-                    f"  hierarchical: {len(routing['active_centroids'])} active centroids"
-                )
+                _log(f"  hierarchical: {len(routing['active_centroids'])} active centroids")
             else:
                 domains = _score_domains(prompt)
                 routing = None
@@ -824,13 +812,9 @@ def amplify(
     if chunks is not None:
         # Chunks pre-retrieved from original prompt externally — preserve list[dict] with scores
         if chunks and isinstance(chunks[0], dict):
-            chunks = [
-                c for c in chunks if c.get("text")
-            ]  # keep dicts, just filter empties
+            chunks = [c for c in chunks if c.get("text")]  # keep dicts, just filter empties
         else:
-            chunks = [
-                {"text": str(c), "score": 0.5} for c in chunks if c
-            ]  # wrap strings as dicts
+            chunks = [{"text": str(c), "score": 0.5} for c in chunks if c]  # wrap strings as dicts
         _log(f"  {len(chunks)} chunks provided externally")
     elif routing:
         try:
@@ -880,8 +864,7 @@ def amplify(
             top_domain = domains[0]["domain"] if domains else "unknown"
             # Normalize to list[dict] — chunks may be list[str] from _retrieve_knowledge
             gate_chunks = [
-                c if isinstance(c, dict) else {"text": str(c), "score": 0.5}
-                for c in chunks
+                c if isinstance(c, dict) else {"text": str(c), "score": 0.5} for c in chunks
             ]
             if not should_enrich("", top_domain, gate_chunks, tier):
                 _log(f"  gate: blocked {len(chunks)} chunks for Tier {tier}")
@@ -915,9 +898,7 @@ def amplify(
     elapsed_ms = int((time.time() - t0) * 1000)
     _log(f"done in {elapsed_ms}ms → tier={tier} ({TIER_LABELS[tier]})")
 
-    _log_amplification(
-        prompt, amplified, decomp, intent, domains, tier, elapsed_ms, routing
-    )
+    _log_amplification(prompt, amplified, decomp, intent, domains, tier, elapsed_ms, routing)
 
     return {
         "original": prompt,
@@ -990,9 +971,7 @@ def main():
         print(
             f"\n[AMPLIFIER] Intent: {result['intent']} | Tier: {result['tier']} ({result['tier_label']})"
         )
-        print(
-            f"  Action={result['action']} Entity={result['entity']} Niche={result['niche']}"
-        )
+        print(f"  Action={result['action']} Entity={result['entity']} Niche={result['niche']}")
         if result["domains"]:
             print(f"  Domains: {result['domains'][:2]}")
         print(f"\n--- Amplified prompt ---\n{result['amplified']}\n")

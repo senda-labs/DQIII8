@@ -15,14 +15,15 @@ from datetime import datetime
 import httpx
 
 import logging
+
 log = logging.getLogger(__name__)
 CONTENT_ROOT = os.environ.get("CONTENT_PROJECT_ROOT", "")
 if CONTENT_ROOT:
     sys.path.insert(0, CONTENT_ROOT)
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB = str(JARVIS / "database" / "dqiii8.db")
-OUT_DIR = JARVIS / "tasks" / "github_reports"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB = str(ROOT_DIR / "database" / "dqiii8.db")
+OUT_DIR = ROOT_DIR / "tasks" / "github_reports"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # DQIII8 stack for compatibility evaluation
@@ -107,7 +108,7 @@ class GitHubClient:
         content_env = Path(os.environ.get("CONTENT_PROJECT_ROOT", "")) / "config" / ".env"
         if content_env.parent.parent.exists():
             load_dotenv(str(content_env))
-        load_dotenv(str(JARVIS / ".env"))
+        load_dotenv(str(ROOT_DIR / ".env"))
         self.token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN") or ""
         self.headers = {
             "Accept": "application/vnd.github.v3+json",
@@ -169,7 +170,7 @@ class GitHubClient:
                     text = re.sub(r"#{1,6}\s", "", text)
                     return text.strip()[:1500]
         except Exception as _exc:
-            log.warning('%s: %s', __name__, _exc)
+            log.warning("%s: %s", __name__, _exc)
         return ""
 
     def get_topics(self, full_name: str) -> list:
@@ -183,7 +184,7 @@ class GitHubClient:
                 if resp.status_code == 200:
                     return resp.json().get("names", [])
         except Exception as _exc:
-            log.warning('%s: %s', __name__, _exc)
+            log.warning("%s: %s", __name__, _exc)
         return []
 
     def scrape_page_markdown(self, url: str) -> str:
@@ -240,7 +241,7 @@ class GitHubClient:
                         "py_files_sample": py_files[:10],
                     }
         except Exception as _exc:
-            log.warning('%s: %s', __name__, _exc)
+            log.warning("%s: %s", __name__, _exc)
         return {}
 
     def get_repo_issues_summary(self, full_name: str) -> dict:
@@ -259,7 +260,7 @@ class GitHubClient:
                         "latest_issue_title": (issues[0]["title"][:80] if issues else "none"),
                     }
         except Exception as _exc:
-            log.warning('%s: %s', __name__, _exc)
+            log.warning("%s: %s", __name__, _exc)
         return {}
 
 
@@ -338,7 +339,7 @@ class ApplicabilityEvaluator:
                 else:
                     reasons.append(f"Not updated in {days_old}d")
             except Exception as _exc:
-                log.warning('%s: %s', __name__, _exc)
+                log.warning("%s: %s", __name__, _exc)
 
         # ── Factor 6: Compatible license ─────────────────────────
         license_info = repo.get("license")
@@ -783,8 +784,12 @@ def _send_telegram_report(topic, top_repos, report_path):
         import asyncio
         from dotenv import load_dotenv
 
-        load_dotenv(str(JARVIS / ".env"))
-        bot_token = os.getenv("DQIII8_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN")
+        load_dotenv(str(ROOT_DIR / ".env"))
+        bot_token = (
+            os.getenv("DQIII8_BOT_TOKEN")
+            or os.getenv("TELEGRAM_BOT_TOKEN")
+            or os.getenv("JARVIS_BOT_TOKEN")
+        )
         chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
         if not bot_token or not chat_id:

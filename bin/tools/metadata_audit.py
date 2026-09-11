@@ -228,9 +228,13 @@ def report(
     engines = _engine_versions()
     degraded = []
     if engines.get("exiftool") == "absent":
-        degraded.append("exiftool absent — image metadata detection is pure-Python fallback (limited)")
+        degraded.append(
+            "exiftool absent — image metadata detection is pure-Python fallback (limited)"
+        )
 
-    summary = Summary(files_scanned=files_scanned, files_with_findings=len({f.path for f in findings}))
+    summary = Summary(
+        files_scanned=files_scanned, files_with_findings=len({f.path for f in findings})
+    )
     for f in findings:
         summary.by_tier[f.tier] = summary.by_tier.get(f.tier, 0) + 1
     # Merge, never filter: the preset keys are defaults, not an allowlist. Dropping
@@ -258,14 +262,19 @@ def report(
 
     if skip_counts:
         parts = ", ".join(f"{k}={v}" for k, v in sorted(skip_counts.items()))
-        print(f"metadata-audit: skipped/flagged {sum(skip_counts.values())} file(s): {parts}", file=sys.stderr)
+        print(
+            f"metadata-audit: skipped/flagged {sum(skip_counts.values())} file(s): {parts}",
+            file=sys.stderr,
+        )
     if degraded:
         for d in degraded:
             print(f"metadata-audit: DEGRADED — {d}", file=sys.stderr)
 
     if not findings:
         if truncated:
-            print("metadata-audit: PARTIAL SCAN — no findings in the portion scanned, but the scan was truncated.")
+            print(
+                "metadata-audit: PARTIAL SCAN — no findings in the portion scanned, but the scan was truncated."
+            )
         else:
             print("metadata-audit: no metadata/watermark findings.")
         return _exit_code(findings, degraded, truncated)
@@ -278,7 +287,9 @@ def report(
     for file_str, fs in by_file.items():
         print(f"\n{file_str}")
         for f in fs:
-            print(f"  [{f.tier}] {f.format} {f.location} — {f.field}{' — ' + f.note if f.note else ''}")
+            print(
+                f"  [{f.tier}] {f.format} {f.location} — {f.field}{' — ' + f.note if f.note else ''}"
+            )
 
     print(
         "\nDetection only — nothing was modified. Removal is a manual decision: "
@@ -289,11 +300,15 @@ def report(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--dir", type=Path, help="Recursively scan this directory (read-only).")
     group.add_argument("--file", type=Path, help="Scan a single file (read-only).")
-    parser.add_argument("--json", action="store_true", help="Emit the versioned machine-readable report.")
+    parser.add_argument(
+        "--json", action="store_true", help="Emit the versioned machine-readable report."
+    )
     parser.add_argument("--max-files", type=int, default=5000)
     parser.add_argument("--max-bytes", type=int, default=2 * 1024 * 1024 * 1024)
     args = parser.parse_args()

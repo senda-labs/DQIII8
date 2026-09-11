@@ -21,9 +21,9 @@ from pathlib import Path
 
 import requests
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-sys.path.insert(0, str(JARVIS / "bin"))
-KNOWLEDGE = JARVIS / "knowledge"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+sys.path.insert(0, str(ROOT_DIR / "bin"))
+KNOWLEDGE = ROOT_DIR / "knowledge"
 
 # Free API endpoints
 ARXIV_API = "http://export.arxiv.org/api/query"
@@ -82,13 +82,15 @@ def search_arxiv(query: str, max_results: int = 3) -> list:
             published = re.search(r"<published>(.*?)</published>", entry)
             arxiv_id = re.search(r"<id>(.*?)</id>", entry)
             if title and summary:
-                papers.append({
-                    "title": title.group(1).strip().replace("\n", " "),
-                    "abstract": summary.group(1).strip().replace("\n", " "),
-                    "published": published.group(1)[:10] if published else "",
-                    "source": arxiv_id.group(1) if arxiv_id else "",
-                    "api": "arxiv",
-                })
+                papers.append(
+                    {
+                        "title": title.group(1).strip().replace("\n", " "),
+                        "abstract": summary.group(1).strip().replace("\n", " "),
+                        "published": published.group(1)[:10] if published else "",
+                        "source": arxiv_id.group(1) if arxiv_id else "",
+                        "api": "arxiv",
+                    }
+                )
         return papers
     except Exception as e:
         print(f"  [warn] arXiv search failed: {e}")
@@ -110,14 +112,16 @@ def search_semantic_scholar(query: str, max_results: int = 3) -> list:
         papers = []
         for p in data.get("data", []):
             if p.get("abstract"):
-                papers.append({
-                    "title": p["title"],
-                    "abstract": p["abstract"],
-                    "published": str(p.get("year", "")),
-                    "citations": p.get("citationCount", 0),
-                    "source": p.get("url", ""),
-                    "api": "semantic_scholar",
-                })
+                papers.append(
+                    {
+                        "title": p["title"],
+                        "abstract": p["abstract"],
+                        "published": str(p.get("year", "")),
+                        "citations": p.get("citationCount", 0),
+                        "source": p.get("url", ""),
+                        "api": "semantic_scholar",
+                    }
+                )
         return papers
     except Exception as e:
         print(f"  [warn] Semantic Scholar search failed: {e}")
@@ -210,7 +214,7 @@ def harvest_domain(domain: str, agent: str = None, max_papers: int = 3) -> int:
     if total_files > 0:
         print(f"\n  Reindexing {domain}...")
         subprocess.run(
-            ["python3", str(JARVIS / "bin" / "knowledge_indexer.py"), "--domain", domain],
+            ["python3", str(ROOT_DIR / "bin" / "knowledge_indexer.py"), "--domain", domain],
             capture_output=True,
         )
 
@@ -258,7 +262,9 @@ if __name__ == "__main__":
     parser.add_argument("--query", help="Custom search query (used with --domain + --agent)")
     parser.add_argument("--all", action="store_true", help="Harvest all domains")
     parser.add_argument("--prune", action="store_true", help="Remove outdated papers")
-    parser.add_argument("--prune-days", type=int, default=180, help="Max age in days (default: 180)")
+    parser.add_argument(
+        "--prune-days", type=int, default=180, help="Max age in days (default: 180)"
+    )
     args = parser.parse_args()
 
     if args.prune:
@@ -286,7 +292,9 @@ if __name__ == "__main__":
                     )
                     print(f"  [new] {out_path.name}")
                     count += 1
-            print(f"\n  {count} paper(s) saved. Run knowledge_indexer.py --domain {args.domain} to reindex.")
+            print(
+                f"\n  {count} paper(s) saved. Run knowledge_indexer.py --domain {args.domain} to reindex."
+            )
         else:
             harvest_domain(args.domain, args.agent)
     else:

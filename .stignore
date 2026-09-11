@@ -32,6 +32,38 @@ desktop.ini
 database/*.db
 database/legacy/*.db
 
+// Netcup-exclusive project directories — NEVER existed on Hostinger. A receiveonly
+// (or any) reconciliation must never treat these as "extra content to delete" —
+// real incident 2026-09-07: receiveonly on Netcup deleted ~22 uncommitted .py
+// files in hostkey/ (janus-keys infra) and the entire venvs/content-automation
+// venv before this ignore was added. Re-verify this list (`diff <(ls my-projects)
+// <(ssh netcup ls my-projects)`) before ever re-running a receiveonly pass.
+my-projects/hostkey/
+my-projects/python-for-analyst/
+venvs/content-automation/
+
+// global-media-org: Netcup is authoritative for these post-2026-09-07 (workers
+// run there, not Hostinger) — never let Syncthing revert Netcup's live state
+// toward Hostinger's stale copy, or push Netcup's live DB back and corrupt
+// whatever Hostinger last had. See docs/ARCHITECTURE.md.
+my-projects/global-media-org/blocks/osint_acquisition/osint.db
+my-projects/global-media-org/blocks/osint_acquisition/osint.db-wal
+my-projects/global-media-org/blocks/osint_acquisition/osint.db-shm
+my-projects/global-media-org/blocks/redaccion/redaccion.db
+my-projects/global-media-org/blocks/redaccion/redaccion.db-wal
+my-projects/global-media-org/blocks/redaccion/redaccion.db-shm
+my-projects/global-media-org/dump.rdb
+my-projects/global-media-org/media.db
+my-projects/global-media-org/bin/config/redis_runtime.conf
+
+// Host-local status/audit files — each host writes these independently (no merge
+// logic), so syncing them only produces sync-conflict noise with zero value. Real
+// incident 2026-09-07: both hosts appending to these simultaneously generated
+// .sync-conflict copies within minutes of each other, cleaned up by hand.
+tasks/audit_pending.flag
+tasks/permission_rejection.json
+var/watchdog_heartbeat
+
 // Secrets — NEVER sync to Windows
 .secrets/
 *.asc

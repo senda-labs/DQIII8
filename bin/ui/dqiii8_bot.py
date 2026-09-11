@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))  # bin/
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
-from bin.core import human_pending
+from bin.core import human_pending, human_hours
 from bin.core.human_pending import events
 from bin.core.project_context import (
     end_project,
@@ -42,14 +42,14 @@ from bin.core.project_context import (
 from voice_handler import transcribe_audio, synthesize_speech
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB = JARVIS / "database" / "dqiii8.db"
-LOG_FILE = JARVIS / "database" / "audit_reports" / "dqiii8_bot.log"
-QUEUE_DIR = JARVIS / "objectives" / "queue"
-REFERENCE_IMAGE_PATH = JARVIS / "tasks" / "reference_image.jpg"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB = ROOT_DIR / "database" / "dqiii8.db"
+LOG_FILE = ROOT_DIR / "database" / "audit_reports" / "dqiii8_bot.log"
+QUEUE_DIR = ROOT_DIR / "objectives" / "queue"
+REFERENCE_IMAGE_PATH = ROOT_DIR / "tasks" / "reference_image.jpg"
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-load_dotenv(JARVIS / ".env")
+load_dotenv(ROOT_DIR / ".env")
 BOT_TOKEN = os.getenv("DQIII8_BOT_TOKEN") or os.getenv("JARVIS_BOT_TOKEN", "")
 ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")  # empty = deny all (fail-closed)
 
@@ -148,7 +148,7 @@ def run_cmd(cmd: list[str], timeout: int = 120) -> str:
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=str(JARVIS),
+            cwd=str(ROOT_DIR),
             encoding="utf-8",
         )
         return (result.stdout + result.stderr).strip() or "(no output)"
@@ -161,7 +161,7 @@ def run_cmd(cmd: list[str], timeout: int = 120) -> str:
 def _load_env_dict() -> dict:
     """os.environ + .env as dict for subprocesses."""
     env = dict(os.environ)
-    env_file = JARVIS / ".env"
+    env_file = ROOT_DIR / ".env"
     if env_file.exists():
         for line in env_file.read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.startswith("#"):
@@ -175,20 +175,11 @@ def _load_env_dict() -> dict:
 
 def _infer_task_type(description: str) -> str:
     d = description.lower()
-    if any(
-        k in d
-        for k in ("video", "tts", "subtitle", "pipeline", "ffmpeg", "reels", "content")
-    ):
+    if any(k in d for k in ("video", "tts", "subtitle", "pipeline", "ffmpeg", "reels", "content")):
         return "pipeline"
-    if any(
-        k in d
-        for k in ("chapter", "scene", "novel", "narrative", "creative", "writing")
-    ):
+    if any(k in d for k in ("chapter", "scene", "novel", "narrative", "creative", "writing")):
         return "writing"
-    if any(
-        k in d
-        for k in ("review", "analiz", "research", "audit", "investiga", "explain")
-    ):
+    if any(k in d for k in ("review", "analiz", "research", "audit", "investiga", "explain")):
         return "analysis"
     if any(
         k in d
@@ -254,12 +245,12 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
         proc = await asyncio.create_subprocess_exec(
             "claude",
             "--add-dir",
-            str(JARVIS),
+            str(ROOT_DIR),
             "-p",
             description,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=str(JARVIS),
+            cwd=str(ROOT_DIR),
         )
         if task_id in ACTIVE_TASKS:
             ACTIVE_TASKS[task_id]["proc"] = proc
@@ -349,9 +340,7 @@ async def _run_task(task_id: str, description: str, chat_id: str) -> None:
     )
 
 
-async def handle_satisfaction_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_satisfaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Registra la respuesta 👍/👎 y actualiza model_satisfaction."""
     query = update.callback_query
     await query.answer()
@@ -385,7 +374,7 @@ async def handle_satisfaction_callback(
 
 
 async def handle_resume_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """hpt: family — resume flow for human_pending_tasks (jarvis-control3 v2).
+    """hpt: family — resume flow for human_pending_tasks (lier v0).
     100% DB-driven (no in-RAM dicts): the row itself is the source of truth,
     so this survives bot restarts. Per-row allowed_chat_id, NOT the global
     ALLOWED_CHAT_ID — a row is only actionable by the chat that owns it.
@@ -404,7 +393,9 @@ async def handle_resume_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if str(update.effective_chat.id) != str(row["allowed_chat_id"]):
-        log.warning("hpt: unauthorized chat %s tried to act on row %s", update.effective_chat.id, task_id)
+        log.warning(
+            "hpt: unauthorized chat %s tried to act on row %s", update.effective_chat.id, task_id
+        )
         await _safe_answer(query, "No autorizado.")
         return
 
@@ -414,10 +405,14 @@ async def handle_resume_callback(update: Update, context: ContextTypes.DEFAULT_T
         if row["status"] != "notified":
             await query.edit_message_text(f"(ya procesado: {row['status']})")
             return
-        confirm_kb = InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ Confirmar reanudar", callback_data=f"hptok:{task_id}"),
-            InlineKeyboardButton("❌ Cancelar", callback_data=f"hptno:{task_id}"),
-        ]])
+        confirm_kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("✅ Confirmar reanudar", callback_data=f"hptok:{task_id}"),
+                    InlineKeyboardButton("❌ Cancelar", callback_data=f"hptno:{task_id}"),
+                ]
+            ]
+        )
         await query.edit_message_text(
             f"Reanudar {row['project']} / {row['action_id']}?\n"
             f"resume_args: {row['resume_args']}\n"
@@ -449,6 +444,76 @@ async def handle_resume_callback(update: Update, context: ContextTypes.DEFAULT_T
             log.error("hptno: failed to cancel %s: %s", task_id, exc)
             await query.edit_message_text("(error al cancelar, ver logs)")
         return
+
+
+PENDING_APPROVALS_DIR = ROOT_DIR / "tasks" / "pending_approvals"
+
+
+async def handle_governance_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """gov_approve:/gov_deny: — resolves a permission_analyzer.py governance-write
+    ESCALATE by flipping tasks/pending_approvals/<id>.json's status, which the
+    blocked hook invocation is polling. File-based, not DB-backed: a new table
+    needs a schema_v2.sql migration applied by hand to the live DB
+    (database/schema_v2.sql's own rule — agents propose, humans apply), so a
+    file mailbox is what's actually deployable tonight without that step.
+
+    Global ALLOWED_CHAT_ID gate via `authorized()`, not a per-row chat id like
+    hpt: uses: a governance-write approval is inherently operator-only, there
+    is no per-project scoping concept for it the way human_pending_tasks has.
+    """
+    query = update.callback_query
+    data = query.data or ""
+    if not data.startswith(("gov_approve:", "gov_deny:")):
+        return
+
+    action, _, approval_id = data.partition(":")
+    if not authorized(update):
+        log.warning(
+            "gov_: unauthorized chat %s tried to resolve %s", update.effective_chat.id, approval_id
+        )
+        await _safe_answer(query, "No autorizado.")
+        return
+
+    await _safe_answer(query)
+
+    # approval_id is embedded in our own callback_data, generated as a plain
+    # 12-hex uuid4 — but a rewired/replayed callback could still name an
+    # arbitrary path, so keep the same file-in-a-known-dir shape check the
+    # governance path matchers themselves rely on rather than trusting it raw.
+    if not re.fullmatch(r"[0-9a-f]{12}", approval_id):
+        await _safe_answer(query, "ID invalido.")
+        return
+    path = PENDING_APPROVALS_DIR / f"{approval_id}.json"
+    if not path.exists():
+        await query.edit_message_text("(expirado o no encontrado — aplica el cambio manualmente)")
+        return
+    try:
+        row = json.loads(path.read_text())
+    except Exception as exc:
+        log.error("gov_: failed to read %s: %s", path, exc)
+        await query.edit_message_text("(error leyendo la aprobacion, ver logs)")
+        return
+    if row.get("status") != "pending":
+        await query.edit_message_text(f"(ya procesado: {row.get('status')})")
+        return
+
+    new_status = "approved" if action == "gov_approve" else "denied"
+    row["status"] = new_status
+    row["resolved_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    row["resolved_by_chat_id"] = str(update.effective_chat.id)
+    try:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(row))
+        os.replace(tmp, path)
+    except Exception as exc:
+        log.error("gov_: failed to write resolution for %s: %s", approval_id, exc)
+        await query.edit_message_text("(error al guardar la resolucion, ver logs)")
+        return
+
+    label = "✅ Aprobado" if new_status == "approved" else "❌ Denegado"
+    await query.edit_message_text(
+        f"{label} — {row.get('tool_name','')} {str(row.get('action_detail',''))[:100]}"
+    )
 
 
 async def _safe_answer(query, text: str | None = None) -> None:
@@ -487,9 +552,7 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     description = " ".join(context.args).strip()
     if not description:
-        await update.message.reply_text(
-            "Usage: `/task [task description]`", parse_mode="Markdown"
-        )
+        await update.message.reply_text("Usage: `/task [task description]`", parse_mode="Markdown")
         return
     task_id = await _spawn_task(update, description)
     await update.message.reply_text(
@@ -523,15 +586,11 @@ async def cmd_output(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Unauthorized.")
         return
     if not context.args:
-        await update.message.reply_text(
-            "Usage: `/output [task_id]`", parse_mode="Markdown"
-        )
+        await update.message.reply_text("Usage: `/output [task_id]`", parse_mode="Markdown")
         return
     task_id = context.args[0]
     if task_id not in ACTIVE_TASKS:
-        await update.message.reply_text(
-            f"Task `{task_id}` not found.", parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"Task `{task_id}` not found.", parse_mode="Markdown")
         return
     info = ACTIVE_TASKS[task_id]
     elapsed = int(time.time() - info["start_time"])
@@ -550,15 +609,11 @@ async def cmd_kill(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Unauthorized.")
         return
     if not context.args:
-        await update.message.reply_text(
-            "Usage: `/kill [task_id]`", parse_mode="Markdown"
-        )
+        await update.message.reply_text("Usage: `/kill [task_id]`", parse_mode="Markdown")
         return
     task_id = context.args[0]
     if task_id not in ACTIVE_TASKS:
-        await update.message.reply_text(
-            f"Task `{task_id}` not found.", parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"Task `{task_id}` not found.", parse_mode="Markdown")
         return
     proc = ACTIVE_TASKS[task_id].get("proc")
     if proc and proc.returncode is None:
@@ -622,9 +677,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     try:
         conn = sqlite3.connect(DB, timeout=30)
-        ranking = conn.execute(
-            "SELECT * FROM tier_ranking WHERE model_tier='tier3'"
-        ).fetchone()
+        ranking = conn.execute("SELECT * FROM tier_ranking WHERE model_tier='tier3'").fetchone()
         metrics = conn.execute(
             """
             SELECT renderer, lines_of_code, cpu_seconds,
@@ -724,7 +777,7 @@ async def cmd_audit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     await update.message.reply_text("Running local health audit...")
     log.info("/audit started")
-    output = run_cmd(["python3", "bin/monitoring/auditor_local.py"], timeout=60)
+    output = run_cmd([sys.executable, "bin/monitoring/auditor_local.py"], timeout=60)
     await send_chunks(update, f"*DQ Health Audit:*\n```\n{output[:3800]}\n```")
     log.info("/audit completed")
 
@@ -783,8 +836,8 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async def _run_and_notify() -> None:
         try:
             proc = await asyncio.create_subprocess_exec(
-                "python3",
-                str(JARVIS / "bin" / "director.py"),
+                sys.executable,
+                str(ROOT_DIR / "bin" / "director.py"),
                 "--project",
                 project,
                 "--cycles",
@@ -793,7 +846,7 @@ async def cmd_loop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 tier,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                cwd=str(JARVIS),
+                cwd=str(ROOT_DIR),
                 env={**os.environ, "DQIII8_MODE": "autonomous"},
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=7200)
@@ -865,6 +918,34 @@ async def cmd_images(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     log.info("/images project=%s count=%d", project, len(png_files))
 
 
+TELEGRAM_UPLOADS_DIR = ROOT_DIR / "var" / "telegram_uploads"
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # generous ceiling for a small JSON/credentials file
+
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Saves an incoming document from the authorized chat only, to var/telegram_uploads/.
+
+    Deliberately generic (not client_secret-specific): any file the owner sends lands
+    here for a human/Claude-Code session to pick up and move into place after inspection --
+    this handler never writes directly into a credentials path, it only stages the upload.
+    """
+    if not authorized(update):
+        return
+    doc = update.message.document
+    if doc.file_size and doc.file_size > MAX_UPLOAD_BYTES:
+        await update.message.reply_text(f"⛔ Archivo demasiado grande ({doc.file_size} bytes, máx {MAX_UPLOAD_BYTES}).")
+        return
+
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", doc.file_name or "upload.bin").lstrip(".") or "upload.bin"
+    TELEGRAM_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    dest = TELEGRAM_UPLOADS_DIR / safe_name
+    file = await context.bot.get_file(doc.file_id)
+    await file.download_to_drive(str(dest))
+    dest.chmod(0o600)
+    log.info("telegram upload saved: %s (%d bytes)", dest, doc.file_size or dest.stat().st_size)
+    await update.message.reply_text(f"✓ Guardado en {dest} (permisos 600).")
+
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Saves the sent photo as a reference image when the caption
@@ -890,11 +971,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     log.info("Reference image saved to %s", REFERENCE_IMAGE_PATH)
 
 
-async def _download_telegram_file(
-    context: ContextTypes.DEFAULT_TYPE, file_id: str
-) -> str:
+async def _download_telegram_file(context: ContextTypes.DEFAULT_TYPE, file_id: str) -> str:
     """Download a Telegram file to tmp/ and return its local path."""
-    tmp_dir = JARVIS / "tmp"
+    tmp_dir = ROOT_DIR / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     tg_file = await context.bot.get_file(file_id)
     local_path = str(tmp_dir / f"tg_voice_{file_id}.ogg")
@@ -902,9 +981,37 @@ async def _download_telegram_file(
     return local_path
 
 
-async def _send_voice_reply(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
-) -> None:
+def _run_openrouter_default(prompt: str) -> subprocess.CompletedProcess:
+    """Run openrouter_wrapper.py --agent default synchronously.
+
+    Called via run_in_executor, never directly on the event loop — a bare
+    subprocess.run() here previously blocked the whole bot (all chats, all
+    commands) for up to 60s per message, which is what turned a single dead
+    provider tier into a full bot hang during the Netcup cutover.
+
+    Uses sys.executable, not a bare "python3" — that resolved via PATH to the
+    *system* interpreter on Netcup (PEP 668, no project deps installed there),
+    not this process's own .venv-core interpreter, causing every real call to
+    fail silently (ImportError on stderr, empty stdout) after the event-loop
+    fix above landed.
+    """
+    return subprocess.run(
+        [
+            sys.executable,
+            str(ROOT_DIR / "bin" / "core" / "openrouter_wrapper.py"),
+            "--agent",
+            "default",
+        ],
+        input=prompt,
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT_DIR),
+        timeout=60,
+        env=_load_env_dict(),
+    )
+
+
+async def _send_voice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
     """Synthesize text and send as voice message. Cleans up temp file after sending."""
     audio_path = synthesize_speech(text[:500])
     if not audio_path or not Path(audio_path).exists():
@@ -963,19 +1070,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "You are DQIII8, an AI orchestration system. "
             f"Respond concisely and technically:\n\n{text}"
         )
-        result = subprocess.run(
-            [
-                "python3",
-                str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
-                "--agent",
-                "default",
-            ],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            cwd=str(JARVIS),
-            timeout=60,
-            env=_load_env_dict(),
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, _run_openrouter_default, prompt
         )
         output = result.stdout.strip() or "(no response)"
         await send_chunks(update, output)
@@ -995,9 +1091,7 @@ async def cmd_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     arg = (context.args[0] if context.args else "").lower()
     if arg == "on":
         VOICE_RESPONSES_ENABLED = True
-        await update.message.reply_text(
-            "Voice responses enabled. I'll reply with audio."
-        )
+        await update.message.reply_text("Voice responses enabled. I'll reply with audio.")
     elif arg == "off":
         VOICE_RESPONSES_ENABLED = False
         await update.message.reply_text("Voice responses disabled. Text only.")
@@ -1036,21 +1130,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "You are DQIII8, an AI orchestration system. "
         f"Respond concisely and technically:\n\n{user_msg}"
     )
-    result = subprocess.run(
-        [
-            "python3",
-            str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
-            "--agent",
-            "default",
-        ],
-        input=prompt,
-        capture_output=True,
-        text=True,
-        cwd=str(JARVIS),
-        timeout=60,
-        env=_load_env_dict(),
-    )
+    result = await asyncio.get_event_loop().run_in_executor(None, _run_openrouter_default, prompt)
     output = result.stdout.strip() or "(no response)"
+    if not result.stdout.strip():
+        log.warning(
+            "Empty stdout from openrouter_wrapper (rc=%s): stderr tail=%r",
+            result.returncode,
+            result.stderr[-1500:] if result.stderr else "(empty stderr too)",
+        )
     await send_chunks(update, output)
     log.info("Quick response sent (%d chars)", len(output))
 
@@ -1058,9 +1145,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # ── Block 4: Auto-improvement + Sleep Mode commands ──────────────────────────────
 
 
-async def cmd_research_status(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def cmd_research_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Shows research_items state by status."""
     if not authorized(update):
         await update.message.reply_text("Unauthorized.")
@@ -1088,13 +1173,13 @@ async def cmd_sandbox_run(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     result = subprocess.run(
         [
             sys.executable,
-            str(JARVIS / "bin" / "tools" / "sandbox_tester.py"),
+            str(ROOT_DIR / "bin" / "tools" / "sandbox_tester.py"),
             "--process-queue",
         ],
         capture_output=True,
         text=True,
         timeout=120,
-        cwd=str(JARVIS),
+        cwd=str(ROOT_DIR),
     )
     output = (result.stdout + result.stderr).strip()[-800:] or "(no output)"
     await send_chunks(update, output)
@@ -1130,9 +1215,7 @@ async def _handle_rechazar(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
     item_id = int(m.group(1))
     conn = sqlite3.connect(str(DB), timeout=30)
-    conn.execute(
-        "UPDATE research_items SET status='RECHAZADO_MANUAL' WHERE id=?", (item_id,)
-    )
+    conn.execute("UPDATE research_items SET status='RECHAZADO_MANUAL' WHERE id=?", (item_id,))
     conn.commit()
     conn.close()
     await update.message.reply_text(f"[DQIII8] Item {item_id} rejected.")
@@ -1150,9 +1233,7 @@ async def _handle_aprobar(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     perm_id = m.group(1)
     perm_file = Path(f"/tmp/dqiii8_perm_{perm_id}.json")
-    perm_file.write_text(
-        '{"decision":"allow","reason":"user approved"}', encoding="utf-8"
-    )
+    perm_file.write_text('{"decision":"allow","reason":"user approved"}', encoding="utf-8")
     await update.message.reply_text(f"[DQIII8] Permission {perm_id} APPROVED.")
 
 
@@ -1172,14 +1253,12 @@ async def _handle_denegar(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text(f"[DQIII8] Permission {perm_id} DENIED.")
 
 
-async def cmd_stop_autonomous(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def cmd_stop_autonomous(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Writes stop flag to halt the next autonomous session."""
     if not authorized(update):
         await update.message.reply_text("Unauthorized.")
         return
-    stop_flag = JARVIS / "tasks" / ".stop_flag"
+    stop_flag = ROOT_DIR / "tasks" / ".stop_flag"
     stop_flag.write_text(f"stop requested at {time.time()}", encoding="utf-8")
     await update.message.reply_text(
         "Stop flag written to `tasks/.stop_flag`.\n"
@@ -1291,9 +1370,7 @@ def _cc_rate_ok(chat_id: str) -> bool:
     """Returns True if chat_id is within rate limit (persistent SQLite store)."""
     try:
         conn = sqlite3.connect(str(DB), timeout=30)
-        conn.execute(
-            "DELETE FROM cc_rate_limit WHERE timestamp < datetime('now', '-1 hour')"
-        )
+        conn.execute("DELETE FROM cc_rate_limit WHERE timestamp < datetime('now', '-1 hour')")
         count = conn.execute(
             "SELECT COUNT(*) FROM cc_rate_limit WHERE chat_id = ?", (str(chat_id),)
         ).fetchone()[0]
@@ -1406,7 +1483,7 @@ def _run_claude(
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=str(JARVIS),
+            cwd=str(ROOT_DIR),
             env=env,
             encoding="utf-8",
         )
@@ -1450,7 +1527,7 @@ async def _run_cc_async(
 
     Safe: uses create_subprocess_exec (no shell). Prompt is internal.
 
-    Always launched from JARVIS (DQIII8 root) so Claude Code discovers
+    Always launched from ROOT_DIR (DQIII8 root) so Claude Code discovers
     /root/dqiii8/.claude/settings.json — sub-projects are separate git repos
     without their own settings.json, and Claude Code resolves settings from the
     session cwd's git root, so launching there silently drops every telemetry
@@ -1461,7 +1538,7 @@ async def _run_cc_async(
 
     target = Path(cwd).resolve()
     extra_dirs: list[str] = []
-    if target != JARVIS.resolve():
+    if target != ROOT_DIR.resolve():
         extra_dirs = ["--add-dir", str(target)]
         scope_note = f"WORKING DIRECTORY FOR THIS TASK: {target}\n"
         system_prompt = scope_note + (system_prompt or "")
@@ -1482,7 +1559,7 @@ async def _run_cc_async(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        cwd=str(JARVIS),
+        cwd=str(ROOT_DIR),
         env=env,
     )
 
@@ -1499,9 +1576,7 @@ async def _run_cc_async(
         if progress_msg and (now - last_update) >= 15:
             phase = detect_phase(output_lines)
             try:
-                await progress_msg.edit_text(
-                    format_progress(project_label, phase, now - t0)
-                )
+                await progress_msg.edit_text(format_progress(project_label, phase, now - t0))
             except Exception:
                 pass
             last_update = now
@@ -1516,20 +1591,20 @@ async def _run_cc_async(
     if not full_output.strip() and stderr:
         full_output = stderr[:2000]
 
-    # claude now runs from JARVIS, so relative paths in its output may be
+    # claude now runs from ROOT_DIR, so relative paths in its output may be
     # relative to either root; resolve against both and de-duplicate.
     candidates = parse_output(full_output, target)["files"]
     if extra_dirs:
         seen = {str(p) for p in candidates}
         candidates += [
-            p for p in parse_output(full_output, JARVIS)["files"] if str(p) not in seen
+            p for p in parse_output(full_output, ROOT_DIR)["files"] if str(p) not in seen
         ]
 
     # parse_output joins emitted relative paths onto a root without normalising,
     # so "Created: ../../CLAUDE.md" escapes the project and cmd_cc would then
     # upload it to Telegram. Keep only paths that really live under a root we
     # granted this run, and de-duplicate again after normalisation.
-    roots = [JARVIS.resolve()] + ([target] if extra_dirs else [])
+    roots = [ROOT_DIR.resolve()] + ([target] if extra_dirs else [])
     files: list = []
     kept: set[str] = set()
     for p in candidates:
@@ -1553,7 +1628,7 @@ async def _run_groq_direct(prompt: str, system_prompt: str = "") -> tuple[bool, 
     import importlib.util
     import io
 
-    wrapper_path = JARVIS / "bin" / "core" / "openrouter_wrapper.py"
+    wrapper_path = ROOT_DIR / "bin" / "core" / "openrouter_wrapper.py"
     spec = importlib.util.spec_from_file_location("openrouter_wrapper", wrapper_path)
     wrapper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(wrapper)
@@ -1583,7 +1658,7 @@ async def _run_ollama_direct(prompt: str, system_prompt: str = "") -> tuple[bool
     import importlib.util
     import io
 
-    wrapper_path = JARVIS / "bin" / "core" / "openrouter_wrapper.py"
+    wrapper_path = ROOT_DIR / "bin" / "core" / "openrouter_wrapper.py"
     spec = importlib.util.spec_from_file_location("openrouter_wrapper", wrapper_path)
     wrapper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(wrapper)
@@ -1614,9 +1689,7 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or "").strip()
     prompt = text[len("/cc") :].strip()
     if not prompt:
-        await update.message.reply_text(
-            "Usage: /cc <prompt>\nExample: /cc explain bin/director.py"
-        )
+        await update.message.reply_text("Usage: /cc <prompt>\nExample: /cc explain bin/director.py")
         return
     prompt = _cc_sanitize(prompt)
     reason = _cc_check(prompt)
@@ -1655,9 +1728,7 @@ async def cmd_cc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tier = classify_cc_tier(prompt)
 
     tier_labels = {"C": "Qwen", "A": "Sonnet", "S": "Opus"}
-    progress_msg = await update.message.reply_text(
-        f"[{label}] {tier_labels.get(tier, tier)}..."
-    )
+    progress_msg = await update.message.reply_text(f"[{label}] {tier_labels.get(tier, tier)}...")
 
     t0 = time.time()
     ctx = build_context(project, prompt) or ""
@@ -1771,9 +1842,7 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not success:
             break  # execution itself failed, no point testing
         try:
-            await progress_msg.edit_text(
-                f"[AUTO/{label}] Verifying (attempt {attempt})..."
-            )
+            await progress_msg.edit_text(f"[AUTO/{label}] Verifying (attempt {attempt})...")
         except Exception:
             pass
         verify_proc = await asyncio.create_subprocess_exec(
@@ -1830,46 +1899,11 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def _hora_inicio(project: str, source: str = "telegram") -> str:
-    """Open a human_hours session for `project`. Returns a user-facing message."""
-    import datetime as _dt
-    try:
-        conn = sqlite3.connect(DB, timeout=30)
-        try:
-            conn.execute(
-                "INSERT INTO human_hours (project, started_at, source) VALUES (?, ?, ?)",
-                (project, _dt.datetime.now(_dt.timezone.utc).isoformat(), source),
-            )
-            conn.commit()
-            return f"Sesion iniciada para '{project}'."
-        except sqlite3.IntegrityError:
-            return f"Ya hay una sesion abierta para '{project}'. Usa /hora fin primero."
-        finally:
-            conn.close()
-    except Exception as exc:
-        log.warning("_hora_inicio DB error: %s", exc)
-        return "Error al iniciar la sesion. Revisa los logs."
+    return human_hours.hora_inicio(project, source=source)[1]
 
 
 def _hora_fin(project: str) -> str:
-    """Close the open human_hours session for `project`, if any."""
-    import datetime as _dt
-    try:
-        conn = sqlite3.connect(DB, timeout=30)
-        try:
-            cur = conn.execute(
-                "UPDATE human_hours SET ended_at = ? "
-                "WHERE project = ? AND ended_at IS NULL",
-                (_dt.datetime.now(_dt.timezone.utc).isoformat(), project),
-            )
-            conn.commit()
-            if cur.rowcount == 0:
-                return f"No hay ninguna sesion abierta para '{project}'."
-            return f"Sesion cerrada para '{project}'."
-        finally:
-            conn.close()
-    except Exception as exc:
-        log.warning("_hora_fin DB error: %s", exc)
-        return "Error al cerrar la sesion. Revisa los logs."
+    return human_hours.hora_fin(project)[1]
 
 
 async def cmd_hora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1885,11 +1919,9 @@ async def cmd_hora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # need to handle since this bot is only used in a 1:1 chat, but /hora's
     # exact command text is matched more literally below.
     text = re.sub(r"^/hora(@\S+)?", "/hora", text, count=1)
-    args = text[len("/hora"):].strip().split(maxsplit=1)
+    args = text[len("/hora") :].strip().split(maxsplit=1)
     if not args or args[0] not in ("inicio", "fin"):
-        await update.message.reply_text(
-            "Usage: /hora inicio [proyecto]\n/hora fin <proyecto>"
-        )
+        await update.message.reply_text("Usage: /hora inicio [proyecto]\n/hora fin <proyecto>")
         return
     action = args[0]
     project = args[1].strip() if len(args) > 1 else ""
@@ -1918,7 +1950,7 @@ async def cmd_proyecto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     text = (update.message.text or "").strip()
     text = re.sub(r"^/proyecto(@\S+)?", "/proyecto", text, count=1)
-    arg = text[len("/proyecto"):].strip()
+    arg = text[len("/proyecto") :].strip()
 
     if not arg:
         current = get_project("global")
@@ -2005,9 +2037,7 @@ async def cmd_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         cost_str = f"${real_cost:.4f}" + (
             f" (+${listprice_cost:.4f} list-price)" if listprice_cost else ""
         )
-        lines.append(
-            f"`[{tier}] {short_model}` — {total:,} tok ({calls} calls) {cost_str}"
-        )
+        lines.append(f"`[{tier}] {short_model}` — {total:,} tok ({calls} calls) {cost_str}")
     if totals and totals[0][0]:
         t = totals[0]
         real_cost = (cost_split[0][0] or 0.0) if cost_split else 0.0
@@ -2056,9 +2086,7 @@ async def cmd_auth_status(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not authorized(update):
         return
     if not _CREDENTIALS_PATH.exists():
-        await update.message.reply_text(
-            "No credentials file at ~/.claude/.credentials.json"
-        )
+        await update.message.reply_text("No credentials file at ~/.claude/.credentials.json")
         return
     try:
         data = json.loads(_CREDENTIALS_PATH.read_text(encoding="utf-8"))
@@ -2105,9 +2133,7 @@ async def cmd_auth_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 # ── Global Telegram error handler ───────────────────────────────────────────────
-async def _telegram_error_handler(
-    update: object, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def _telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Catch all exceptions dispatched by python-telegram-bot.
 
     Transient network/conflict errors are logged at WARNING and discarded.
@@ -2185,6 +2211,7 @@ def main() -> None:
     APP.add_handler(MessageHandler(filters.Regex(r"^/denegar"), _handle_denegar))
     APP.add_handler(CommandHandler("voice", cmd_voice))
     APP.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    APP.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     APP.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     # NOTE: the /intl ConversationHandler was removed 2026-08-11. It imported
     # my-projects/intl-reports/core/telegram_flow.py, deleted in that sub-repo's
@@ -2192,12 +2219,9 @@ def main() -> None:
     # boot. It also sys.path.insert(0, ...)'d intl-reports/core ahead of the
     # stdlib. intl-reports is driven from tmux via core.cli, not Telegram.
     APP.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    APP.add_handler(
-        CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:")
-    )
-    APP.add_handler(
-        CallbackQueryHandler(handle_resume_callback, pattern=r"^hpt")
-    )
+    APP.add_handler(CallbackQueryHandler(handle_satisfaction_callback, pattern=r"^sat:"))
+    APP.add_handler(CallbackQueryHandler(handle_resume_callback, pattern=r"^hpt"))
+    APP.add_handler(CallbackQueryHandler(handle_governance_callback, pattern=r"^gov_"))
 
     APP.add_error_handler(_telegram_error_handler)
     log.info("Bot polling. Ctrl+C to stop.")
@@ -2250,8 +2274,7 @@ def send_morning_report() -> None:
         # from agent_actions which is populated by pre_tool_use.py
         if sessions_yesterday == 0:
             sessions_yesterday = conn.execute(
-                "SELECT COUNT(DISTINCT session_id) FROM agent_actions"
-                " WHERE date(timestamp) = ?",
+                "SELECT COUNT(DISTINCT session_id) FROM agent_actions" " WHERE date(timestamp) = ?",
                 (yesterday,),
             ).fetchone()[0]
 
@@ -2283,16 +2306,14 @@ def send_morning_report() -> None:
         import re
 
         for proj_file in sorted(
-            (JARVIS / "projects").glob("*.md"),
+            (ROOT_DIR / "projects").glob("*.md"),
             key=lambda f: f.stat().st_mtime,
             reverse=True,
         ):
             text = proj_file.read_text(encoding="utf-8")
             if "status: active" in text.lower() or "status:active" in text.lower():
                 active_project = proj_file.stem
-                m = re.search(
-                    r"(?:next[_\s]step|próximo)[:\s]+(.+)", text, re.IGNORECASE
-                )
+                m = re.search(r"(?:next[_\s]step|próximo)[:\s]+(.+)", text, re.IGNORECASE)
                 if m:
                     next_step = m.group(1).strip()[:80]
                 break
@@ -2321,7 +2342,7 @@ def send_morning_report() -> None:
 
 if __name__ == "__main__":
     if "--morning-report" in sys.argv:
-        load_dotenv(JARVIS / ".env")
+        load_dotenv(ROOT_DIR / ".env")
         send_morning_report()
     else:
         main()

@@ -1,0 +1,56 @@
+# PATH covers cron's own minimal default plus both hosts' `claude` CLI location
+# (Hostinger: /usr/bin/claude; Netcup: /root/.local/bin/claude) — auto_researcher.py
+# shells out to it, and cron's bare default PATH (/usr/bin:/bin) doesn't reach
+# Netcup's install path, found 2026-09-07 alongside the same gap in the systemd
+# units (see infrastructure/systemd/netcup-overrides/dqiii8-bot.service.d/netcup-venv.conf).
+PATH=/root/.local/bin:/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 2 * * 0   cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/tools/knowledge_harvester.py --harvest --max 20 >> /tmp/harvest.log 2>&1
+0 3 * * 0   cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/agents/chunk_freshness_reviewer.py --review 100 >> /tmp/freshness_review.log 2>&1
+0 4 * * * cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/tools/purge_transient_errors.py >> /tmp/dqiii8_purge.log 2>&1
+0 6 * * * cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/monitoring/health_watchdog.py --quiet >> /tmp/dqiii8_watchdog.log 2>&1
+
+# football-value daily capture (WC2026) — 06:30 UTC
+30 6 * * * cd /root/dqiii8/my-projects/football-value && /root/dqiii8/bin/tools/run_python.sh scripts/daily_capture.py >> /tmp/football_capture.log 2>&1
+
+# januskeys.com monitor — mensual hasta 2027-10, luego semanal (expira 2028-04-26)
+# Nota clientRenewProhibited: puede caer antes — vigilar
+0 9 1 * *  /root/dqiii8/my-projects/janus-keys/scripts/monitor_januskeys_com.sh >> /var/log/domain_monitor.log 2>&1
+
+
+# dqiii8 DB daily backup (remediation 2026-07-05) — keeps last 7 per DB. Moved
+# 05:00 -> 02:50 (Opus red-team review, 2026-08-13, P2-2): must run BEFORE
+# triage/purge so the day's snapshot precedes any bulk error_log mutation.
+50 2 * * * /root/dqiii8/bin/tools/db_backup.sh >> /root/dqiii8/var/logs/db_backup.log 2>&1
+
+# nightly maintenance sweep (restored 2026-08-12 — lost during bin/ reorg, per bin/README.md documented cadence)
+5 3 * * * cd /root/dqiii8 && bash bin/nightly.sh > tasks/nightly-report.md 2>&1
+
+# vault_memory weekly decay, applied daily (restored 2026-08-12, per bin/README.md documented cadence)
+# log moved /tmp -> var/logs 2026-08-13 (P3-8): /tmp is wiped at boot, which made
+# health_watchdog's absence check permanently un-distinguishable from a dead cron.
+10 4 * * * cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/agents/memory_decay.py >> /root/dqiii8/var/logs/decay.log 2>&1
+
+# auto-researcher weekly sweep (restored 2026-08-12, per bin/README.md documented cadence)
+# log moved /tmp -> var/logs 2026-08-13 (P3-8)
+5 6 * * 1 cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/tools/auto_researcher.py --full >> /root/dqiii8/var/logs/researcher.log 2>&1
+
+# sandbox tester, every 6h (restored 2026-08-12, per bin/README.md documented cadence)
+# log moved /tmp -> var/logs 2026-08-13 (P3-8)
+0 */6 * * * cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/tools/sandbox_tester.py --process-queue >> /root/dqiii8/var/logs/sandbox.log 2>&1
+
+# health_check.py daily report (stress-test remediation Stage 3, 2026-08-13)
+50 5 * * * cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/tools/health_check.py >> /root/dqiii8/var/logs/health_check.log 2>&1
+
+# error_log triage: auto-resolve expected free-tier fallback cascades (stress-test remediation Stage 6, 2026-08-13)
+50 3 * * * cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/tools/triage_error_log.py --apply >> /root/dqiii8/var/logs/triage.log 2>&1
+0 * * * * cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh bin/tools/cleanup_old_backups.py >> /root/dqiii8/var/logs/cleanup_old_backups.log 2>&1
+
+# global-media-org city-blocks: reciclado de sesion tmux cada 24h (research.md §11, P1
+# Resilience — documentado desde la ronda de hardening, nunca instalado de verdad hasta
+# encontrarlo via disaster-testing en vivo, 2026-08-26). Recicla la sesion 'city-blocks'
+# aunque no haya fallado, y alerta por Telegram si el restart mismo falla.
+0 4 * * * ( cd /root/dqiii8/my-projects/global-media-org && /root/dqiii8/bin/tools/run_python.sh bin/tools/city_blocks_ctl.py restart || ( cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh -c "from bin.core.notify import notify; notify('ALERT: city-blocks restart failed')" ) ) >> /root/dqiii8/var/logs/city_blocks_recycle.log 2>&1
+
+# Lier v1: recordatorio diario de accountability (Q10, DISCOVERY_QA_v1.md), 09:00 UTC
+0 9 * * * cd /root/dqiii8 && /root/dqiii8/bin/tools/run_python.sh my-projects/lier/scripts/daily_reminder.py >> /root/dqiii8/var/logs/lier_reminder.log 2>&1

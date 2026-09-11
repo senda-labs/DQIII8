@@ -127,7 +127,7 @@ corpus. The canonical file and token ranges live in `rules_dispatcher.py`'s docs
 `PermissionAnalyzer` checks pattern blocklists, path blocklists, daily budget cap, and execution mode (`supervised` vs `autonomous`). A DENY is final — the wrapper never retries. The blocked- and governance-path lists are code constants in `.claude/hooks/permission_analyzer.py`, documented once in `.claude/rules/02_hooks_and_permissions.md`; no other doc, this one included, may restate them.
 
 ### SQLite state engine — `database/schema_v2.sql`
-60 tables + 29 views. `schema_v2.sql` is the idempotent source of truth — apply it
+59 tables + 29 views. `schema_v2.sql` is the idempotent source of truth — apply it
 for a fresh install; no migration scripts needed. Key tables: `instincts`, `agent_actions`,
 `routing_feedback`. (`model_performance` and `session_events` were documented here previously
 but do not exist in `schema_v2.sql` or the live DB — removed 2026-08-11 stress test.)
@@ -184,7 +184,7 @@ The installer:
 2. Prompts to install Ollama (optional — skip to start with Tier B only)
 3. Pulls `qwen2.5-coder:7b` if Ollama is installed
 4. Copies `config/.env.example` → `.env` if not present
-5. Applies `database/schema_v2.sql` (creates all 60 tables)
+5. Applies `database/schema_v2.sql` (creates all 59 tables)
 6. Copies Claude Code settings template
 7. Runs smoke tests
 

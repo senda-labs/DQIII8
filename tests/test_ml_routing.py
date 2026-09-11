@@ -44,6 +44,7 @@ def _isolated_db(tmp_path):
     conn.close()
     return db_path
 
+
 # ── classify_task_complexity ──────────────────────────────────────────────────
 
 
@@ -58,61 +59,40 @@ class TestClassifyTaskComplexity:
         assert classify_task_complexity("git log last 10 commits") == "READ_ONLY"
 
     def test_read_only_explain(self):
-        assert (
-            classify_task_complexity("explain how the classifier works") == "READ_ONLY"
-        )
+        assert classify_task_complexity("explain how the classifier works") == "READ_ONLY"
 
     def test_read_only_find(self):
-        assert (
-            classify_task_complexity("find all .py files with import sqlite3")
-            == "READ_ONLY"
-        )
+        assert classify_task_complexity("find all .py files with import sqlite3") == "READ_ONLY"
 
     def test_simple_write_pytest(self):
-        assert (
-            classify_task_complexity("run pytest tests/test_smoke.py") == "SIMPLE_WRITE"
-        )
+        assert classify_task_complexity("run pytest tests/test_smoke.py") == "SIMPLE_WRITE"
 
     def test_simple_write_commit(self):
-        assert (
-            classify_task_complexity("git add and commit these changes")
-            == "SIMPLE_WRITE"
-        )
+        assert classify_task_complexity("git add and commit these changes") == "SIMPLE_WRITE"
 
     def test_simple_write_push(self):
         assert classify_task_complexity("git push to origin main") == "SIMPLE_WRITE"
 
     def test_simple_write_test(self):
-        assert (
-            classify_task_complexity("test the token tracking module") == "SIMPLE_WRITE"
-        )
+        assert classify_task_complexity("test the token tracking module") == "SIMPLE_WRITE"
 
     def test_code_gen_create(self):
-        assert (
-            classify_task_complexity("create a function to parse JSON config")
-            == "CODE_GEN"
-        )
+        assert classify_task_complexity("create a function to parse JSON config") == "CODE_GEN"
 
     def test_code_gen_implement(self):
-        assert (
-            classify_task_complexity("implement a retry decorator for API calls")
-            == "CODE_GEN"
-        )
+        assert classify_task_complexity("implement a retry decorator for API calls") == "CODE_GEN"
 
     def test_code_gen_refactor(self):
         assert classify_task_complexity("refactor the auth module") == "CODE_GEN"
 
     def test_code_gen_write(self):
         assert (
-            classify_task_complexity("write a class that wraps sqlite3 connections")
-            == "CODE_GEN"
+            classify_task_complexity("write a class that wraps sqlite3 connections") == "CODE_GEN"
         )
 
     def test_architecture_design(self):
         assert (
-            classify_task_complexity(
-                "design a caching system for the embeddings pipeline"
-            )
+            classify_task_complexity("design a caching system for the embeddings pipeline")
             == "ARCHITECTURE"
         )
 
@@ -127,35 +107,24 @@ class TestClassifyTaskComplexity:
         assert classify_task_complexity(long) == "ARCHITECTURE"
 
     def test_architecture_keyword(self):
-        assert (
-            classify_task_complexity("diseña el sistema de routing de modelos")
-            == "ARCHITECTURE"
-        )
+        assert classify_task_complexity("diseña el sistema de routing de modelos") == "ARCHITECTURE"
 
     def test_critical_production(self):
         assert classify_task_complexity("deploy to production server") == "CRITICAL"
 
     def test_critical_security(self):
-        assert (
-            classify_task_complexity("security audit of the auth module") == "CRITICAL"
-        )
+        assert classify_task_complexity("security audit of the auth module") == "CRITICAL"
 
     def test_critical_credentials(self):
-        assert (
-            classify_task_complexity("rotate the API credentials in .env") == "CRITICAL"
-        )
+        assert classify_task_complexity("rotate the API credentials in .env") == "CRITICAL"
 
     def test_critical_vulnerability(self):
-        assert (
-            classify_task_complexity("fix the CVE vulnerability in dependencies")
-            == "CRITICAL"
-        )
+        assert classify_task_complexity("fix the CVE vulnerability in dependencies") == "CRITICAL"
 
     def test_critical_takes_priority_over_read(self):
         # Even if it looks like a read, security keywords escalate
         assert (
-            classify_task_complexity("grep for hardcoded credentials in production")
-            == "CRITICAL"
+            classify_task_complexity("grep for hardcoded credentials in production") == "CRITICAL"
         )
 
 
@@ -256,8 +225,14 @@ class TestShouldFallback:
         assert should_fallback("A", success=True, output=long_output, prompt_len=50) is False
 
     def test_failure_signal_escalates(self):
-        assert should_fallback("A", success=True, output="I cannot do this task", prompt_len=50) is True
-        assert should_fallback("A", success=True, output="no puedo completar eso", prompt_len=50) is True
+        assert (
+            should_fallback("A", success=True, output="I cannot do this task", prompt_len=50)
+            is True
+        )
+        assert (
+            should_fallback("A", success=True, output="no puedo completar eso", prompt_len=50)
+            is True
+        )
 
     def test_short_prompt_no_escalation_on_short_output(self):
         assert should_fallback("A", success=True, output="ok", prompt_len=50) is False
@@ -272,9 +247,7 @@ def test_token_usage_has_task_complexity_column():
     cur = conn.execute("PRAGMA table_info(token_usage)")
     columns = {row[1] for row in cur.fetchall()}
     conn.close()
-    assert (
-        "task_complexity" in columns
-    ), "task_complexity column missing from token_usage"
+    assert "task_complexity" in columns, "task_complexity column missing from token_usage"
 
 
 @pytest.mark.requires_db
@@ -299,8 +272,7 @@ def test_log_token_usage_stores_task_complexity(tmp_path, monkeypatch):
 
     conn = sqlite3.connect(str(db_path))
     cur = conn.execute(
-        "SELECT task_complexity FROM token_usage WHERE session_id = ? "
-        "ORDER BY id DESC LIMIT 1",
+        "SELECT task_complexity FROM token_usage WHERE session_id = ? " "ORDER BY id DESC LIMIT 1",
         (session_id,),
     )
     row = cur.fetchone()

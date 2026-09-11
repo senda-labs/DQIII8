@@ -7,6 +7,7 @@ Usage:
     python3 -m bin.core.dq_compile --pattern debug "p" # force a pattern
     echo "prompt" | python3 -m bin.core.dq_compile     # stdin
 """
+
 from __future__ import annotations
 
 import json

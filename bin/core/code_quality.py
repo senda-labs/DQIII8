@@ -58,14 +58,14 @@ from bin.core.logging_config import get_logger as _get_logger
 log = _get_logger(__name__)
 
 # Agents (defined in AGENT_ROUTING / openrouter_wrapper.py)
-_OPT_AGENT = "opt-analyst"        # NIM Mistral 675B — optimization analysis
+_OPT_AGENT = "opt-analyst"  # NIM Mistral 675B — optimization analysis
 _ENGINEER_AGENT = "code-engineer"  # NIM DeepSeek V4 Flash — code generation
-_PROBE_AGENT = "context-probe"     # Anthropic Haiku — bombardment
+_PROBE_AGENT = "context-probe"  # Anthropic Haiku — bombardment
 _REVIEWER_AGENT = "code-reviewer"  # Anthropic Opus — strict review
 
 _MAX_ITERATIONS = 2
 _HAIKU_SCORE_THRESHOLD = 70  # below this (or with critical gaps) → escalate to Opus
-_OPUS_COST_PER_CALL = 0.20   # rough USD estimate per Opus review turn
+_OPUS_COST_PER_CALL = 0.20  # rough USD estimate per Opus review turn
 
 
 # ── Sandbox ──────────────────────────────────────────────────────────────────
@@ -80,9 +80,7 @@ def _run_in_sandbox(code: str, timeout: int = 10) -> dict:
     """
     tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=".py", delete=False, encoding="utf-8"
-        ) as fh:
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as fh:
             fh.write(code)
             tmp_path = fh.name
 
@@ -131,12 +129,12 @@ def _extract_code(raw: str) -> str:
 # ── Haiku Context Bombardment ────────────────────────────────────────────────
 
 QUESTION_CATEGORIES = [
-    "traceability",   # trace X from input to output
-    "contracts",      # what does function Y guarantee
-    "invariants",     # what can never be None/empty in Z
-    "dependencies",   # which module depends on what, undeclared
-    "misalignment",   # name vs behaviour coherence
-    "edge_cases",     # empty / null / negative input on W
+    "traceability",  # trace X from input to output
+    "contracts",  # what does function Y guarantee
+    "invariants",  # what can never be None/empty in Z
+    "dependencies",  # which module depends on what, undeclared
+    "misalignment",  # name vs behaviour coherence
+    "edge_cases",  # empty / null / negative input on W
 ]
 
 # How many questions per category (sums to 100).
@@ -223,7 +221,15 @@ def _score_bombardment(raw: str, questions: list[str]) -> dict:
         idx = int(m.group(1))
         answers[idx] = m.group(2).strip()
 
-    weak_markers = ("uncertain", "unsure", "i don't know", "not sure", "unclear", "cannot determine", "n/a")
+    weak_markers = (
+        "uncertain",
+        "unsure",
+        "i don't know",
+        "not sure",
+        "unclear",
+        "cannot determine",
+        "n/a",
+    )
     gaps: list[str] = []
     critical_gaps: list[str] = []
     answered_ok = 0
@@ -235,7 +241,11 @@ def _score_bombardment(raw: str, questions: list[str]) -> dict:
         if is_weak:
             gap = f"Gap #{i} [{_category_of(q)}]: {q}"
             gaps.append(gap)
-            if q.startswith("[invariants]") or q.startswith("[contracts]") or q.startswith("[traceability]"):
+            if (
+                q.startswith("[invariants]")
+                or q.startswith("[contracts]")
+                or q.startswith("[traceability]")
+            ):
                 critical_gaps.append(gap)
         else:
             answered_ok += 1

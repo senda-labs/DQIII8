@@ -1,4 +1,5 @@
 """Unit tests for bin/core/auth_watchdog.py"""
+
 import importlib.util
 import json
 import os
@@ -20,12 +21,17 @@ spec.loader.exec_module(mod)
 class TestCheckCredentialsFile:
     def test_returns_ok_when_file_has_tokens(self, tmp_path):
         creds = tmp_path / ".credentials.json"
-        creds.write_text(json.dumps({
-            "claudeAiOauth": {
-                "accessToken": "tok_access",
-                "refreshToken": "tok_refresh",
-            }
-        }), encoding="utf-8")
+        creds.write_text(
+            json.dumps(
+                {
+                    "claudeAiOauth": {
+                        "accessToken": "tok_access",
+                        "refreshToken": "tok_refresh",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
         ok, msg = mod.check_credentials_file(creds)
         assert ok is True
         assert msg == ""
@@ -45,9 +51,9 @@ class TestCheckCredentialsFile:
 
     def test_returns_error_when_only_access_token_present(self, tmp_path):
         creds = tmp_path / ".credentials.json"
-        creds.write_text(json.dumps({
-            "claudeAiOauth": {"accessToken": "tok_access"}
-        }), encoding="utf-8")
+        creds.write_text(
+            json.dumps({"claudeAiOauth": {"accessToken": "tok_access"}}), encoding="utf-8"
+        )
         ok, msg = mod.check_credentials_file(creds)
         assert ok is False
         assert "token" in msg.lower()
@@ -115,9 +121,10 @@ class TestCheckClaudeProbe:
 class TestRunWatchdog:
     def test_silent_when_all_checks_pass(self, tmp_path):
         creds = tmp_path / ".credentials.json"
-        creds.write_text(json.dumps({
-            "claudeAiOauth": {"accessToken": "tok", "refreshToken": "ref"}
-        }), encoding="utf-8")
+        creds.write_text(
+            json.dumps({"claudeAiOauth": {"accessToken": "tok", "refreshToken": "ref"}}),
+            encoding="utf-8",
+        )
         with patch.object(mod, "CREDENTIALS_PATH", creds):
             with patch.object(mod, "check_claude_probe", return_value=(True, "")):
                 with patch.object(mod, "notify") as mock_notify:
@@ -135,9 +142,10 @@ class TestRunWatchdog:
 
     def test_notifies_on_env_conflict(self, tmp_path):
         creds = tmp_path / ".credentials.json"
-        creds.write_text(json.dumps({
-            "claudeAiOauth": {"accessToken": "tok", "refreshToken": "ref"}
-        }), encoding="utf-8")
+        creds.write_text(
+            json.dumps({"claudeAiOauth": {"accessToken": "tok", "refreshToken": "ref"}}),
+            encoding="utf-8",
+        )
         with patch.object(mod, "CREDENTIALS_PATH", creds):
             with patch.object(mod, "check_claude_probe", return_value=(True, "")):
                 with patch.object(mod, "notify") as mock_notify:
@@ -149,9 +157,10 @@ class TestRunWatchdog:
 
     def test_notifies_on_probe_failure(self, tmp_path):
         creds = tmp_path / ".credentials.json"
-        creds.write_text(json.dumps({
-            "claudeAiOauth": {"accessToken": "tok", "refreshToken": "ref"}
-        }), encoding="utf-8")
+        creds.write_text(
+            json.dumps({"claudeAiOauth": {"accessToken": "tok", "refreshToken": "ref"}}),
+            encoding="utf-8",
+        )
         with patch.object(mod, "CREDENTIALS_PATH", creds):
             with patch.object(mod, "check_claude_probe", return_value=(False, "401")):
                 with patch.object(mod, "notify") as mock_notify:

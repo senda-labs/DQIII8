@@ -14,16 +14,19 @@ from pathlib import Path
 
 import pytest
 
+
 # Skip entire module if sqlite_vec extension is not installed
 def _sqlite_vec_available() -> bool:
     try:
         import sqlite3 as _s, sqlite_vec as _sv
+
         c = _s.connect(":memory:")
         c.enable_load_extension(True)
         _sv.load(c)
         return True
     except Exception:
         return False
+
 
 pytestmark = pytest.mark.skipif(
     not _sqlite_vec_available(),
@@ -202,9 +205,7 @@ def test_episode_and_access_log():
     """Episodes link facts; fact_access_log tracks queries when session_id given."""
     ep = tm.add_episode("sess-5", "test-agent", "Access log test", "meta")
     f1 = tm.add_fact("agent", "status", "active", domain="meta", source_episode_id=ep)
-    f2 = tm.add_fact(
-        "agent", "model", "sonnet-4-6", domain="meta", source_episode_id=ep
-    )
+    f2 = tm.add_fact("agent", "model", "sonnet-4-6", domain="meta", source_episode_id=ep)
 
     # query_facts with session_id should log accesses
     results = tm.query_facts(domain="meta", session_id="sess-5")
@@ -368,9 +369,7 @@ def test_hybrid_search_keyword():
     results = hs.search_by_keywords("betting formula", top_k=5, domain="finance")
     assert len(results) >= 1
     assert all(r["search_method"] == "keyword" for r in results)
-    assert any(
-        "kelly" in r["source"].lower() or "kelly" in r["text"].lower() for r in results
-    )
+    assert any("kelly" in r["source"].lower() or "kelly" in r["text"].lower() for r in results)
 
 
 def test_rrf_merge():
@@ -418,9 +417,7 @@ def test_rrf_merge():
 
     beta_score = next(r["rrf_score"] for r in merged if r["text"] == "beta")
     gamma_score = next(r["rrf_score"] for r in merged if r["text"] == "gamma")
-    assert (
-        beta_score > gamma_score
-    ), "beta (appears in both lists) should rank above gamma"
+    assert beta_score > gamma_score, "beta (appears in both lists) should rank above gamma"
 
     # Dedup: beta must appear exactly once
     assert texts.count("beta") == 1
@@ -437,14 +434,13 @@ import temporal_memory as tm_mod
 
 tm_mod.DB_PATH = _TMP_PATH
 
+
 def test_compute_relevance_recency():
     """A freshly-created fact scores higher on recency than a 30-day-old fact."""
     ep = tm.add_episode("sess-rel", "agent", "", "test")
 
     # Fact created now — recency = exp(0) = 1.0
-    f_new = tm.add_fact(
-        "python", "latestver", "3.12", domain="test", source_episode_id=ep
-    )
+    f_new = tm.add_fact("python", "latestver", "3.12", domain="test", source_episode_id=ep)
 
     # Simulate an old fact by manually setting valid_from 30 days ago
     conn = sqlite3.connect(str(_TMP_PATH))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """hpt_poller — reconciliation + retry poller for human_pending_tasks.
 
-Scope: the poller slice of jarvis-control3/architecture/07-durable-worker.md.
+Scope: the poller slice of my-projects/lier/architecture/07-durable-worker.md.
 hpt_worker.py / hpt_expiry_cron.py / hpt_agent_dispatcher.py are OUT OF SCOPE.
 
 For each row `status='pending' AND archived=0 AND is_test=0`:
@@ -28,6 +28,7 @@ For each row `status='pending' AND archived=0 AND is_test=0`:
 The systemd timer is Type=oneshot with no overlap; the claim-to-notify CAS also
 covers a manual `systemctl start` racing the timer, so no external lock is needed.
 """
+
 from __future__ import annotations
 
 import json
@@ -53,7 +54,7 @@ def _now_iso() -> str:
 
 def _next_retry_iso(notify_count: int) -> str:
     """Exponential-ish backoff, capped, layered on top of the 2-minute timer."""
-    delay_min = min(2 ** notify_count, 30)
+    delay_min = min(2**notify_count, 30)
     return (datetime.now(timezone.utc) + timedelta(minutes=delay_min)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
@@ -91,12 +92,16 @@ def _reconcile(row) -> None:
             "notify_count=notify_count+1, notification_msg_id=COALESCE(:mid, notification_msg_id), "
             "updated_at=:now, version=version+1 "
             "WHERE id=:id AND status='pending' AND version=:v",
-            {"notified_at": notified_at, "mid": msg_id, "now": _now_iso(),
-             "id": task_id, "v": row["version"]},
+            {
+                "notified_at": notified_at,
+                "mid": msg_id,
+                "now": _now_iso(),
+                "id": task_id,
+                "v": row["version"],
+            },
         )
         if cur.rowcount == 1:
-            events.insert_event(task_id, "reconciled",
-                                {"notified_at": notified_at}, conn=conn)
+            events.insert_event(task_id, "reconciled", {"notified_at": notified_at}, conn=conn)
             log.info("reconciled pending->notified (no resend): %s", task_id)
 
 
@@ -113,8 +118,9 @@ def _exhaust(row) -> None:
             {"now": _now_iso(), "id": task_id, "v": row["version"]},
         )
         if cur.rowcount == 1:
-            events.insert_event(task_id, "poller_exhausted",
-                                {"notify_count": row["notify_count"]}, conn=conn)
+            events.insert_event(
+                task_id, "poller_exhausted", {"notify_count": row["notify_count"]}, conn=conn
+            )
             log.warning("poller_exhausted -> cancelled/discarded: %s", task_id)
             _alerted = True
         else:
@@ -136,8 +142,12 @@ def _claim_and_notify(row) -> None:
             "next_retry_at=:next, version=version+1, updated_at=:now "
             "WHERE id=:id AND status='pending' AND version=:v "
             "AND (next_retry_at IS NULL OR next_retry_at <= :now)",
-            {"next": _next_retry_iso(row["notify_count"]), "now": now,
-             "id": task_id, "v": row["version"]},
+            {
+                "next": _next_retry_iso(row["notify_count"]),
+                "now": now,
+                "id": task_id,
+                "v": row["version"],
+            },
         )
         won = cur.rowcount == 1
     if not won:
@@ -148,8 +158,9 @@ def _claim_and_notify(row) -> None:
     text = f"⚠️ {row['project']} bloqueado ({row['blocking_type']})\n{(row['description'] or '')[:400]}"
     reply_markup = {"inline_keyboard": [[{"text": "Reanudar", "callback_data": f"hpt:{task_id}"}]]}
     events.insert_event(task_id, "notify_attempt", {"notify_count": row["notify_count"] + 1})
-    result = send_telegram(text, parse_mode=None, reply_markup=reply_markup,
-                           chat_id=row["allowed_chat_id"])
+    result = send_telegram(
+        text, parse_mode=None, reply_markup=reply_markup, chat_id=row["allowed_chat_id"]
+    )
 
     if result.ok:
         # Ledger BEFORE the status UPDATE — same ordering invariant as
@@ -161,14 +172,19 @@ def _claim_and_notify(row) -> None:
                     "UPDATE human_pending_tasks SET status='notified', notified_at=:now, "
                     "notification_msg_id=:mid, updated_at=:now, version=version+1 "
                     "WHERE id=:id AND status='pending' AND version=:v",
-                    {"now": _now_iso(), "mid": result.message_id,
-                     "id": task_id, "v": claimed_version},
+                    {
+                        "now": _now_iso(),
+                        "mid": result.message_id,
+                        "id": task_id,
+                        "v": claimed_version,
+                    },
                 )
             if cur.rowcount == 1:
                 log.info("poller notified pending->notified: %s", task_id)
             else:
-                events.insert_event(task_id, "status_update_failed",
-                                    {"reason": "cas_miss_after_send"})
+                events.insert_event(
+                    task_id, "status_update_failed", {"reason": "cas_miss_after_send"}
+                )
         except Exception as e:
             events.insert_event(task_id, "status_update_failed", {"error": str(e)})
     else:

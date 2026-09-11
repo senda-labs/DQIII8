@@ -93,7 +93,9 @@ def atomic_replace(path: Path, new_bytes: bytes, *, backup_from: bytes) -> Write
     try:
         write_new_file(tmp, new_bytes, mode=mode)
     except FileExistsError:
-        return WriteResult(False, None, "a .tmp already exists (stale or concurrent run), resolve it first")
+        return WriteResult(
+            False, None, "a .tmp already exists (stale or concurrent run), resolve it first"
+        )
 
     # backup only taken once we're certain we're about to succeed
     try:

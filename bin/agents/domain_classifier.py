@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -558,9 +559,7 @@ def setup_db(force: bool = False) -> None:
                 updated_at  TEXT    DEFAULT (datetime('now'))
             )
         """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_domain_name ON domain_enrichment (name)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_domain_name ON domain_enrichment (name)")
 
         for domain_name, info in DOMAINS.items():
             existing = conn.execute(
@@ -569,15 +568,11 @@ def setup_db(force: bool = False) -> None:
             ).fetchone()
 
             if existing and not force and existing[1] is not None:
-                log.info(
-                    f"✓ {domain_name} — already has centroid (use --force to recalculate)"
-                )
+                log.info(f"✓ {domain_name} — already has centroid (use --force to recalculate)")
                 continue
 
             # Calculate centroid: embedding of descriptive text + keywords
-            centroid_text = (
-                info["description"] + ". Keywords: " + ", ".join(info["keywords"])
-            )
+            centroid_text = info["description"] + ". Keywords: " + ", ".join(info["keywords"])
             log.debug(f"Calculating centroid for {domain_name}...")
             vec = _get_embedding(centroid_text)
 

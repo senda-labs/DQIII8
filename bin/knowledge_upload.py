@@ -20,8 +20,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-sys.path.insert(0, str(JARVIS / "bin"))
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+sys.path.insert(0, str(ROOT_DIR / "bin"))
 
 from domain_classifier import classify_domain
 from jal_common import load_env
@@ -30,16 +30,16 @@ SUPPORTED_EXTENSIONS = {".pdf", ".md", ".txt", ".docx", ".zip"}
 
 # Maps domain name → agent that uses it
 DOMAIN_AGENT_MAP: dict[str, str] = {
-    "finance":          "finance-analyst",
-    "economics":        "finance-analyst",
-    "business":         "finance-analyst",
-    "trading":          "finance-analyst",
-    "technology":       "python-specialist",
+    "finance": "finance-analyst",
+    "economics": "finance-analyst",
+    "business": "finance-analyst",
+    "trading": "finance-analyst",
+    "technology": "python-specialist",
     "computer_science": "python-specialist",
-    "mathematics":      "python-specialist",
+    "mathematics": "python-specialist",
     "applied_sciences": "content-automator",
-    "arts":             "creative-writer",
-    "social_sciences":  "data-analyst",
+    "arts": "creative-writer",
+    "social_sciences": "data-analyst",
 }
 
 
@@ -47,6 +47,7 @@ def _extract_text_from_pdf(path: Path) -> str:
     """Extracts plain text from a PDF using pdfplumber if available."""
     try:
         import pdfplumber
+
         with pdfplumber.open(str(path)) as pdf:
             pages = [p.extract_text() or "" for p in pdf.pages]
         return "\n\n".join(pages)
@@ -60,6 +61,7 @@ def _extract_text_from_docx(path: Path) -> str:
     """Extracts plain text from a DOCX file using python-docx if available."""
     try:
         import docx
+
         doc = docx.Document(str(path))
         return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
     except ImportError:
@@ -83,7 +85,9 @@ def _get_text_for_classification(src: Path) -> str:
     return src.stem.replace("_", " ").replace("-", " ")
 
 
-def _detect_agent(src: Path, override_domain: str = "", override_agent: str = "") -> tuple[str, str, float]:
+def _detect_agent(
+    src: Path, override_domain: str = "", override_agent: str = ""
+) -> tuple[str, str, float]:
     """
     Returns (agent_name, domain, confidence).
     Uses override_agent > override_domain > auto-classification.
@@ -107,7 +111,7 @@ def _copy_to_knowledge(src: Path, agent: str, subdir: str = "user_uploads") -> P
     Creates the directory if it doesn't exist.
     Returns the destination path.
     """
-    dest_dir = JARVIS / ".claude" / "agents" / agent / "knowledge" / subdir
+    dest_dir = ROOT_DIR / ".claude" / "agents" / agent / "knowledge" / subdir
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / src.name
     shutil.copy2(str(src), str(dest))
@@ -141,9 +145,10 @@ def _convert_to_md(src: Path, dest_dir: Path) -> Path:
 def _reindex(agent: str) -> bool:
     """Runs knowledge_indexer.py for the given agent. Returns True on success."""
     import subprocess
+
     result = subprocess.run(
-        [sys.executable, str(JARVIS / "bin" / "knowledge_indexer.py"), "--agent", agent],
-        cwd=str(JARVIS),
+        [sys.executable, str(ROOT_DIR / "bin" / "knowledge_indexer.py"), "--agent", agent],
+        cwd=str(ROOT_DIR),
         capture_output=True,
         text=True,
     )
@@ -185,13 +190,30 @@ def upload(
 
     if not src.exists():
         print(f"[upload] File not found: {src}", file=sys.stderr)
-        return {"success": False, "agent": "", "domain": "", "confidence": 0.0,
-                "dest": "", "indexed": False, "files_processed": 0}
+        return {
+            "success": False,
+            "agent": "",
+            "domain": "",
+            "confidence": 0.0,
+            "dest": "",
+            "indexed": False,
+            "files_processed": 0,
+        }
 
     if src.suffix.lower() not in SUPPORTED_EXTENSIONS:
-        print(f"[upload] Unsupported extension: {src.suffix} (supported: {SUPPORTED_EXTENSIONS})", file=sys.stderr)
-        return {"success": False, "agent": "", "domain": "", "confidence": 0.0,
-                "dest": str(src), "indexed": False, "files_processed": 0}
+        print(
+            f"[upload] Unsupported extension: {src.suffix} (supported: {SUPPORTED_EXTENSIONS})",
+            file=sys.stderr,
+        )
+        return {
+            "success": False,
+            "agent": "",
+            "domain": "",
+            "confidence": 0.0,
+            "dest": str(src),
+            "indexed": False,
+            "files_processed": 0,
+        }
 
     # Handle ZIP: extract and upload each file individually
     if src.suffix.lower() == ".zip":
@@ -240,6 +262,7 @@ def _upload_zip(
 ) -> dict:
     """Extracts a ZIP and uploads each supported file."""
     import tempfile
+
     agents_touched: set[str] = set()
     processed = 0
 
@@ -272,7 +295,7 @@ def _upload_zip(
         "agent": ", ".join(agents_touched),
         "domain": override_domain or "auto",
         "confidence": 1.0 if override_domain else 0.8,
-        "dest": str(JARVIS / ".claude" / "agents"),
+        "dest": str(ROOT_DIR / ".claude" / "agents"),
         "indexed": indexed,
         "files_processed": processed,
     }

@@ -67,9 +67,15 @@ def test_png_text_chunk_removed_at_all_tier(tmp_path):
 @given(
     w=st.integers(min_value=4, max_value=40),
     h=st.integers(min_value=4, max_value=40),
-    author=st.text(min_size=1, max_size=20, alphabet=st.characters(blacklist_categories=("Cs",), max_codepoint=0x2000)),
+    author=st.text(
+        min_size=1,
+        max_size=20,
+        alphabet=st.characters(blacklist_categories=("Cs",), max_codepoint=0x2000),
+    ),
 )
-@settings(max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
 def test_image_roundtrip_pixel_invariant(tmp_path, w, h, author):
     """Property: safe-tier removal on a random-size JPEG with a random EXIF
     Artist value always yields unchanged decoded-pixel sha256.
@@ -92,5 +98,7 @@ def test_image_roundtrip_pixel_invariant(tmp_path, w, h, author):
     orig_pixels = hashlib.sha256(Image.open(p).convert("RGB").tobytes()).hexdigest()
     import io as _io
 
-    new_pixels = hashlib.sha256(Image.open(_io.BytesIO(cleaned)).convert("RGB").tobytes()).hexdigest()
+    new_pixels = hashlib.sha256(
+        Image.open(_io.BytesIO(cleaned)).convert("RGB").tobytes()
+    ).hexdigest()
     assert orig_pixels == new_pixels

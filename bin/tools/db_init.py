@@ -6,6 +6,7 @@ Usage:
     python3 bin/tools/db_init.py          # same
     python3 bin/tools/db_init.py --check  # verify tables only, no writes
 """
+
 import argparse
 import logging
 import sqlite3
@@ -26,9 +27,7 @@ MIGRATIONS_DIR = SCHEMA_PATH.parent / "migrations"
 
 
 def _table_count(conn: sqlite3.Connection) -> int:
-    return conn.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
-    ).fetchone()[0]
+    return conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
 
 
 def init_db(db_path: Path = DB_PATH, schema_path: Path = SCHEMA_PATH) -> None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import struct
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -254,8 +255,12 @@ def make_pdf_with_c2pa_and_attachment(path: Path) -> bytes:
 
     pdf = pikepdf.new()
     pdf.add_blank_page(page_size=(200, 200))
-    manifest = _attach_file(pdf, "c2pa.manifest", b"fake-c2pa-manifest", relationship="/C2PA_Manifest")
-    invoice = _attach_file(pdf, "factur-x.xml", b"<Invoice>real content</Invoice>", relationship="/Data")
+    manifest = _attach_file(
+        pdf, "c2pa.manifest", b"fake-c2pa-manifest", relationship="/C2PA_Manifest"
+    )
+    invoice = _attach_file(
+        pdf, "factur-x.xml", b"<Invoice>real content</Invoice>", relationship="/Data"
+    )
     pdf.Root.AF = pikepdf.Array([manifest, invoice])
     pdf.Root.Names = pdf.make_indirect(
         pikepdf.Dictionary(
@@ -340,7 +345,9 @@ def make_docx_simple(path: Path, *, author: str = "Docx Author", company: str = 
         ns = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
         el = etree.SubElement(root, f"{{{ns}}}Company")
         el.text = company
-        entries["docProps/app.xml"] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+        entries["docProps/app.xml"] = etree.tostring(
+            root, xml_declaration=True, encoding="UTF-8", standalone=True
+        )
     _write_zip(path, entries)
     return path.read_bytes()
 
@@ -369,19 +376,27 @@ def make_docx_with_thumbnail_only_jpeg(path: Path) -> bytes:
 
     ct_ns = "http://schemas.openxmlformats.org/package/2006/content-types"
     ct_root = etree.fromstring(entries["[Content_Types].xml"])
-    if not any(e.get("Extension", "").lower() == "jpeg" for e in ct_root.findall(f"{{{ct_ns}}}Default")):
+    if not any(
+        e.get("Extension", "").lower() == "jpeg" for e in ct_root.findall(f"{{{ct_ns}}}Default")
+    ):
         default = etree.SubElement(ct_root, f"{{{ct_ns}}}Default")
         default.set("Extension", "jpeg")
         default.set("ContentType", "image/jpeg")
-    entries["[Content_Types].xml"] = etree.tostring(ct_root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    entries["[Content_Types].xml"] = etree.tostring(
+        ct_root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
 
     rel_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
     rels_root = etree.fromstring(entries["_rels/.rels"])
     rel = etree.SubElement(rels_root, f"{{{rel_ns}}}Relationship")
     rel.set("Id", "rIdThumb")
-    rel.set("Type", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail")
+    rel.set(
+        "Type", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"
+    )
     rel.set("Target", "docProps/thumbnail.jpeg")
-    entries["_rels/.rels"] = etree.tostring(rels_root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    entries["_rels/.rels"] = etree.tostring(
+        rels_root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
 
     _write_zip(path, entries)
     return path.read_bytes()
@@ -406,9 +421,14 @@ def make_docx_with_dangling_relationship(path: Path) -> bytes:
     rels_root = etree.fromstring(entries["_rels/.rels"])
     rel = etree.SubElement(rels_root, f"{{{rel_ns}}}Relationship")
     rel.set("Id", "rIdDangling")
-    rel.set("Type", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties-extra")
+    rel.set(
+        "Type",
+        "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties-extra",
+    )
     rel.set("Target", "docProps/does-not-exist.xml")
-    entries["_rels/.rels"] = etree.tostring(rels_root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    entries["_rels/.rels"] = etree.tostring(
+        rels_root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
     _write_zip(path, entries)
     return path.read_bytes()
 
@@ -440,10 +460,15 @@ def make_docx_with_external_attached_template(path: Path) -> bytes:
         rels_root = etree.Element(f"{{{rel_ns}}}Relationships", nsmap={None: rel_ns})
     rel = etree.SubElement(rels_root, f"{{{rel_ns}}}Relationship")
     rel.set("Id", "rIdTemplate")
-    rel.set("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/attachedTemplate")
+    rel.set(
+        "Type",
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/attachedTemplate",
+    )
     rel.set("Target", r"\\server\share\Normal.dotm")
     rel.set("TargetMode", "External")
-    entries[settings_rels_path] = etree.tostring(rels_root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    entries[settings_rels_path] = etree.tostring(
+        rels_root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
 
     _write_zip(path, entries)
     return path.read_bytes()
@@ -484,7 +509,12 @@ def make_zip_with_duplicate_entry_names(path: Path) -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("[Content_Types].xml", _DOCX_CONTENT_TYPES)
         zf.writestr("word/document.xml", b"<first/>")
-        zf.writestr("word/document.xml", b"<second/>")
+        # zipfile itself warns on the duplicate name — that's the exact
+        # condition this fixture exists to construct, so suppress it here
+        # rather than let it leak into every test run's warnings summary.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            zf.writestr("word/document.xml", b"<second/>")
     raw = buf.getvalue()
     path.write_bytes(raw)
     return raw

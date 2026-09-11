@@ -90,12 +90,8 @@ def handle(req):
             return
 
         # Block destructive operations
-        if any(
-            sql_upper.startswith(w) for w in ("DROP", "DELETE", "TRUNCATE", "ALTER")
-        ):
-            respond(
-                id_, error="Destructive SQL blocked. Use SELECT, INSERT, UPDATE only."
-            )
+        if any(sql_upper.startswith(w) for w in ("DROP", "DELETE", "TRUNCATE", "ALTER")):
+            respond(id_, error="Destructive SQL blocked. Use SELECT, INSERT, UPDATE only.")
             return
 
         # query tool: SELECT only
@@ -118,11 +114,7 @@ def handle(req):
                 conn.commit()
                 respond(
                     id_,
-                    {
-                        "content": [
-                            {"type": "text", "text": f"Rows affected: {cur.rowcount}"}
-                        ]
-                    },
+                    {"content": [{"type": "text", "text": f"Rows affected: {cur.rowcount}"}]},
                 )
             conn.close()
         except Exception as e:

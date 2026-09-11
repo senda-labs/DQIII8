@@ -5,6 +5,7 @@ Phase 1: heuristic rules (no ML model needed)
 Phase 2: Random Forest trained on routing_feedback (500+ rows)
 Phase 3: RF retrained weekly with feedback loop (2000+ rows)
 """
+
 import argparse
 import json
 import sqlite3
@@ -14,34 +15,94 @@ from pathlib import Path
 DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(DQIII8_ROOT))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
-DB_PATH = DQIII8_ROOT / "database" / "dqiii8.db"  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
+DB_PATH = (
+    DQIII8_ROOT / "database" / "dqiii8.db"
+)  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
 MODEL_PATH = DQIII8_ROOT / "models" / "tier_predictor.pkl"
 
 CODE_KEYWORDS = {
-    "python", "function", "class", "error", "traceback", "refactor",
-    "debug", "test", "import", "async", "def ", "git ", "npm", "pip",
-    "dockerfile", "yaml", "json", "sql", "bash", "script"
+    "python",
+    "function",
+    "class",
+    "error",
+    "traceback",
+    "refactor",
+    "debug",
+    "test",
+    "import",
+    "async",
+    "def ",
+    "git ",
+    "npm",
+    "pip",
+    "dockerfile",
+    "yaml",
+    "json",
+    "sql",
+    "bash",
+    "script",
 }
 
 COMPLEX_KEYWORDS = {
-    "architecture", "design system", "multi-step", "orchestrate",
-    "compare and contrast", "analyze in depth", "write a complete",
-    "full implementation", "business plan", "investment strategy",
-    "research paper", "comprehensive report"
+    "architecture",
+    "design system",
+    "multi-step",
+    "orchestrate",
+    "compare and contrast",
+    "analyze in depth",
+    "write a complete",
+    "full implementation",
+    "business plan",
+    "investment strategy",
+    "research paper",
+    "comprehensive report",
 }
 
 DOMAIN_KEYWORDS = {
-    "natural_sciences": {"bmr", "tdee", "calories", "protein", "dna",
-                         "molecule", "force", "energy", "evolution"},
-    "social_sciences": {"wacc", "dcf", "var", "portfolio", "gdp",
-                        "inflation", "contract", "seo", "marketing"},
-    "formal_sciences": {"derivative", "integral", "algorithm", "proof",
-                        "theorem", "matrix", "complexity"},
-    "humanities_arts": {"chapter", "scene", "character", "philosophy",
-                        "century", "war", "ethics"},
-    "applied_sciences": {"python", "react", "api", "docker", "database",
-                         "frontend", "backend", "devops"}
+    "natural_sciences": {
+        "bmr",
+        "tdee",
+        "calories",
+        "protein",
+        "dna",
+        "molecule",
+        "force",
+        "energy",
+        "evolution",
+    },
+    "social_sciences": {
+        "wacc",
+        "dcf",
+        "var",
+        "portfolio",
+        "gdp",
+        "inflation",
+        "contract",
+        "seo",
+        "marketing",
+    },
+    "formal_sciences": {
+        "derivative",
+        "integral",
+        "algorithm",
+        "proof",
+        "theorem",
+        "matrix",
+        "complexity",
+    },
+    "humanities_arts": {"chapter", "scene", "character", "philosophy", "century", "war", "ethics"},
+    "applied_sciences": {
+        "python",
+        "react",
+        "api",
+        "docker",
+        "database",
+        "frontend",
+        "backend",
+        "devops",
+    },
 }
 
 
@@ -53,12 +114,13 @@ def predict_tier(prompt: str) -> int:
     if MODEL_PATH.exists():
         try:
             import pickle
+
             with open(MODEL_PATH, "rb") as f:
                 model = pickle.load(f)
             features = extract_features(prompt)
             return int(model.predict([features])[0])
         except Exception as _exc:
-            log.warning('%s: %s', __name__, _exc)
+            log.warning("%s: %s", __name__, _exc)
 
     prompt_lower = prompt.lower()
 
@@ -71,8 +133,7 @@ def predict_tier(prompt: str) -> int:
 
     if len(prompt) > 500:
         domain_hits = sum(
-            1 for domain_kws in DOMAIN_KEYWORDS.values()
-            for kw in domain_kws if kw in prompt_lower
+            1 for domain_kws in DOMAIN_KEYWORDS.values() for kw in domain_kws if kw in prompt_lower
         )
         if domain_hits >= 3:
             return 3
@@ -98,9 +159,7 @@ def get_training_data_count() -> int:
     """Count rows in routing_feedback for phase determination."""
     try:
         conn = sqlite3.connect(str(DB_PATH))
-        count = conn.execute(
-            "SELECT COUNT(*) FROM routing_feedback"
-        ).fetchone()[0]
+        count = conn.execute("SELECT COUNT(*) FROM routing_feedback").fetchone()[0]
         conn.close()
         return count
     except Exception:

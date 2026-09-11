@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Single shared writer for human_pending_tasks (jarvis-control3 v2).
+"""Single shared writer for human_pending_tasks (lier v0).
 
 register_and_notify() is the ONLY sanctioned way to insert a blocking row —
 resolver.py, cobrowsing_batch.py and any future MCP tool must call this
 instead of reimplementing the INSERT, per
-jarvis-control3/architecture/03-notification.md §7 (anti-divergence).
+my-projects/lier/architecture/03-notification.md §7 (anti-divergence).
 
 claim() is the only sanctioned way to move unblocked -> claimed (exec-once,
 anti double-resume, per architecture/02-data-model.md §4).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -37,6 +38,8 @@ def _emit(task_id: str, event: str, detail: dict | None = None) -> None:
         events.insert_event(task_id, event, detail)
     except Exception:
         pass
+
+
 _BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 _DEFAULT_TTL = timedelta(hours=24)
 
@@ -132,15 +135,26 @@ def register_and_notify(
                 DO NOTHING
                 """,
                 {
-                    "id": row_id, "dedup_key": dedup_key, "project": project,
-                    "action_id": action_id, "blocking_type": blocking_type,
-                    "description": description[:500], "target_url": target_url,
-                    "screenshot_ref": screenshot_ref, "priority": priority,
-                    "resume_args": resume_args_json, "checkpoint_ref": checkpoint_ref,
-                    "secret_ref": secret_ref, "payload_hash": payload_hash,
-                    "created_by": created_by, "origin_host": origin_host,
-                    "origin_run_id": origin_run_id, "allowed_chat_id": allowed_chat_id,
-                    "now": now, "expires_at": expires_at, "is_test": int(is_test),
+                    "id": row_id,
+                    "dedup_key": dedup_key,
+                    "project": project,
+                    "action_id": action_id,
+                    "blocking_type": blocking_type,
+                    "description": description[:500],
+                    "target_url": target_url,
+                    "screenshot_ref": screenshot_ref,
+                    "priority": priority,
+                    "resume_args": resume_args_json,
+                    "checkpoint_ref": checkpoint_ref,
+                    "secret_ref": secret_ref,
+                    "payload_hash": payload_hash,
+                    "created_by": created_by,
+                    "origin_host": origin_host,
+                    "origin_run_id": origin_run_id,
+                    "allowed_chat_id": allowed_chat_id,
+                    "now": now,
+                    "expires_at": expires_at,
+                    "is_test": int(is_test),
                 },
             )
             if cur.rowcount == 0:
@@ -156,7 +170,9 @@ def register_and_notify(
     text = f"⚠️ {project} bloqueado ({blocking_type})\n{description[:400]}"
     reply_markup = {"inline_keyboard": [[{"text": "Reanudar", "callback_data": f"hpt:{row_id}"}]]}
     _emit(row_id, "notify_attempt")
-    result = send_telegram(text, parse_mode=None, reply_markup=reply_markup, chat_id=allowed_chat_id)
+    result = send_telegram(
+        text, parse_mode=None, reply_markup=reply_markup, chat_id=allowed_chat_id
+    )
 
     if result.ok:
         # Ledger BEFORE the status UPDATE (the whole point): a `notify_ok` event
@@ -208,8 +224,13 @@ def claim(task_id: str, claimed_by: str, version: int, lease_seconds: int = 300)
                    version=version+1, updated_at=:now
              WHERE id=:id AND status='unblocked' AND version=:version
             """,
-            {"claimed_by": claimed_by, "lease_until": lease_until, "now": now_iso,
-             "id": task_id, "version": version},
+            {
+                "claimed_by": claimed_by,
+                "lease_until": lease_until,
+                "now": now_iso,
+                "id": task_id,
+                "version": version,
+            },
         )
         return cur.rowcount == 1
 

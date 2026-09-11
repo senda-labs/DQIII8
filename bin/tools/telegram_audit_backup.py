@@ -174,14 +174,14 @@ def send_document(token: str, allowed_chat_id: str, chat_id: str, path: Path, ca
     # Allowlist re-check at the point of egress, not just at config time. Any
     # future caller that tries to pass a different destination is refused here.
     if chat_id != allowed_chat_id:
-        log.error(
-            "REFUSED: destination chat id does not match TELEGRAM_BACKUP_CHAT_ID allowlist"
-        )
+        log.error("REFUSED: destination chat id does not match TELEGRAM_BACKUP_CHAT_ID allowlist")
         return False
 
     size = path.stat().st_size
     if size > MAX_UPLOAD_BYTES:
-        log.error("skip %s: %d bytes exceeds Telegram's %d byte limit", path, size, MAX_UPLOAD_BYTES)
+        log.error(
+            "skip %s: %d bytes exceeds Telegram's %d byte limit", path, size, MAX_UPLOAD_BYTES
+        )
         return False
 
     body, content_type = _multipart(
@@ -256,7 +256,9 @@ def check_updates(token: str, allowed_chat_id: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--dry-run", action="store_true", help="list what would be uploaded, send nothing")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="list what would be uploaded, send nothing"
+    )
     parser.add_argument(
         "--check-updates",
         action="store_true",
@@ -281,7 +283,9 @@ def main(argv: list[str] | None = None) -> int:
 
     pending = find_new_files(manifest)
     if not pending:
-        log.info("nothing new to back up (%d file(s) already in manifest)", len(manifest["uploaded"]))
+        log.info(
+            "nothing new to back up (%d file(s) already in manifest)", len(manifest["uploaded"])
+        )
         if args.check_updates and not args.dry_run:
             check_updates(token, allowed_chat_id)
         return 0

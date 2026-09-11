@@ -39,10 +39,36 @@ _VALID_DECLARED_BY = {"telegram", "cli", "session_start", "prompt", "api"}
 
 
 def known_projects() -> set[str]:
-    """Validated project name universe: my-projects/<slug> dirs + dqiii8-core."""
+    """Validated project name universe: my-projects/<slug> dirs + dqiii8-core.
+
+    True enumeration — needs the read bit on my-projects/. Only for callers
+    that genuinely need the full set (admin-facing: dqiii8_bot.py,
+    project_ctl.py, dashboard.py — all run as root). Any caller testing one
+    already-known candidate should use is_known_project() instead, which
+    works under the operator sessions' traverse-only ACL on my-projects/
+    (see is_known_project's docstring)."""
     if not MY_PROJECTS_DIR.exists():
         return {CORE_PROJECT}
     return {p.name for p in MY_PROJECTS_DIR.iterdir() if p.is_dir()} | {CORE_PROJECT}
+
+
+def is_known_project(name: str) -> bool:
+    """Membership test for one specific project name, without enumerating my-projects/.
+
+    known_projects() lists the whole directory via iterdir(), which raises
+    PermissionError for operator sessions (plglobal-isabel/mario): they hold
+    a traverse-only ACL on my-projects/ (write+execute, no read bit — a
+    deliberate, documented design: non-listable, named-subdir-only access,
+    docs/plglobal/README.md finding #11). resolve_project_safe() catches that
+    and fails open, so known_projects() silently degrades to {dqiii8-core}
+    for them rather than reflecting reality (docs/plglobal/README.md finding
+    #41). Every caller here only ever tests one already-known candidate (a
+    cwd-derived slug, a project name to validate) — a named-path stat needs
+    only the execute (traverse) bit, which operators do have, so it works
+    where known_projects() doesn't."""
+    if name == CORE_PROJECT:
+        return True
+    return (MY_PROJECTS_DIR / name).is_dir()
 
 
 def _open_context_row(scope: str, timeout: float) -> str | None:
@@ -98,8 +124,8 @@ def resolve_project(
         # Opus review P3-13: an unvalidated cwd slug (typo, stray dir under
         # my-projects/ with no PROJECT.md) would otherwise get written straight
         # to agent_actions.project, bypassing the validation set_project()
-        # enforces. known_projects() already fails open to {CORE_PROJECT}.
-        if slug and slug in known_projects():
+        # enforces.
+        if slug and is_known_project(slug):
             return slug
 
     return CORE_PROJECT
@@ -118,7 +144,7 @@ def set_project(
     """
     if declared_by not in _VALID_DECLARED_BY:
         raise ValueError(f"declared_by must be one of {_VALID_DECLARED_BY}")
-    if validate and project not in known_projects():
+    if validate and not is_known_project(project):
         raise ValueError(f"unknown project: {project!r}")
 
     import datetime as _dt
@@ -182,7 +208,7 @@ def record_project_value(
     project: str, tipo: str, importe_eur: float, nota: str | None = None
 ) -> None:
     """Insert a project_value row (revenue/milestone/estimate)."""
-    if project not in known_projects():
+    if not is_known_project(project):
         raise ValueError(f"unknown project: {project!r}")
     if tipo not in _VALID_VALUE_TIPO:
         raise ValueError(f"tipo must be one of {_VALID_VALUE_TIPO}")
@@ -207,7 +233,7 @@ def set_project_status(project: str, status: str) -> None:
     closed its row — without the fallback that update silently affects 0
     rows and reports success (Opus panel-review P2, 2026-08-12).
     """
-    if project not in known_projects():
+    if not is_known_project(project):
         raise ValueError(f"unknown project: {project!r}")
     if status not in _VALID_STATUS:
         raise ValueError(f"status must be one of {_VALID_STATUS}")
@@ -252,7 +278,7 @@ def get_project_status(project: str) -> str | None:
 
 def set_project_budget(project: str, presupuesto_eur: float) -> None:
     """Upsert the budget target for `project`."""
-    if project not in known_projects():
+    if not is_known_project(project):
         raise ValueError(f"unknown project: {project!r}")
     if presupuesto_eur <= 0:
         raise ValueError("presupuesto_eur must be positive")

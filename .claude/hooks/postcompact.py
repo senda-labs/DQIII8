@@ -16,7 +16,6 @@ import json
 import logging
 import logging.handlers
 import os
-import re
 import sqlite3
 import sys
 from datetime import datetime
@@ -30,12 +29,13 @@ DB = ROOT_DIR / "database" / "dqiii8.db"
 # stdin session_id, never from the state file's own recorded session_id —
 # trusting the file's content to find itself is exactly how the old shared
 # tasks/precompact_state.json leaked one session's state into another's.
-_SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_-]")
+# Sanitizer shared via core.paths.safe_session_id (was a duplicate regex).
+sys.path.insert(0, str(ROOT_DIR / "bin"))
+from core.paths import safe_session_id
 
 
 def _state_file_for(session_id: str) -> Path:
-    safe_id = _SAFE_ID_RE.sub("_", session_id)[:128] or "unknown"
-    return ROOT_DIR / "tasks" / f"precompact_state_{safe_id}.json"
+    return ROOT_DIR / "tasks" / f"precompact_state_{safe_session_id(session_id)}.json"
 
 
 _log = logging.getLogger("dqiii8.postcompact")
@@ -82,9 +82,6 @@ except Exception as e:
 # ── Active project ───────────────────────────────────────────────────
 # DQIII8_PROJECT env var has no writer — resolve via the DB-backed SSOT instead.
 try:
-    _bin_root = str(ROOT_DIR / "bin")
-    if _bin_root not in sys.path:
-        sys.path.insert(0, _bin_root)
     from core.action_log import resolve_project_safe
 
     project = (
@@ -162,12 +159,13 @@ except (ValueError, TypeError):
 #                               retired context-mode continuity snapshot —
 #                               see precompact.py's resume_snippet comment)
 ctx = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-DQIII8 — PostCompact {datetime.now().strftime('%H:%M')}
+DQIII8 — PostCompact
 Context compacted — state restored
 Model  : {model}
 Project: {project}
 Next   : {next_step}{audit_info}
 Session actions: {actions_before}{compact_hint}{resume_block}
+Compacted : {datetime.now().strftime('%Y-%m-%d %H:%M')}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
 _log.info(

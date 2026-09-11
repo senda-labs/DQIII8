@@ -28,7 +28,6 @@ All configuration: `config/`, `.claude/rules/`, `.obsidian/`, domain maps, tieri
 | `01_database_mutations.md` | Any DB/SQL/sqlite3 work |
 | `02_hooks_and_permissions.md` | Hooks, PermissionAnalyzer |
 | `03_tiering_and_routing.md` | Tier/routing/agent changes |
-| `DYNAMIC.md` | Injected by rules_dispatcher at runtime |
 | `rules_db/git-safety.md` | Git/Bash operations |
 | `rules_db/dqiii8-error-prevention.md` | Recurring error prevention |
 

@@ -30,9 +30,7 @@ class TestCheckCredentials:
 
         creds = tmp_path / ".credentials.json"
         creds.write_text(
-            json.dumps(
-                {"claudeAiOauth": {"accessToken": "tok_a", "refreshToken": "tok_r"}}
-            ),
+            json.dumps({"claudeAiOauth": {"accessToken": "tok_a", "refreshToken": "tok_r"}}),
             encoding="utf-8",
         )
         with patch.object(mod, "_CREDENTIALS_PATH", creds):
@@ -95,9 +93,7 @@ class TestCmdAuthUpdate:
         assert "ok" in text.lower() or "valid" in text.lower()
 
     @pytest.mark.anyio
-    async def test_replies_with_login_instructions_when_credentials_missing(
-        self, tmp_path
-    ):
+    async def test_replies_with_login_instructions_when_credentials_missing(self, tmp_path):
         creds = tmp_path / "nonexistent.json"
         update = MagicMock()
         update.message.reply_text = AsyncMock()
@@ -114,22 +110,25 @@ def test_log_cc_command_writes_project(tmp_path, monkeypatch):
 
     db_path = tmp_path / "dqiii8.db"
     conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE agent_actions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT, agent_name TEXT, tool_used TEXT, action_type TEXT,
             input_tokens INTEGER, output_tokens INTEGER, notes TEXT, project TEXT
         )
-        """
-    )
+        """)
     conn.commit()
     conn.close()
     monkeypatch.setattr(mod, "DB", db_path)
 
     mod._log_cc_command(
-        "/cc", "prompt text", "cc_direct", True, 42,
-        session_id="test-sess", project="intl-reports",
+        "/cc",
+        "prompt text",
+        "cc_direct",
+        True,
+        42,
+        session_id="test-sess",
+        project="intl-reports",
     )
 
     conn = sqlite3.connect(str(db_path))
@@ -152,6 +151,26 @@ def test_hora_inicio_then_fin_roundtrip(tmp_path, monkeypatch):
         check=True,
     )
     monkeypatch.setattr(mod, "DB", db_path)
+    # _hora_inicio/_hora_fin go through human_hours.hora_inicio/fin, which use
+    # bin.core.db.get_db() — a module-level DB_PATH resolved once at import time
+    # from DQIII8_ROOT (default /root/dqiii8). This file's own module-loading
+    # harness above (the `with patch.dict("sys.modules", {...})` block) wipes
+    # ALL of sys.modules back to its pre-exec_module state on exit (patch.dict
+    # without clear=True still snapshots and restores the *whole* dict, not
+    # just the 4 mocked keys) — so bin.core.db is no longer registered in
+    # sys.modules after that block, even though mod's attributes still
+    # reference the original module object. A fresh `import bin.core.db`
+    # here would create a *second*, distinct module instance and patching
+    # its DB_PATH would silently miss the one human_hours.get_db actually
+    # reads from — reproducing exactly this bug (test writes to the real
+    # production DB). Patch the function's own __globals__ instead: that is
+    # the exact namespace dict get_db()'s code resolves DB_PATH from,
+    # independent of what is or isn't currently in sys.modules.
+    # get_db is @contextmanager-decorated, so the attribute itself is
+    # contextlib's wrapper — its __globals__ is contextlib's own namespace,
+    # not bin.core.db's. The real generator function (and its DB_PATH
+    # lookup) is __wrapped__.
+    monkeypatch.setitem(mod.human_hours.get_db.__wrapped__.__globals__, "DB_PATH", db_path)
 
     inicio_msg = mod._hora_inicio("intl-reports", source="telegram")
     assert "iniciada" in inicio_msg.lower()

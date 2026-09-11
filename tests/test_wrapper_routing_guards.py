@@ -19,33 +19,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bin.core import openrouter_wrapper as w
 
-JARVIS = Path(__file__).resolve().parents[1]
-SCHEMA_V2_SQL = (JARVIS / "database" / "schema_v2.sql").read_text(encoding="utf-8")
+ROOT_DIR = Path(__file__).resolve().parents[1]
+SCHEMA_V2_SQL = (ROOT_DIR / "database" / "schema_v2.sql").read_text(encoding="utf-8")
 
 
 # ── _NO_DOWNGRADE membership ────────────────────────────────────────────────
 
+
 def test_no_downgrade_covers_all_anthropic_agents():
-    expected = {
-        agent for agent, (prov, _m) in w.AGENT_ROUTING.items() if prov == "anthropic"
-    }
+    expected = {agent for agent, (prov, _m) in w.AGENT_ROUTING.items() if prov == "anthropic"}
     assert w._NO_DOWNGRADE == expected
     # The audit's named examples must be present
     assert {"code-reviewer", "code-validator", "auditor"} <= w._NO_DOWNGRADE
 
 
 def test_build_chain_anthropic_has_no_fallback():
-    chain, no_downgrade = w.build_chain(
-        "anthropic", "claude-opus-5", allow_downgrade=False
-    )
+    chain, no_downgrade = w.build_chain("anthropic", "claude-opus-5", allow_downgrade=False)
     assert no_downgrade is True
     assert chain == [("anthropic", "claude-opus-5")]
 
 
 def test_build_chain_anthropic_optin_downgrade():
-    chain, no_downgrade = w.build_chain(
-        "anthropic", "claude-opus-5", allow_downgrade=True
-    )
+    chain, no_downgrade = w.build_chain("anthropic", "claude-opus-5", allow_downgrade=True)
     assert no_downgrade is False
     assert len(chain) > 1
     assert chain[0] == ("anthropic", "claude-opus-5")
@@ -62,12 +57,12 @@ def test_build_chain_free_tier_keeps_fallbacks():
 
 
 def test_build_chain_ollama_escalation_appends_qwen_last_resort():
-    chain, _ = w.build_chain("groq", "llama-3.3-70b-versatile",
-                             escalated_from_ollama=True)
+    chain, _ = w.build_chain("groq", "llama-3.3-70b-versatile", escalated_from_ollama=True)
     assert chain[-1] == ("ollama", "qwen2.5-coder:7b")
 
 
 # ── Retry / backoff ─────────────────────────────────────────────────────────
+
 
 def _isolate_breaker(monkeypatch, tmp_path):
     monkeypatch.setattr(w, "_BREAKER_PATH", tmp_path / "breaker.json")
@@ -77,7 +72,7 @@ def test_retry_transient_then_success(monkeypatch, tmp_path):
     _isolate_breaker(monkeypatch, tmp_path)
     calls = []
 
-    def fake_request(provider, model, prompt, system_prompt="", echo=True):
+    def fake_request(provider, model, prompt, system_prompt="", echo=True, **_kw):
         calls.append(1)
         if len(calls) < 3:
             return "", 0, 0, False, True  # transient
@@ -96,7 +91,7 @@ def test_fatal_error_does_not_retry(monkeypatch, tmp_path):
     _isolate_breaker(monkeypatch, tmp_path)
     calls = []
 
-    def fake_request(provider, model, prompt, system_prompt="", echo=True):
+    def fake_request(provider, model, prompt, system_prompt="", echo=True, **_kw):
         calls.append(1)
         return "", 0, 0, False, False  # fatal (401/403/404)
 
@@ -112,7 +107,7 @@ def test_retry_exhaustion_gives_up(monkeypatch, tmp_path):
     _isolate_breaker(monkeypatch, tmp_path)
     calls = []
 
-    def fake_request(provider, model, prompt, system_prompt="", echo=True):
+    def fake_request(provider, model, prompt, system_prompt="", echo=True, **_kw):
         calls.append(1)
         return "", 0, 0, False, True
 
@@ -125,6 +120,7 @@ def test_retry_exhaustion_gives_up(monkeypatch, tmp_path):
 
 
 # ── Circuit breaker ─────────────────────────────────────────────────────────
+
 
 def test_breaker_opens_after_threshold_and_recovers(monkeypatch, tmp_path):
     _isolate_breaker(monkeypatch, tmp_path)
@@ -168,9 +164,11 @@ def test_breaker_state_fail_open_on_corrupt_file(monkeypatch, tmp_path):
 
 # ── stream_response compat shim ─────────────────────────────────────────────
 
+
 def test_stream_response_keeps_four_tuple(monkeypatch):
     monkeypatch.setattr(
-        w, "_request_once",
+        w,
+        "_request_once",
         lambda *a, **k: ("txt", 1, 2, True, True),
     )
     out = w.stream_response("groq", "m", "p")
@@ -178,6 +176,7 @@ def test_stream_response_keeps_four_tuple(monkeypatch):
 
 
 # ── log_to_db project parameter ─────────────────────────────────────────────
+
 
 def test_log_to_db_writes_project(tmp_path, monkeypatch):
     """log_to_db()'s INSERT is exercised against the real schema_v2.sql SSOT.
@@ -195,7 +194,13 @@ def test_log_to_db_writes_project(tmp_path, monkeypatch):
     monkeypatch.setattr(w, "DB_PATH", db_path)
 
     w.log_to_db(
-        "test-agent", "test-model", "groq", 10, 20, 100, True,
+        "test-agent",
+        "test-model",
+        "groq",
+        10,
+        20,
+        100,
+        True,
         project="intl-reports",
     )
 
@@ -234,9 +239,7 @@ def test_deepseek_v4_flash_is_dated_revision():
     """Bare `deepseek-v4-flash` is 410; only the -0731 revision is live."""
     for model in _all_routed_models():
         if "deepseek-v4-flash" in model:
-            assert model.endswith("-0731"), (
-                f"undated deepseek-v4-flash slug still routed: {model}"
-            )
+            assert model.endswith("-0731"), f"undated deepseek-v4-flash slug still routed: {model}"
 
 
 def test_nim_default_model_is_live_slug():
@@ -248,9 +251,9 @@ def test_dead_providers_absent_from_every_fallback_chain():
     removed as fallback DESTINATIONS 2026-08-16. Their PROVIDERS entries stay."""
     for primary, destinations in w.FALLBACK_CHAIN.items():
         for dead in _DEAD_FALLBACK_DESTINATIONS:
-            assert dead not in destinations, (
-                f"dead provider {dead!r} still a fallback destination of {primary!r}"
-            )
+            assert (
+                dead not in destinations
+            ), f"dead provider {dead!r} still a fallback destination of {primary!r}"
 
 
 def test_dead_providers_still_defined_for_one_line_reactivation():

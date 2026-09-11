@@ -104,7 +104,11 @@ def _is_c2pa_filespec(entry, manifest_ids: set) -> bool:
                     stream = ef.get(key)
                     if _objgen(stream) is not None and _objgen(stream) in manifest_ids:
                         return True
-                    st = stream.get("/Subtype") if hasattr(stream, "get") and "/Subtype" in stream else None
+                    st = (
+                        stream.get("/Subtype")
+                        if hasattr(stream, "get") and "/Subtype" in stream
+                        else None
+                    )
                     if st is not None and "c2pa" in str(st).lower():
                         return True
     except Exception:  # noqa: BLE001
@@ -206,19 +210,56 @@ def inspect(path, raw: bytes) -> list[Finding]:
     with pdf:
         if pdf.docinfo is not None and len(pdf.docinfo) > 0:
             findings.append(
-                Finding(path_str, "pdf", "/Info", "document_info", "safe", "notice", True, f"{len(pdf.docinfo)} key(s)")
+                Finding(
+                    path_str,
+                    "pdf",
+                    "/Info",
+                    "document_info",
+                    "safe",
+                    "notice",
+                    True,
+                    f"{len(pdf.docinfo)} key(s)",
+                )
             )
         if "/Metadata" in pdf.Root:
-            findings.append(Finding(path_str, "pdf", "/Root/Metadata", "xmp", "safe", "notice", True, ""))
+            findings.append(
+                Finding(path_str, "pdf", "/Root/Metadata", "xmp", "safe", "notice", True, "")
+            )
         if "/PieceInfo" in pdf.Root:
-            findings.append(Finding(path_str, "pdf", "/Root/PieceInfo", "piece_info", "safe", "notice", True, ""))
+            findings.append(
+                Finding(
+                    path_str, "pdf", "/Root/PieceInfo", "piece_info", "safe", "notice", True, ""
+                )
+            )
 
         page_meta = sum(1 for p in pdf.pages if "/Metadata" in p)
         if page_meta:
-            findings.append(Finding(path_str, "pdf", "page/Metadata", "xmp", "safe", "notice", True, f"{page_meta} page(s)"))
+            findings.append(
+                Finding(
+                    path_str,
+                    "pdf",
+                    "page/Metadata",
+                    "xmp",
+                    "safe",
+                    "notice",
+                    True,
+                    f"{page_meta} page(s)",
+                )
+            )
         page_piece = sum(1 for p in pdf.pages if "/PieceInfo" in p)
         if page_piece:
-            findings.append(Finding(path_str, "pdf", "page/PieceInfo", "piece_info", "safe", "notice", True, f"{page_piece} page(s)"))
+            findings.append(
+                Finding(
+                    path_str,
+                    "pdf",
+                    "page/PieceInfo",
+                    "piece_info",
+                    "safe",
+                    "notice",
+                    True,
+                    f"{page_piece} page(s)",
+                )
+            )
 
         annot_authors = 0
         for p in pdf.pages:
@@ -226,7 +267,18 @@ def inspect(path, raw: bytes) -> list[Finding]:
                 if "/T" in annot:
                     annot_authors += 1
         if annot_authors:
-            findings.append(Finding(path_str, "pdf", "annot/T", "author_name", "safe", "notice", True, f"{annot_authors} annotation(s)"))
+            findings.append(
+                Finding(
+                    path_str,
+                    "pdf",
+                    "annot/T",
+                    "author_name",
+                    "safe",
+                    "notice",
+                    True,
+                    f"{annot_authors} annotation(s)",
+                )
+            )
 
         findings += fmt_c2pa.detect_pdf_c2pa(path_str, pdf)
 
@@ -236,7 +288,9 @@ def inspect(path, raw: bytes) -> list[Finding]:
         # removable=False: making them a removable safe-tier finding would
         # just reintroduce the destructive behaviour one layer down.
         try:
-            manifest_ids = {g for g in (_objgen(o) for o in _collect_manifest_objs(pdf)) if g is not None}
+            manifest_ids = {
+                g for g in (_objgen(o) for o in _collect_manifest_objs(pdf)) if g is not None
+            }
             other = 0
             seen = set()
             for entry in pdf.Root.get("/AF", []) or []:
@@ -256,8 +310,13 @@ def inspect(path, raw: bytes) -> list[Finding]:
             if other:
                 findings.append(
                     Finding(
-                        path_str, "pdf", "/Names/EmbeddedFiles+/AF", "embedded_file_attachment",
-                        "safe", "notice", False,
+                        path_str,
+                        "pdf",
+                        "/Names/EmbeddedFiles+/AF",
+                        "embedded_file_attachment",
+                        "safe",
+                        "notice",
+                        False,
                         f"{other} non-C2PA embedded attachment(s) — preserved, never removed by this tool",
                     )
                 )
@@ -273,26 +332,64 @@ def inspect(path, raw: bytes) -> list[Finding]:
 
         acro = pdf.Root.get("/AcroForm")
         if acro is not None and "/Fields" in acro and len(acro["/Fields"]) > 0:
-            findings.append(Finding(path_str, "pdf", "/Root/AcroForm/Fields", "form_values", "all", "info", True, f"{len(acro['/Fields'])} field(s)"))
+            findings.append(
+                Finding(
+                    path_str,
+                    "pdf",
+                    "/Root/AcroForm/Fields",
+                    "form_values",
+                    "all",
+                    "info",
+                    True,
+                    f"{len(acro['/Fields'])} field(s)",
+                )
+            )
         names = pdf.Root.get("/Names")
         if names is not None and "/JavaScript" in names:
-            findings.append(Finding(path_str, "pdf", "/Root/Names/JavaScript", "javascript", "all", "info", True, ""))
+            findings.append(
+                Finding(
+                    path_str, "pdf", "/Root/Names/JavaScript", "javascript", "all", "info", True, ""
+                )
+            )
         if "/OutputIntents" in pdf.Root:
-            findings.append(Finding(path_str, "pdf", "/Root/OutputIntents", "output_intents", "all", "info", True, ""))
+            findings.append(
+                Finding(
+                    path_str,
+                    "pdf",
+                    "/Root/OutputIntents",
+                    "output_intents",
+                    "all",
+                    "info",
+                    True,
+                    "",
+                )
+            )
         if "/ID" in pdf.trailer:
             # removable=False on purpose: pikepdf regenerates /ID on save, so
             # the previous `del pdf.trailer.ID` + removable=True combination
             # recorded a removal in the audit log that never actually stuck.
             findings.append(
                 Finding(
-                    path_str, "pdf", "trailer/ID", "trailer_id", "all", "info", False,
+                    path_str,
+                    "pdf",
+                    "trailer/ID",
+                    "trailer_id",
+                    "all",
+                    "info",
+                    False,
                     "regenerated by the PDF writer on save — cannot be removed, only replaced",
                 )
             )
         if _is_signed(pdf):
             findings.append(
                 Finding(
-                    path_str, "pdf", "/Root/AcroForm", "digital_signature", "all", "high", True,
+                    path_str,
+                    "pdf",
+                    "/Root/AcroForm",
+                    "digital_signature",
+                    "all",
+                    "high",
+                    True,
                     "document is digitally signed — removal (--all --yes only) invalidates the signature",
                 )
             )

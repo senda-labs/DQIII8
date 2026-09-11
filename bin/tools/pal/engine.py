@@ -45,7 +45,7 @@ def parse_model_spec(spec: str) -> tuple[str, str]:
     for pname in PROVIDERS:
         prefix = pname + "/"
         if spec.startswith(prefix):
-            return pname, spec[len(prefix):]
+            return pname, spec[len(prefix) :]
     # No provider prefix — try to match against known routing values
     for agent, (prov, mdl) in AGENT_ROUTING.items():
         if mdl == spec:
@@ -103,7 +103,9 @@ def generate(
             fb_model = _PROVIDER_DEFAULT_MODEL.get(fb_provider, "")
             if not fb_model:
                 continue
-            text, tin, tout, ok = _call_once(fb_provider, fb_model, prompt, system_prompt, max_tokens)
+            text, tin, tout, ok = _call_once(
+                fb_provider, fb_model, prompt, system_prompt, max_tokens
+            )
             if ok:
                 fell_back_to = f"{fb_provider}/{fb_model}"
                 provider, mdl = fb_provider, fb_model
@@ -223,7 +225,14 @@ def benchmark(
             try:
                 results.append(fut.result(timeout=1))
             except Exception as exc:
-                results.append({"model": futures[fut], "ok": False, "error": str(exc), "latency_ms": timeout_s * 1000})
+                results.append(
+                    {
+                        "model": futures[fut],
+                        "ok": False,
+                        "error": str(exc),
+                        "latency_ms": timeout_s * 1000,
+                    }
+                )
 
     if judge and results:
         results = _judge_results(prompt, results)
@@ -238,6 +247,7 @@ def benchmark(
 
 # ── Private helpers ──────────────────────────────────────────────────────────
 
+
 def _resolve_provider_model(model: str | None, task_type: str | None) -> tuple[str, str]:
     if model:
         return parse_model_spec(model)
@@ -248,6 +258,7 @@ def _resolve_provider_model(model: str | None, task_type: str | None) -> tuple[s
 
 def _ping_provider(name: str, cfg: dict) -> bool:
     import urllib.request, urllib.error, os
+
     try:
         if name == "ollama":
             url = "http://localhost:11434/api/tags"
@@ -269,6 +280,7 @@ def _ping_provider(name: str, cfg: dict) -> bool:
 
 def _judge_results(prompt: str, results: list[dict]) -> list[dict]:
     """Score each result 1-10 via groq/llama. Adds 'quality' field."""
+
     def _score_one(r: dict) -> dict:
         if not r.get("ok") or not r.get("text"):
             return {**r, "quality": None}

@@ -59,9 +59,7 @@ def _scan_projects() -> None:
         kw_match = re.search(r"keywords?:\s*(.+)", text_lower)
         if kw_match:
             words.update(
-                _normalize(w.strip())
-                for w in kw_match.group(1).split(",")
-                if len(w.strip()) >= 3
+                _normalize(w.strip()) for w in kw_match.group(1).split(",") if len(w.strip()) >= 3
             )
 
         # 2. Project name parts

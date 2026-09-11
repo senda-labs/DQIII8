@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-JARVIS = Path(__file__).parent.parent  # Current worktree or repo root
-HOOKS = JARVIS / ".claude" / "hooks"
-SCHEMA_V2_SQL = (JARVIS / "database" / "schema_v2.sql").read_text(encoding="utf-8")
+ROOT_DIR = Path(__file__).parent.parent  # Current worktree or repo root
+HOOKS = ROOT_DIR / ".claude" / "hooks"
+SCHEMA_V2_SQL = (ROOT_DIR / "database" / "schema_v2.sql").read_text(encoding="utf-8")
 
 
 def test_precompact_exits_zero_and_outputs_empty_json():
@@ -35,11 +35,80 @@ def test_precompact_exits_zero_and_outputs_empty_json():
         capture_output=True,
         text=True,
         timeout=10,
-        env={**os.environ, "DQIII8_ROOT": str(JARVIS), "CLAUDE_SESSION_ID": "test-precompact-01"},
+        env={**os.environ, "DQIII8_ROOT": str(ROOT_DIR), "CLAUDE_SESSION_ID": "test-precompact-01"},
     )
     assert result.returncode == 0, f"precompact.py must exit 0, got {result.returncode}"
     out = json.loads(result.stdout)
     assert out == {}, f"precompact.py must output {{}}, got: {out}"
+
+
+def test_precompact_postcompact_resume_snippet_roundtrip():
+    """Rango 9 fix (2026-08-19 red-team audit): precompact.py builds a
+    resume_snippet from agent_actions, postcompact.py reinjects it as
+    'Recent activity' — the non-MCP replacement for context-mode's retired
+    continuity snapshot. Uses an isolated tmp DB (tempfile + DQIII8_ROOT
+    override + real schema_v2.sql), not the live production DB.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        db_dir = tmp / "database"
+        db_dir.mkdir()
+        (tmp / "tasks").mkdir()
+        db_path = db_dir / "dqiii8.db"
+        session_id = "test-resume-snippet-01"
+
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(SCHEMA_V2_SQL)
+        for tool_used, file_path in [
+            ("Read", ".claude/hooks/postcompact.py"),
+            ("Bash", "pytest -q tests/test_hooks.py"),
+            ("Edit", ".claude/hooks/precompact.py"),
+        ]:
+            conn.execute(
+                "INSERT INTO agent_actions (session_id, agent_name, tool_used, file_path) "
+                "VALUES (?, 'test-agent', ?, ?)",
+                (session_id, tool_used, file_path),
+            )
+        conn.commit()
+        conn.close()
+
+        env = {**os.environ, "DQIII8_ROOT": str(tmp)}
+
+        pre_payload = json.dumps({"session_id": session_id})
+        pre_result = subprocess.run(
+            [sys.executable, str(HOOKS / "precompact.py")],
+            input=pre_payload,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env,
+        )
+        assert pre_result.returncode == 0
+
+        post_payload = json.dumps({"session_id": session_id})
+        post_result = subprocess.run(
+            [sys.executable, str(HOOKS / "postcompact.py")],
+            input=post_payload,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env,
+        )
+        assert post_result.returncode == 0
+        out = json.loads(post_result.stdout)
+        ctx = out.get("additionalContext", "")
+        assert "Recent activity:" in ctx
+        assert "Edit: .claude/hooks/precompact.py" in ctx
+        assert "Bash: pytest -q tests/test_hooks.py" in ctx
+        assert "Read: .claude/hooks/postcompact.py" in ctx
+        # Chronological order (oldest first, matching insertion order above).
+        read_pos = ctx.index("Read: .claude/hooks/postcompact.py")
+        bash_pos = ctx.index("Bash: pytest -q tests/test_hooks.py")
+        edit_pos = ctx.index("Edit: .claude/hooks/precompact.py")
+        assert read_pos < bash_pos < edit_pos
+
+        state_file = tmp / "tasks" / f"precompact_state_{session_id}.json"
+        assert not state_file.exists(), "postcompact.py must delete the state file after reading it"
 
 
 def test_cost_tier_classification():
@@ -162,35 +231,6 @@ def test_implicit_correction_captured_in_vault():
         assert "test_target_file.py" in obj
         assert etype == "lesson"
         assert src == "post_tool_use"
-
-
-def test_claims_conflict_detected():
-    """Two concurrent session claims on the same resource produce a detectable conflict."""
-    db = sqlite3.connect(":memory:")
-    db.execute("""
-        CREATE TABLE resource_claims (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            resource TEXT NOT NULL,
-            claimed_at TEXT DEFAULT (datetime('now'))
-        )
-        """)
-    db.execute(
-        "INSERT INTO resource_claims (session_id, resource) VALUES ('session-A', 'scene_director.py')"
-    )
-    db.execute(
-        "INSERT INTO resource_claims (session_id, resource) VALUES ('session-B', 'scene_director.py')"
-    )
-    db.commit()
-
-    conflicts = db.execute(
-        "SELECT resource, COUNT(*) AS n FROM resource_claims GROUP BY resource HAVING n > 1"
-    ).fetchall()
-    db.close()
-
-    assert len(conflicts) == 1, f"Expected 1 conflicted resource, got {len(conflicts)}"
-    assert conflicts[0][0] == "scene_director.py"
-    assert conflicts[0][1] == 2
 
 
 def test_pre_tool_use_resolves_project_from_cwd(tmp_path):

@@ -135,12 +135,51 @@ RESOLUTION_NOTE_AGED = (
     f"sibling found within {HELD_REVIEW_DAYS}d of held review, aged out)"
 )
 
+# Generic tool-execution failures logged by post_tool_use.py's own
+# error_log INSERT (`f"{tool}Error"`, severity='operational') for ANY failed
+# tool call — a command errors, the agent fixes its approach, retries,
+# succeeds. This is the routine friction of iterative agentic work, not an
+# incident, but nothing ever marks these rows resolved: the hook's own
+# "implicit correction capture" (same file) keys resolution on `file_path`,
+# which Bash calls never carry, so BashError specifically can never
+# self-resolve there. Confirmed live 2026-09-02: 224 unresolved BashError +
+# 26 ReadError rows (severity='operational') out of 271 total unresolved,
+# alone enough to permanently cap health_check.py's unresolved_errors_7d
+# check at 0/25 points (>=20 unresolved already floors it), which is why the
+# daily health score kept landing at/under 70 regardless of real system
+# health. Reuses the exact same correlation test as the free-tier whitelist
+# above (a later successful action from the same agent+session is proof the
+# specific hiccup recovered) — deliberately separate constants/resolution
+# note from it, since this is a different phenomenon (tool-call retry noise,
+# not a provider cascade) and must not be conflated with it in the audit
+# trail.
+OPERATIONAL_ERROR_TYPES = (
+    "BashError",
+    "ReadError",
+    "EditError",
+    "WriteError",
+    "MultiEditError",
+    "GlobError",
+    "GrepError",
+)
 
-def _match_where():
-    type_placeholders = ",".join("?" for _ in WHITELIST_ERROR_TYPES)
-    msg_clause = " OR ".join("error_message LIKE ?" for _ in MESSAGE_PATTERNS)
-    where = f"resolved=0 AND error_type IN ({type_placeholders}) AND ({msg_clause})"
-    params = list(WHITELIST_ERROR_TYPES) + list(MESSAGE_PATTERNS)
+RESOLUTION_NOTE_OPERATIONAL = "auto: operational tool error, agent recovered"
+RESOLUTION_NOTE_OPERATIONAL_AGED = (
+    f"auto: operational tool error (uncorrelated — no successful sibling found "
+    f"within {HELD_REVIEW_DAYS}d of held review, aged out)"
+)
+
+
+def _match_where(error_types, message_patterns=None, extra_clause=None):
+    type_placeholders = ",".join("?" for _ in error_types)
+    where = f"resolved=0 AND error_type IN ({type_placeholders})"
+    params = list(error_types)
+    if message_patterns:
+        msg_clause = " OR ".join("error_message LIKE ?" for _ in message_patterns)
+        where += f" AND ({msg_clause})"
+        params += list(message_patterns)
+    if extra_clause:
+        where += f" AND {extra_clause}"
     return where, params
 
 
@@ -229,6 +268,35 @@ def _check_spike(newly_held: int) -> str | None:
     return alert
 
 
+def _process_category(conn, label, where, params, prev_held):
+    """Shared candidate/correlate/age-out pipeline for one whitelist category.
+    Returns (resolvable_ids, aged_ids, held_fresh_ids, matched_count) — no
+    writes, so this is safe to call under --dry-run too."""
+    candidates = conn.execute(
+        f"SELECT id, action_id, session_id, agent_name, timestamp FROM error_log WHERE {where}",
+        params,
+    ).fetchall()
+    resolvable_ids, held = _correlated_ids(conn, candidates)
+    aged_cutoff_days = f"-{HELD_REVIEW_DAYS} days"
+    aged_cutoff = conn.execute("SELECT datetime('now', ?)", (aged_cutoff_days,)).fetchone()[0]
+    aged_ids = [row_id for row_id, ts in held if ts <= aged_cutoff and row_id in prev_held]
+    held_fresh_ids = [
+        row_id for row_id, ts in held if not (ts <= aged_cutoff and row_id in prev_held)
+    ]
+    print(
+        f"[triage] {label} match: {len(candidates)} (correlated-resolvable: {len(resolvable_ids)}, "
+        f"held for review — no successful sibling found: {len(held_fresh_ids)}, "
+        f"aged out after {HELD_REVIEW_DAYS}d unresolved: {len(aged_ids)})"
+    )
+    breakdown = conn.execute(
+        f"SELECT error_type, COUNT(*) FROM error_log WHERE {where} GROUP BY error_type ORDER BY 2 DESC",
+        params,
+    ).fetchall()
+    for error_type, n in breakdown:
+        print(f"  {error_type}: {n}")
+    return resolvable_ids, aged_ids, held_fresh_ids
+
+
 def main():
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
@@ -236,47 +304,37 @@ def main():
     group.add_argument("--apply", action="store_true")
     args = parser.parse_args()
 
-    where, params = _match_where()
     conn = sqlite3.connect(DB, timeout=30)
-
     total_unresolved = conn.execute("SELECT COUNT(*) FROM error_log WHERE resolved=0").fetchone()[0]
-    candidates = conn.execute(
-        f"SELECT id, action_id, session_id, agent_name, timestamp FROM error_log WHERE {where}", params
-    ).fetchall()
-    matched = len(candidates)
-    resolvable_ids, held = _correlated_ids(conn, candidates)
-    # Rows held past HELD_REVIEW_DAYS with still no correlation evidence are
-    # aged out (round 3 P1-2) — resolved with a distinct note, kept out of
-    # 'transient' severity so purge_transient_errors.py never deletes them.
-    #
-    # Age-out also requires the row to have appeared in a PREVIOUS run's held
+    print(f"[triage] unresolved total: {total_unresolved}")
+
+    # Age-out requires the row to have appeared in a PREVIOUS run's held
     # snapshot (round 5 P2 fix): reconcile_errors.py backfills orphaned
     # failures with their original historical timestamp, which can already be
     # older than HELD_REVIEW_DAYS at insert time. Gating on ts alone would age
-    # those out on the very first triage run that ever sees them — a row that
-    # was never actually held for review even once gets a resolution note
-    # falsely claiming a multi-day held period. Requiring prior-run membership
-    # means a row must survive at least one real triage cycle as genuinely
-    # held before it's eligible to age out.
+    # those out on the very first triage run that ever sees them. Both
+    # categories share one held-state file/set — it is only ever used as an
+    # id membership lookup, so mixing categories in it is harmless.
     prev_held = _load_prev_held_ids()
-    aged_cutoff_days = f"-{HELD_REVIEW_DAYS} days"
-    aged_row = conn.execute("SELECT datetime('now', ?)", (aged_cutoff_days,)).fetchone()
-    aged_cutoff = aged_row[0]
-    aged_ids = [row_id for row_id, ts in held if ts <= aged_cutoff and row_id in prev_held]
-    held_fresh_ids = [row_id for row_id, ts in held if not (ts <= aged_cutoff and row_id in prev_held)]
 
-    print(f"[triage] unresolved total: {total_unresolved}")
-    print(f"[triage] whitelist match: {matched} (correlated-resolvable: {len(resolvable_ids)}, "
-          f"held for review — no successful sibling found: {len(held_fresh_ids)}, "
-          f"aged out after {HELD_REVIEW_DAYS}d unresolved: {len(aged_ids)})")
-    print(f"[triage] remaining for human review: {total_unresolved - len(resolvable_ids) - len(aged_ids)}")
+    where_ft, params_ft = _match_where(WHITELIST_ERROR_TYPES, MESSAGE_PATTERNS)
+    resolvable_ft, aged_ft, held_ft = _process_category(
+        conn, "free-tier whitelist", where_ft, params_ft, prev_held
+    )
 
-    breakdown = conn.execute(
-        f"SELECT error_type, COUNT(*) FROM error_log WHERE {where} GROUP BY error_type ORDER BY 2 DESC",
-        params,
-    ).fetchall()
-    for error_type, n in breakdown:
-        print(f"  {error_type}: {n}")
+    where_op, params_op = _match_where(
+        OPERATIONAL_ERROR_TYPES, extra_clause="severity='operational'"
+    )
+    resolvable_op, aged_op, held_op = _process_category(
+        conn, "operational whitelist", where_op, params_op, prev_held
+    )
+
+    resolvable_ids = resolvable_ft + resolvable_op
+    aged_ids = aged_ft + aged_op
+    held_fresh_ids = held_ft + held_op
+    print(
+        f"[triage] remaining for human review: {total_unresolved - len(resolvable_ids) - len(aged_ids)}"
+    )
 
     if args.dry_run:
         # No history/marker write here (Opus red-team review, round 2 P2-1):
@@ -289,15 +347,25 @@ def main():
         conn.close()
         return
 
-    if resolvable_ids:
-        id_placeholders = ",".join("?" for _ in resolvable_ids)
+    if resolvable_ft:
+        id_placeholders = ",".join("?" for _ in resolvable_ft)
         conn.execute(
             f"UPDATE error_log SET resolved=1, severity='transient', resolution=? "
             f"WHERE id IN ({id_placeholders})",
-            [RESOLUTION_NOTE] + resolvable_ids,
+            [RESOLUTION_NOTE] + resolvable_ft,
         )
-    if aged_ids:
-        id_placeholders = ",".join("?" for _ in aged_ids)
+    if resolvable_op:
+        id_placeholders = ",".join("?" for _ in resolvable_op)
+        # severity stays 'operational', NOT 'transient': these never shared the
+        # free-tier cascade's "expected, deletable" nature, and purge_transient_
+        # errors.py's WHERE severity='transient' must not start reclaiming them
+        # just because this script started resolving them.
+        conn.execute(
+            f"UPDATE error_log SET resolved=1, resolution=? WHERE id IN ({id_placeholders})",
+            [RESOLUTION_NOTE_OPERATIONAL] + resolvable_op,
+        )
+    if aged_ft:
+        id_placeholders = ",".join("?" for _ in aged_ft)
         # severity='aged_review' (round 5 P1 fix), not left untouched: rows are
         # inserted with severity='transient' from day one (openrouter_wrapper.py),
         # and purge_transient_errors.py deletes WHERE severity='transient' AND
@@ -308,20 +376,26 @@ def main():
         conn.execute(
             f"UPDATE error_log SET resolved=1, severity='aged_review', resolution=? "
             f"WHERE id IN ({id_placeholders})",
-            [RESOLUTION_NOTE_AGED] + aged_ids,
+            [RESOLUTION_NOTE_AGED] + aged_ft,
+        )
+    if aged_op:
+        id_placeholders = ",".join("?" for _ in aged_op)
+        conn.execute(
+            f"UPDATE error_log SET resolved=1, severity='aged_review', resolution=? "
+            f"WHERE id IN ({id_placeholders})",
+            [RESOLUTION_NOTE_OPERATIONAL_AGED] + aged_op,
         )
     if resolvable_ids or aged_ids:
         conn.commit()
     applied = len(resolvable_ids) + len(aged_ids)
 
-    # Spike check + history/marker write happen only after a successful apply
-    # (round 2 P2-1) and compare only NEWLY-held rows (round 3 P1-2) — ids not
-    # already held as of the previous run — not the cumulative held backlog,
-    # which just grows every day since a held row stays resolved=0 until it
-    # ages out and would desensitize the check into never firing.
-    newly_held = [i for i in held_fresh_ids if i not in prev_held]
+    # Spike check stays scoped to the free-tier category only (round 3 P1-2
+    # semantics: "possible sustained provider outage") — extending it to the
+    # operational category would conflate "many tool-call retries today" with
+    # a provider incident, which is not the same signal.
+    newly_held_ft = [i for i in held_ft if i not in prev_held]
     _save_held_ids(held_fresh_ids)
-    spike_alert = _check_spike(len(newly_held))
+    spike_alert = _check_spike(len(newly_held_ft))
     if spike_alert:
         print(f"[triage] ALERT: {spike_alert}")
         try:

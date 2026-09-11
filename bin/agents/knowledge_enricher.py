@@ -124,9 +124,7 @@ def _expand_query_for_retrieval(query: str) -> str:
     return query
 
 
-def _get_best_subdomains(
-    query_embedding: list[float], domain: str, top_n: int = 3
-) -> list[str]:
+def _get_best_subdomains(query_embedding: list[float], domain: str, top_n: int = 3) -> list[str]:
     """Find the top-N subdomains whose centroids are closest to the query.
 
     Mathematical basis: centroid C_S = mean(embeddings of chunks in subdomain S).
@@ -385,9 +383,7 @@ def get_relevant_chunks(
 
     # ── Try hybrid search first (over-fetch for post-filter) ──────────────
     pool_k = top_k * 3  # over-fetch: centroid filter + task rerank need candidates
-    scored_vs, vs_path = _search_knowledge(
-        search_prompt, domain, pool_k, min_similarity
-    )
+    scored_vs, vs_path = _search_knowledge(search_prompt, domain, pool_k, min_similarity)
     if scored_vs is not None:
         scored = scored_vs
     else:
@@ -538,7 +534,9 @@ def _log_chunk_usage(chunks: list[dict], domain: str) -> None:
 
 
 _DEMOTE_PENALTY = 0.70  # 30% score reduction for "demote" verdict
-_V4_COMPOSITE_THRESHOLD = 0.30  # Lowered from 0.40: cosine 0.55 alone yields 0.33; 0.40 filtered valid NLP chunks
+_V4_COMPOSITE_THRESHOLD = (
+    0.30  # Lowered from 0.40: cosine 0.55 alone yields 0.33; 0.40 filtered valid NLP chunks
+)
 
 
 def _classify_query_subdomain(query: str, domain: str) -> str:
@@ -551,9 +549,7 @@ def _classify_query_subdomain(query: str, domain: str) -> str:
         return domain
 
 
-def _composite_rerank(
-    chunks: list[dict], query: str, query_subdomain: str
-) -> list[dict]:
+def _composite_rerank(chunks: list[dict], query: str, query_subdomain: str) -> list[dict]:
     """Rerank chunks using composite score: cosine × 0.60 + subdomain × 0.25 + keyword × 0.15.
 
     Transforms tiny cosine separations (0.03 between WACC and LCSP) into
@@ -711,9 +707,7 @@ def _filter_and_limit(chunks: list[dict], query: str = "") -> list[dict]:
         # RRF scores (~0.01) produce low composites even for perfect matches.
         is_rrf = all(c.get("_v4_score", 0) < 0.1 for c in relevant)
         if not is_rrf:
-            relevant = [
-                c for c in relevant if c.get("_composite", 0) >= _V4_COMPOSITE_THRESHOLD
-            ]
+            relevant = [c for c in relevant if c.get("_composite", 0) >= _V4_COMPOSITE_THRESHOLD]
             if not relevant:
                 log.info(
                     "Enricher v4: 0 chunks above composite threshold %.2f — skipping",
@@ -744,8 +738,7 @@ def _filter_and_limit(chunks: list[dict], query: str = "") -> list[dict]:
         "hackernews:",
     )
     has_harvested = any(
-        any((c.get("source") or "").startswith(p) for p in _harvested_prefixes)
-        for c in top
+        any((c.get("source") or "").startswith(p) for p in _harvested_prefixes) for c in top
     )
     if not has_harvested and health_map:
         redundancies = []
@@ -966,21 +959,11 @@ def build_structured_context(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Enrich a prompt with domain knowledge"
-    )
-    parser.add_argument(
-        "--domain", required=True, help="Domain name (e.g. social_sciences)"
-    )
-    parser.add_argument(
-        "--max-chunks", type=int, default=3, help="Max chunks to inject"
-    )
-    parser.add_argument(
-        "--min-sim", type=float, default=0.5, help="Minimum cosine similarity"
-    )
-    parser.add_argument(
-        "prompt", nargs="?", help="Prompt to enrich (or pass via stdin)"
-    )
+    parser = argparse.ArgumentParser(description="Enrich a prompt with domain knowledge")
+    parser.add_argument("--domain", required=True, help="Domain name (e.g. social_sciences)")
+    parser.add_argument("--max-chunks", type=int, default=3, help="Max chunks to inject")
+    parser.add_argument("--min-sim", type=float, default=0.5, help="Minimum cosine similarity")
+    parser.add_argument("prompt", nargs="?", help="Prompt to enrich (or pass via stdin)")
     args = parser.parse_args()
 
     raw = args.prompt or sys.stdin.read().strip()

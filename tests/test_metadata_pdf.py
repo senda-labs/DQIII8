@@ -37,7 +37,9 @@ def test_pdf_safe_tier_removes_info_and_preserves_page_count(tmp_path):
 
 def test_pdf_incremental_history_dropped_by_full_rewrite(tmp_path):
     p = tmp_path / "g.pdf"
-    raw = mf.make_pdf_incremental_two_revisions(p, rev1_author="REV1SECRET", rev2_author="REV2CURRENT")
+    raw = mf.make_pdf_incremental_two_revisions(
+        p, rev1_author="REV1SECRET", rev2_author="REV2CURRENT"
+    )
     assert b"REV1SECRET" in raw  # sanity: fixture really carries both revisions
 
     cleaned = fmt_pdf.remove(raw, all_tier=False)

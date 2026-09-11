@@ -1,0 +1,6 @@
+[Unit]
+Description=DQIII8 service-failure alert for %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /root/dqiii8/bin/tools/service_failure_alert.py %i

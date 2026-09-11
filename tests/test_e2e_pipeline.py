@@ -64,9 +64,7 @@ def test_full_pipeline_code():
     assert result["domains"], "Expected at least one domain"
     # niche should be detected as code
     assert result["niche"] == "code"
-    assert (
-        "TypeError" in result["amplified"] or "database" in result["amplified"].lower()
-    )
+    assert "TypeError" in result["amplified"] or "database" in result["amplified"].lower()
 
 
 def test_full_pipeline_creative_writing():
@@ -108,9 +106,7 @@ def test_amplified_prompt_contains_original():
     prompt = "Explain gradient descent in neural networks"
     result = amplify(prompt)
 
-    assert (
-        prompt in result["amplified"]
-    ), "Original prompt must appear in amplified version"
+    assert prompt in result["amplified"], "Original prompt must appear in amplified version"
 
 
 # ── Hierarchical router tests ─────────────────────────────────────────────────
@@ -136,21 +132,15 @@ def test_hierarchical_router_has_agents():
 
     assert result["active_centroids"], "Expected at least one active centroid"
     first = result["active_centroids"][0]
-    assert (
-        len(first.get("agents", [])) >= 1
-    ), "Expected at least one agent within first centroid"
+    assert len(first.get("agents", [])) >= 1, "Expected at least one agent within first centroid"
 
 
 def test_hierarchical_router_all_5_domains_scored():
     from hierarchical_router import classify_hierarchical
 
-    result = classify_hierarchical(
-        "Design a machine learning pipeline for fraud detection"
-    )
+    result = classify_hierarchical("Design a machine learning pipeline for fraud detection")
 
-    assert (
-        len(result["level1"]) == 5
-    ), f"Expected all 5 domains scored, got {len(result['level1'])}"
+    assert len(result["level1"]) == 5, f"Expected all 5 domains scored, got {len(result['level1'])}"
     expected_domains = {
         "formal_sciences",
         "natural_sciences",

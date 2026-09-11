@@ -25,6 +25,7 @@ DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
@@ -230,6 +231,7 @@ def main() -> None:
     if result.get("trigger"):
         log.warning("AUDIT TRIGGERED — %s", result["reason"])
         import subprocess as _sp
+
         _sp.run(
             ["python3", str(DQIII8_ROOT / "bin" / "monitoring" / "auditor_local.py")],
             check=False,
@@ -237,6 +239,7 @@ def main() -> None:
         try:
             sys.path.insert(0, str(DQIII8_ROOT / "bin" / "core"))
             from notify import send_telegram
+
             send_telegram(f"[SPC] AUDIT TRIGGERED\n{result['reason']}")
         except Exception:
             pass

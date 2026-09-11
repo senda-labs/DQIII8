@@ -122,9 +122,7 @@ def _init_db() -> sqlite3.Connection:
 
 
 def _is_already_harvested(conn: sqlite3.Connection, source_id: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM harvest_log WHERE source_id = ?", (source_id,)
-    ).fetchone()
+    row = conn.execute("SELECT 1 FROM harvest_log WHERE source_id = ?", (source_id,)).fetchone()
     return row is not None
 
 
@@ -153,9 +151,7 @@ def _log_harvest(
 def _get_embedding(text: str) -> list[float] | None:
     """Get embedding via Ollama bge-m3 (1024 dims, multilingual)."""
     try:
-        payload = json.dumps({"model": EMBED_MODEL, "prompt": text[:8000]}).encode(
-            "utf-8"
-        )
+        payload = json.dumps({"model": EMBED_MODEL, "prompt": text[:8000]}).encode("utf-8")
         req = urllib.request.Request(
             OLLAMA_EMBED_URL,
             data=payload,
@@ -241,9 +237,7 @@ def _fetch_openalex(
 ) -> list[FetchResult]:
     """Fetch papers from OpenAlex API."""
     results: list[FetchResult] = []
-    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=recency_days)).strftime(
-        "%Y-%m-%d"
-    )
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=recency_days)).strftime("%Y-%m-%d")
 
     for concept in concepts:
         try:
@@ -328,9 +322,7 @@ def _fetch_semantic_scholar(query: str, max_results: int) -> list[FetchResult]:
                     "abstract": paper.get("abstract", "") or "",
                     "url": paper.get("url", ""),
                     "pdf_url": None,
-                    "authors": [
-                        a.get("name", "") for a in (paper.get("authors") or [])[:5]
-                    ],
+                    "authors": [a.get("name", "") for a in (paper.get("authors") or [])[:5]],
                     "date": f"{paper.get('year', 2026)}-01-01",
                     "source": "semantic_scholar",
                     "source_id": f"s2:{paper.get('paperId', '')}",
@@ -467,9 +459,7 @@ def extract_text(item: FetchResult) -> str | None:
             if len(cleaned) > 200:
                 return cleaned
         except Exception as exc:
-            log.warning(
-                "PDF extraction failed for %s: %s", item.get("source_id", "?"), exc
-            )
+            log.warning("PDF extraction failed for %s: %s", item.get("source_id", "?"), exc)
 
     # Try web article (trafilatura)
     if item.get("url") and item.get("source") in ("hackernews", "openalex"):
@@ -829,9 +819,7 @@ def insert_chunks(
     return inserted
 
 
-def _update_subdomain_centroid(
-    conn: sqlite3.Connection, subdomain: str, domain: str
-) -> None:
+def _update_subdomain_centroid(conn: sqlite3.Connection, subdomain: str, domain: str) -> None:
     """Recalculate centroid for a subdomain after chunks change.
 
     Called automatically by insert_chunks after insertion.
@@ -840,8 +828,7 @@ def _update_subdomain_centroid(
     try:
         _load_sqlite_vec(conn)
         rows = conn.execute(
-            "SELECT vc.id FROM vector_chunks vc "
-            "WHERE vc.subdomain = ? AND vc.domain = ?",
+            "SELECT vc.id FROM vector_chunks vc " "WHERE vc.subdomain = ? AND vc.domain = ?",
             (subdomain, domain),
         ).fetchall()
 
@@ -890,9 +877,7 @@ def _update_subdomain_centroid(
         log.warning("Centroid update failed for %s: %s", subdomain, exc)
 
 
-def _generate_key_facts_for_chunks(
-    conn: sqlite3.Connection, source: str, domain: str
-) -> None:
+def _generate_key_facts_for_chunks(conn: sqlite3.Connection, source: str, domain: str) -> None:
     """Generate key_facts for newly inserted chunks (best-effort)."""
     try:
         env_file = DQIII8_ROOT / "my-projects" / "auto-report" / ".env"
@@ -948,9 +933,7 @@ def _generate_key_facts_for_chunks(
 
                 if raw.startswith("```"):
                     lines = raw.splitlines()
-                    raw = "\n".join(
-                        lines[1:-1] if lines[-1].startswith("```") else lines[1:]
-                    )
+                    raw = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
 
                 facts = json.loads(raw)
                 if isinstance(facts, list) and all(isinstance(f, str) for f in facts):
@@ -1042,9 +1025,7 @@ def harvest(
     else:
         # Domain-based harvesting
         domains_to_process = (
-            [target_domain]
-            if target_domain
-            else list(SOURCES["arxiv"]["domains"].keys())
+            [target_domain] if target_domain else list(SOURCES["arxiv"]["domains"].keys())
         )
 
         for domain in domains_to_process:
@@ -1075,15 +1056,11 @@ def harvest(
 
     if dry_run:
         for item in all_items[:10]:
-            sig = significance_score(
-                item, item.get("_target_domain", target_domain or "")
-            )
+            sig = significance_score(item, item.get("_target_domain", target_domain or ""))
             _thr = SIGNIFICANCE_THRESHOLD_QUERY if query else SIGNIFICANCE_THRESHOLD
             mark = "+" if sig >= _thr else "-"
             print(f"  {mark} [{sig:.2f}] {item['source']}: {item['title'][:60]}")
-        print(
-            f"\n[DRY RUN] Would process up to {min(len(all_items), max_papers)} papers"
-        )
+        print(f"\n[DRY RUN] Would process up to {min(len(all_items), max_papers)} papers")
         conn.close()
         return stats
 
@@ -1317,13 +1294,9 @@ def cleanup() -> None:
         ).fetchone()[0]
         print(f"[cleanup] {archived} chunks with 'archive' verdict")
         if archived > 0:
-            print(
-                "[cleanup] Run chunk_freshness_reviewer.py --all first to populate chunk_health"
-            )
+            print("[cleanup] Run chunk_freshness_reviewer.py --all first to populate chunk_health")
     except sqlite3.OperationalError:
-        print(
-            "[cleanup] chunk_health table not found — run chunk_freshness_reviewer.py first"
-        )
+        print("[cleanup] chunk_health table not found — run chunk_freshness_reviewer.py first")
     conn.close()
 
 
@@ -1335,22 +1308,16 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="DQ Knowledge Harvester v2")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-        "--harvest", action="store_true", help="Harvest from academic sources"
-    )
+    group.add_argument("--harvest", action="store_true", help="Harvest from academic sources")
     group.add_argument("--ingest", metavar="FILE", help="Ingest a local file")
-    group.add_argument(
-        "--status", action="store_true", help="Show knowledge base status"
-    )
+    group.add_argument("--status", action="store_true", help="Show knowledge base status")
     group.add_argument("--cleanup", action="store_true", help="Archive stale chunks")
 
     parser.add_argument("--domain", help="Target domain (e.g. formal_sciences)")
     parser.add_argument("--project", help="Project tag for --ingest (e.g. auto-report)")
     parser.add_argument("--query", help="Direct search query for --harvest")
     parser.add_argument("--max", type=int, default=10, help="Max papers to process")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Show what would be harvested"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be harvested")
 
     args = parser.parse_args()
 
@@ -1367,9 +1334,7 @@ def main() -> None:
         )
         print(f"\n[DONE] {stats}")
     elif args.ingest:
-        stats = ingest_file(
-            args.ingest, domain=args.domain or "", project=args.project or ""
-        )
+        stats = ingest_file(args.ingest, domain=args.domain or "", project=args.project or "")
         print(f"\n[DONE] {stats}")
     else:
         parser.print_help()

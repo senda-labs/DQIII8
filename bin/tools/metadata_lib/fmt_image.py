@@ -41,11 +41,29 @@ _EXT_BY_FMT = {"jpeg": ".jpg", "png": ".png", "webp": ".webp", "tiff": ".tiff"}
 # together with actual tEXt/iTXt/zTXt keyword tags — only the latter are
 # removable text-chunk content (--all tier, per the module docstring).
 _PNG_STRUCTURAL_TAGS = {
-    "ImageWidth", "ImageHeight", "BitDepth", "ColorType", "Compression",
-    "Filter", "Interlace", "Gamma", "WhitePoint", "RedX", "RedY", "GreenX",
-    "GreenY", "BlueX", "BlueY", "SRGBRendering", "PixelsPerUnitX",
-    "PixelsPerUnitY", "PixelUnits", "BackgroundColor", "Transparency",
-    "SignificantBits", "LastModifyDate",
+    "ImageWidth",
+    "ImageHeight",
+    "BitDepth",
+    "ColorType",
+    "Compression",
+    "Filter",
+    "Interlace",
+    "Gamma",
+    "WhitePoint",
+    "RedX",
+    "RedY",
+    "GreenX",
+    "GreenY",
+    "BlueX",
+    "BlueY",
+    "SRGBRendering",
+    "PixelsPerUnitX",
+    "PixelsPerUnitY",
+    "PixelUnits",
+    "BackgroundColor",
+    "Transparency",
+    "SignificantBits",
+    "LastModifyDate",
 }
 
 
@@ -286,45 +304,147 @@ def _inspect_fallback(path_str: str, raw: bytes, fmt: str) -> list[Finding]:
     if fmt == "jpeg":
         for marker, seg_start, pstart, pend in _iter_jpeg_app_segments(raw):
             payload = raw[pstart:pend]
-            if marker == 0xFFE1 and (payload.startswith(b"Exif\x00\x00") or payload.startswith(b"http://ns.adobe.com/xap")):
+            if marker == 0xFFE1 and (
+                payload.startswith(b"Exif\x00\x00")
+                or payload.startswith(b"http://ns.adobe.com/xap")
+            ):
                 kind = "EXIF" if payload.startswith(b"Exif") else "XMP"
                 findings.append(
-                    Finding(path_str, "jpeg", f"APP1@{seg_start}", "identity_metadata", "safe", "notice", True, kind)
+                    Finding(
+                        path_str,
+                        "jpeg",
+                        f"APP1@{seg_start}",
+                        "identity_metadata",
+                        "safe",
+                        "notice",
+                        True,
+                        kind,
+                    )
                 )
             elif marker == 0xFFED and payload.startswith(b"Photoshop 3.0"):
                 findings.append(
-                    Finding(path_str, "jpeg", f"APP13@{seg_start}", "identity_metadata", "safe", "notice", True, "IPTC")
+                    Finding(
+                        path_str,
+                        "jpeg",
+                        f"APP13@{seg_start}",
+                        "identity_metadata",
+                        "safe",
+                        "notice",
+                        True,
+                        "IPTC",
+                    )
                 )
             elif marker == 0xFFE2 and payload.startswith(b"ICC_PROFILE\x00"):
                 findings.append(
-                    Finding(path_str, "jpeg", f"APP2@{seg_start}", "icc_profile", "all", "info", True, "ICC")
+                    Finding(
+                        path_str,
+                        "jpeg",
+                        f"APP2@{seg_start}",
+                        "icc_profile",
+                        "all",
+                        "info",
+                        True,
+                        "ICC",
+                    )
                 )
             elif marker == 0xFFFE:
                 findings.append(
-                    Finding(path_str, "jpeg", f"COM@{seg_start}", "jpeg_comment", "safe", "notice", True, "free-text comment segment")
+                    Finding(
+                        path_str,
+                        "jpeg",
+                        f"COM@{seg_start}",
+                        "jpeg_comment",
+                        "safe",
+                        "notice",
+                        True,
+                        "free-text comment segment",
+                    )
                 )
     elif fmt == "png":
         for ctype, start in _iter_png_chunk_types(raw):
             if ctype in (b"eXIf",):
-                findings.append(Finding(path_str, "png", f"{ctype.decode()}@{start}", "identity_metadata", "safe", "notice", True, "EXIF"))
+                findings.append(
+                    Finding(
+                        path_str,
+                        "png",
+                        f"{ctype.decode()}@{start}",
+                        "identity_metadata",
+                        "safe",
+                        "notice",
+                        True,
+                        "EXIF",
+                    )
+                )
             elif ctype in _PNG_TEXT_CHUNKS:
                 if _png_text_chunk_is_xmp(raw, start):
-                    findings.append(Finding(path_str, "png", f"{ctype.decode()}@{start}", "identity_metadata", "safe", "notice", True, "XMP"))
+                    findings.append(
+                        Finding(
+                            path_str,
+                            "png",
+                            f"{ctype.decode()}@{start}",
+                            "identity_metadata",
+                            "safe",
+                            "notice",
+                            True,
+                            "XMP",
+                        )
+                    )
                 else:
-                    findings.append(Finding(path_str, "png", f"{ctype.decode()}@{start}", "text_chunk", "all", "info", True, "text chunk, content-adjacent, --all tier"))
+                    findings.append(
+                        Finding(
+                            path_str,
+                            "png",
+                            f"{ctype.decode()}@{start}",
+                            "text_chunk",
+                            "all",
+                            "info",
+                            True,
+                            "text chunk, content-adjacent, --all tier",
+                        )
+                    )
             elif ctype == b"iCCP":
-                findings.append(Finding(path_str, "png", f"iCCP@{start}", "icc_profile", "all", "info", True, "ICC"))
+                findings.append(
+                    Finding(
+                        path_str, "png", f"iCCP@{start}", "icc_profile", "all", "info", True, "ICC"
+                    )
+                )
     elif fmt == "webp":
         from .fmt_c2pa import _riff_chunks
 
         for fourcc, _ds, _de, cs, _ce in _riff_chunks(raw):
             if fourcc in (b"EXIF", b"XMP "):
-                findings.append(Finding(path_str, "webp", f"{fourcc.strip().decode()}@{cs}", "identity_metadata", "safe", "notice", True, fourcc.strip().decode()))
+                findings.append(
+                    Finding(
+                        path_str,
+                        "webp",
+                        f"{fourcc.strip().decode()}@{cs}",
+                        "identity_metadata",
+                        "safe",
+                        "notice",
+                        True,
+                        fourcc.strip().decode(),
+                    )
+                )
             elif fourcc == b"ICCP":
-                findings.append(Finding(path_str, "webp", f"ICCP@{cs}", "icc_profile", "all", "info", True, "ICC"))
+                findings.append(
+                    Finding(
+                        path_str, "webp", f"ICCP@{cs}", "icc_profile", "all", "info", True, "ICC"
+                    )
+                )
     elif fmt == "tiff":
         if len(raw) >= 8:
-            findings.append(Finding(path_str, "tiff", "IFD0", "identity_metadata", "safe", "notice", False, "TIFF tags (pure-Python fallback cannot enumerate individually) — TIFF removal not implemented, detection only"))
+            findings.append(
+                Finding(
+                    path_str,
+                    "tiff",
+                    "IFD0",
+                    "identity_metadata",
+                    "safe",
+                    "notice",
+                    False,
+                    "TIFF tags (pure-Python fallback cannot enumerate individually) — TIFF removal not implemented, detection only",
+                )
+            )
     return findings
 
 
@@ -416,7 +536,7 @@ def _remove_fallback(raw: bytes, fmt: str, *, all_tier: bool) -> bytes:
             if marker in drop_markers:
                 continue
             out += raw[seg_start:pend]
-        out += raw[_last_scan_offset(raw):]
+        out += raw[_last_scan_offset(raw) :]
         return bytes(out)
     if fmt == "png":
         drop = {b"eXIf"}

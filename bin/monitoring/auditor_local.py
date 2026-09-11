@@ -25,17 +25,28 @@ from pathlib import Path
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 DB = DQIII8_ROOT / "database" / "dqiii8.db"
+KNOWLEDGE_DB = DQIII8_ROOT / "database" / "dqiii8_knowledge.db"
 HOOKS_DIR = DQIII8_ROOT / ".claude" / "hooks"
 REPORTS_DIR = DQIII8_ROOT / "database" / "audit_reports"
 
+# Table names allowed to exist by the same name in both dqiii8.db and
+# dqiii8_knowledge.db: these are genuinely owned by the knowledge side
+# (chunk_freshness_reviewer.py, knowledge_harvester.py) and merely have a
+# reference definition in schema_v2.sql for documentation. Any OTHER overlap
+# is a repeat of the 2026-08-14 db_consolidate.py clone that silently forked
+# 30 tables — see docs/ARCHITECTURE.md's "DB schema debt" note.
+_SCHEMA_OVERLAP_ALLOWLIST = frozenset({"chunk_health", "harvest_log"})
+
 
 # ── DB connection ─────────────────────────────────────────────────────────────
+
 
 def _conn() -> sqlite3.Connection:
     return sqlite3.connect(str(DB), timeout=5)
 
 
 # ── Component 1: Action Success Rate (30%) ───────────────────────────────────
+
 
 def check_action_success(conn: sqlite3.Connection, period_days: int) -> tuple[float, dict]:
     row = conn.execute(
@@ -50,14 +61,31 @@ def check_action_success(conn: sqlite3.Connection, period_days: int) -> tuple[fl
 
 # ── Component 2: Error Resolution Rate (30%) ─────────────────────────────────
 
+# Rows whose error_message is actually the stdout of a validation/test script
+# (adversarial permission_analyzer corpus, pre-commit gitleaks/watermark/rules
+# checks) rather than a genuine tool failure — excluded from scoring only.
+# The row itself is never suppressed at INSERT time: a real crash inside one
+# of these same runners must still show up in error_log (panel-review 2026-08-21).
+_NOISE_MARKERS = (
+    "corpus generado%",
+    "%adversariales:%",
+    "%veredictos cambiados%",
+    "%gitleaks%",
+    "%watermark-scan%",
+    "%validate-hooks%",
+    "%validate-rules%",
+)
+_NOISE_SQL = " AND ".join("error_message NOT LIKE ?" for _ in _NOISE_MARKERS)
+
+
 def check_error_resolution(conn: sqlite3.Connection, period_days: int) -> tuple[float, dict]:
     row = conn.execute(
         "SELECT "
         "  COUNT(CASE WHEN resolved = 1 THEN 1 END) * 100.0 / MAX(COUNT(*), 1), "
         "  COUNT(*), "
         "  COUNT(CASE WHEN resolved = 0 THEN 1 END) "
-        "FROM error_log WHERE timestamp > datetime('now', ?)",
-        (f"-{period_days} days",),
+        f"FROM error_log WHERE timestamp > datetime('now', ?) AND {_NOISE_SQL}",
+        (f"-{period_days} days", *_NOISE_MARKERS),
     ).fetchone()
     # No errors in period → perfect score
     rate = row[0] if (row and row[1] and row[1] > 0) else 100.0
@@ -69,13 +97,15 @@ def check_error_resolution(conn: sqlite3.Connection, period_days: int) -> tuple[
 def get_unresolved_errors(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         "SELECT timestamp, error_type, error_message "
-        "FROM error_log WHERE resolved = 0 "
+        f"FROM error_log WHERE resolved = 0 AND {_NOISE_SQL} "
         "ORDER BY timestamp DESC LIMIT 10",
+        _NOISE_MARKERS,
     ).fetchall()
     return [{"timestamp": r[0], "error_type": r[1], "message": r[2]} for r in rows]
 
 
 # ── Component 3: Hook Integrity (20%) ────────────────────────────────────────
+
 
 def check_hook_integrity() -> tuple[float, dict]:
     if not HOOKS_DIR.exists():
@@ -100,12 +130,12 @@ def check_hook_integrity() -> tuple[float, dict]:
 
 # ── Component 4: Learning Rate (10%) ─────────────────────────────────────────
 
+
 def check_learning_rate(conn: sqlite3.Connection, period_days: int) -> tuple[float, dict]:
     target = 5  # lessons / week
     try:
         row = conn.execute(
-            "SELECT COUNT(*) FROM learning_metrics "
-            "WHERE timestamp > datetime('now', ?)",
+            "SELECT COUNT(*) FROM learning_metrics " "WHERE timestamp > datetime('now', ?)",
             (f"-{period_days} days",),
         ).fetchone()
         count = row[0] or 0
@@ -120,6 +150,7 @@ def check_learning_rate(conn: sqlite3.Connection, period_days: int) -> tuple[flo
 
 
 # ── Component 5: System Health (10%) ─────────────────────────────────────────
+
 
 def check_system_health() -> tuple[float, dict]:
     checks: dict = {}
@@ -170,7 +201,37 @@ def check_system_health() -> tuple[float, dict]:
     return float(score), checks
 
 
+def check_db_schema_isolation() -> list[str]:
+    """Table names present in both dqiii8.db and dqiii8_knowledge.db, minus
+    the allowlist. A non-empty result means the two DBs are forking data
+    again — the exact failure mode a 2026-08-14 consolidation script caused
+    silently for 30 tables (fixed 2026-08-21; see docs/ARCHITECTURE.md)."""
+    if not KNOWLEDGE_DB.exists():
+        return []
+
+    def _table_names(path: Path) -> set[str]:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+        try:
+            return {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+
+    try:
+        t1 = _table_names(DB)
+        t2 = _table_names(KNOWLEDGE_DB)
+    except sqlite3.Error:
+        return []
+    overlap = sorted((t1 & t2) - _SCHEMA_OVERLAP_ALLOWLIST)
+    return [f"table '{t}' exists in both dqiii8.db and dqiii8_knowledge.db" for t in overlap]
+
+
 # ── Score and labels ──────────────────────────────────────────────────────────
+
 
 def compute_score(c1: float, c2: float, c3: float, c4: float, c5: float) -> float:
     return round(c1 * 0.30 + c2 * 0.30 + c3 * 0.20 + c4 * 0.10 + c5 * 0.10, 1)
@@ -186,7 +247,10 @@ def status_label(score: float) -> str:
 
 # ── Output formatting ─────────────────────────────────────────────────────────
 
-def format_terminal(components: dict, score: float, unresolved: list[dict]) -> str:
+
+def format_terminal(
+    components: dict, score: float, unresolved: list[dict], schema_violations: list[str]
+) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     label = status_label(score)
 
@@ -215,11 +279,21 @@ def format_terminal(components: dict, score: float, unresolved: list[dict]) -> s
             ts = (err["timestamp"] or "")[:16]
             lines.append(f"  [{ts}] {err['message']}")
 
+    if schema_violations:
+        lines.append(f"⚠ DB SCHEMA ISOLATION VIOLATION ({len(schema_violations)}):")
+        for v in schema_violations:
+            lines.append(f"  {v}")
+        lines.append(
+            "  Fix: rename/retire the duplicate, or add it to _SCHEMA_OVERLAP_ALLOWLIST"
+            " in bin/monitoring/auditor_local.py if genuinely intentional."
+        )
+
     lines.append("═" * 31)
     return "\n".join(lines)
 
 
 # ── Persistence ───────────────────────────────────────────────────────────────
+
 
 def _write_report_file(report_text: str) -> Path:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -255,6 +329,7 @@ def _register_in_db(
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+
 def run(period_days: int = 7, as_json: bool = False) -> int:
     if not DB.exists():
         print(f"[auditor_local] ERROR: DB not found at {DB}", file=sys.stderr)
@@ -271,26 +346,40 @@ def run(period_days: int = 7, as_json: bool = False) -> int:
     finally:
         conn.close()
 
+    schema_violations = check_db_schema_isolation()
+
     components = {
-        "action_success":   {"rate": s1, "meta": s1_meta},
+        "action_success": {"rate": s1, "meta": s1_meta},
         "error_resolution": {"rate": s2, "meta": s2_meta},
-        "hook_integrity":   {"score": s3, "meta": s3_meta},
-        "learning_rate":    {"score": s4, "meta": s4_meta},
-        "system_health":    {"score": s5, "meta": s5_meta},
+        "hook_integrity": {"score": s3, "meta": s3_meta},
+        "learning_rate": {"score": s4, "meta": s4_meta},
+        "system_health": {"score": s5, "meta": s5_meta},
     }
 
     score = compute_score(s1, s2, s3, s4, s5)
+    # A schema-isolation violation is a structural governance breach, not
+    # a scored metric — it caps the exit code regardless of the numeric
+    # score so the delivery gate can't report HEALTHY over it (2026-08-21).
+    exit_code = 0 if score >= 85 else (1 if score >= 70 else 2)
+    if schema_violations:
+        exit_code = max(exit_code, 1)
 
     if as_json:
-        print(json.dumps({
-            "score": score,
-            "status": status_label(score),
-            "components": components,
-            "unresolved_errors": unresolved,
-        }, indent=2))
-        return 0 if score >= 85 else (1 if score >= 70 else 2)
+        print(
+            json.dumps(
+                {
+                    "score": score,
+                    "status": status_label(score),
+                    "components": components,
+                    "unresolved_errors": unresolved,
+                    "schema_violations": schema_violations,
+                },
+                indent=2,
+            )
+        )
+        return exit_code
 
-    report_text = format_terminal(components, score, unresolved)
+    report_text = format_terminal(components, score, unresolved, schema_violations)
     print(report_text)
 
     # Persist
@@ -302,7 +391,7 @@ def run(period_days: int = 7, as_json: bool = False) -> int:
     finally:
         conn2.close()
 
-    return 0 if score >= 85 else (1 if score >= 70 else 2)
+    return exit_code
 
 
 def main() -> None:
@@ -312,8 +401,9 @@ def main() -> None:
         epilog="Exit codes: 0=HEALTHY  1=WARNING  2=CRITICAL",
     )
     parser.add_argument("--json", action="store_true", help="Machine-readable JSON output")
-    parser.add_argument("--period", type=int, default=7, metavar="DAYS",
-                        help="Analysis window in days (default: 7)")
+    parser.add_argument(
+        "--period", type=int, default=7, metavar="DAYS", help="Analysis window in days (default: 7)"
+    )
     args = parser.parse_args()
     sys.exit(run(period_days=args.period, as_json=args.json))
 

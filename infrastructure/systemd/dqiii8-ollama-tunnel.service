@@ -1,0 +1,43 @@
+# DQIII8 -- SSH tunnel to Netcup Ollama (bge-m3)
+#
+# bge-m3 embeddings moved from Hostinger to Netcup (2026-08-24): Hostinger's
+# local ollama.service was hitting intermittent runner-start timeouts under
+# real memory pressure (swap in use, OLLAMA_KEEP_ALIVE=1m forcing a cold
+# start on nearly every daily watchdog check). Netcup has 15GB RAM, no
+# aggressive keep-alive, and already has bge-m3 pulled.
+#
+# This tunnel reuses the exact same 127.0.0.1:11434 address Hostinger's own
+# ollama.service used to bind, so every existing caller in the repo
+# (bin/core/embeddings.py, bin/agents/vector_store.py, bin/tools/health_check.py,
+# etc.) keeps working with zero code changes -- they just now reach Netcup's
+# Ollama through this forward instead of a local process.
+#
+# Install (manual -- /etc/systemd/system/ is an agent-blocked path by design):
+#   cp infrastructure/systemd/dqiii8-ollama-tunnel.service /etc/systemd/system/
+#   systemctl disable --now ollama          # frees Hostinger's local Ollama RAM
+#   systemctl daemon-reload
+#   systemctl enable --now dqiii8-ollama-tunnel
+#
+# Verify: `ollama list` on Hostinger should return the same models as
+# `ssh netcup 'ollama list'` (bge-m3, qwen2.5-coder:7b) once the tunnel is up.
+#
+# Uses the `netcup` SSH alias already configured in ~/.ssh/config (same one
+# bin/tools/backup_audit_docs.sh uses) -- full shell access, not a
+# forced-command key, so BatchMode+StrictHostKeyChecking are set explicitly
+# to match that existing convention rather than relying on ssh defaults.
+
+[Unit]
+Description=DQIII8 -- SSH tunnel to Netcup Ollama (bge-m3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/ssh -N -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+  -o ExitOnForwardFailure=yes -o ServerAliveInterval=10 -o ServerAliveCountMax=2 \
+  -L 127.0.0.1:11434:127.0.0.1:11434 netcup
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

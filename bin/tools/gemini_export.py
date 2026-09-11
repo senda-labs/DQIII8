@@ -11,10 +11,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB = JARVIS / "database" / "dqiii8.db"
-PROJ = Path(os.environ.get("CONTENT_PROJECT_ROOT", str(JARVIS)))
-OUT_DIR = JARVIS / "tasks" / "gemini_reports"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB = ROOT_DIR / "database" / "dqiii8.db"
+PROJ = Path(os.environ.get("CONTENT_PROJECT_ROOT", str(ROOT_DIR)))
+OUT_DIR = ROOT_DIR / "tasks" / "gemini_reports"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 

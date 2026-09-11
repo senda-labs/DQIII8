@@ -22,6 +22,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
@@ -124,9 +125,7 @@ def index_agent_knowledge(agent_name: str) -> None:
             log.debug(f"chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
 
     index_path = knowledge_dir / "index.json"
-    index_path.write_text(
-        json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
     total_kb = index_path.stat().st_size / 1024
     log.info(f"{agent_name}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)")
 
@@ -178,9 +177,7 @@ def index_domain_knowledge(domain: str) -> None:
             log.debug(f"chunk {i}: {len(chunk):>4} chars | {elapsed_ms:>5.0f}ms")
 
     index_path = domain_dir / "index.json"
-    index_path.write_text(
-        json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
     total_kb = index_path.stat().st_size / 1024
     log.info(f"domain={domain}: {len(index)} chunks → {index_path} ({total_kb:.0f} KB)")
 
@@ -188,9 +185,7 @@ def index_domain_knowledge(domain: str) -> None:
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Index agent knowledge documents with bge-m3"
-    )
+    parser = argparse.ArgumentParser(description="Index agent knowledge documents with bge-m3")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--agent", help="Agent name (e.g. finance-analyst)")
     group.add_argument("--domain", help="Knowledge domain (e.g. social_sciences)")

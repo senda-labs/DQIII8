@@ -154,9 +154,7 @@ def query_facts(
 
     if not include_expired:
         if as_of:
-            clauses.append(
-                "valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)"
-            )
+            clauses.append("valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)")
             params.extend([as_of, as_of])
         else:
             clauses.append("valid_until IS NULL")
@@ -333,9 +331,7 @@ def compute_relevance(
     item_type: "fact" | "chunk"
     query_time: ISO string for age calculation (defaults to now)
     """
-    now_dt = (
-        datetime.fromisoformat(query_time) if query_time else datetime.now(timezone.utc)
-    )
+    now_dt = datetime.fromisoformat(query_time) if query_time else datetime.now(timezone.utc)
 
     with _conn() as conn:
         if item_type == "fact":

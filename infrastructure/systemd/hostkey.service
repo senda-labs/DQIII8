@@ -1,0 +1,28 @@
+# /etc/systemd/system/hostkey.service
+# Versioned 2026-09-07 (pre-Hostinger-decommission audit) — this unit existed only
+# in /etc/systemd/system/ on Hostinger, unrecorded anywhere else. Captured verbatim
+# via `systemctl cat hostkey.service`.
+[Unit]
+Description=hostkey API (B5 Delivery Hub)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/dqiii8/my-projects/janus-keys
+EnvironmentFile=/root/dqiii8/my-projects/janus-keys/.env
+ExecStart=/root/dqiii8/my-projects/janus-keys/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8033 \
+    --workers 2 \
+    --log-level info \
+    --access-log
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hostkey
+
+[Install]
+WantedBy=multi-user.target

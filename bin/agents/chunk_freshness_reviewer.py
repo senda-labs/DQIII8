@@ -238,14 +238,16 @@ def cmd_review(conn: sqlite3.Connection, limit: int, dry_run: bool = False) -> d
         (limit,),
     ).fetchall()
 
-    total_unreviewed = conn.execute(
-        """SELECT COUNT(*) FROM vector_chunks vc
+    total_unreviewed = conn.execute("""SELECT COUNT(*) FROM vector_chunks vc
            LEFT JOIN chunk_health ch ON ch.chunk_id = vc.id
-           WHERE ch.chunk_id IS NULL AND vc.text IS NOT NULL AND vc.text != ''"""
-    ).fetchone()[0]
+           WHERE ch.chunk_id IS NULL AND vc.text IS NOT NULL AND vc.text != ''""").fetchone()[0]
 
     if dry_run:
-        log.info("Would review %d of %d unreviewed chunks", min(limit, total_unreviewed), total_unreviewed)
+        log.info(
+            "Would review %d of %d unreviewed chunks",
+            min(limit, total_unreviewed),
+            total_unreviewed,
+        )
         return {"pending": total_unreviewed}
 
     if not pending:
@@ -263,7 +265,10 @@ def cmd_review(conn: sqlite3.Connection, limit: int, dry_run: bool = False) -> d
 
     for i, (chunk_id, domain, text) in enumerate(pending, 1):
         if caller.exhausted and len(caller.exhausted) >= len(caller.keys):
-            log.info("All keys exhausted — stopping. (%d done)", sum(v for k, v in stats.items() if k != 'errors'))
+            log.info(
+                "All keys exhausted — stopping. (%d done)",
+                sum(v for k, v in stats.items() if k != "errors"),
+            )
             break
 
         redundancy = _assess_redundancy(text, caller)
@@ -284,10 +289,10 @@ def cmd_review(conn: sqlite3.Connection, limit: int, dry_run: bool = False) -> d
                 "Processed %d/%d keep=%d demote=%d archive=%d err=%d",
                 i,
                 len(pending),
-                stats['keep'],
-                stats['demote'],
-                stats['archive'],
-                stats['errors'],
+                stats["keep"],
+                stats["demote"],
+                stats["archive"],
+                stats["errors"],
             )
 
         time.sleep(1.5)  # Rate limit spacing (2 LLM calls per chunk)
@@ -312,10 +317,8 @@ def cmd_report(conn: sqlite3.Connection) -> None:
     print(f"  Chunk Health Report — {reviewed}/{total} reviewed")
     print(f"{'=' * 55}")
 
-    rows = conn.execute(
-        """SELECT verdict, COUNT(*), ROUND(AVG(redundancy_score), 2), SUM(usage_30d)
-           FROM chunk_health GROUP BY verdict ORDER BY COUNT(*) DESC"""
-    ).fetchall()
+    rows = conn.execute("""SELECT verdict, COUNT(*), ROUND(AVG(redundancy_score), 2), SUM(usage_30d)
+           FROM chunk_health GROUP BY verdict ORDER BY COUNT(*) DESC""").fetchall()
 
     for verdict, count, avg_r, total_usage in rows:
         print(
@@ -342,13 +345,9 @@ def main() -> None:
     group.add_argument(
         "--review", type=int, default=0, metavar="N", help="Review N unreviewed chunks"
     )
-    group.add_argument(
-        "--all", action="store_true", help="Review all unreviewed chunks"
-    )
+    group.add_argument("--all", action="store_true", help="Review all unreviewed chunks")
     group.add_argument("--report", action="store_true", help="Show health summary")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Show what would be reviewed"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be reviewed")
     args = parser.parse_args()
 
     conn = sqlite3.connect(str(DB_PATH))

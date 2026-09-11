@@ -257,9 +257,9 @@ def test_xmp_namespace_groups_are_detected(tmp_path):
     findings = fmt_image.inspect(img, raw, "jpeg")
     locations = [f.location for f in findings if f.field == "identity_metadata"]
 
-    assert any(loc.startswith("XMP-") or loc == "XMP" for loc in locations), (
-        f"XMP was never flagged; groups seen: {[f.location for f in findings]}"
-    )
+    assert any(
+        loc.startswith("XMP-") or loc == "XMP" for loc in locations
+    ), f"XMP was never flagged; groups seen: {[f.location for f in findings]}"
 
 
 def test_is_identity_group_matches_namespaced_xmp():
@@ -316,9 +316,9 @@ def test_non_manifest_attachment_is_reported_as_non_removable(tmp_path):
     findings = fmt_pdf.inspect(p, raw)
     attach = [f for f in findings if f.field == "embedded_file_attachment"]
     assert len(attach) == 1
-    assert attach[0].removable is False, (
-        "a removable safe-tier finding would just reintroduce the destruction one layer down"
-    )
+    assert (
+        attach[0].removable is False
+    ), "a removable safe-tier finding would just reintroduce the destruction one layer down"
     assert attach[0].tier == "safe"
 
 
@@ -445,9 +445,9 @@ def test_tiff_findings_are_not_advertised_as_removable(tmp_path):
 
     findings = fmt_image.inspect(p, raw, "tiff")
     assert findings, "fixture should carry detectable TIFF metadata"
-    assert all(f.removable is False for f in findings), (
-        "metadata_remove._transform has no TIFF branch — promising removal is a false claim"
-    )
+    assert all(
+        f.removable is False for f in findings
+    ), "metadata_remove._transform has no TIFF branch — promising removal is a false claim"
 
 
 def test_tiff_apply_does_not_claim_a_write(tmp_path):

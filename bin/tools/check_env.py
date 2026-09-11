@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Read-only audit of required env vars for DQIII8. Never prints secret values."""
+
 import os
 import sys
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(os.path.join(os.environ.get("DQIII8_ROOT", "/root/dqiii8"), ".env"))
 except ImportError:
     pass  # dotenv optional
@@ -39,7 +41,7 @@ if anthropic.strip():
     # API key available at all (non-OAuth fallback); this WARN is about the
     # var leaking into a Claude Code subprocess's env, where OAuth requires it
     # to be "".
-    print("[WARN] ANTHROPIC_API_KEY is set — must be \"\" in subprocess env for OAuth")
+    print('[WARN] ANTHROPIC_API_KEY is set — must be "" in subprocess env for OAuth')
 
 if missing:
     print(f"\nFAIL: {len(missing)} required var(s) missing: {', '.join(missing)}")

@@ -147,6 +147,7 @@ objectives/failed/
 tasks/gemini_reports/
 tasks/github_reports/
 tasks/precompact_state.json
+tasks/precompact_state_*.json
 
 # Premium features (not included in free tier)
 knowledge/*/user_uploads/
@@ -199,6 +200,11 @@ database/qdrant/
 # public history. Never again: this whole category is private by default.
 docs/audits/
 
+# Ops runbooks — same F-26 rationale as docs/audits/ above: these reference
+# real server IPs, SSH aliases and exact commands for live infra (e.g. the
+# Hostinger->Netcup migration runbook), never for public history.
+docs/operations/
+
 # Internal implementation plans (private roadmaps/scope, may reference
 # real infra or findings not meant for the public repo)
 .claude/plans/
@@ -243,6 +249,10 @@ tmp/
 temp/
 *.tmp
 *.bak
+# Los patchers de gobernanza dejan sufijos con nombre (.bak-patchJ, .bak-breakglass…),
+# que `*.bak` no captura: sin esto, un `git add -A` commitea copias de
+# permission_analyzer.py y settings.json (2026-08-20, 12 ficheros en el arbol).
+*.bak-*
 *.backup
 
 # Build outputs

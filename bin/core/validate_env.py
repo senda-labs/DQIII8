@@ -117,9 +117,11 @@ def check_vps_health():
 
 def main():
     import argparse as _ap
+
     _parser = _ap.ArgumentParser(add_help=False)
-    _parser.add_argument("--quiet", action="store_true",
-                         help="Suppress all output except critical errors")
+    _parser.add_argument(
+        "--quiet", action="store_true", help="Suppress all output except critical errors"
+    )
     _parser.add_argument("--verbose", action="store_true")
     _args, _ = _parser.parse_known_args()
     quiet = _args.quiet and not _args.verbose
@@ -165,16 +167,17 @@ def main():
         sys.exit(1)
 
     if not all_ok:
-        _print(
-            "\n  ⚠️  Some components have issues. The system will run with the available tiers."
-        )
+        _print("\n  ⚠️  Some components have issues. The system will run with the available tiers.")
 
     _print("────────────────────────────────")
 
     # Security hardening
     try:
         import importlib.util as _ilu
-        _spec = _ilu.spec_from_file_location("db_security", Path(__file__).parent / "db_security.py")
+
+        _spec = _ilu.spec_from_file_location(
+            "db_security", Path(__file__).parent / "db_security.py"
+        )
         _db_sec = _ilu.module_from_spec(_spec)
         _spec.loader.exec_module(_db_sec)
         _db_sec.secure_db_permissions()
@@ -185,21 +188,25 @@ def main():
     # Hardware profile
     try:
         import importlib.util as _ilu
-        _spec2 = _ilu.spec_from_file_location("system_profile", Path(__file__).parent / "system_profile.py")
+
+        _spec2 = _ilu.spec_from_file_location(
+            "system_profile", Path(__file__).parent / "system_profile.py"
+        )
         _sp = _ilu.module_from_spec(_spec2)
         _spec2.loader.exec_module(_sp)
         _profile = _sp.detect_hardware()
         _ram = _profile["ram"].get("total_mb", "?")
         _cores = _profile["cpu"]["cores"]
-        print(f"  Hardware: {_cores} cores, {_ram}MB RAM → recommended Tier C: {_profile['recommended_model']}")
+        print(
+            f"  Hardware: {_cores} cores, {_ram}MB RAM → recommended Tier C: {_profile['recommended_model']}"
+        )
     except Exception as _e:
         print(f"  ⚠️  Hardware detection skipped: {_e}")
 
     # Verify .env is not tracked by git
     ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
     _tracked = subprocess.run(
-        ["git", "ls-files", ".env"],
-        capture_output=True, text=True, cwd=str(ROOT)
+        ["git", "ls-files", ".env"], capture_output=True, text=True, cwd=str(ROOT)
     )
     if _tracked.stdout.strip():
         print("  ⚠️  CRITICAL: .env is tracked by git! Run: git rm --cached .env")

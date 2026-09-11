@@ -165,6 +165,7 @@ paths = [
     '''bin/ui/dashboard\.html''',
     '''bin/j\.sh''',
     '''tests/test_auth_watchdog\.py''',
+    '''tests/test_permission_analyzer\.py''',
     # Example / template files
     '''\.env\.example''',
     '''config/\.env\.example''',

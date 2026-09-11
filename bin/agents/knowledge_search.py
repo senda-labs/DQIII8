@@ -26,6 +26,7 @@ from embeddings import get_embedding, cosine_similarity
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 # Approximate tokens = chars / 4
@@ -83,15 +84,11 @@ def search(agent_name: str, query: str, top_k: int = 5) -> list[dict]:
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Semantic search over DQIII8 agent knowledge"
-    )
+    parser = argparse.ArgumentParser(description="Semantic search over DQIII8 agent knowledge")
     parser.add_argument("--agent", required=True, help="Agent name")
     parser.add_argument("query", help="Natural language search query")
     parser.add_argument("--top-k", type=int, default=5, dest="top_k")
-    parser.add_argument(
-        "--json", action="store_true", dest="json_out", help="Output raw JSON"
-    )
+    parser.add_argument("--json", action="store_true", dest="json_out", help="Output raw JSON")
     args = parser.parse_args()
 
     t0 = time.perf_counter()
@@ -110,15 +107,11 @@ def main() -> None:
     approx_tokens = total_chars // CHARS_PER_TOKEN
 
     print(f'\n[KNOWLEDGE] {args.agent} | "{args.query}"')
-    print(
-        f"Time: {elapsed_ms:.0f}ms | Chunks: {len(results)} | ~{approx_tokens} tokens\n"
-    )
+    print(f"Time: {elapsed_ms:.0f}ms | Chunks: {len(results)} | ~{approx_tokens} tokens\n")
 
     for i, r in enumerate(results, 1):
         preview = r["text"][:500]
-        suffix = (
-            f"  ... [{len(r['text']) - 500} more chars]" if len(r["text"]) > 500 else ""
-        )
+        suffix = f"  ... [{len(r['text']) - 500} more chars]" if len(r["text"]) > 500 else ""
         print(f"--- [{i}] {r['source']} (score: {r['score']}) ---")
         print(preview)
         if suffix:

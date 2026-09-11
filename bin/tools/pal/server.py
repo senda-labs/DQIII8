@@ -144,7 +144,14 @@ def handle(req):
         args = params.get("arguments", {})
         try:
             result_data = _dispatch(tool, args)
-            respond(id_, {"content": [{"type": "text", "text": json.dumps(result_data, ensure_ascii=False)}]})
+            respond(
+                id_,
+                {
+                    "content": [
+                        {"type": "text", "text": json.dumps(result_data, ensure_ascii=False)}
+                    ]
+                },
+            )
         except Exception as exc:
             respond(id_, error=str(exc))
 
@@ -199,6 +206,8 @@ for line in sys.stdin:
         pass
     except Exception as exc:
         print(
-            json.dumps({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}),
+            json.dumps(
+                {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}
+            ),
             flush=True,
         )

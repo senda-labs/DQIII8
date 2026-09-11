@@ -8,9 +8,9 @@ Two invariants this file exists to protect:
   1. Every alias in `_REGISTRY` is reachable by some real tool call AND points
      at a file that exists (the `routing.md` / `performance.md` class of bug,
      in both directions).
-  2. The token budget quoted in the dispatcher docstring, `DYNAMIC.md` and
-     `02_hooks_and_permissions.md` matches what `token_estimate()` actually
-     returns today.
+  2. The token budget quoted in the dispatcher docstring matches what
+     `token_estimate()` actually returns today (`02_hooks_and_permissions.md`
+     must never restate the numbers, only point at the docstring).
 """
 
 import sys
@@ -45,9 +45,7 @@ def declarative_aliases() -> set[str]:
 
 
 def inline_aliases() -> set[str]:
-    return intro.inline_aliases(
-        DISPATCHER_SRC.read_text(encoding="utf-8"), rd._REGISTRY
-    )
+    return intro.inline_aliases(DISPATCHER_SRC.read_text(encoding="utf-8"), rd._REGISTRY)
 
 
 def reachable_aliases() -> set[str]:
@@ -104,9 +102,9 @@ def test_bash_agent_pattern_matches_real_entry_points_not_bare_agent():
     matched any incidental mention of the English word "agent")."""
     for cmd in ("ls bin/agents/", "python3 bin/core/dispatch.py --help"):
         injected = rd.get_rules("Bash", {"command": cmd})
-        assert "Escalation to Opus" in injected or "Plan Gate" in injected, (
-            f"expected plan-gate rules injected for {cmd!r}"
-        )
+        assert (
+            "Escalation to Opus" in injected or "Plan Gate" in injected
+        ), f"expected plan-gate rules injected for {cmd!r}"
     # The bare word alone must NOT trigger — it's not a real code path.
     injected = rd.get_rules("Bash", {"command": "list every agent in the roster"})
     assert "Escalation to Opus" not in injected and "Plan Gate" not in injected
@@ -130,9 +128,9 @@ def test_governance_and_agent_aliases_all_resolve():
 # source (bin/tools/validate_rules_registry.py's _canonical_range(), the same
 # function the pre-commit gate uses), so this file cannot go stale on its own.
 _CANON = vrr._canonical_range(DISPATCHER_SRC.read_text(encoding="utf-8"))
-assert _CANON is not None, (
-    f"{DISPATCHER_SRC}: docstring missing the canonical 'suelo N'/'techo N' markers"
-)
+assert (
+    _CANON is not None
+), f"{DISPATCHER_SRC}: docstring missing the canonical 'suelo N'/'techo N' markers"
 MEASURED_FLOOR, MEASURED_CEILING = _CANON
 
 # RC-2026-08-18: there used to be a TOLERANCE = 0.05 band here (±340 tokens at
@@ -184,10 +182,7 @@ BUDGET_MATRIX = [
     # the budget gate green (context-economy audit N3, 2026-08-18).
     (
         "Edit",
-        {
-            "file_path": "/root/dqiii8/database/.claude/hooks/"
-            "openrouter_wrapper_domain_agent.py"
-        },
+        {"file_path": "/root/dqiii8/database/.claude/hooks/" "openrouter_wrapper_domain_agent.py"},
         "edit-hooks-tiering-db-py",
     ),
 ]
@@ -213,7 +208,7 @@ def test_token_budget_matrix(tool, tool_input, label):
     assert tokens <= MEASURED_CEILING, (
         f"{label}: {tokens} tokens exceeds the documented ceiling "
         f"{MEASURED_CEILING} — re-measure and update rules_dispatcher.py's "
-        f"docstring and DYNAMIC.md together."
+        f"docstring."
     )
 
 
@@ -226,7 +221,7 @@ def test_token_budget_floor_is_always_set_only():
     assert rd.token_estimate(bare) == MEASURED_FLOOR, (
         f"measured floor {rd.token_estimate(bare)} != documented "
         f"{MEASURED_FLOOR} — re-measure and update rules_dispatcher.py's "
-        "docstring and DYNAMIC.md together."
+        "docstring."
     )
 
 
@@ -242,7 +237,7 @@ def test_documented_ceiling_bounds_every_reachable_path(tool, tool_input, label)
     assert tokens <= MEASURED_CEILING, (
         f"{label}: {tokens} tokens exceeds the documented ceiling "
         f"{MEASURED_CEILING}. Shrink the rule files, or re-publish the ceiling "
-        "in rules_dispatcher.py's docstring and DYNAMIC.md."
+        "in rules_dispatcher.py's docstring."
     )
 
 

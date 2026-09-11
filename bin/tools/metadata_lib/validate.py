@@ -94,8 +94,12 @@ def validate_pdf(original_bytes: bytes, new_bytes: bytes, *, allow_recovered: bo
         )
 
     try:
-        orig_text_len = sum(len(p.extract_text() or "") for p in pypdf.PdfReader(io.BytesIO(original_bytes)).pages)
-        new_text_len = sum(len(p.extract_text() or "") for p in pypdf.PdfReader(io.BytesIO(new_bytes)).pages)
+        orig_text_len = sum(
+            len(p.extract_text() or "") for p in pypdf.PdfReader(io.BytesIO(original_bytes)).pages
+        )
+        new_text_len = sum(
+            len(p.extract_text() or "") for p in pypdf.PdfReader(io.BytesIO(new_bytes)).pages
+        )
     except Exception:  # noqa: BLE001
         return  # pypdf cross-check is best-effort; a pypdf-side failure isn't a removal defect
 
@@ -206,7 +210,8 @@ def validate_ooxml_structural(new_bytes: bytes, original_bytes: bytes | None = N
         for target in _relationship_targets(zf):
             if target and target not in names and target not in baseline_dangling:
                 raise MetadataToolError(
-                    ErrorClass.ENGINE_FAILURE, f"relationship Target resolves to missing part: {target}"
+                    ErrorClass.ENGINE_FAILURE,
+                    f"relationship Target resolves to missing part: {target}",
                 )
 
 

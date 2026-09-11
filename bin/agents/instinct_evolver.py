@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 DB_PATH = Path(__file__).parent.parent.parent / "database" / "dqiii8.db"
@@ -64,19 +65,11 @@ def cluster_by_keyword(instincts: list[dict]) -> dict[str, list[dict]]:
 def print_report(clusters: dict[str, list[dict]]) -> None:
     total = sum(len(v) for v in clusters.values())
     actionable = {k: v for k, v in clusters.items() if len(v) >= MIN_CLUSTER_SIZE}
-    print(
-        f"\n=== Instinct Evolution Report — {datetime.now().strftime('%Y-%m-%d')} ==="
-    )
+    print(f"\n=== Instinct Evolution Report — {datetime.now().strftime('%Y-%m-%d')} ===")
     print(f"High-confidence instincts: {total}")
-    print(
-        f"Clusters: {len(clusters)} | Actionable (>={MIN_CLUSTER_SIZE}): {len(actionable)}\n"
-    )
+    print(f"Clusters: {len(clusters)} | Actionable (>={MIN_CLUSTER_SIZE}): {len(actionable)}\n")
     for keyword, members in sorted(clusters.items(), key=lambda x: -len(x[1])):
-        flag = (
-            ">>> SKILL CANDIDATE"
-            if len(members) >= MIN_CLUSTER_SIZE
-            else "    sub-threshold"
-        )
+        flag = ">>> SKILL CANDIDATE" if len(members) >= MIN_CLUSTER_SIZE else "    sub-threshold"
         print(f"  [{len(members):2d}] {keyword:<25} {flag}")
         for m in members:
             print(f"         conf={m['confidence']:.2f}  {m['pattern'][:70]}")

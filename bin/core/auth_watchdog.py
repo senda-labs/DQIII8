@@ -13,6 +13,7 @@ Checks:
 On failure: notifies Telegram with specific fix instructions.
 On success: silent.
 """
+
 import json
 import os
 import subprocess

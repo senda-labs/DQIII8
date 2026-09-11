@@ -29,20 +29,20 @@ for _d in (BIN_DIR, BIN_DIR / "core", BIN_DIR / "agents"):
 
 # Subtask keywords associated with each intent pattern (mirrors dashboard._INTENT_SUBTASKS)
 _INTENT_SUBTASKS: dict = {
-    "analyze":   ["collection", "analysis", "pattern", "report"],
-    "generate":  ["requirements", "draft", "review", "finalization"],
-    "optimize":  ["profiling", "bottleneck", "refactor", "benchmark"],
-    "debug":     ["reproduction", "root cause", "fix", "regression"],
-    "research":  ["discovery", "extraction", "analysis", "synthesis"],
+    "analyze": ["collection", "analysis", "pattern", "report"],
+    "generate": ["requirements", "draft", "review", "finalization"],
+    "optimize": ["profiling", "bottleneck", "refactor", "benchmark"],
+    "debug": ["reproduction", "root cause", "fix", "regression"],
+    "research": ["discovery", "extraction", "analysis", "synthesis"],
     "summarize": ["parsing", "key points", "summary"],
-    "compare":   ["criteria", "collection", "analysis", "recommendation"],
-    "forecast":  ["historical", "model", "projection", "confidence"],
-    "explain":   ["decomposition", "examples", "analogies", "summary"],
+    "compare": ["criteria", "collection", "analysis", "recommendation"],
+    "forecast": ["historical", "model", "projection", "confidence"],
+    "explain": ["decomposition", "examples", "analogies", "summary"],
     "transform": ["parsing", "mapping", "transformation", "validation"],
-    "validate":  ["schema", "rules", "edge cases", "report"],
-    "plan":      ["requirements", "architecture", "breakdown", "timeline"],
-    "automate":  ["mapping", "script", "testing", "deployment"],
-    "report":    ["collection", "analysis", "visualization", "summary"],
+    "validate": ["schema", "rules", "edge cases", "report"],
+    "plan": ["requirements", "architecture", "breakdown", "timeline"],
+    "automate": ["mapping", "script", "testing", "deployment"],
+    "report": ["collection", "analysis", "visualization", "summary"],
 }
 
 
@@ -106,13 +106,11 @@ def score_amplification_quality(result: dict) -> dict:
     # Weighted overall
     weights = {
         "subtask_coverage": 0.30,
-        "prompt_richness":  0.20,
+        "prompt_richness": 0.20,
         "knowledge_present": 0.30,
         "domain_confidence": 0.20,
     }
-    scores["overall"] = round(
-        sum(scores[k] * weights[k] for k in weights), 4
-    )
+    scores["overall"] = round(sum(scores[k] * weights[k] for k in weights), 4)
 
     return scores
 
@@ -132,8 +130,10 @@ def grade(overall: float) -> str:
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def main():
     from jal_common import load_env
+
     load_env()
 
     if len(sys.argv) < 2:
@@ -143,6 +143,7 @@ def main():
     prompt = " ".join(sys.argv[1:])
 
     from intent_amplifier import amplify
+
     result = amplify(prompt)
     scores = score_amplification_quality(result)
 

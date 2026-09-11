@@ -24,7 +24,11 @@ def resolve_project_safe(session_id: str, cwd: str | None = None) -> str | None:
     try:
         from core.project_context import resolve_project
 
-        return resolve_project(session_id=session_id, cwd=cwd) if cwd is not None else resolve_project(session_id=session_id)
+        return (
+            resolve_project(session_id=session_id, cwd=cwd)
+            if cwd is not None
+            else resolve_project(session_id=session_id)
+        )
     except Exception as e:
         log.debug("action_log: resolve_project failed (best-effort): %s", e)
         return None

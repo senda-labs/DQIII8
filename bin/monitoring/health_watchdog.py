@@ -2,14 +2,15 @@
 """
 DQIII8 Health Watchdog — daily preventive maintenance check.
 
-13+ checks (count varies: one per configured service/cron/backup-DB, plus
+14+ checks (count varies: one per configured service/cron/backup-DB, plus
 conditional hooks_config_warnings/rules_registry_warnings when there's
 something non-fatal to surface) covering services, crons, core modules, DB
-integrity, disk space, import paths, backup freshness/log, the
-health_check.py dead-man's-switch, abandoned human_hours sessions, hooks
-config, the rules registry (RC10/RC11 doc-drift gate, otherwise pre-commit-
-only and blind to non-git drift), and dependency version pins. Sends
-Telegram alert if any check fails.
+integrity, disk space, CPU/RAM (netcup VPS, added 2026-08-25 — psutil,
+threshold 90%), import paths, backup freshness/log, the health_check.py
+dead-man's-switch, abandoned human_hours sessions, hooks config, the rules
+registry (RC10/RC11 doc-drift gate, otherwise pre-commit-only and blind to
+non-git drift), and dependency version pins. Sends Telegram alert if any
+check fails.
 Silent on full success (only logs).
 
 Usage:
@@ -64,7 +65,23 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 def check_services() -> None:
     # "autoreporte" removed 2026-08-12: no systemd unit or script by that name
     # exists anywhere in the tree — a phantom entry that always reported "down".
-    for svc in ["dqiii8-bot", "dq-dashboard", "ollama"]:
+    # "ollama" -> "dqiii8-ollama-tunnel" 2026-08-24: bge-m3 moved to Netcup
+    # (memory pressure on Hostinger), reached via a persistent SSH tunnel on
+    # 127.0.0.1:11434 — the local ollama.service was intentionally stopped
+    # on Hostinger, so watching it there would permanently report "inactive".
+    # Post-cutover (2026-09-07, Hostinger -> Netcup): this same script now
+    # runs ON Netcup, where Ollama is local again and the tunnel unit isn't
+    # even installed (systemctl reports "not-found", not just "inactive") —
+    # watching for it there is a permanent false-positive alert. Pick the
+    # unit that actually exists on this host rather than hardcoding one.
+    tunnel_installed = (
+        subprocess.run(
+            ["systemctl", "cat", "dqiii8-ollama-tunnel"], capture_output=True, timeout=30
+        ).returncode
+        == 0
+    )
+    ollama_svc = "dqiii8-ollama-tunnel" if tunnel_installed else "ollama"
+    for svc in ["dqiii8-bot", "dq-dashboard", ollama_svc]:
         result = subprocess.run(
             ["systemctl", "is-active", svc], capture_output=True, text=True, timeout=30
         )
@@ -188,6 +205,23 @@ def check_disk_space() -> None:
         check("disk_space", False, str(e)[:60])
 
 
+# ── Check 6b: CPU / RAM (netcup VPS — added 2026-08-25, city-blocks readiness) ──
+
+
+def check_cpu_ram() -> None:
+    try:
+        import psutil
+
+        cpu_pct = psutil.cpu_percent(interval=1)
+        vm = psutil.virtual_memory()
+        check("cpu_usage", cpu_pct <= 90, f"{cpu_pct}%")
+        check("ram_usage", vm.percent <= 90, f"{vm.percent}% ({vm.available // (1024**2)}MB free)")
+    except ImportError:
+        check("cpu_ram", False, "psutil not installed — run: pip install psutil")
+    except Exception as e:
+        check("cpu_ram", False, str(e)[:60])
+
+
 # ── Check 7: Critical import paths ────────────────────────────────────────
 
 
@@ -240,7 +274,7 @@ def check_working_memory() -> None:
 # ── Check 9: Backup freshness ─────────────────────────────────────────────
 
 BACKUP_DIR = DQIII8_ROOT / "database" / "backups"
-BACKUP_DBS = ["dqiii8.db", "dqiii8_knowledge.db", "dqiii8_history.db"]
+BACKUP_DBS = ["dqiii8.db", "dqiii8_knowledge.db"]
 # Live counts 2026-08-12 (4/5/7 per DB) are still refilling at +1/DB/day after
 # the Stage-0.1 rotation fix; a flat >=7 floor would fire on deploy. Ramps to
 # the script's real KEEP=7 target by the date they're expected to reach it.
@@ -482,23 +516,92 @@ def check_triage_ran() -> None:
             first_commit_ts = int(
                 subprocess.run(
                     ["git", "log", "--reverse", "--format=%at"],
-                    cwd=DQIII8_ROOT, capture_output=True, text=True, timeout=10,
+                    cwd=DQIII8_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 ).stdout.splitlines()[0]
             )
-            install_age_h = (NOW - datetime.fromtimestamp(first_commit_ts, tz=timezone.utc)).total_seconds() / 3600
+            install_age_h = (
+                NOW - datetime.fromtimestamp(first_commit_ts, tz=timezone.utc)
+            ).total_seconds() / 3600
         except (IndexError, ValueError, subprocess.SubprocessError):
             install_age_h = 0  # can't determine — don't false-alarm on a fresh/odd checkout
         check(
             "triage_ran",
             install_age_h <= 48,
-            "history file absent" + (
-                " (fresh install, no run yet)" if install_age_h <= 48
+            "history file absent"
+            + (
+                " (fresh install, no run yet)"
+                if install_age_h <= 48
                 else f" and install is {install_age_h:.0f}h old — triage cron may never have run"
             ),
         )
         return
-    age_h = (NOW - datetime.fromtimestamp(marker.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
+    age_h = (
+        NOW - datetime.fromtimestamp(marker.stat().st_mtime, tz=timezone.utc)
+    ).total_seconds() / 3600
     check("triage_ran", age_h <= 48, f"last successful run {age_h:.0f}h ago (limit 48h)")
+
+
+def check_city_blocks() -> None:
+    """T033/T026 (global-media-org, 002-city-blocks-editorial) — workers vivos + fallos
+    recientes visibles, sin depender de REDIS_PASSWORD (panel-review 2026-09-01, P2 Operational:
+    el cron de este watchdog no tiene esa credencial en su entorno — `crontab -l` no la exporta,
+    y añadirla ahí sería una nueva superficie de exposición de secreto solo para este check;
+    depender de ella habría producido una alerta Telegram diaria perpetua desde el primer cron
+    tick, entrenando al operador a ignorar TODAS las alertas del watchdog, no solo esta).
+    Todo lo que este check mira es accesible sin Redis: liveness de proceso (`ps`) y
+    `RegistroFallo`/`AgentInvocation` vía SQLite directo — la propia garantía de "nada se pierde
+    en silencio" del diseño (contracts/stream-schemas.md) ya vive en RegistroFallo, no en el
+    stream, así que ni siquiera se pierde profundidad real por evitar Redis aquí."""
+    project_root = DQIII8_ROOT / "my-projects" / "global-media-org"
+    if not project_root.exists():
+        return  # proyecto no desplegado en este host — nada que comprobar
+
+    for script in ("blocks/osint_acquisition/watcher.py", "blocks/redaccion/worker.py"):
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", script], capture_output=True, text=True, timeout=10
+            )
+            check(f"city_blocks:{script.split('/')[-2]}_alive", result.returncode == 0, "")
+        except Exception as e:
+            check(f"city_blocks:{script.split('/')[-2]}_alive", False, str(e)[:80])
+
+    # T026 — aviso si un bloque está acumulando fallos recientes (candidato a DLQ o ya
+    # enrutado ahí). Umbral generoso (10 en 2h): esto es un aviso de tendencia, no el conteo
+    # exacto de N=3 reintentos por mensaje que decide el enrutamiento a DLQ (ese vive en
+    # worker.py::_dlq_attempt_count(), por mensaje — este check es agregado, por bloque).
+    FALLOS_THRESHOLD = 10
+    FALLOS_WINDOW_HOURS = 2
+    for bloque, db_relpath in (
+        ("osint_acquisition", "blocks/osint_acquisition/osint.db"),
+        ("redaccion", "blocks/redaccion/redaccion.db"),
+    ):
+        db_path = project_root / db_relpath
+        if not db_path.exists():
+            continue
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+            try:
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM RegistroFallo WHERE bloque = ? "
+                    "AND timestamp > datetime('now', ?)",
+                    (bloque, f"-{FALLOS_WINDOW_HOURS} hours"),
+                ).fetchone()[0]
+            finally:
+                conn.close()
+            check(
+                f"city_blocks:{bloque}_fallos_recientes",
+                count < FALLOS_THRESHOLD,
+                (
+                    f"{count} en las últimas {FALLOS_WINDOW_HOURS}h (umbral {FALLOS_THRESHOLD})"
+                    if count >= FALLOS_THRESHOLD
+                    else ""
+                ),
+            )
+        except Exception as e:
+            check(f"city_blocks:{bloque}_fallos_recientes", False, str(e)[:80])
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
@@ -511,6 +614,7 @@ CHECKS = [
     ("knowledge_enricher", check_knowledge_enricher),
     ("db_integrity", check_db_integrity),
     ("disk_space", check_disk_space),
+    ("cpu_ram", check_cpu_ram),
     ("imports", check_imports),
     ("working_memory", check_working_memory),
     ("backup_freshness", check_backup_freshness),
@@ -521,6 +625,7 @@ CHECKS = [
     ("hooks_config", check_hooks_config),
     ("rules_registry", check_rules_registry),
     ("triage_ran", check_triage_ran),
+    ("city_blocks", check_city_blocks),
 ]
 
 

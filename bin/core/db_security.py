@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Database security utilities for DQIII8."""
+
 import sqlite3
 import os
 import re
@@ -8,9 +9,10 @@ import subprocess
 from pathlib import Path
 
 import logging
+
 log = logging.getLogger(__name__)
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB_PATH = JARVIS / "database" / "dqiii8.db"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB_PATH = ROOT_DIR / "database" / "dqiii8.db"
 
 
 def secure_db_permissions():
@@ -26,7 +28,7 @@ def secure_db_permissions():
 
 def secure_env_permissions():
     """Set .env file to owner-only read (chmod 400)."""
-    env_file = JARVIS / ".env"
+    env_file = ROOT_DIR / ".env"
     if env_file.exists():
         os.chmod(env_file, stat.S_IRUSR)  # 400 (read-only by owner)
         print(f".env permissions set to 400: {env_file}")
@@ -34,23 +36,20 @@ def secure_env_permissions():
 
 def verify_no_secrets_in_repo():
     """Scan tracked files for potential secrets."""
-    result = subprocess.run(
-        ["git", "ls-files"],
-        capture_output=True, text=True, cwd=str(JARVIS)
-    )
+    result = subprocess.run(["git", "ls-files"], capture_output=True, text=True, cwd=str(ROOT_DIR))
     files = result.stdout.strip().split("\n")
 
     secret_patterns = [
-        r"ghp_[a-zA-Z0-9]{36}",           # GitHub PAT
-        r"sk-ant-[a-zA-Z0-9-]{40,}",      # Anthropic key
-        r"gsk_[a-zA-Z0-9]{20,}",          # Groq key
-        r"sk-[a-zA-Z0-9]{20,}",           # OpenAI key
-        r"xoxb-[a-zA-Z0-9-]+",            # Slack token
+        r"ghp_[a-zA-Z0-9]{36}",  # GitHub PAT
+        r"sk-ant-[a-zA-Z0-9-]{40,}",  # Anthropic key
+        r"gsk_[a-zA-Z0-9]{20,}",  # Groq key
+        r"sk-[a-zA-Z0-9]{20,}",  # OpenAI key
+        r"xoxb-[a-zA-Z0-9-]+",  # Slack token
     ]
 
     issues = []
     for f in files:
-        fpath = JARVIS / f
+        fpath = ROOT_DIR / f
         if not fpath.exists() or fpath.suffix in (".pyc", ".db", ".json", ".lock"):
             continue
         try:
@@ -61,7 +60,7 @@ def verify_no_secrets_in_repo():
                         f"ALERT: {f} contains potential secret matching {pattern[:20]}..."
                     )
         except Exception as _exc:
-            log.warning('%s: %s', __name__, _exc)
+            log.warning("%s: %s", __name__, _exc)
 
     if issues:
         print("  SECRETS FOUND IN TRACKED FILES:")

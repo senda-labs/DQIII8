@@ -88,7 +88,6 @@ def _parse_project_file(md_path) -> dict | None:
         next_step = next_step[:117] + "..."
     return {
         "name": md_path.parent.name,
-        "model": "unknown",
         "next_step": next_step,
         "last_updated": md_path.stat().st_mtime,
         "tags": {md_path.parent.name},
@@ -109,21 +108,25 @@ def _load_all_projects() -> list[dict]:
 
 
 def _nl_match_project(prompt: str) -> str | None:
-    """Write-layer NL matcher: explicit verb + exact known-project token. No match -> None."""
+    """Write-layer NL matcher: explicit verb + exact known-project token. No match -> None.
+
+    Checks the regex-captured candidate against a named path instead of
+    enumerating my-projects/ (docs/plglobal/README.md finding #41 — same fix
+    as _project_by_name/#37: operators hold a traverse-only ACL there, no
+    read bit, so a directory listing silently returns empty/raises for them).
+    The candidate is already a single known token from the regex capture, so
+    a named-path existence check is both correct and sufficient here — no
+    real enumeration is ever needed for this matcher.
+    """
     m = _NL_VERB_RE.search(prompt)
     if not m:
         return None
     candidate = m.group(1).lower()
-    for name in _known_project_names():
-        if name.lower() == candidate:
-            return name
+    if candidate == "dqiii8-core":
+        return "dqiii8-core"
+    if (PROJECTS_DIR / candidate).is_dir():
+        return candidate
     return None
-
-
-def _known_project_names() -> set[str]:
-    if not PROJECTS_DIR.exists():
-        return {"dqiii8-core"}
-    return {p.name for p in PROJECTS_DIR.iterdir() if p.is_dir()} | {"dqiii8-core"}
 
 
 def _log_nl_shadow_candidate(
@@ -161,20 +164,59 @@ def _detect_project_from_prompt(prompt: str, projects: list[dict]) -> dict | Non
     return None
 
 
-def _read_active_project(prompt: str = "") -> dict | None:
+def _project_by_name(name: str) -> dict | None:
+    """Load one project by exact slug via a named path, not a directory
+    listing. Operator sessions (plglobal-isabel/mario) hold a traverse-only
+    ACL on my-projects/ (no read bit — docs/plglobal/README.md finding #11):
+    stat/read on a named child path still works, iterdir()/glob() over the
+    parent does not (silently returns empty, PermissionError swallowed by
+    glob's own scandir handling). Same named-path pattern postcompact.py
+    already uses for next_step."""
+    md = PROJECTS_DIR / name / "PROJECT.md"
+    if md.exists():
+        return _parse_project_file(md)
+    return None
+
+
+def _read_active_project(prompt: str = "", session_id: str = "", cwd: str | None = None) -> dict | None:
     """
-    Find the relevant project: prompt keyword match > most recently updated active.
-    Returns dict with keys: name, model, next_step, last_updated, tags
+    Find the relevant project: explicit prompt mention > project_context SSOT
+    (same resolve_project_safe() session_start.py/postcompact.py use) > most
+    recently updated project file (fail-open fallback if the SSOT lookup
+    breaks or returns nothing).
+    Returns dict with keys: name, next_step, last_updated, tags
     or None if no active project found.
+
+    `projects` (a full my-projects/ listing) can be legitimately empty for an
+    operator session even when a project IS active — do not early-return on
+    that alone, or SSOT resolution below never runs for them at all.
     """
     projects = _load_all_projects()
-    if not projects:
-        return None
-    if prompt:
+    if prompt and projects:
         matched = _detect_project_from_prompt(prompt, projects)
         if matched:
             return matched
-    return projects[0]
+    try:
+        from core.action_log import resolve_project_safe
+
+        ssot_name = resolve_project_safe(session_id, cwd=cwd)
+        if ssot_name:
+            for p in projects:
+                if p["name"] == ssot_name:
+                    return p
+            if ssot_name == "dqiii8-core":
+                return {
+                    "name": "dqiii8-core",
+                    "next_step": "",
+                    "last_updated": 0,
+                    "tags": {"dqiii8-core"},
+                }
+            direct = _project_by_name(ssot_name)
+            if direct:
+                return direct
+    except Exception as e:
+        log.debug("SSOT project resolution skipped: %s", e)
+    return projects[0] if projects else None
 
 
 def _extract_keywords(prompt: str) -> list[str]:
@@ -265,6 +307,36 @@ def _log_skill_invocation(skill_name: str) -> None:
         )
 
 
+def _ups_state_file(session_id: str) -> Path:
+    from core.paths import safe_session_id
+
+    return DQIII8 / "tasks" / f"ups_state_{safe_session_id(session_id)}.json"
+
+
+def _last_project_name(session_id: str) -> str | None:
+    """Anti context-rot (#36): last project name this hook injected for this
+    session, so an unchanged minimal-mode turn ('sigue', 'dale', 'ok'...) can
+    be silenced instead of re-asserting identical, zero-new-info identity."""
+    if not session_id:
+        return None
+    try:
+        return json.loads(_ups_state_file(session_id).read_text(encoding="utf-8")).get("project")
+    except Exception:
+        return None
+
+
+def _save_last_project_name(session_id: str, project_name: str, previous: str | None) -> None:
+    if not session_id or project_name == previous:
+        return  # unchanged: skip the write, not just the injection
+    try:
+        f = _ups_state_file(session_id)
+        tmp = f.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps({"project": project_name}), encoding="utf-8")
+        os.replace(tmp, f)
+    except Exception as e:
+        log.debug("ups state save skipped: %s", e)
+
+
 def _spc_alert() -> str:
     """Return last active SPC trigger reason or empty string."""
     if not DB.exists():
@@ -326,22 +398,39 @@ def main() -> None:
     except Exception as e:
         log.debug("NL project matcher skipped: %s", e)
 
-    # ── Find active project (keyword match first, then most-recent fallback) ──
-    project = _read_active_project(prompt=prompt)
+    session_id = data.get("session_id", "")
+
+    # ── Find active project (explicit mention > SSOT > most-recent fallback) ──
+    project = _read_active_project(prompt=prompt, session_id=session_id, cwd=data.get("cwd"))
     if not project:
         sys.exit(0)  # silence: no active project
 
+    model = os.environ.get("DQIII8_MODEL", "claude-sonnet-5")
+    previous_project = _last_project_name(session_id)
+
     # ── Minimal mode (< 10 words) ────────────────────────────────────────────
     if word_count < 10:
+        # #36 anti context-rot: an unchanged trivial turn ("sigue", "dale",
+        # "ok"...) carries zero new information over the last injection for
+        # this session — re-asserting the identical identity block every
+        # single such turn is exactly the low-signal repetition the context
+        # engineering guidance warns against. Silence instead of repeat.
+        if previous_project == project["name"]:
+            sys.exit(0)
+        _save_last_project_name(session_id, project["name"], previous_project)
         print(
             f"─────────────────────────────────\n"
             f"[DQIII8 Context]\n"
-            f"Active project: {project['name']} | Model: {project['model']}\n"
+            f"Active project: {project['name']} | Model: {model}\n"
             f"─────────────────────────────────"
         )
         sys.exit(0)
 
     # ── Full mode ────────────────────────────────────────────────────────────
+    # Always emitted (not state-diffed): lessons/SPC alert are recomputed per
+    # prompt and can carry new signal even when the project itself hasn't
+    # changed, unlike minimal mode's fixed, content-free identity block.
+    _save_last_project_name(session_id, project["name"], previous_project)
     keywords = _extract_keywords(prompt)
     lessons = _relevant_lessons(keywords)
     spc = _spc_alert()
@@ -349,7 +438,7 @@ def main() -> None:
     lines = [
         "─────────────────────────────────",
         "[DQIII8 Context]",
-        f"Active project: {project['name']} | Model: {project['model']}",
+        f"Active project: {project['name']} | Model: {model}",
     ]
 
     if project["next_step"]:

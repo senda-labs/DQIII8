@@ -18,16 +18,19 @@ from pathlib import Path
 
 import pytest
 
+
 # Skip entire module if sqlite_vec extension is not installed
 def _sqlite_vec_available() -> bool:
     try:
         import sqlite3 as _s, sqlite_vec as _sv
+
         c = _s.connect(":memory:")
         c.enable_load_extension(True)
         _sv.load(c)
         return True
     except Exception:
         return False
+
 
 pytestmark = pytest.mark.skipif(
     not _sqlite_vec_available(),
@@ -164,9 +167,7 @@ def test_hybrid_search_keyword():
     results = hs.search_by_keywords("betting formula", top_k=5, domain="finance")
     assert len(results) >= 1
     assert all(r["search_method"] == "keyword" for r in results)
-    assert any(
-        "kelly" in r["source"].lower() or "kelly" in r["text"].lower() for r in results
-    )
+    assert any("kelly" in r["source"].lower() or "kelly" in r["text"].lower() for r in results)
 
 
 def test_rrf_merge():

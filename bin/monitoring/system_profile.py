@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 
 
 def detect_hardware() -> dict:
@@ -69,7 +69,7 @@ def detect_hardware() -> dict:
 
 
 def save_profile(profile: dict) -> Path:
-    out_path = JARVIS / "database" / "system_profile.json"
+    out_path = ROOT_DIR / "database" / "system_profile.json"
     out_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
     return out_path
 

@@ -1,17 +1,18 @@
 """tests/test_human_hours_schema.py — human_hours table contract."""
+
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
-JARVIS = Path(__file__).parent.parent  # current worktree or repo root
+ROOT_DIR = Path(__file__).parent.parent  # current worktree or repo root
 
 
 def _fresh_db(tmp_path):
     db_path = tmp_path / "dqiii8.db"
     subprocess.run(
         ["sqlite3", str(db_path)],
-        input=(JARVIS / "database" / "schema_v2.sql").read_text(),
+        input=(ROOT_DIR / "database" / "schema_v2.sql").read_text(),
         text=True,
         check=True,
     )

@@ -10,6 +10,7 @@ Run from a non-Claude-Code shell (SSH/tmux) so pre_tool_use.py/post_tool_use.py
 hooks don't write to agent_actions/error_log/vault_memory during the
 "no writers" window.
 """
+
 import shutil
 import sqlite3
 import subprocess
@@ -89,7 +90,9 @@ def step5_session_memory():
 
     if "session_memory" not in SCHEMA.read_text():
         with SCHEMA.open("a") as f:
-            f.write("\n\n-- Added 2026-08-14: DB consolidation (session_memory from dqiii8_history.db)\n")
+            f.write(
+                "\n\n-- Added 2026-08-14: DB consolidation (session_memory from dqiii8_history.db)\n"
+            )
             f.write(create_sql.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1) + ";\n")
         print("  schema_v2.sql updated")
 
@@ -106,9 +109,9 @@ def step5_session_memory():
     conn.execute("DETACH DATABASE history")
     conn.close()
 
-    assert migrated_count == frozen_count, (
-        f"session_memory count mismatch: history={frozen_count} dqiii8.db={migrated_count}"
-    )
+    assert (
+        migrated_count == frozen_count
+    ), f"session_memory count mismatch: history={frozen_count} dqiii8.db={migrated_count}"
     print(f"  migrated {migrated_count} rows, verified against frozen count")
 
 

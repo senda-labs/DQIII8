@@ -97,9 +97,7 @@ def _call_groq(prompt: str, token: str) -> str | None:
         except Exception:
             code, msg = e.code, body[:120]
         if e.code == 429:
-            log.warning(
-                "Groq rate-limited (429) — stopping batch. code=%s msg=%s", code, msg
-            )
+            log.warning("Groq rate-limited (429) — stopping batch. code=%s msg=%s", code, msg)
             return "__RATE_LIMITED__"
         log.error("Groq HTTP %s (%s): %s", e.code, code, msg)
         return None
@@ -206,7 +204,9 @@ def cmd_generate(domain: str | None, dry_run: bool) -> None:
 
     pending = [c for c in chunks if chunk_hash(c["text"]) not in cached]
     label = domain or "ALL"
-    log.info("domain=%s chunks=%d cached=%d pending=%d", label, len(chunks), len(cached), len(pending))
+    log.info(
+        "domain=%s chunks=%d cached=%d pending=%d", label, len(chunks), len(cached), len(pending)
+    )
     if not pending:
         log.info("Nothing to do")
         return
@@ -218,9 +218,7 @@ def cmd_generate(domain: str | None, dry_run: bool) -> None:
     ok = skipped = errors = 0
     for i, chunk in enumerate(pending, 1):
         ch = chunk_hash(chunk["text"])
-        prompt = _build_extraction_prompt(
-            chunk["text"], chunk.get("domain") or "general"
-        )
+        prompt = _build_extraction_prompt(chunk["text"], chunk.get("domain") or "general")
         raw = _call_groq(prompt, token)
 
         if raw == "__RATE_LIMITED__":
@@ -234,9 +232,7 @@ def cmd_generate(domain: str | None, dry_run: bool) -> None:
 
         facts = _parse_facts(raw)
         if not facts:
-            log.warning(
-                "Could not parse facts for chunk id=%s — raw: %s", chunk["id"], raw[:80]
-            )
+            log.warning("Could not parse facts for chunk id=%s — raw: %s", chunk["id"], raw[:80])
             errors += 1
             continue
 
@@ -261,12 +257,8 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--domain", help="Process one domain (e.g. applied_sciences)")
     group.add_argument("--all", action="store_true", help="Process all domains")
-    group.add_argument(
-        "--report", action="store_true", help="Show cache status (no API calls)"
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Count pending without calling API"
-    )
+    group.add_argument("--report", action="store_true", help="Show cache status (no API calls)")
+    parser.add_argument("--dry-run", action="store_true", help="Count pending without calling API")
     args = parser.parse_args()
 
     if args.report:

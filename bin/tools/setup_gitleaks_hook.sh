@@ -69,8 +69,8 @@ python3 bin/tools/validate_hooks_config.py
 
 # rules-registry pre-commit: blocks commits that break the rules/routing
 # governance surface — an orphaned/dangling `_REGISTRY` alias, a token-budget
-# range that no longer agrees across the dispatcher docstring + DYNAMIC.md +
-# 02_hooks_and_permissions.md (x2), a routing table citing an agent that does
+# range that no longer agrees between the dispatcher docstring and
+# 02_hooks_and_permissions.md, a routing table citing an agent that does
 # not exist, or a rule file presenting a model slug the wrapper never routes
 # to. Every one of these drifted silently in the 2026-08-17 audit; the token
 # range drifted twice in that single day. --staged so it gates the index, not

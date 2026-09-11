@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Symbol-anchor verification for the 4 real jarvis-control3 v2 patches applied
+# Symbol-anchor verification for the 4 real lier v0 patches applied
 # this session. Anchors by symbol name, not line number (lines rot). This repo
 # is not git-tracked, so there is nothing to `git apply` here — the patches
 # were applied in place; this script only verifies they're present and intact.

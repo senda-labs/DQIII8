@@ -4261,17 +4261,69 @@ class PermissionAnalyzer:
             return False
 
     def _check_budget(self, session_id: str) -> dict | None:
-        """Blocks if estimated session cost exceeds MAX_SESSION_COST_USD."""
+        """Blocks if estimated session cost exceeds MAX_SESSION_COST_USD.
+
+        Two independent cost sources, summed:
+
+        - `agent_actions.estimated_cost_usd` — written only by
+          `openrouter_wrapper.py`'s `log_to_db()` (sub-agent LLM calls routed
+          through the wrapper), already computed per-row from the real
+          provider/model rate (`TIER_COSTS`) at insert time — summed
+          directly, not re-derived from `tokens_used` at a flat rate (2026-
+          09-12 fix: the original code summed `tokens_used` and multiplied by
+          a flat $15/1M, wrong for any non-Anthropic-priced provider, e.g.
+          Groq/Ollama rows are far cheaper than that). Under the
+          Anthropic-only directive (CLAUDE.md § REGLA NIM) this path is
+          largely dormant.
+        - `token_usage.cost_estimate` — the real per-model, transcript-
+          derived cost (`stop.py`'s Stage-5 block, recomputed on every
+          `Stop`/`SubagentStop`, i.e. throughout a live session via Agent-tool
+          delegation, not only at session end).
+
+        Found 2026-09-11 (round l, file-by-file audit): `pre_tool_use.py`'s
+        own hot-path `INSERT INTO agent_actions` (every tool call, the
+        primary interactive session) never sets `tokens_used`/`tokens_input`/
+        `tokens_output`, and `post_tool_use.py`'s close-out `UPDATE` doesn't
+        either — confirmed live against the production DB (3033 rows in the
+        last 7 days, only 49 with a non-zero `tokens_used`, all from
+        wrapper-routed sub-agent rows like `auditor`/`groq`/`hermes`, none
+        from a real interactive `claude-sonnet-5` session). So this gate's
+        only data source was structurally empty for the exact traffic
+        `02_hooks_and_permissions.md`'s decision table documents it as
+        blocking — `MAX_SESSION_COST_USD` could never fire for a real
+        session, silently, since this check was written. `token_usage` is
+        populated by `stop.py` from the actual Claude Code transcript
+        (`transcript_path`) using real per-model Anthropic pricing, and is
+        recomputed on `SubagentStop` too — the dominant cost driver in this
+        codebase's Agent-tool-delegation architecture — so it is a live
+        enough signal to close most of the gap without adding a per-call
+        transcript read to the hot path (out of scope for this fix: still no
+        true intra-session accounting between one subagent's start and its
+        own `SubagentStop`).
+        """
         try:
             conn = sqlite3.connect(str(DB_PATH), timeout=10)
             row = conn.execute(
-                "SELECT COALESCE(SUM(tokens_used),0) FROM agent_actions "
+                "SELECT COALESCE(SUM(estimated_cost_usd),0) FROM agent_actions "
+                "WHERE session_id=? AND timestamp > datetime('now','-1 hour')",
+                (session_id,),
+            ).fetchone()
+            # 2026-09-12 fix: this used to recompute cost from tokens_used at a
+            # flat $15/1M rate — wrong for any non-Anthropic-priced provider
+            # (openrouter_wrapper.py's TIER_COSTS varies by provider/model,
+            # e.g. Groq/Ollama are far cheaper). agent_actions.estimated_cost_usd
+            # is already the real per-row cost log_to_db() computes from
+            # TIER_COSTS at insert time — sum that directly instead of
+            # re-deriving a wrong number from raw tokens.
+            wrapper_cost = row[0] if row else 0.0
+            tu_row = conn.execute(
+                "SELECT COALESCE(SUM(cost_estimate),0) FROM token_usage "
                 "WHERE session_id=? AND timestamp > datetime('now','-1 hour')",
                 (session_id,),
             ).fetchone()
             conn.close()
-            session_tokens = row[0] if row else 0
-            estimated_cost = (session_tokens / 1_000_000) * 15.0
+            transcript_cost = tu_row[0] if tu_row else 0.0
+            estimated_cost = wrapper_cost + transcript_cost
             if estimated_cost > MAX_SESSION_COST_USD:
                 return self._deny(
                     "budget",

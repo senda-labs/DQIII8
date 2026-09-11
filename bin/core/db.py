@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Shared database connection manager for DQIII8.
 All modules should use get_db() instead of opening connections manually."""
+
 import sqlite3
 import os
 from pathlib import Path

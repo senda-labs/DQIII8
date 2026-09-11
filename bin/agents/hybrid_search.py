@@ -29,6 +29,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
@@ -387,9 +388,7 @@ def hybrid_search(
         sources_used.append("graph")
 
     if not ranked_lists:
-        log.debug(
-            "[hybrid] no results from any source for query=%r domain=%s", query, domain
-        )
+        log.debug("[hybrid] no results from any source for query=%r domain=%s", query, domain)
         return [], "empty"
 
     if len(ranked_lists) == 1:

@@ -191,9 +191,7 @@ def _call_api(
         return None
 
 
-def call_github_model(
-    model_id: str, messages: list[dict], max_tokens: int = 1200
-) -> str | None:
+def call_github_model(model_id: str, messages: list[dict], max_tokens: int = 1200) -> str | None:
     token = _get_env("GITHUB_TOKEN")
     if not token:
         log.error("GITHUB_TOKEN not set")
@@ -202,9 +200,7 @@ def call_github_model(
     return _call_api(GITHUB_ENDPOINT, token, model_id, messages, max_tokens)
 
 
-def call_openrouter(
-    model_id: str, messages: list[dict], max_tokens: int = 800
-) -> str | None:
+def call_openrouter(model_id: str, messages: list[dict], max_tokens: int = 800) -> str | None:
     token = _get_env("OPENROUTER_API_KEY")
     if not token:
         log.warning("OPENROUTER_API_KEY not set — skipping silver judge")
@@ -234,13 +230,9 @@ def call_groq(model_id: str, messages: list[dict], max_tokens: int = 800) -> str
     return result
 
 
-def call_ollama(
-    model_id: str, messages: list[dict], max_tokens: int = 1200
-) -> str | None:
+def call_ollama(model_id: str, messages: list[dict], max_tokens: int = 1200) -> str | None:
     _throttle("ollama")
-    return _call_api(
-        OLLAMA_ENDPOINT, "ollama", model_id, messages, max_tokens, timeout=120
-    )
+    return _call_api(OLLAMA_ENDPOINT, "ollama", model_id, messages, max_tokens, timeout=120)
 
 
 def _call_model(model: str, messages: list[dict], max_tokens: int = 1200) -> str | None:
@@ -282,9 +274,7 @@ def load_gold(conn: sqlite3.Connection, task_id: str) -> str:
     return row["gold_answer"] if row else ""
 
 
-def already_done(
-    conn: sqlite3.Connection, task_id: str, model: str, dq: int, run: int
-) -> bool:
+def already_done(conn: sqlite3.Connection, task_id: str, model: str, dq: int, run: int) -> bool:
     row = conn.execute(
         "SELECT 1 FROM benchmark_multimodel_results "
         "WHERE task_id=? AND model=? AND dq_enabled=? AND run_number=? AND answer IS NOT NULL",
@@ -408,10 +398,7 @@ def _try_enrich(
         chunks = get_relevant_chunks(prompt, domain)
 
         chunks_json = json.dumps(
-            [
-                {"source": c.get("source", ""), "text": c.get("text", "")[:300]}
-                for c in chunks
-            ]
+            [{"source": c.get("source", ""), "text": c.get("text", "")[:300]} for c in chunks]
         )
         scores_json = json.dumps([round(c.get("score", 0.0), 4) for c in chunks])
 
@@ -727,19 +714,13 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="DQIII8 Multi-Model Benchmark")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--run", action="store_true", help="Fase 1: collect model answers"
-    )
+    group.add_argument("--run", action="store_true", help="Fase 1: collect model answers")
     group.add_argument(
         "--score", action="store_true", help="Fase 2: judge answers with dual judges"
     )
     group.add_argument("--report", action="store_true", help="Print results table")
-    parser.add_argument(
-        "--model", default=None, nargs="+", help="Filter to one or more models"
-    )
-    parser.add_argument(
-        "--task", default=None, help="Filter to one task_id (e.g. FS01)"
-    )
+    parser.add_argument("--model", default=None, nargs="+", help="Filter to one or more models")
+    parser.add_argument("--task", default=None, help="Filter to one task_id (e.g. FS01)")
     args = parser.parse_args()
 
     if not DB_PATH.exists():

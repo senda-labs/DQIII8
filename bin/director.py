@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
@@ -346,7 +347,9 @@ def analyze_intent(user_request: str, verbose: bool = True) -> dict:
     instinct_task_type, instinct_confidence = _query_instincts_fast_path(user_request)
 
     if instinct_task_type:
-        log.info("instinct match: %s (conf=%.2f) — skipping LLM", instinct_task_type, instinct_confidence)
+        log.info(
+            "instinct match: %s (conf=%.2f) — skipping LLM", instinct_task_type, instinct_confidence
+        )
         source = f"instinct:{instinct_confidence:.2f}"
         agent = TASK_AGENT_MAP.get(instinct_task_type, "orchestrator")
         tier = TASK_TIER_MAP.get(instinct_task_type, 3)

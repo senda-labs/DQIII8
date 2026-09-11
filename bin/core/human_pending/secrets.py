@@ -7,6 +7,7 @@ pointer to a value. Backend TBD (see jarvis-control3/architecture/08-allowlist-a
 and config/env.md) — for now this is a stub that only supports env-var-backed
 refs, sufficient for the two real call-sites wired in this session.
 """
+
 from __future__ import annotations
 
 import os
@@ -22,5 +23,5 @@ def resolve(secret_ref: str | None) -> str | None:
     if not secret_ref:
         return None
     if secret_ref.startswith("env:"):
-        return os.environ.get(secret_ref[len("env:"):]) or None
+        return os.environ.get(secret_ref[len("env:") :]) or None
     return None

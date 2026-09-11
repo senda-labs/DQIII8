@@ -26,9 +26,7 @@ def swarm():
 def _fake_subtask(
     id: int, result: str = "ok", tokens_in: int = 100, tokens_out: int = 50
 ) -> Subtask:
-    return Subtask(
-        id=id, prompt="test", result=result, tokens_in=tokens_in, tokens_out=tokens_out
-    )
+    return Subtask(id=id, prompt="test", result=result, tokens_in=tokens_in, tokens_out=tokens_out)
 
 
 # ── Unit: decomposition ──────────────────────────────────────────────────────
@@ -37,9 +35,7 @@ def _fake_subtask(
 class TestDecomposition:
     def test_file_decompose_explicit_path(self, swarm):
         """Explicit .py file in prompt triggers file strategy."""
-        strategy, subtasks = swarm._decompose(
-            "review bin/orchestrator.py for bugs", None, 6
-        )
+        strategy, subtasks = swarm._decompose("review bin/orchestrator.py for bugs", None, 6)
         assert strategy == "file"
         assert len(subtasks) == 1
         assert "orchestrator.py" in subtasks[0].prompt
@@ -141,11 +137,11 @@ class TestReduce:
     def test_reduce_single_subtask(self, swarm):
         """Single subtask → result returned directly without LLM call."""
         st = _fake_subtask(0, result="found bug at line 42")
-        reduced = asyncio.get_event_loop().run_until_complete(swarm._reduce([st]))
+        reduced = asyncio.run(swarm._reduce([st]))
         assert reduced == "found bug at line 42"
 
     def test_reduce_empty(self, swarm):
-        reduced = asyncio.get_event_loop().run_until_complete(swarm._reduce([]))
+        reduced = asyncio.run(swarm._reduce([]))
         assert reduced == ""
 
 
@@ -176,9 +172,7 @@ class TestSwarmRun:
 
         with (
             patch.object(swarm, "_call_haiku", side_effect=fake_haiku),
-            patch.object(
-                swarm, "_openrouter_generate", new_callable=AsyncMock
-            ) as mock_ollama,
+            patch.object(swarm, "_openrouter_generate", new_callable=AsyncMock) as mock_ollama,
             patch.object(swarm, "_call_sonnet", new_callable=AsyncMock) as mock_sonnet,
             patch.object(swarm, "_validate", new_callable=AsyncMock) as mock_validate,
         ):
@@ -216,12 +210,8 @@ class TestSwarmRun:
                 new_callable=AsyncMock,
                 return_value="sum",
             ),
-            patch.object(
-                swarm, "_call_sonnet", new_callable=AsyncMock, return_value="baseline"
-            ),
-            patch.object(
-                swarm, "_validate", new_callable=AsyncMock, return_value=("v", 10, 5)
-            ),
+            patch.object(swarm, "_call_sonnet", new_callable=AsyncMock, return_value="baseline"),
+            patch.object(swarm, "_validate", new_callable=AsyncMock, return_value=("v", 10, 5)),
         ):
             t0 = time.monotonic()
             result = await swarm.run("review", target_files=files)
@@ -245,6 +235,4 @@ class TestCostComparison:
         savings = (1 - haiku_cost / sonnet_cost) * 100
 
         assert savings > 70, f"Expected >70% savings, got {savings:.1f}%"
-        print(
-            f"\nHaiku: ${haiku_cost:.3f} | Sonnet: ${sonnet_cost:.3f} | Savings: {savings:.1f}%"
-        )
+        print(f"\nHaiku: ${haiku_cost:.3f} | Sonnet: ${sonnet_cost:.3f} | Savings: {savings:.1f}%")

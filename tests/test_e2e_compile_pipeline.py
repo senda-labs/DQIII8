@@ -2,6 +2,7 @@
 
 No network, no LLM calls — exercises the deterministic pipeline spine.
 """
+
 import sys
 from pathlib import Path
 
@@ -9,14 +10,17 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "bin" / "agents"))
 sys.path.insert(0, str(ROOT / "bin" / "core"))
 
-PROMPT = ("analiza los errores del invoice extractor de abril y planifica "
-          "la remediacion con tests de regresion")
+PROMPT = (
+    "analiza los errores del invoice extractor de abril y planifica "
+    "la remediacion con tests de regresion"
+)
 
 
 def test_pipeline_spine():
     # 1. Domain classification (centroid scorer; tolerate no-embedding env)
     try:
         from domain_classifier import classify_domain
+
         domain = classify_domain(PROMPT)
         assert domain  # non-empty
     except Exception:
@@ -24,6 +28,7 @@ def test_pipeline_spine():
 
     # 2. Confidence gate — Tier A with weak chunks must block (benchmark rule)
     from confidence_gate import should_enrich
+
     weak = [{"text": "generic definition of invoices", "score": 0.31}]
     assert should_enrich(PROMPT, domain, weak, tier=3) is False
     assert should_enrich(PROMPT, domain, [], tier=3) is False
@@ -31,6 +36,7 @@ def test_pipeline_spine():
 
     # 3. Compile
     from plan_compiler import dq_compile
+
     plan = dq_compile(PROMPT)
     assert plan.intent_pattern in {"analyze", "plan", "debug", "test"}
 
@@ -43,11 +49,15 @@ def test_pipeline_spine():
 
 def test_amplifier_tier_a_carries_plan():
     import intent_amplifier as ia
+
     amplified, n = ia._build_amplified_prompt(
         PROMPT,
         {"action": "analyze", "entity": "invoice", "niche": "", "tokens": PROMPT.split()},
         {"id": "analyze", "score": 2, "tier": 3},
-        [{"domain": "applied_sciences", "score": 0.9}], [], None, tier=3,
+        [{"domain": "applied_sciences", "score": 0.9}],
+        [],
+        None,
+        tier=3,
     )
     assert "[EXECUTION PLAN" in amplified
 
@@ -56,6 +66,7 @@ def test_confidence_gate_tier_b_blocks_generic_passes_specific():
     """Rule 4 pinned: Tier B blocks definitional chunks, passes chunks with
     >=3 specificity indicators (digits + year + %; has_specific_data contract)."""
     from confidence_gate import should_enrich
+
     generic = [{"text": "invoices are defined as documents", "score": 0.50}]
     assert should_enrich(PROMPT, "applied_sciences", generic, tier=2) is False
 
@@ -69,6 +80,7 @@ def test_confidence_gate_tier_b_blocks_generic_passes_specific():
 
 def test_plan_render_is_idempotent_across_calls():
     from plan_compiler import dq_compile
+
     r1 = dq_compile(PROMPT).render()
     r2 = dq_compile(PROMPT).render()
     assert r1 == r2

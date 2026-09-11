@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Load and match data templates for agent sub-tasks."""
+
 import os, sys, json
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-KNOWLEDGE = JARVIS / "knowledge"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+KNOWLEDGE = ROOT_DIR / "knowledge"
+
 
 def find_template(domain: str, agent: str) -> dict:
     """Find a data template for the given domain/agent combination."""
@@ -19,6 +21,7 @@ def find_template(domain: str, agent: str) -> dict:
                 continue
     return None
 
+
 def find_template_by_routing(routing_result: dict) -> dict:
     """Find best template from hierarchical routing result."""
     for centroid in routing_result.get("active_centroids", []):
@@ -28,6 +31,7 @@ def find_template_by_routing(routing_result: dict) -> dict:
             if template:
                 return template
     return None
+
 
 def format_template_for_prompt(template: dict, user_input: str) -> str:
     """Format template as additional context for the amplified prompt."""
@@ -51,12 +55,18 @@ def format_template_for_prompt(template: dict, user_input: str) -> str:
             missing.append(field)
 
     if missing:
-        lines.append("\nThe user has NOT provided these required fields — ask for them or use defaults:")
+        lines.append(
+            "\nThe user has NOT provided these required fields — ask for them or use defaults:"
+        )
         for f in missing:
-            lines.append(f"  - {f['name']}: {f['description']} (default: {f.get('example', 'N/A')})")
+            lines.append(
+                f"  - {f['name']}: {f['description']} (default: {f.get('example', 'N/A')})"
+            )
 
     if provided:
-        lines.append(f"\nThe user appears to have provided: {', '.join(f['name'] for f in provided)}")
+        lines.append(
+            f"\nThe user appears to have provided: {', '.join(f['name'] for f in provided)}"
+        )
 
     # Add equations
     equations = template.get("equations", {})
@@ -71,6 +81,7 @@ def format_template_for_prompt(template: dict, user_input: str) -> str:
                 lines.append(f"  - {name}: {formula}")
 
     return "\n".join(lines)
+
 
 if __name__ == "__main__":
     # Quick test

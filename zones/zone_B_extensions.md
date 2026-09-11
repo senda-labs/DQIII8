@@ -97,7 +97,6 @@ which event: `.claude/settings.json`.
 | `01_database_mutations.md` | Any DB / SQL / sqlite3 work |
 | `02_hooks_and_permissions.md` | Hooks, PermissionAnalyzer |
 | `03_tiering_and_routing.md` | Tier table, routing decisions |
-| `DYNAMIC.md` | Injected by rules_dispatcher.py at runtime |
 | `.claude/rules_db/git-safety.md` | Git / Bash safety |
 | `.claude/rules_db/dqiii8-error-prevention.md` | Recurring error prevention |
 

@@ -1,0 +1,16 @@
+[Unit]
+Description=DQIII8 Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/dqiii8
+EnvironmentFile=/root/dqiii8/.env
+Environment="PATH=/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/usr/bin/python3 bin/ui/dqiii8_bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

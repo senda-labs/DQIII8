@@ -66,11 +66,11 @@ fi
 # 3. DB schemas (both databases, idempotent)
 echo ""
 echo "▶ 3/11 Database schemas"
-# Ensure all CREATE statements are idempotent
-sed -i 's/CREATE TABLE \([^I]\)/CREATE TABLE IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
-sed -i 's/CREATE VIEW \([^I]\)/CREATE VIEW IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
-sed -i 's/CREATE INDEX \([^I]\)/CREATE INDEX IF NOT EXISTS \1/g' "$DQIII8_ROOT/database/schema_v2.sql"
-sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_v2.sql" 2>/dev/null || true
+# schema_v2.sql itself must already be IF-NOT-EXISTS clean (blocked path,
+# human-edited only — see 01_database_mutations.md). No longer auto-rewritten
+# here: a bare CREATE TABLE without IF NOT EXISTS now fails loudly on apply
+# instead of being silently patched (panel-review 2026-08-21).
+sqlite3 "$DQIII8_ROOT/database/dqiii8.db" < "$DQIII8_ROOT/database/schema_v2.sql"
 ok "Schemas applied"
 
 # 4. Database integrity (fix broken symlinks)

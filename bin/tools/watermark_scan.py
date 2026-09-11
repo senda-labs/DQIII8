@@ -131,11 +131,11 @@ REPORT_ONLY_NEVER_FIX_RANGES = [
 _EMOJI_BASE_RANGES = [
     (0x1F1E6, 0x1F1FF),  # regional indicators
     (0x1F300, 0x1FAFF),  # misc pictographs / emoticons / transport / symbols
-    (0x2100, 0x27BF),    # letterlike symbols through dingbats (incl. info/check marks)
-    (0x2B00, 0x2BFF),    # misc symbols and arrows
-    (0x0023, 0x0023),    # '#'  (keycap base)
-    (0x002A, 0x002A),    # '*'  (keycap base)
-    (0x0030, 0x0039),    # '0'-'9' (keycap base)
+    (0x2100, 0x27BF),  # letterlike symbols through dingbats (incl. info/check marks)
+    (0x2B00, 0x2BFF),  # misc symbols and arrows
+    (0x0023, 0x0023),  # '#'  (keycap base)
+    (0x002A, 0x002A),  # '*'  (keycap base)
+    (0x0030, 0x0039),  # '0'-'9' (keycap base)
 ]
 _EMOJI_CONTEXT_LABELS = {"ZWJ", "VS1-16", "VS17-256"}
 
@@ -176,7 +176,9 @@ def staged_symlinks(files: list[Path]) -> set[str]:
         check=False,
     )
     if out.returncode != 0:
-        print(f"watermark-scan: warning: git ls-files failed: {out.stderr.strip()}", file=sys.stderr)
+        print(
+            f"watermark-scan: warning: git ls-files failed: {out.stderr.strip()}", file=sys.stderr
+        )
         return set()
     symlinks = set()
     for entry in out.stdout.split("\0"):
@@ -220,7 +222,10 @@ def ref_diff_files(base: str, target: str) -> list[Path]:
         check=False,
     )
     if out.returncode != 0:
-        print(f"watermark-scan: git diff {base}...{target} failed: {out.stderr.strip()}", file=sys.stderr)
+        print(
+            f"watermark-scan: git diff {base}...{target} failed: {out.stderr.strip()}",
+            file=sys.stderr,
+        )
         sys.exit(1)
     return [Path(p) for p in out.stdout.split("\0") if p]
 
@@ -411,12 +416,18 @@ def main() -> int:
         help="CI mode: scan files changed between BASE and --target (merge-base "
         "diff, like a PR diff) instead of the git staging area. Detection only.",
     )
-    parser.add_argument("--target", default="HEAD", help="CI mode: the ref to read changed content from (default HEAD).")
+    parser.add_argument(
+        "--target",
+        default="HEAD",
+        help="CI mode: the ref to read changed content from (default HEAD).",
+    )
     args = parser.parse_args()
 
     ci_mode = args.base is not None
     if ci_mode and args.fix:
-        print("watermark-scan: --fix is ignored in --base/CI mode (detection only).", file=sys.stderr)
+        print(
+            "watermark-scan: --fix is ignored in --base/CI mode (detection only).", file=sys.stderr
+        )
         args.fix = False
 
     if ci_mode:

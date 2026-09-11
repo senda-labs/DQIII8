@@ -1,0 +1,9 @@
+[Unit]
+Description=DQIII8 dashboard self-heal (detect start-limit-hit, reset+restart)
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/dqiii8
+EnvironmentFile=/root/dqiii8/.env
+ExecStart=/usr/bin/python3 bin/monitoring/dq_dashboard_selfheal.py

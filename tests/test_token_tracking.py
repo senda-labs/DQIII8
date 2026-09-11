@@ -24,9 +24,7 @@ sys.path.insert(0, str(DQIII8_ROOT))
 @pytest.mark.requires_db
 def test_token_usage_table_exists():
     conn = sqlite3.connect(str(DB_PATH))
-    cur = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'"
-    )
+    cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'")
     assert cur.fetchone() is not None, "token_usage table not found"
     conn.close()
 

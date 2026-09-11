@@ -19,8 +19,9 @@ CREATE TABLE IF NOT EXISTS agent_actions (
     worktree        TEXT,
     skills_active   TEXT,               -- JSON array
     blocked_by_hook INTEGER DEFAULT 0
-, cost_eur REAL DEFAULT 0.0, model_tier INTEGER DEFAULT 0, tokens_input INTEGER DEFAULT 0, tokens_output INTEGER DEFAULT 0, estimated_cost_usd REAL DEFAULT 0.0, tier TEXT DEFAULT 'unknown', domain_enriched BOOLEAN DEFAULT 0, domain TEXT, knowledge_chunks_used INTEGER DEFAULT 0, energy_wh REAL DEFAULT 0, cpu_percent REAL DEFAULT 0, input_tokens INTEGER, output_tokens INTEGER, notes TEXT, request_id TEXT);
+, cost_eur REAL DEFAULT 0.0, model_tier INTEGER DEFAULT 0, tokens_input INTEGER DEFAULT 0, tokens_output INTEGER DEFAULT 0, estimated_cost_usd REAL DEFAULT 0.0, tier TEXT DEFAULT 'unknown', domain_enriched BOOLEAN DEFAULT 0, domain TEXT, knowledge_chunks_used INTEGER DEFAULT 0, energy_wh REAL DEFAULT 0, cpu_percent REAL DEFAULT 0, input_tokens INTEGER, output_tokens INTEGER, notes TEXT, request_id TEXT, agent_id TEXT);
 CREATE INDEX IF NOT EXISTS idx_agent_actions_request_id ON agent_actions(request_id);
+CREATE INDEX IF NOT EXISTS idx_agent_actions_agent_id ON agent_actions(agent_id);
 CREATE TABLE IF NOT EXISTS error_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -707,16 +708,6 @@ CREATE TABLE IF NOT EXISTS vault_memory (
 );
 CREATE INDEX IF NOT EXISTS idx_vault_memory_project
     ON vault_memory(project, last_seen);
-CREATE TABLE IF NOT EXISTS resource_claims (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    resource    TEXT NOT NULL UNIQUE,      -- file path or logical resource name
-    agent       TEXT NOT NULL,             -- agent_name that holds the claim
-    session_id  TEXT NOT NULL,
-    claimed_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    expires_at  TEXT NOT NULL              -- datetime('now', '+30 minutes') on insert
-);
-CREATE INDEX IF NOT EXISTS idx_resource_claims_expires
-    ON resource_claims(expires_at);
 CREATE TABLE IF NOT EXISTS model_satisfaction (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp           TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -1247,16 +1238,6 @@ CREATE TABLE IF NOT EXISTS cc_rate_limit (
                 chat_id TEXT NOT NULL,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             );
-CREATE TABLE IF NOT EXISTS chunk_health (
-    chunk_id    INTEGER PRIMARY KEY,
-    domain      TEXT    DEFAULT '',
-    redundancy_score REAL DEFAULT 0.5,
-    freshness   TEXT    DEFAULT 'unknown',
-    usage_30d   INTEGER DEFAULT 0,
-    verdict     TEXT    DEFAULT 'keep',
-    reviewed_at TEXT    DEFAULT (datetime('now')),
-    FOREIGN KEY (chunk_id) REFERENCES vector_chunks(id)
-);
 -- Stage 5 (2026-08-13): rows with source='claude_code_transcript' are written
 -- by stop.py from the Claude Code transcript JSONL. cost_estimate there is
 -- LIST-PRICE-EQUIVALENT, not billed spend — this VPS runs Claude Max OAuth
@@ -1669,3 +1650,41 @@ CREATE TABLE IF NOT EXISTS security_findings (
 
 CREATE INDEX IF NOT EXISTS idx_security_findings_created ON security_findings(created_at);
 CREATE INDEX IF NOT EXISTS idx_security_findings_status  ON security_findings(status, severity);
+
+
+-- ── infra_findings ──────────────────────────────────────────────────────────
+-- Added 2026-09-07. Purely additive. Sibling of security_findings, not a reuse
+-- of it: security_findings' file_path/category (OWASP) vocabulary is code-shaped
+-- and doesn't fit infrastructure findings (a target VPS, a port, a service, a
+-- config-drift check) — forcing it in would break existing /red-team queries.
+-- Backs `.claude/skills/infra-red-team/SKILL.md` and
+-- `.claude/skills/infra-blue-team/SKILL.md`. target_id is free text referencing
+-- `infrastructure/redteam_target_allowlist.yaml`'s targets[].id — that YAML
+-- remains the SSOT for which targets exist, this table never defines new ones.
+CREATE TABLE IF NOT EXISTS infra_findings (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    finding_id    TEXT,                                  -- report-local ref, e.g. 'IRT-001'
+    title         TEXT NOT NULL,
+    severity      TEXT CHECK(severity IN ('CRITICAL','HIGH','MEDIUM','LOW','INFO')),
+    status        TEXT NOT NULL DEFAULT 'REAL'
+                  CHECK(status IN ('REAL','MITIGATED','FALSE_POSITIVE','ALREADY_FIXED')),
+                  -- No separate 'RESOLVED' status: the `resolved` column below
+                  -- already carries that state (panel-review 2026-09-07 P2 —
+                  -- having both was dead: every writer only ever set
+                  -- resolved=1, never status='RESOLVED', so a status-only
+                  -- query silently missed every fixed finding).
+    category      TEXT,                                  -- 'firewall','ssh','syncthing','wifi','drift'
+    source        TEXT,                                  -- 'infra-red-team' | 'infra-blue-team' | 'blueteam-audit-cron'
+    target_id     TEXT,                                  -- e.g. 'netcup-rs4000', matches allowlist YAML
+    check_name    TEXT,                                  -- e.g. 'ufw_status', 'sshd_config_drift'
+    proof         TEXT,                                  -- real SSH command executed + its output
+    impact        TEXT,
+    report_path   TEXT,                                  -- the report this came from
+    resolved      INTEGER NOT NULL DEFAULT 0,            -- 0/1, mirrors error_log convention
+    resolution    TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_infra_findings_created ON infra_findings(created_at);
+CREATE INDEX IF NOT EXISTS idx_infra_findings_status  ON infra_findings(target_id, status, severity);

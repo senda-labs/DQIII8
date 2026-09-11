@@ -21,9 +21,7 @@ def _text(path: Path) -> str:
 
 def _crontab() -> str:
     try:
-        return subprocess.run(
-            ["crontab", "-l"], capture_output=True, text=True, timeout=5
-        ).stdout
+        return subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5).stdout
     except Exception:
         return ""
 
@@ -68,9 +66,7 @@ def _collect_corpus() -> dict[str, str]:
 def main() -> None:
     corpus = _collect_corpus()
     scripts = sorted(
-        f
-        for f in BIN.rglob("*.py")
-        if "__pycache__" not in f.parts and "venv" not in f.parts
+        f for f in BIN.rglob("*.py") if "__pycache__" not in f.parts and "venv" not in f.parts
     )
 
     keys = ["cron", "claude.md", "agents", "skills", "bin", "shell", "settings"]
@@ -91,11 +87,7 @@ def main() -> None:
                 # Only count if a *different* file imports or references this one
                 other_text = ""
                 for f in BIN.rglob("*.py"):
-                    if (
-                        f != script
-                        and "__pycache__" not in f.parts
-                        and "venv" not in f.parts
-                    ):
+                    if f != script and "__pycache__" not in f.parts and "venv" not in f.parts:
                         other_text += _text(f)
                 found = name in other_text or rel in other_text
             else:
@@ -107,9 +99,7 @@ def main() -> None:
         if verdict == "ORPHAN":
             orphans.append(rel)
 
-        marks = " ".join(
-            f"{'Y':>{col_w}}" if hits[k] else f"{'·':>{col_w}}" for k in keys
-        )
+        marks = " ".join(f"{'Y':>{col_w}}" if hits[k] else f"{'·':>{col_w}}" for k in keys)
         flag = "  <-- ORPHAN" if verdict == "ORPHAN" else ""
         print(f"{rel:<55} {marks}{flag}")
 

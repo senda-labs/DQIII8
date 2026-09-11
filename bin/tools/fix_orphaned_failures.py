@@ -6,6 +6,7 @@ Run on VPS after syncing:
     python3 bin/tools/fix_orphaned_failures.py
     python3 bin/tools/fix_orphaned_failures.py --dry-run
 """
+
 import argparse
 import json
 import sqlite3

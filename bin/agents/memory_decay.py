@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 DQIII8_ROOT = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
@@ -31,9 +32,7 @@ ACCESS_BOOST = 0.2
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="DQIII8 memory decay")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Show stats without modifying"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Show stats without modifying")
     args = parser.parse_args()
 
     if not DB.exists():
@@ -110,9 +109,7 @@ def main() -> None:
 
     # Apply decay updates
     for new_score, rid in to_decay:
-        conn.execute(
-            "UPDATE vault_memory SET decay_score=? WHERE id=?", (new_score, rid)
-        )
+        conn.execute("UPDATE vault_memory SET decay_score=? WHERE id=?", (new_score, rid))
 
     # Archive entries below threshold
     archived = 0
@@ -208,10 +205,7 @@ def _apply_instinct_evolution(db_path: Path, dry_run: bool) -> None:
 
     conn.close()
     prefix = "[memory_decay dry-run]" if dry_run else "[memory_decay]"
-    print(
-        f"{prefix} Instincts: {decayed} decayed, {promoted} promoted "
-        f"(of {len(rows)} total)"
-    )
+    print(f"{prefix} Instincts: {decayed} decayed, {promoted} promoted " f"(of {len(rows)} total)")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 """tests/test_amplification_logging.py — A1/E1: amplification_log writes confidence/knowledge_used/success."""
+
 import sqlite3
 import sys
 from pathlib import Path
@@ -31,23 +32,30 @@ def test_log_amplification_writes_new_columns(tmp_path, monkeypatch):
         def __enter__(self):
             self.c = sqlite3.connect(db)
             return self.c
+
         def __exit__(self, *a):
             self.c.commit()
             self.c.close()
 
     monkeypatch.setattr(ia, "get_db", lambda: _Ctx())
     ia._log_amplification(
-        original="p", amplified="a",
+        original="p",
+        amplified="a",
         decomp={"action": "debug", "entity": "X", "niche": ""},
         intent={"id": "debug", "score": 2, "tier": 1},
         domains=[{"domain": "applied_sciences", "score": 0.9}],
-        tier=3, elapsed_ms=5, routing=None,
-        chunks_injected=2, success=1,
+        tier=3,
+        elapsed_ms=5,
+        routing=None,
+        chunks_injected=2,
+        success=1,
     )
-    row = sqlite3.connect(db).execute(
-        "SELECT confidence, knowledge_used, success FROM amplification_log"
-    ).fetchone()
+    row = (
+        sqlite3.connect(db)
+        .execute("SELECT confidence, knowledge_used, success FROM amplification_log")
+        .fetchone()
+    )
     assert row is not None
-    assert row[0] > 0          # confidence derived from intent score
-    assert row[1] == 1         # knowledge_used: chunks_injected > 0
+    assert row[0] > 0  # confidence derived from intent score
+    assert row[1] == 1  # knowledge_used: chunks_injected > 0
     assert row[2] == 1

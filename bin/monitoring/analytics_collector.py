@@ -7,11 +7,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB = JARVIS / "database" / "dqiii8.db"
-ENV = JARVIS / ".env"
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+DB = ROOT_DIR / "database" / "dqiii8.db"
+ENV = ROOT_DIR / ".env"
 
 
 def load_env():

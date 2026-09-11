@@ -22,13 +22,10 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-DB = Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8.db"  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
-OUT = (
-    Path(__file__).resolve().parent.parent.parent
-    / "tasks"
-    / "audit"
-    / "cost-report.json"
-)
+DB = (
+    Path(__file__).resolve().parent.parent.parent / "database" / "dqiii8.db"
+)  # repointed to SSOT (metrics.db fork was stale since 2026-03-28 — consolidation 2026-07-05)
+OUT = Path(__file__).resolve().parent.parent.parent / "tasks" / "audit" / "cost-report.json"
 
 # Sonnet 4.6 pricing per 1k tokens
 COST_INPUT_1K = 0.003  # $3 / 1M input
@@ -92,9 +89,7 @@ def collect_routing_volume(conn: sqlite3.Connection, since: str) -> dict:
         """,
         (since,),
     ).fetchall()
-    return {
-        r[0]: {"queries": r[1], "ok_pct": r[2], "avg_sec": r[3]} for r in rows if r[0]
-    }
+    return {r[0]: {"queries": r[1], "ok_pct": r[2], "avg_sec": r[3]} for r in rows if r[0]}
 
 
 def generate_cost_report(days: int = 30) -> dict:

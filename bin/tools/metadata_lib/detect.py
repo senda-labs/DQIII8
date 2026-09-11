@@ -37,16 +37,29 @@ OOXML_CONTENT_TYPES = {
 }
 
 EXTENSION_FAMILY = {
-    ".docx": "docx", ".docm": "docx", ".dotx": "docx", ".dotm": "docx",
-    ".xlsx": "xlsx", ".xlsm": "xlsx", ".xltx": "xlsx", ".xltm": "xlsx", ".xlsb": "xlsb",
-    ".pptx": "pptx", ".pptm": "pptx", ".potx": "pptx", ".potm": "pptx",
-    ".ppsx": "pptx", ".ppsm": "pptx",
+    ".docx": "docx",
+    ".docm": "docx",
+    ".dotx": "docx",
+    ".dotm": "docx",
+    ".xlsx": "xlsx",
+    ".xlsm": "xlsx",
+    ".xltx": "xlsx",
+    ".xltm": "xlsx",
+    ".xlsb": "xlsb",
+    ".pptx": "pptx",
+    ".pptm": "pptx",
+    ".potx": "pptx",
+    ".potm": "pptx",
+    ".ppsx": "pptx",
+    ".ppsm": "pptx",
 }
 
 
 class Detection:
     def __init__(self, fmt: str, subtype: str | None, mismatch: str | None):
-        self.format = fmt  # "jpeg" | "png" | "webp" | "tiff" | "pdf" | "ooxml" | "bmff" | "unsupported"
+        self.format = (
+            fmt  # "jpeg" | "png" | "webp" | "tiff" | "pdf" | "ooxml" | "bmff" | "unsupported"
+        )
         self.subtype = subtype  # for ooxml: "docx" | "xlsx" | "pptx" | "xlsb"
         self.mismatch = mismatch  # reason string if extension disagrees, else None
 
@@ -118,7 +131,9 @@ def detect(path: Path, data: bytes) -> Detection:
             # not a hard mismatch since we genuinely don't know what it is.
             mismatch = None
         elif ext in EXTENSION_FAMILY and EXTENSION_FAMILY[ext] != subtype:
-            mismatch = f"extension {ext} suggests {EXTENSION_FAMILY[ext]}, content-type says {subtype}"
+            mismatch = (
+                f"extension {ext} suggests {EXTENSION_FAMILY[ext]}, content-type says {subtype}"
+            )
     else:
         expected_exts = {
             "jpeg": (".jpg", ".jpeg"),

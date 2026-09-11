@@ -68,11 +68,11 @@ _AGENT_TASK_TYPE_MAP: dict[str, str] = {
 
 class DirectorState(TypedDict, total=False):
     user_request: str
-    instinct_result: Optional[tuple]   # (task_type, confidence) or None
+    instinct_result: Optional[tuple]  # (task_type, confidence) or None
     llm_result: Optional[dict]
     keyword_result: Optional[dict]
     final_plan: dict
-    source: str                        # "instinct:0.95" | "llm" | "keyword_fallback"
+    source: str  # "instinct:0.95" | "llm" | "keyword_fallback"
     thread_id: str
 
 

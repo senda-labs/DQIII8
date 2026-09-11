@@ -32,7 +32,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import watermark_scan as ws  # noqa: E402
 
-MAX_DIR_FILES = 5000  # sanity cap so a huge --dir reports partial results loudly, not hangs silently
+MAX_DIR_FILES = (
+    5000  # sanity cap so a huge --dir reports partial results loudly, not hangs silently
+)
 
 # Exit-code precedence for a directory sweep: truncated (5) > findings (1) > clean (0).
 # Truncation outranks everything because a partial scan is strictly worse information
@@ -61,7 +63,9 @@ def scan_directory(root: Path) -> tuple[list[dict], dict[str, int], str | None]:
             continue
         count += 1
         if count > MAX_DIR_FILES:
-            truncated = f"stopped after {MAX_DIR_FILES} files (more remain under {root}) — narrow --dir"
+            truncated = (
+                f"stopped after {MAX_DIR_FILES} files (more remain under {root}) — narrow --dir"
+            )
             print(f"watermark-audit: {truncated}", file=sys.stderr)
             break
         candidates.append(path)
@@ -87,13 +91,18 @@ def scan_text(text: str) -> list[dict]:
 def report(findings: list[dict], skip_counts: dict[str, int], truncated: str | None = None) -> int:
     if skip_counts:
         parts = ", ".join(f"{k}={v}" for k, v in sorted(skip_counts.items()))
-        print(f"watermark-audit: skipped {sum(skip_counts.values())} file(s): {parts}", file=sys.stderr)
+        print(
+            f"watermark-audit: skipped {sum(skip_counts.values())} file(s): {parts}",
+            file=sys.stderr,
+        )
 
     if not findings:
         if truncated:
             # A partial sweep must never print a clean bill: exit TRUNCATED so a
             # caller cannot read "nothing found" as "nothing is there".
-            print("watermark-audit: PARTIAL SCAN — no findings in the portion scanned, but the scan was truncated.")
+            print(
+                "watermark-audit: PARTIAL SCAN — no findings in the portion scanned, but the scan was truncated."
+            )
             return EXIT_TRUNCATED
         print("watermark-audit: no hidden/invisible characters found.")
         return 0
@@ -123,9 +132,13 @@ def report(findings: list[dict], skip_counts: dict[str, int], truncated: str | N
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--dir", type=Path, help="Recursively scan this directory (read-only, follows no symlinks).")
+    group.add_argument(
+        "--dir", type=Path, help="Recursively scan this directory (read-only, follows no symlinks)."
+    )
     group.add_argument("--text", help="Scan this text file, or '-' to read from stdin.")
     args = parser.parse_args()
 

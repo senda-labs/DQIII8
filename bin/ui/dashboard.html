@@ -6,29 +6,46 @@
   <title>DQ Dashboard</title>
   <style>
     :root {
-      --bg:      #0a0f1a;
-      --surface: #121a2e;
-      --border:  #1e2d4a;
-      --text:    #e0e8f0;
-      --muted:   #6880a0;
-      --accent:  #00b4d8;
+      /* DQIII8 palette: black + blue (dark) / white + blue (light) — kept as-is,
+         not migrated to januskeys.es colors. Only shape/type/motion tokens below
+         draw on that research. */
+      --bg:      #08090d;
+      --surface: #131419;
+      --border:  #23252f;
+      --text:    #eef1f6;
+      --muted:   #7b8299;
+      --accent:  #3d5cff;
+      --accent-rgb: 61,92,255;
       --success: #00c853;
       --warning: #ffc107;
       --danger:  #ff3d00;
       --mono:    ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
-      --sans:    ui-sans-serif, system-ui, -apple-system, sans-serif;
-      --r:       8px;
+      --sans:    'Inter', 'Helvetica Neue', ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+      --surface-2: rgba(255,255,255,0.03);
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 14px;
+      --radius-full: 999px;
+      --r:       var(--radius-md);
+      --ease-out-quad: cubic-bezier(.25,.46,.45,.94); /* linear.app's easing, used across all state transitions */
+      --t-fast:  120ms var(--ease-out-quad);
+      --t-base:  200ms var(--ease-out-quad);
+      --t-slow:  320ms var(--ease-out-quad);
     }
     @media (prefers-color-scheme: light) {
       :root {
-        --bg:      #f5f7fa;
+        --bg:      #faf7f1;
         --surface: #ffffff;
-        --border:  #d0d8e4;
-        --text:    #1a2540;
-        --muted:   #6880a0;
-        --accent:  #0066cc;
+        --border:  #e3ddd0;
+        --text:    #1b1e27;
+        --muted:   #7c8089;
+        --accent:  #1f3fd6;
+        --accent-rgb: 31,63,214;
         --success: #1b7d3a;
+        --warning: #b8860b;
         --danger:  #c0392b;
+        --surface-2: rgba(27,30,39,0.035);
       }
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -49,11 +66,13 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      transition: width 0.18s ease;
+      transition: width var(--t-base);
       flex-shrink: 0;
       z-index: 10;
+      order: 0;
     }
     #nav:hover { width: 200px; }
+    #nav.nav-right { border-right: none; border-left: 1px solid var(--border); order: 2; }
     .nav-logo {
       padding: 14px 13px;
       font-size: 13px;
@@ -62,7 +81,23 @@
       white-space: nowrap;
       border-bottom: 1px solid var(--border);
       letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     }
+    .nav-pos-toggle {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 2px;
+      display: flex;
+      opacity: 0;
+      transition: opacity var(--t-fast), color var(--t-fast);
+    }
+    #nav:hover .nav-pos-toggle { opacity: 1; }
+    .nav-pos-toggle:hover { color: var(--accent); }
     .nav-item {
       display: flex;
       align-items: center;
@@ -73,41 +108,86 @@
       color: var(--muted);
       border-left: 2px solid transparent;
       user-select: none;
+      transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
     }
-    .nav-item:hover { color: var(--text); background: var(--bg); }
-    .nav-item.active { color: var(--accent); border-left: 3px solid var(--accent); background: rgba(0,180,216,0.08); }
-    .nav-icon { font-size: 17px; flex-shrink: 0; width: 20px; text-align: center; line-height: 1; }
+    #nav.nav-right .nav-item { border-left: none; border-right: 2px solid transparent; }
+    .nav-item:hover { color: var(--text); background: var(--surface-2); }
+    .nav-item.active { color: var(--accent); border-left: 3px solid var(--accent); background: rgba(var(--accent-rgb),0.1); }
+    #nav.nav-right .nav-item.active { border-left: none; border-right: 3px solid var(--accent); }
+    .nav-icon { flex-shrink: 0; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; line-height: 1; }
+    .nav-icon svg { width: 17px; height: 17px; }
     .nav-label { font-size: 13px; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
     /* Main */
-    #main { flex: 1; overflow-y: auto; padding: 24px; }
+    #main { flex: 1; overflow-y: auto; padding: 24px; order: 1; }
     .sec { display: none; }
-    .sec.active { display: block; }
-    h2 { font-size: 15px; font-weight: 500; margin-bottom: 16px; }
+    .sec.active { display: block; animation: dq-sec-entry var(--t-slow); }
+    h2 { font-family: var(--font-display); font-size: 17px; font-weight: 500; margin-bottom: 16px; }
     /* Cards */
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; transition: border-color 0.15s; }
-    .card:hover { border-color: var(--accent); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; transition: border-color var(--t-fast), box-shadow var(--t-base); }
+    .card:hover { border-color: var(--accent); box-shadow: 0 16px 32px rgba(var(--accent-rgb),0.12), 0 4px 12px rgba(0,0,0,0.3); }
+    /* Motion — inspired by januskeys.es (hero-in / jk-dash-entry / jk-live-blink / jk-badge-pulse) */
+    @keyframes dq-sec-entry { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes dq-live-blink { 0%, to { opacity: 1; } 50% { opacity: .35; } }
+    @keyframes dq-badge-pulse { 0%, to { transform: scale(1); } 50% { transform: scale(1.12); } }
+    .live-dot { display: inline-block; animation: dq-live-blink 1.8s ease infinite; }
+    .health-bar-pct.warn { display: inline-block; animation: dq-badge-pulse 1.4s ease infinite; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
     .metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
-    .metric-value { font-size: 26px; font-weight: 500; line-height: 1; }
+    .metric-value { font-family: var(--font-display); font-size: 27px; font-weight: 500; line-height: 1; }
     .metric-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    /* Overview inner tabs */
+    .ov-tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+    .ov-tab {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-full);
+      color: var(--muted); font-size: 12px; padding: 6px 14px; cursor: pointer; user-select: none;
+      transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+    }
+    .ov-tab:hover { color: var(--text); border-color: var(--muted); }
+    .ov-tab.active { color: var(--accent); border-color: var(--accent); background: rgba(var(--accent-rgb),0.1); }
+    .ov-detail {
+      opacity: 0; visibility: hidden; transform: translateY(-4px); max-height: 0; overflow: hidden;
+      transition: opacity var(--t-base), transform var(--t-base), visibility var(--t-base);
+    }
+    .ov-detail.active { opacity: 1; visibility: visible; transform: translateY(0); max-height: none; margin-bottom: 12px; }
+    .ov-desc { font-size: 12px; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+    /* Health score bar — semaphore fill, color reflects the SPC threshold (95%=ok, 80%=warn, below=critical) */
+    .health-bar {
+      position: relative; height: 12px; border-radius: var(--radius-full); overflow: hidden;
+      margin-top: 6px; background: var(--border);
+    }
+    .health-bar-fill {
+      position: absolute; top: 0; left: 0; bottom: 0; border-radius: var(--radius-full);
+      transition: width var(--t-slow), background-color var(--t-base);
+    }
+    .health-bar-pct { font-family: var(--font-display); font-weight: 700; }
+    .health-bar-pct.ok   { color: var(--success); }
+    .health-bar-pct.warn { color: var(--warning); }
+    .health-bar-pct.bad  { color: var(--danger); }
+    /* Tier stat-pills — shown instead of the donut when one tier accounts for almost all volume */
+    .tier-pills { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+    .tier-pill { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
+    .tier-pill .tp-label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+    .tier-pill .tp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .tier-pill .tp-value { font-family: var(--mono); color: var(--text); }
     /* Table */
     .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-weight: 500; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th { text-align: left; color: var(--muted); font-weight: 400; padding: 5px 8px; border-bottom: 1px solid var(--border); }
     td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-family: var(--mono); }
     tr:last-child td { border-bottom: none; }
-    tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+    tr:nth-child(even) { background: var(--surface-2); }
     .ok  { color: var(--success); }
     .err { color: var(--danger); }
     /* Badges */
-    .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; font-family: var(--mono); }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 500; font-family: var(--mono); }
     .badge-c { background: #1e2a3a; color: #78909c; }
-    .badge-b { background: #0d2033; color: #00b4d8; }
+    .badge-b { background: rgba(var(--accent-rgb),0.14); color: var(--accent); }
     .badge-a { background: #1e1030; color: #b388ff; }
     /* Pipeline */
     .pipe-step { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); }
     .pipe-step:last-child { border-bottom: none; }
-    .pipe-num { width: 22px; height: 22px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; margin-top: 1px; }
+    .pipe-num { width: 22px; height: 22px; border-radius: var(--radius-full); background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; margin-top: 1px; }
     .pipe-num.done { background: var(--accent); color: var(--bg); }
     .pipe-title { font-size: 11px; color: var(--muted); }
     .pipe-value { font-size: 13px; margin-top: 3px; font-family: var(--mono); word-break: break-word; }
@@ -145,7 +225,7 @@
     button {
       background: var(--accent);
       border: none;
-      border-radius: var(--r);
+      border-radius: var(--radius-full);
       color: var(--bg);
       cursor: pointer;
       font-family: var(--sans);
@@ -153,7 +233,16 @@
       font-weight: 500;
       padding: 8px 16px;
       white-space: nowrap;
+      /* linear.app applies one short ease-out-quad transition across every
+         interactive property at once (border/background/color/shadow/
+         opacity/filter/transform) rather than one flashy animation — that's
+         where its "snappy" feel comes from. Mirrored here at the same 160ms. */
+      transition: border-color .16s var(--ease-out-quad), background-color .16s var(--ease-out-quad),
+        color .16s var(--ease-out-quad), box-shadow .16s var(--ease-out-quad),
+        opacity .16s var(--ease-out-quad), transform .16s var(--ease-out-quad);
     }
+    button:hover:not(:disabled) { box-shadow: 0 4px 14px rgba(var(--accent-rgb),0.35); }
+    button:active:not(:disabled) { transform: scale(0.97); }
     button:disabled { opacity: 0.45; cursor: default; }
     button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
     button.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
@@ -164,36 +253,68 @@
     .set-row input { flex: 1; }
     .tier-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
     .tier-row:last-child { border-bottom: none; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; margin-right: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--muted); display: inline-block; margin-right: 8px; }
     .dot.on { background: var(--success); }
     /* Scrollbar */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Mobile (phone portrait) — body{overflow:hidden} above blocks all page-level
+       horizontal scroll by design, so every source of horizontal overflow below
+       has to be contained on its own rather than relying on a page-level escape
+       hatch. Scoped tight to verified-narrow phones only (390px iPhone 14
+       screenshots); nothing here should ever fire on tablet/desktop widths. */
+    @media (max-width: 480px) {
+      /* Overview cards */
+      .grid2 { grid-template-columns: 1fr; }
+      /* Chat input row */
+      .chat-row { flex-wrap: wrap; }
+      #chat-in { flex: 1 1 100%; order: 1; }
+      #chat-tier { flex: 1 1 auto; order: 2; }
+      #chat-btn { flex: 1 1 auto; order: 3; }
+      .chat-row button.ghost { flex: 0 0 auto; order: 4; }
+      /* Settings rows (API keys, default tier) */
+      .set-row { flex-wrap: wrap; }
+      .set-row input,
+      .set-row select { flex: 1 1 100%; }
+      .set-row button { flex: 1 1 100%; }
+      /* Tables — JS-injected table HTML lands in these existing static divs
+         (renderOvDetail()/ovTab() only ever replace .innerHTML, never the
+         div itself), so scoping overflow here needs no JS changes. */
+      #ov-health-body, #ov-actions-body, #ov-success-body, #ov-tiers-body {
+        overflow-x: auto;
+      }
+    }
   </style>
 </head>
 <body>
 
 <nav id="nav">
-  <div class="nav-logo">DQ&#8734;</div>
-  <div class="nav-item active" onclick="nav('overview',this)">
-    <span class="nav-icon">&#9711;</span>
+  <div class="nav-logo">
+    <span>DQ&#8734;</span>
+    <button class="nav-pos-toggle" onclick="toggleNavPosition()" title="Mover menu al otro lado" aria-label="Mover menu al otro lado">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4M21 7H9M7 21l-4-4 4-4M3 17h12"/></svg>
+    </button>
+  </div>
+  <div class="nav-item active" title="Overview" onclick="nav('overview',this)">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
     <span class="nav-label">Overview</span>
   </div>
-  <div class="nav-item" onclick="nav('pipeline',this)">
-    <span class="nav-icon">&#8594;</span>
+  <div class="nav-item" title="Pipeline" onclick="nav('pipeline',this)">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.5"/><circle cx="12" cy="6" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M7.2 11l3.2-3.7M13.8 7.5l3.8 8.8"/></svg></span>
     <span class="nav-label">Pipeline</span>
   </div>
-  <div class="nav-item" onclick="nav('chat',this)">
-    <span class="nav-icon">&#9633;</span>
+  <div class="nav-item" title="Chat" onclick="nav('chat',this)">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4V5z"/></svg></span>
     <span class="nav-label">Chat</span>
   </div>
-  <div class="nav-item" onclick="nav('settings',this)">
-    <span class="nav-icon">&#9881;</span>
+  <div class="nav-item" title="Settings" onclick="nav('settings',this)">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.09a1.7 1.7 0 001.55-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg></span>
     <span class="nav-label">Settings</span>
   </div>
-  <div class="nav-item" onclick="nav('production',this)">
-    <span class="nav-icon">&#8862;</span>
+  <div class="nav-item" title="Produccion" onclick="nav('production',this)">
+    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M11 20V4M18 20v-7"/></svg></span>
     <span class="nav-label">Produccion</span>
   </div>
 </nav>
@@ -204,41 +325,76 @@
   <section id="s-overview" class="sec active">
     <h2>Overview</h2>
     <div class="grid2">
-      <div class="card">
+      <div class="card" style="cursor:pointer" onclick="ovTab('health')">
         <div class="metric-label">Health Score</div>
-        <div class="metric-value" id="m-health">&#8212;</div>
+        <div class="metric-value"><span class="health-bar-pct" id="m-health">&#8212;</span></div>
+        <div class="health-bar"><div class="health-bar-fill" id="m-health-fill" style="width:0%;background:var(--muted)"></div></div>
         <div class="metric-sub" id="m-health-sub"></div>
       </div>
-      <div class="card">
+      <div class="card" style="cursor:pointer" onclick="ovTab('actions')">
         <div class="metric-label">Actions (7d)</div>
         <div class="metric-value" id="m-actions">&#8212;</div>
         <div class="metric-sub" id="m-actions-sub"></div>
       </div>
-      <div class="card" style="display:flex;gap:16px;align-items:center">
+      <div class="card" id="tier-card" style="display:flex;gap:16px;align-items:center;cursor:pointer" onclick="ovTab('tiers')">
         <svg id="tier-chart" width="80" height="80" viewBox="0 0 120 120" style="flex-shrink:0"></svg>
         <div id="tier-legend" style="font-size:11px;line-height:2;color:var(--muted)"></div>
       </div>
-      <div class="card">
+      <div class="card" style="cursor:pointer" onclick="ovTab('success')">
         <div class="metric-label">Success Rate</div>
         <div class="metric-value" id="m-success">&#8212;</div>
         <div class="metric-sub" id="m-success-sub"></div>
       </div>
     </div>
+
+    <div class="ov-tabs">
+      <div class="ov-tab" data-ov="health" onclick="ovTab('health')">Health</div>
+      <div class="ov-tab" data-ov="actions" onclick="ovTab('actions')">Actions</div>
+      <div class="ov-tab" data-ov="success" onclick="ovTab('success')">Success Rate</div>
+      <div class="ov-tab" data-ov="tiers" onclick="ovTab('tiers')">Tiers</div>
+    </div>
+    <div class="card ov-detail" id="ov-health" data-ov="health">
+      <div class="ov-desc">Puntuacion 0-100 calculada por el ultimo audit automatico (servicios, crons, integridad de DB, disco/CPU/RAM, backups). Se recalcula cada vez que corre <code style="font-family:var(--mono)">health_watchdog.py</code>.</div>
+      <div id="ov-health-body" style="font-size:12px;color:var(--muted)">Cargando&#8230;</div>
+    </div>
+    <div class="card ov-detail" id="ov-actions" data-ov="actions">
+      <div class="ov-desc">Acciones de agente registradas en los ultimos 7 dias, desglosadas por dia y por agente.</div>
+      <div id="ov-actions-body" style="font-size:12px;color:var(--muted)">Cargando&#8230;</div>
+    </div>
+    <div class="card ov-detail" id="ov-success" data-ov="success">
+      <div class="ov-desc">Porcentaje de acciones marcadas como exitosas en los ultimos 7 dias, desglosado por tier.</div>
+      <div id="ov-success-body" style="font-size:12px;color:var(--muted)">Cargando&#8230;</div>
+    </div>
+    <div class="card ov-detail" id="ov-tiers" data-ov="tiers">
+      <div class="ov-desc">Distribucion de acciones por tier de modelo (C local, B cloud, A paid) en los ultimos 7 dias, con coste asociado.</div>
+      <div id="ov-tiers-body" style="font-size:12px;color:var(--muted)">Cargando&#8230;</div>
+    </div>
+
     <div class="card">
       <div class="card-header">
-        <span>Recent Actions</span>
+        <span>Tareas recientes</span>
         <button class="ghost" style="font-size:11px;padding:4px 10px" onclick="refreshActions(this)">Refresh</button>
       </div>
+      <div class="ov-desc">Agrupacion aproximada (misma sesion + hueco &lt;90s entre acciones), no un cierre de tarea exacto todavia.</div>
+      <div style="overflow-x:auto">
       <table>
-        <thead><tr><th>Time</th><th>Agent</th><th>Tier</th><th>Duration</th><th>Status</th></tr></thead>
+        <thead><tr><th>Hora</th><th>Skill</th><th>Modelo</th><th>Acciones</th><th>Resultado</th></tr></thead>
         <tbody id="t-actions"><tr><td colspan="5" style="color:var(--muted);text-align:center;padding:12px">Loading&#8230;</td></tr></tbody>
       </table>
+      </div>
     </div>
   </section>
 
   <!-- Production -->
   <section id="s-production" class="sec">
     <h2>Produccion</h2>
+    <div class="card" style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="hh-project" style="flex:1;min-width:160px"></select>
+      <button id="hh-start-btn" onclick="humanHoursAction('inicio')">Iniciar</button>
+      <button class="ghost" id="hh-stop-btn" onclick="humanHoursAction('fin')">Parar</button>
+      <span id="hh-msg" style="font-size:11px;color:var(--muted)">Tambien disponible por Telegram: <code style="font-family:var(--mono)">/hora inicio &lt;proyecto&gt;</code></span>
+    </div>
+    <div style="overflow-x:auto">
     <table>
       <thead>
         <tr>
@@ -248,7 +404,8 @@
       </thead>
       <tbody id="t-production"><tr><td colspan="6" style="color:var(--muted);text-align:center;padding:12px">Loading&#8230;</td></tr></tbody>
     </table>
-    <div id="production-orphans" style="margin-top:12px;font-size:11px;color:var(--muted)"></div>
+    </div>
+    <div id="production-orphans" style="margin-top:12px;font-size:11px;color:var(--muted);word-break:break-all"></div>
   </section>
 
   <!-- Pipeline -->
@@ -339,6 +496,7 @@ function api(url, opt) { return fetch(url, Object.assign({ headers: _H }, opt));
 
 // State
 var _chatSid = 'dash_' + Math.random().toString(36).slice(2, 8);
+var _chatHistoryLoaded = false;
 var _attachedFileIds = [];
 
 // File upload
@@ -386,6 +544,107 @@ function nav(id, el) {
   if (id === 'overview') renderOverview();
   if (id === 'settings') renderSettings();
   if (id === 'production') loadProduction();
+  if (id === 'chat') loadChatHistory();
+}
+
+// Sidebar position (client-only preference, no backend concept of accounts)
+function toggleNavPosition() {
+  var navEl = $('nav');
+  var pos = navEl.classList.toggle('nav-right') ? 'right' : 'left';
+  try { localStorage.setItem('dq-nav-pos', pos); } catch (e) {}
+}
+(function initNavPosition() {
+  var pos;
+  try { pos = localStorage.getItem('dq-nav-pos'); } catch (e) { pos = null; }
+  if (pos === 'right') document.addEventListener('DOMContentLoaded', function() { $('nav').classList.add('nav-right'); });
+})();
+
+// Overview inner menu (sub-tabs per metric, lazy-fetched detail)
+var _ovCache = {};
+var _ovOpen = null;
+var _OV_LABELS = { health: 'Health', actions: 'Actions', success: 'Success Rate', tiers: 'Tiers' };
+async function ovTab(id) {
+  var alreadyOpen = _ovOpen === id;
+  document.querySelectorAll('.ov-tab').forEach(function(t) { t.classList.toggle('active', !alreadyOpen && t.dataset.ov === id); });
+  document.querySelectorAll('.ov-detail').forEach(function(d) { d.classList.toggle('active', !alreadyOpen && d.dataset.ov === id); });
+  _ovOpen = alreadyOpen ? null : id;
+  if (alreadyOpen) return;
+  var body = $('ov-' + id + '-body');
+  if (_ovCache[id]) { body.innerHTML = _ovCache[id]; return; }
+  body.textContent = 'Cargando…';
+  try {
+    if (id === 'tiers') {
+      var h = await api('/api/health').then(function(r) { return r.json(); });
+      var t = h.tiers || {};
+      var rows = Object.keys(t).map(function(k) {
+        return '<tr><td>' + k + '</td><td>' + (t[k].count || 0) + '</td><td>$' + (t[k].cost || 0).toFixed(4) + '</td></tr>';
+      }).join('') || '<tr><td colspan="3">Sin datos</td></tr>';
+      body.innerHTML = '<table><thead><tr><th>Tier</th><th>Acciones</th><th>Coste</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    } else {
+      var d = await api('/api/health/detail?metric=' + id).then(function(r) { return r.json(); });
+      body.innerHTML = renderOvDetail(id, d);
+    }
+    _ovCache[id] = body.innerHTML;
+  } catch (e) {
+    body.textContent = 'Error cargando el desglose: ' + e.message;
+  }
+}
+function renderOvDetail(id, d) {
+  if (id === 'health') {
+    var rows = (d.recent_audits || []).map(function(a) {
+      return '<tr><td>' + fmtTime(a.timestamp) + '</td><td>' + (a.overall_score != null ? a.overall_score.toFixed(1) : '&#8212;') + '</td></tr>';
+    }).join('');
+    return rows
+      ? '<table><thead><tr><th>Fecha</th><th>Score</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div>Sin historico adicional disponible.</div>';
+  }
+  if (id === 'actions') {
+    var byDay = (d.by_day || []).map(function(r) { return '<tr><td>' + r.day + '</td><td>' + r.count + '</td></tr>'; }).join('');
+    var byAgent = (d.by_agent || []).map(function(r) {
+      var safeAgent = String(r.agent || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      return '<tr><td>' + safeAgent + '</td><td>' + r.count + '</td></tr>';
+    }).join('');
+    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
+      '<div><div class="metric-label">Por dia</div><table><tbody>' + (byDay || '<tr><td>Sin datos</td></tr>') + '</tbody></table></div>' +
+      '<div><div class="metric-label">Por agente</div><table><tbody>' + (byAgent || '<tr><td>Sin datos</td></tr>') + '</tbody></table></div></div>';
+  }
+  if (id === 'success') {
+    var byTier = (d.by_tier || []).map(function(r) {
+      return '<tr><td>' + tierBadge(r.tier) + '</td><td>' + r.success_rate + '%</td><td>' + r.count + ' acciones</td></tr>';
+    }).join('');
+    return byTier
+      ? '<table><thead><tr><th>Tier</th><th>Exito</th><th>Volumen</th></tr></thead><tbody>' + byTier + '</tbody></table>'
+      : '<div>Sin datos.</div>';
+  }
+  return '<div>Sin datos.</div>';
+}
+
+// Horas humanas
+async function loadHumanHoursSelect(projects) {
+  var sel = $('hh-project');
+  var current = sel.value;
+  sel.innerHTML = projects.map(function(p) {
+    var safeP = String(p).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    return '<option value="' + safeP + '">' + safeP + '</option>';
+  }).join('');
+  if (current && projects.indexOf(current) !== -1) sel.value = current;
+}
+async function humanHoursAction(action) {
+  var project = $('hh-project').value;
+  if (!project) return;
+  var btn = action === 'inicio' ? $('hh-start-btn') : $('hh-stop-btn');
+  btn.disabled = true;
+  try {
+    var r = await fetch('/api/human-hours/' + action, { method: 'POST', headers: _jH, body: JSON.stringify({ project: project }) });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    $('hh-msg').textContent = action === 'inicio' ? 'Sesion iniciada para ' + project : 'Sesion cerrada para ' + project;
+    loadProduction();
+  } catch (e) {
+    $('hh-msg').textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function loadProduction() {
@@ -394,6 +653,8 @@ async function loadProduction() {
   try {
     const res = await api('/api/production');
     const data = await res.json();
+    const names = (data.known_projects && data.known_projects.length) ? data.known_projects : Object.keys(data.projects);
+    loadHumanHoursSelect(names);
     const rows = Object.entries(data.projects).map(([name, m]) => {
       const safeName = String(name || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
       const agent = m.agent || null;
@@ -402,7 +663,9 @@ async function loadProduction() {
       const cost = agent ? '$' + (agent.cost_usd || 0).toFixed(4) : '&#8212;';
       const success = agent ? (agent.success_rate || 0) + '%' : '&#8212;';
       const coverage = agent && agent.duration_ms_covered_pct != null ? agent.duration_ms_covered_pct.toFixed(1) + '%' : '&#8212;';
-      const hours = human ? (human.minutes / 60).toFixed(1) + 'h' : '&#8212;';
+      const hours = human
+        ? (human.minutes / 60).toFixed(1) + 'h' + (human.open ? ' <span class="ok live-dot">&#9679; activo</span>' : '')
+        : '&#8212;';
       return `<tr><td>${safeName}</td><td>${actions}</td><td>${cost}</td>` +
         `<td>${success}</td><td>${coverage}</td><td>${hours}</td></tr>`;
     });
@@ -431,10 +694,14 @@ function fmtTime(ts) { return ts ? new Date(ts).toLocaleTimeString([], { hour: '
 function fmtDur(ms) { return !ms ? '&#8212;' : ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's'; }
 
 function tierBadge(t) {
-  var n = Number(t);
-  if (n === 1) return '<span class="badge badge-c">C</span>';
-  if (n === 3) return '<span class="badge badge-a">A</span>';
-  return '<span class="badge badge-b">B</span>';
+  // agent_actions.tier stores letter codes (A, B, B+, B++, C, S, sonnet, unknown, ...),
+  // never the numeric 1/2/3 this used to assume — that mismatch meant every row rendered
+  // the same "B" badge regardless of actual tier. Bucket by first letter, show the real label.
+  var raw = String(t == null ? '' : t).trim();
+  var first = raw.charAt(0).toUpperCase();
+  var cls = first === 'A' || first === 'S' ? 'badge-a' : first === 'C' ? 'badge-c' : 'badge-b';
+  var label = raw ? raw.toUpperCase() : '?';
+  return '<span class="badge ' + cls + '">' + label.replace(/</g,'&lt;') + '</span>';
 }
 
 // Minimal markdown: escape HTML first, then apply safe patterns
@@ -476,13 +743,18 @@ async function renderOverview() {
   try {
     var results = await Promise.all([
       api('/api/health').then(function(r) { return r.json(); }),
-      api('/api/tasks/recent?limit=10').then(function(r) { return r.json(); }),
+      api('/api/tasks/grouped?limit=12').then(function(r) { return r.json(); }),
     ]);
     var h = results[0], tasks = results[1];
 
     var hs = h.health_score;
-    $('m-health').textContent      = hs != null ? hs.toFixed(1) + '/100' : '&#8212;';
-    $('m-health').style.color      = hs == null ? '' : hs > 90 ? 'var(--success)' : hs >= 70 ? 'var(--warning)' : 'var(--danger)';
+    var hsClamped = hs == null ? 0 : Math.max(0, Math.min(100, hs));
+    var hsLevel = hs == null ? '' : hs >= 95 ? 'ok' : hs >= 80 ? 'warn' : 'bad';
+    var hsColor = { ok: 'var(--success)', warn: 'var(--warning)', bad: 'var(--danger)' }[hsLevel] || 'var(--muted)';
+    $('m-health').textContent       = hs != null ? hs.toFixed(1) + '%' : '&#8212;';
+    $('m-health').className         = 'health-bar-pct' + (hsLevel ? ' ' + hsLevel : '');
+    $('m-health-fill').style.width  = hsClamped + '%';
+    $('m-health-fill').style.background = hsColor;
     $('m-health-sub').textContent   = h.last_audit ? 'Audited ' + fmtTime(h.last_audit) : '';
     $('m-actions').textContent     = h.actions_7d != null ? h.actions_7d : '&#8212;';
     $('m-actions-sub').textContent  = (h.sessions_7d || 0) + ' sessions this week';
@@ -490,31 +762,56 @@ async function renderOverview() {
     $('m-success-sub').textContent  = (h.errors_open || 0) + ' errors open';
 
     var t = h.tiers || {};
-    function pick() {
-      for (var k = 0; k < arguments.length; k++) { if (t[arguments[k]]) return t[arguments[k]].count || 0; }
-      return 0;
-    }
-    var PIE = [
-      { v: pick('1','C'), c: '#78909c', label: 'C local' },
-      { v: pick('2','B'), c: '#00b4d8', label: 'B cloud' },
-      { v: pick('3','A'), c: '#b388ff', label: 'A paid'  },
-    ];
-    renderPie($('tier-chart'), PIE);
+    // tier keys are letter codes (A, B, B+, B++, C, S, sonnet, unknown, ...), never the
+    // numeric 1/2/3 this used to assume against — that mismatch silently dropped every
+    // row outside exact 'A'/'B'/'C' (in this DB, "unknown" is most of the volume) from
+    // the chart entirely. Bucket every key by first letter instead, with an explicit
+    // catch-all so unclassified volume is shown, not hidden.
+    var buckets = {
+      C: { count: 0, cost: 0, c: '#78909c', label: 'C local' },
+      B: { count: 0, cost: 0, c: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), label: 'B cloud' },
+      A: { count: 0, cost: 0, c: '#b388ff', label: 'A paid' },
+      U: { count: 0, cost: 0, c: '#546e7a', label: 'Sin clasificar' },
+    };
+    Object.keys(t).forEach(function(k) {
+      var first = String(k || '').trim().charAt(0).toUpperCase();
+      var bucket = first === 'A' || first === 'S' ? 'A' : first === 'B' ? 'B' : first === 'C' ? 'C' : 'U';
+      buckets[bucket].count += t[k].count || 0;
+      buckets[bucket].cost  += t[k].cost  || 0;
+    });
+    var PIE = ['C', 'B', 'A', 'U'].map(function(k) {
+      return { v: buckets[k].count, cost: buckets[k].cost, c: buckets[k].c, label: buckets[k].label };
+    }).filter(function(d) { return d.v > 0; });
     var tot = PIE.reduce(function(s, d) { return s + d.v; }, 0);
-    $('tier-legend').innerHTML = PIE.map(function(d) {
-      return '<div><span style="color:' + d.c + '">&#9632;</span> ' + d.label + ' ' + (tot ? Math.round(d.v / tot * 100) : 0) + '%</div>';
-    }).join('');
+    var dominant = tot && PIE.some(function(d) { return d.v / tot >= 0.95; });
+    if (dominant) {
+      // A single tier explains almost all volume: a donut is visual noise here, three
+      // stat rows (count + cost) carry more information in the same space.
+      $('tier-chart').style.display = 'none';
+      $('tier-legend').innerHTML = '<div class="tier-pills">' + PIE.map(function(d) {
+        return '<div class="tier-pill"><span class="tp-label"><span class="tp-dot" style="background:' + d.c + '"></span>' + d.label + '</span>' +
+          '<span class="tp-value">' + (tot ? Math.round(d.v / tot * 100) : 0) + '% &middot; $' + d.cost.toFixed(3) + '</span></div>';
+      }).join('') + '</div>';
+    } else {
+      $('tier-chart').style.display = '';
+      renderPie($('tier-chart'), PIE);
+      $('tier-legend').innerHTML = PIE.map(function(d) {
+        return '<div><span style="color:' + d.c + '">&#9632;</span> ' + d.label + ' ' + (tot ? Math.round(d.v / tot * 100) : 0) + '%</div>';
+      }).join('');
+    }
 
     $('t-actions').innerHTML = Array.isArray(tasks) && tasks.length
       ? tasks.map(function(r) {
-          var agent = String(r.agent || '&#8212;').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-          return '<tr><td>' + fmtTime(r.timestamp) + '</td>' +
-            '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">' + agent + '</td>' +
-            '<td>' + tierBadge(r.tier) + '</td>' +
-            '<td>' + fmtDur(r.duration_ms) + '</td>' +
+          var skill = String(r.skill || '&#8212;').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+          var model = String(r.model || '&#8212;').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+          var toolsTitle = Array.isArray(r.tools) ? r.tools.join(', ').replace(/&/g,'&amp;').replace(/"/g,'&quot;') : '';
+          return '<tr title="' + toolsTitle + '"><td>' + fmtTime(r.ended_at) + '</td>' +
+            '<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">' + skill + '</td>' +
+            '<td style="font-family:var(--mono);font-size:11px">' + model + '</td>' +
+            '<td>' + (r.actions || 0) + '</td>' +
             '<td>' + (r.success ? '<span class="ok">&#10003;</span>' : '<span class="err">&#10007;</span>') + '</td></tr>';
         }).join('')
-      : '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">No actions yet</td></tr>';
+      : '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">No hay tareas todavia</td></tr>';
   } catch (e) {
     $('t-actions').innerHTML = '<tr><td colspan="5" style="color:var(--danger)">' + String(e.message).replace(/</g,'&lt;') + '</td></tr>';
   }
@@ -601,6 +898,31 @@ function addMsg(role, html) {
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
+}
+
+async function loadChatHistory() {
+  // Resumes the most recent past session instead of always starting blank:
+  // _chatSid used to be a fresh random id on every page load with nothing
+  // ever calling the existing /api/chat/history or /api/chat/{id}/messages
+  // endpoints, so a reload silently lost the conversation even though the
+  // backend had kept it. Reusing that session's id (not just displaying its
+  // messages) means a message sent after reload continues the same session.
+  if (_chatHistoryLoaded) return;
+  _chatHistoryLoaded = true;
+  try {
+    var sessions = await api('/api/chat/history?limit=1').then(function(r) { return r.json(); });
+    if (!Array.isArray(sessions) || !sessions.length) return;
+    var last = sessions[0];
+    var msgs = await api('/api/chat/' + encodeURIComponent(last.id) + '/messages').then(function(r) { return r.json(); });
+    if (!Array.isArray(msgs) || !msgs.length) return;
+    _chatSid = last.id;
+    msgs.forEach(function(m) {
+      var role = m.role === 'user' ? 'user' : 'assistant';
+      addMsg(role, md(m.content || ''));
+    });
+  } catch (e) {
+    console.warn('loadChatHistory failed', e);
+  }
 }
 
 async function playTTS(text, btn) {
@@ -743,7 +1065,15 @@ function refreshActions(btn) {
 }
 
 // Init
-renderOverview();
+(function() {
+  var params = new URLSearchParams(location.search);
+  var sec = params.get('sec');
+  if (sec && sec !== 'overview' && document.getElementById('s-' + sec)) {
+    var navEl = document.querySelector('.nav-item[onclick*="\'' + sec + '\'"]');
+    if (navEl) nav(sec, navEl);
+  }
+  renderOverview().finally(function() { ovTab(params.get('ovtab') || 'health'); });
+})();
 </script>
 </body>
 </html>

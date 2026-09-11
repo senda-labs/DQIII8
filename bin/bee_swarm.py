@@ -24,6 +24,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bin.core.logging_config import get_logger as _get_logger
+
 log = _get_logger(__name__)
 
 # ── Cost constants (USD per 1M tokens) ─────────────────────────────────────
@@ -128,9 +129,7 @@ class SwarmResult:
         )
         if hypothetical_sonnet == 0:
             return 0.0
-        return max(
-            0.0, (1 - swarm_cost / (hypothetical_sonnet + self.sonnet_cost_usd)) * 100
-        )
+        return max(0.0, (1 - swarm_cost / (hypothetical_sonnet + self.sonnet_cost_usd)) * 100)
 
     def report(self) -> str:
         lines = [
@@ -197,16 +196,12 @@ class BeeSwarm:
         haiku_coro = self._run_swarm(subtasks, max_workers)
         sonnet_coro = self._call_sonnet(prompt)
 
-        (completed_subtasks, reduced), sonnet_result = await asyncio.gather(
-            haiku_coro, sonnet_coro
-        )
+        (completed_subtasks, reduced), sonnet_result = await asyncio.gather(haiku_coro, sonnet_coro)
 
         validated = reduced
         sonnet_extra_in = sonnet_extra_out = 0
         if validate and completed_subtasks:
-            validated, sonnet_extra_in, sonnet_extra_out = await self._validate(
-                prompt, reduced
-            )
+            validated, sonnet_extra_in, sonnet_extra_out = await self._validate(prompt, reduced)
 
         total_in = sum(s.tokens_in for s in completed_subtasks)
         total_out = sum(s.tokens_out for s in completed_subtasks)
@@ -367,9 +362,7 @@ class BeeSwarm:
             result = await self._ollama_generate(reduce_prompt)
         return result or combined
 
-    async def _validate(
-        self, original_prompt: str, swarm_result: str
-    ) -> tuple[str, int, int]:
+    async def _validate(self, original_prompt: str, swarm_result: str) -> tuple[str, int, int]:
         """Sonnet validates and optionally corrects the swarm result."""
         val_prompt = (
             f"Original task: {original_prompt}\n\n"
@@ -441,9 +434,7 @@ class BeeSwarm:
             pass
         return None
 
-    async def _ollama_generate(
-        self, prompt: str, model: str = "qwen2.5-coder:7b"
-    ) -> str | None:
+    async def _ollama_generate(self, prompt: str, model: str = "qwen2.5-coder:7b") -> str | None:
         """Non-blocking Ollama call via asyncio subprocess."""
         try:
             import json as _json
@@ -452,9 +443,7 @@ class BeeSwarm:
             def _call() -> str:
                 req = urllib.request.Request(
                     "http://localhost:11434/api/generate",
-                    data=_json.dumps(
-                        {"model": model, "prompt": prompt, "stream": False}
-                    ).encode(),
+                    data=_json.dumps({"model": model, "prompt": prompt, "stream": False}).encode(),
                     headers={"Content-Type": "application/json"},
                 )
                 with urllib.request.urlopen(req, timeout=120) as r:
@@ -466,9 +455,7 @@ class BeeSwarm:
             log.debug("Ollama unavailable: %s", e)
             return None
 
-    async def _claude_api_generate(
-        self, prompt: str, model: str = "haiku"
-    ) -> str | None:
+    async def _claude_api_generate(self, prompt: str, model: str = "haiku") -> str | None:
         """Call Claude API via anthropic SDK (non-blocking)."""
         try:
             import anthropic
@@ -505,9 +492,7 @@ async def _smoke_test() -> None:
     target_files = sorted((root / "bin").glob("*.py"))[:4]
 
     swarm = BeeSwarm(root=root)
-    prompt = (
-        "Find any functions that have no error handling and list them with file:line"
-    )
+    prompt = "Find any functions that have no error handling and list them with file:line"
 
     print(f"Decomposing into {len(target_files)} subtasks (one per file)...")
     print(f"Files: {[f.name for f in target_files]}\n")

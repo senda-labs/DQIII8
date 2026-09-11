@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Security middleware for DQ Dashboard."""
+
 import os
 import secrets
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
 
 
 def get_or_create_dashboard_token() -> str:
     """Get existing token or generate a new one."""
-    token_file = JARVIS / "database" / ".dashboard_token"
+    token_file = ROOT_DIR / "database" / ".dashboard_token"
 
     if token_file.exists():
         return token_file.read_text(encoding="utf-8").strip()

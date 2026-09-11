@@ -16,6 +16,7 @@ Zero LLM calls. Deterministic. ~0ms. Designed for Tier A/S prompts where
 benchmarks (2026-03-25) proved generic RAG injection hurts but structured
 execution scaffolding is the validated 70%-improvement pattern.
 """
+
 from __future__ import annotations
 
 import time
@@ -25,9 +26,9 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class PhaseSpec:
-    name: str           # e.g. "ROOT_CAUSE"
-    goal: str           # one sentence, parametrized with {entity}
-    depends_on: tuple   # names of prior phases (wave semantics)
+    name: str  # e.g. "ROOT_CAUSE"
+    goal: str  # one sentence, parametrized with {entity}
+    depends_on: tuple  # names of prior phases (wave semantics)
     exit_criteria: str  # verifiable condition to leave the phase
 
 
@@ -40,7 +41,7 @@ class ExecutionPlan:
     validation_tests: list[str]
     invariantes_flujo: list[str]
     source_prompt: str
-    confidence: float          # 0..1 — pattern-match certainty
+    confidence: float  # 0..1 — pattern-match certainty
     elapsed_ms: int = 0
     compiler_version: str = "1.1"
 
@@ -86,11 +87,36 @@ _T = {}
 
 _T["plan"] = dict(
     phases=[
-        ("SCOPE", "Pin down what {entity} must achieve and what is explicitly out of scope", (), "scope statement with ≥1 explicit exclusion"),
-        ("DECOMPOSE", "Break the goal into independent, testable work units", ("SCOPE",), "each unit has a verifiable done-condition"),
-        ("SEQUENCE", "Order units into waves by real dependency, maximize parallelism", ("DECOMPOSE",), "DAG with no cycles; parallel units identified"),
-        ("RISK", "For each wave: what breaks it, blast radius, rollback", ("SEQUENCE",), "every high-risk unit has a mitigation"),
-        ("DELIVER", "Emit the plan with exact paths, commands, expected outputs", ("RISK",), "another engineer could execute without questions"),
+        (
+            "SCOPE",
+            "Pin down what {entity} must achieve and what is explicitly out of scope",
+            (),
+            "scope statement with ≥1 explicit exclusion",
+        ),
+        (
+            "DECOMPOSE",
+            "Break the goal into independent, testable work units",
+            ("SCOPE",),
+            "each unit has a verifiable done-condition",
+        ),
+        (
+            "SEQUENCE",
+            "Order units into waves by real dependency, maximize parallelism",
+            ("DECOMPOSE",),
+            "DAG with no cycles; parallel units identified",
+        ),
+        (
+            "RISK",
+            "For each wave: what breaks it, blast radius, rollback",
+            ("SEQUENCE",),
+            "every high-risk unit has a mitigation",
+        ),
+        (
+            "DELIVER",
+            "Emit the plan with exact paths, commands, expected outputs",
+            ("RISK",),
+            "another engineer could execute without questions",
+        ),
     ],
     pseudo="""scope = define(goal, exclusions)
 units = decompose(scope)            # each unit: (action, done_condition)
@@ -113,10 +139,30 @@ emit(plan)                          # paths + commands + expected output""",
 
 _T["debug"] = dict(
     phases=[
-        ("REPRODUCE", "Trigger the failure in {entity} deterministically", (), "exact command + observed error captured"),
-        ("ISOLATE", "Shrink to minimal failing input/code path", ("REPRODUCE",), "smallest repro identified"),
-        ("ROOT_CAUSE", "Explain WHY it fails — mechanism, not symptom", ("ISOLATE",), "cause stated; symptom-patching rejected"),
-        ("FIX", "Apply the minimal change that removes the cause", ("ROOT_CAUSE",), "diff touches only cause-related code"),
+        (
+            "REPRODUCE",
+            "Trigger the failure in {entity} deterministically",
+            (),
+            "exact command + observed error captured",
+        ),
+        (
+            "ISOLATE",
+            "Shrink to minimal failing input/code path",
+            ("REPRODUCE",),
+            "smallest repro identified",
+        ),
+        (
+            "ROOT_CAUSE",
+            "Explain WHY it fails — mechanism, not symptom",
+            ("ISOLATE",),
+            "cause stated; symptom-patching rejected",
+        ),
+        (
+            "FIX",
+            "Apply the minimal change that removes the cause",
+            ("ROOT_CAUSE",),
+            "diff touches only cause-related code",
+        ),
         ("VERIFY", "Re-run repro + regression suite", ("FIX",), "repro passes; no new failures"),
     ],
     pseudo="""repro = capture(command, error, env)
@@ -140,10 +186,30 @@ assert rerun(repro).passes and suite().passes""",
 
 _T["analyze"] = dict(
     phases=[
-        ("FRAME", "State the question {entity} must answer and the decision it informs", (), "question + decision criterion written"),
-        ("GATHER", "Collect the data/code/facts — primary sources only", ("FRAME",), "every datum has a source reference"),
-        ("EXAMINE", "Quantify, segment, find the 2-3 signals that matter", ("GATHER",), "claims backed by numbers, not adjectives"),
-        ("SYNTHESIZE", "Answer the framed question; state confidence and what would change it", ("EXAMINE",), "answer + confidence + falsifier"),
+        (
+            "FRAME",
+            "State the question {entity} must answer and the decision it informs",
+            (),
+            "question + decision criterion written",
+        ),
+        (
+            "GATHER",
+            "Collect the data/code/facts — primary sources only",
+            ("FRAME",),
+            "every datum has a source reference",
+        ),
+        (
+            "EXAMINE",
+            "Quantify, segment, find the 2-3 signals that matter",
+            ("GATHER",),
+            "claims backed by numbers, not adjectives",
+        ),
+        (
+            "SYNTHESIZE",
+            "Answer the framed question; state confidence and what would change it",
+            ("EXAMINE",),
+            "answer + confidence + falsifier",
+        ),
     ],
     pseudo="""q = frame(prompt)                  # question + decision it feeds
 data = gather(primary_sources)
@@ -165,10 +231,30 @@ report(answer, confidence, falsifier)""",
 
 _T["generate"] = dict(
     phases=[
-        ("SPEC", "Fix format, audience, constraints and acceptance criteria for {entity}", (), "acceptance criteria listed"),
-        ("DRAFT", "Produce the complete artifact — no placeholders", ("SPEC",), "artifact exists end-to-end"),
-        ("REFINE", "Tighten against spec: cut filler, fix structure", ("DRAFT",), "every spec constraint satisfied"),
-        ("VALIDATE", "Check acceptance criteria one by one", ("REFINE",), "all criteria pass or deviations justified"),
+        (
+            "SPEC",
+            "Fix format, audience, constraints and acceptance criteria for {entity}",
+            (),
+            "acceptance criteria listed",
+        ),
+        (
+            "DRAFT",
+            "Produce the complete artifact — no placeholders",
+            ("SPEC",),
+            "artifact exists end-to-end",
+        ),
+        (
+            "REFINE",
+            "Tighten against spec: cut filler, fix structure",
+            ("DRAFT",),
+            "every spec constraint satisfied",
+        ),
+        (
+            "VALIDATE",
+            "Check acceptance criteria one by one",
+            ("REFINE",),
+            "all criteria pass or deviations justified",
+        ),
     ],
     pseudo="""spec = extract_constraints(prompt)   # format, length, audience, musts
 draft = produce(spec)                # complete, runnable/readable
@@ -189,11 +275,31 @@ for c in spec.acceptance: assert check(refined, c)""",
 
 _T["report"] = dict(
     phases=[
-        ("AUDIENCE", "Identify reader of {entity}, their decision, their time budget", (), "reader + decision named"),
-        ("DATA", "Assemble verified figures; reconcile conflicting sources", ("AUDIENCE",), "single reconciled dataset"),
-        ("STRUCTURE", "Executive summary → findings → evidence → next steps", ("DATA",), "outline approved against audience needs"),
+        (
+            "AUDIENCE",
+            "Identify reader of {entity}, their decision, their time budget",
+            (),
+            "reader + decision named",
+        ),
+        (
+            "DATA",
+            "Assemble verified figures; reconcile conflicting sources",
+            ("AUDIENCE",),
+            "single reconciled dataset",
+        ),
+        (
+            "STRUCTURE",
+            "Executive summary → findings → evidence → next steps",
+            ("DATA",),
+            "outline approved against audience needs",
+        ),
         ("WRITE", "Write; every claim cites its datum", ("STRUCTURE",), "draft complete"),
-        ("QA", "Audit numbers, names, dates; check internal consistency", ("WRITE",), "zero unverified claims"),
+        (
+            "QA",
+            "Audit numbers, names, dates; check internal consistency",
+            ("WRITE",),
+            "zero unverified claims",
+        ),
     ],
     pseudo="""reader = identify(audience)
 data = reconcile(sources)            # conflicts resolved explicitly
@@ -215,10 +321,30 @@ qa(doc)                              # numbers, names, dates, consistency""",
 
 _T["refactor"] = dict(
     phases=[
-        ("BASELINE", "Capture current behavior of {entity}: tests green, outputs recorded", (), "baseline artifacts saved"),
-        ("CHARACTERIZE", "Add tests for any uncovered behavior you are about to touch", ("BASELINE",), "touched paths have coverage"),
-        ("TRANSFORM", "Apply the refactor in small, individually-green steps", ("CHARACTERIZE",), "each step compiles + passes"),
-        ("VERIFY_EQUIV", "Prove observable behavior unchanged", ("TRANSFORM",), "baseline outputs reproduced byte-identical"),
+        (
+            "BASELINE",
+            "Capture current behavior of {entity}: tests green, outputs recorded",
+            (),
+            "baseline artifacts saved",
+        ),
+        (
+            "CHARACTERIZE",
+            "Add tests for any uncovered behavior you are about to touch",
+            ("BASELINE",),
+            "touched paths have coverage",
+        ),
+        (
+            "TRANSFORM",
+            "Apply the refactor in small, individually-green steps",
+            ("CHARACTERIZE",),
+            "each step compiles + passes",
+        ),
+        (
+            "VERIFY_EQUIV",
+            "Prove observable behavior unchanged",
+            ("TRANSFORM",),
+            "baseline outputs reproduced byte-identical",
+        ),
     ],
     pseudo="""baseline = run_suite(); record(outputs)
 add_characterization_tests(touched_paths)
@@ -240,11 +366,36 @@ assert outputs_now == baseline.outputs""",
 
 _T["research"] = dict(
     phases=[
-        ("QUESTION", "Decompose {entity} into 3-5 answerable sub-questions", (), "sub-questions listed"),
-        ("SOURCES", "Locate primary sources per sub-question; rank reliability", ("QUESTION",), "≥2 independent sources per sub-question"),
-        ("EXTRACT", "Pull claims with citations; quote, don't paraphrase numbers", ("SOURCES",), "claim table with source links"),
-        ("TRIANGULATE", "Cross-check claims across sources; flag conflicts", ("EXTRACT",), "conflicts resolved or flagged"),
-        ("SYNTHESIZE", "Answer the original question; separate fact from inference", ("TRIANGULATE",), "facts cited, inferences labeled"),
+        (
+            "QUESTION",
+            "Decompose {entity} into 3-5 answerable sub-questions",
+            (),
+            "sub-questions listed",
+        ),
+        (
+            "SOURCES",
+            "Locate primary sources per sub-question; rank reliability",
+            ("QUESTION",),
+            "≥2 independent sources per sub-question",
+        ),
+        (
+            "EXTRACT",
+            "Pull claims with citations; quote, don't paraphrase numbers",
+            ("SOURCES",),
+            "claim table with source links",
+        ),
+        (
+            "TRIANGULATE",
+            "Cross-check claims across sources; flag conflicts",
+            ("EXTRACT",),
+            "conflicts resolved or flagged",
+        ),
+        (
+            "SYNTHESIZE",
+            "Answer the original question; separate fact from inference",
+            ("TRIANGULATE",),
+            "facts cited, inferences labeled",
+        ),
     ],
     pseudo="""subqs = decompose(question)
 for sq in subqs:
@@ -267,11 +418,36 @@ answer = synthesize(verified, label_inference=True)""",
 
 _T["test"] = dict(
     phases=[
-        ("SURFACE", "Enumerate the public contract of {entity}: inputs, outputs, errors", (), "contract table written"),
-        ("CASES", "Design happy-path, edge, and failure cases per contract row", ("SURFACE",), "each contract row has ≥1 case of each kind"),
-        ("IMPLEMENT", "Write the tests; each asserts ONE behavior", ("CASES",), "tests run, currently meaningful"),
-        ("RUN", "Execute; confirm new tests can actually fail (mutate to check)", ("IMPLEMENT",), "tests proven non-vacuous"),
-        ("COVER", "Check coverage of touched code; close gaps that matter", ("RUN",), "no critical path uncovered"),
+        (
+            "SURFACE",
+            "Enumerate the public contract of {entity}: inputs, outputs, errors",
+            (),
+            "contract table written",
+        ),
+        (
+            "CASES",
+            "Design happy-path, edge, and failure cases per contract row",
+            ("SURFACE",),
+            "each contract row has ≥1 case of each kind",
+        ),
+        (
+            "IMPLEMENT",
+            "Write the tests; each asserts ONE behavior",
+            ("CASES",),
+            "tests run, currently meaningful",
+        ),
+        (
+            "RUN",
+            "Execute; confirm new tests can actually fail (mutate to check)",
+            ("IMPLEMENT",),
+            "tests proven non-vacuous",
+        ),
+        (
+            "COVER",
+            "Check coverage of touched code; close gaps that matter",
+            ("RUN",),
+            "no critical path uncovered",
+        ),
     ],
     pseudo="""contract = enumerate_api(target)
 cases = design(contract)             # happy + edge + failure each
@@ -293,11 +469,36 @@ report(coverage(touched_paths))""",
 
 _T["deploy"] = dict(
     phases=[
-        ("PREFLIGHT", "Verify {entity} green in CI, config/env complete, deps pinned", (), "preflight checklist all green"),
-        ("ROLLBACK_PLAN", "Write the exact rollback commands BEFORE touching prod", ("PREFLIGHT",), "rollback tested or dry-run"),
-        ("APPLY", "Deploy in smallest reversible increment", ("ROLLBACK_PLAN",), "deployment applied"),
-        ("SMOKE", "Hit the real service: health endpoint + 1 critical user path", ("APPLY",), "real responses verified, not just logs"),
-        ("MONITOR", "Watch error rate/latency for a defined window", ("SMOKE",), "window passed clean or rollback executed"),
+        (
+            "PREFLIGHT",
+            "Verify {entity} green in CI, config/env complete, deps pinned",
+            (),
+            "preflight checklist all green",
+        ),
+        (
+            "ROLLBACK_PLAN",
+            "Write the exact rollback commands BEFORE touching prod",
+            ("PREFLIGHT",),
+            "rollback tested or dry-run",
+        ),
+        (
+            "APPLY",
+            "Deploy in smallest reversible increment",
+            ("ROLLBACK_PLAN",),
+            "deployment applied",
+        ),
+        (
+            "SMOKE",
+            "Hit the real service: health endpoint + 1 critical user path",
+            ("APPLY",),
+            "real responses verified, not just logs",
+        ),
+        (
+            "MONITOR",
+            "Watch error rate/latency for a defined window",
+            ("SMOKE",),
+            "window passed clean or rollback executed",
+        ),
     ],
     pseudo="""assert ci_green and env_complete and deps_pinned
 rollback = write_and_dryrun(rollback_cmds)   # BEFORE apply
@@ -319,10 +520,30 @@ watch(metrics, window); if degraded: run(rollback)""",
 
 _T["review"] = dict(
     phases=[
-        ("CONTEXT", "Understand what {entity} claims to do and why", (), "intent of the change restated"),
-        ("CORRECTNESS", "Hunt real bugs: logic, edge cases, races, resource leaks", ("CONTEXT",), "each suspicion verified in code, not guessed"),
-        ("RISK_RANK", "Classify findings CRITICAL / SUGGESTION with file:line", ("CORRECTNESS",), "every finding located and ranked"),
-        ("FEEDBACK", "Actionable comments: what, why, concrete fix", ("RISK_RANK",), "author can act without follow-up questions"),
+        (
+            "CONTEXT",
+            "Understand what {entity} claims to do and why",
+            (),
+            "intent of the change restated",
+        ),
+        (
+            "CORRECTNESS",
+            "Hunt real bugs: logic, edge cases, races, resource leaks",
+            ("CONTEXT",),
+            "each suspicion verified in code, not guessed",
+        ),
+        (
+            "RISK_RANK",
+            "Classify findings CRITICAL / SUGGESTION with file:line",
+            ("CORRECTNESS",),
+            "every finding located and ranked",
+        ),
+        (
+            "FEEDBACK",
+            "Actionable comments: what, why, concrete fix",
+            ("RISK_RANK",),
+            "author can act without follow-up questions",
+        ),
     ],
     pseudo="""intent = restate(change)
 findings = []
@@ -345,11 +566,36 @@ emit(ranked, with_concrete_fix=True)""",
 
 _T["optimize"] = dict(
     phases=[
-        ("MEASURE", "Baseline {entity} with a reproducible benchmark", (), "numbers recorded, variance known"),
-        ("PROFILE", "Find where time/memory actually goes", ("MEASURE",), "top hotspot identified with data"),
-        ("HYPOTHESIS", "State expected gain and why, BEFORE changing code", ("PROFILE",), "falsifiable prediction written"),
-        ("CHANGE_ONE", "Apply exactly one optimization", ("HYPOTHESIS",), "single-variable change applied"),
-        ("REMEASURE", "Same benchmark; accept only if gain ≥ predicted noise floor", ("CHANGE_ONE",), "gain confirmed or change reverted"),
+        (
+            "MEASURE",
+            "Baseline {entity} with a reproducible benchmark",
+            (),
+            "numbers recorded, variance known",
+        ),
+        (
+            "PROFILE",
+            "Find where time/memory actually goes",
+            ("MEASURE",),
+            "top hotspot identified with data",
+        ),
+        (
+            "HYPOTHESIS",
+            "State expected gain and why, BEFORE changing code",
+            ("PROFILE",),
+            "falsifiable prediction written",
+        ),
+        (
+            "CHANGE_ONE",
+            "Apply exactly one optimization",
+            ("HYPOTHESIS",),
+            "single-variable change applied",
+        ),
+        (
+            "REMEASURE",
+            "Same benchmark; accept only if gain ≥ predicted noise floor",
+            ("CHANGE_ONE",),
+            "gain confirmed or change reverted",
+        ),
     ],
     pseudo="""base = bench(n_runs=5)              # mean + variance
 hot = profile()
@@ -372,11 +618,36 @@ accept if (base.mean - new.mean) > noise_floor else revert""",
 
 _T["explain"] = dict(
     phases=[
-        ("LEVEL_SET", "Identify the audience's starting knowledge for {entity}", (), "audience level fixed"),
-        ("CORE_IDEA", "One-sentence essence before any detail", ("LEVEL_SET",), "summary sentence written"),
-        ("MECHANISM", "How it works, step by step, no skipped leaps", ("CORE_IDEA",), "each step follows from the previous"),
-        ("EXAMPLE", "One concrete, worked example with real values", ("MECHANISM",), "example computes/runs end-to-end"),
-        ("LIMITS", "Where the concept breaks, common misconceptions", ("EXAMPLE",), "≥1 boundary + 1 misconception named"),
+        (
+            "LEVEL_SET",
+            "Identify the audience's starting knowledge for {entity}",
+            (),
+            "audience level fixed",
+        ),
+        (
+            "CORE_IDEA",
+            "One-sentence essence before any detail",
+            ("LEVEL_SET",),
+            "summary sentence written",
+        ),
+        (
+            "MECHANISM",
+            "How it works, step by step, no skipped leaps",
+            ("CORE_IDEA",),
+            "each step follows from the previous",
+        ),
+        (
+            "EXAMPLE",
+            "One concrete, worked example with real values",
+            ("MECHANISM",),
+            "example computes/runs end-to-end",
+        ),
+        (
+            "LIMITS",
+            "Where the concept breaks, common misconceptions",
+            ("EXAMPLE",),
+            "≥1 boundary + 1 misconception named",
+        ),
     ],
     pseudo="""level = audience(prompt)
 emit(one_sentence_essence)
@@ -398,11 +669,36 @@ emit(limits, misconceptions)""",
 
 _T["migrate"] = dict(
     phases=[
-        ("INVENTORY", "Enumerate everything that moves: data, schemas, configs, callers of {entity}", (), "complete inventory with counts"),
-        ("MAP", "Define old→new mapping incl. defaults for fields with no source", ("INVENTORY",), "every inventory item mapped or excluded with reason"),
-        ("DUAL_RUN", "Run old and new side by side on real input", ("MAP",), "outputs comparable on real data"),
-        ("CUTOVER", "Switch with a reversible step; keep old path readable", ("DUAL_RUN",), "new path live, old path frozen not deleted"),
-        ("VERIFY_PARITY", "Compare counts/checksums old vs new", ("CUTOVER",), "row counts + spot checksums match"),
+        (
+            "INVENTORY",
+            "Enumerate everything that moves: data, schemas, configs, callers of {entity}",
+            (),
+            "complete inventory with counts",
+        ),
+        (
+            "MAP",
+            "Define old→new mapping incl. defaults for fields with no source",
+            ("INVENTORY",),
+            "every inventory item mapped or excluded with reason",
+        ),
+        (
+            "DUAL_RUN",
+            "Run old and new side by side on real input",
+            ("MAP",),
+            "outputs comparable on real data",
+        ),
+        (
+            "CUTOVER",
+            "Switch with a reversible step; keep old path readable",
+            ("DUAL_RUN",),
+            "new path live, old path frozen not deleted",
+        ),
+        (
+            "VERIFY_PARITY",
+            "Compare counts/checksums old vs new",
+            ("CUTOVER",),
+            "row counts + spot checksums match",
+        ),
     ],
     pseudo="""inv = inventory(source)              # tables, files, callers, counts
 mapping = define(inv, old→new)
@@ -425,10 +721,30 @@ assert counts(new) == counts(old) and checksums(sample) match""",
 
 _T["integrate"] = dict(
     phases=[
-        ("CONTRACTS", "Pin both sides' interfaces: schemas, auth, rate limits, errors of {entity}", (), "contract doc for both directions"),
-        ("ADAPTER", "Build the thinnest translation layer; no business logic inside", ("CONTRACTS",), "adapter passes contract examples"),
-        ("FAILURE_MODES", "Decide behavior for: timeout, 4xx/5xx, malformed payload, partial success", ("ADAPTER",), "each failure has a coded response"),
-        ("E2E_TEST", "Exercise the real integration path with real(istic) payloads", ("FAILURE_MODES",), "round-trip verified incl. one failure injection"),
+        (
+            "CONTRACTS",
+            "Pin both sides' interfaces: schemas, auth, rate limits, errors of {entity}",
+            (),
+            "contract doc for both directions",
+        ),
+        (
+            "ADAPTER",
+            "Build the thinnest translation layer; no business logic inside",
+            ("CONTRACTS",),
+            "adapter passes contract examples",
+        ),
+        (
+            "FAILURE_MODES",
+            "Decide behavior for: timeout, 4xx/5xx, malformed payload, partial success",
+            ("ADAPTER",),
+            "each failure has a coded response",
+        ),
+        (
+            "E2E_TEST",
+            "Exercise the real integration path with real(istic) payloads",
+            ("FAILURE_MODES",),
+            "round-trip verified incl. one failure injection",
+        ),
     ],
     pseudo="""contract = pin(side_a, side_b)      # schema, auth, limits, errors
 adapter = thin_translate(contract)   # no business logic
@@ -456,29 +772,102 @@ assert len(PATTERNS) == 14, f"expected 14 templates, got {len(PATTERNS)}"
 # Own keyword table (compiler patterns ≠ amplifier intents). Spanish + English.
 
 _PATTERN_KEYWORDS = {
-    "plan":      ["planifica", "plan ", "diseña", "design", "architect", "roadmap", "estrategia"],
-    "debug":     ["debug", "fix", "corrige", "arregla", "error", "falla", "bug", "crash", "traceback"],
-    "analyze":   ["analiza", "analyze", "evalua", "assess", "examina", "compara", "compare", "estima", "forecast"],
-    "generate":  ["genera", "generate", "crea", "create", "escribe", "write", "produce", "draft"],
-    "report":    ["reporte", "report", "informe", "dashboard", "resumen ejecutivo", "executive"],
-    "refactor":  ["refactor", "reestructura", "restructure", "limpia el codigo", "clean up", "simplifica"],
-    "research":  ["investiga", "research", "busca", "find out", "discover", "estado del arte"],
-    "test":      ["test", "prueba", "valida", "validate", "verifica", "verify", "cobertura", "coverage", "pytest"],
-    "deploy":    ["deploy", "despliega", "release", "publica", "production", "produccion", "rollout", "systemd", "cron"],
-    "review":    ["review", "revisa", "code review", "audita", "audit", "critica"],
-    "optimize":  ["optimiza", "optimize", "mejora el rendimiento", "speed up", "acelera", "performance", "perf"],
-    "explain":   ["explica", "explain", "describe", "clarifica", "define", "que es", "what is", "how does"],
-    "migrate":   ["migra", "migrate", "convierte", "convert", "traduce", "translate", "port ", "porta", "mueve a"],
+    "plan": ["planifica", "plan ", "diseña", "design", "architect", "roadmap", "estrategia"],
+    "debug": ["debug", "fix", "corrige", "arregla", "error", "falla", "bug", "crash", "traceback"],
+    "analyze": [
+        "analiza",
+        "analyze",
+        "evalua",
+        "assess",
+        "examina",
+        "compara",
+        "compare",
+        "estima",
+        "forecast",
+    ],
+    "generate": ["genera", "generate", "crea", "create", "escribe", "write", "produce", "draft"],
+    "report": ["reporte", "report", "informe", "dashboard", "resumen ejecutivo", "executive"],
+    "refactor": [
+        "refactor",
+        "reestructura",
+        "restructure",
+        "limpia el codigo",
+        "clean up",
+        "simplifica",
+    ],
+    "research": ["investiga", "research", "busca", "find out", "discover", "estado del arte"],
+    "test": [
+        "test",
+        "prueba",
+        "valida",
+        "validate",
+        "verifica",
+        "verify",
+        "cobertura",
+        "coverage",
+        "pytest",
+    ],
+    "deploy": [
+        "deploy",
+        "despliega",
+        "release",
+        "publica",
+        "production",
+        "produccion",
+        "rollout",
+        "systemd",
+        "cron",
+    ],
+    "review": ["review", "revisa", "code review", "audita", "audit", "critica"],
+    "optimize": [
+        "optimiza",
+        "optimize",
+        "mejora el rendimiento",
+        "speed up",
+        "acelera",
+        "performance",
+        "perf",
+    ],
+    "explain": [
+        "explica",
+        "explain",
+        "describe",
+        "clarifica",
+        "define",
+        "que es",
+        "what is",
+        "how does",
+    ],
+    "migrate": [
+        "migra",
+        "migrate",
+        "convierte",
+        "convert",
+        "traduce",
+        "translate",
+        "port ",
+        "porta",
+        "mueve a",
+    ],
     "integrate": ["integra", "integrate", "conecta", "connect", "api de", "webhook", "third-party"],
 }
 
 # Amplifier intent id → compiler pattern (for callers passing intent_pattern through).
 AMPLIFIER_INTENT_MAP = {
-    "analyze": "analyze", "generate": "generate", "optimize": "optimize",
-    "debug": "debug", "research": "research", "summarize": "explain",
-    "compare": "analyze", "forecast": "analyze", "explain": "explain",
-    "transform": "migrate", "validate": "test", "plan": "plan",
-    "automate": "deploy", "report": "report",
+    "analyze": "analyze",
+    "generate": "generate",
+    "optimize": "optimize",
+    "debug": "debug",
+    "research": "research",
+    "summarize": "explain",
+    "compare": "analyze",
+    "forecast": "analyze",
+    "explain": "explain",
+    "transform": "migrate",
+    "validate": "test",
+    "plan": "plan",
+    "automate": "deploy",
+    "report": "report",
 }
 
 
@@ -503,9 +892,32 @@ def _infer_pattern(prompt: str) -> tuple[str, float]:
 # Spanish/English prompts start with a capitalized verb — 'Analiza el…' must
 # not yield entity='Analiza'). Includes every single-word pattern keyword.
 _ENTITY_STOPWORDS = {
-    "el", "la", "los", "las", "un", "una", "the", "a", "an",
-    "can", "could", "would", "should", "please", "por", "favor", "haz",
-    "hazme", "dame", "make", "do", "how", "what", "why", "when", "que",
+    "el",
+    "la",
+    "los",
+    "las",
+    "un",
+    "una",
+    "the",
+    "a",
+    "an",
+    "can",
+    "could",
+    "would",
+    "should",
+    "please",
+    "por",
+    "favor",
+    "haz",
+    "hazme",
+    "dame",
+    "make",
+    "do",
+    "how",
+    "what",
+    "why",
+    "when",
+    "que",
 } | {_norm(kw.strip()) for kws in _PATTERN_KEYWORDS.values() for kw in kws if " " not in kw.strip()}
 
 

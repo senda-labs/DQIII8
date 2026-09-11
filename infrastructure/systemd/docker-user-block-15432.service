@@ -1,0 +1,14 @@
+# /etc/systemd/system/docker-user-block-15432.service
+[Unit]
+Description=Block external access to hostkey-pg-scratch (15432) via DOCKER-USER — hardening 2026-09-07, found exposed on 0.0.0.0 with no ufw/DOCKER-USER coverage during pre-Hostinger-decommission audit
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '/sbin/iptables -C DOCKER-USER -i eth0 -p tcp --dport 15432 -j DROP || /sbin/iptables -I DOCKER-USER 1 -i eth0 -p tcp --dport 15432 -j DROP'
+ExecStop=/bin/sh -c '/sbin/iptables -D DOCKER-USER -i eth0 -p tcp --dport 15432 -j DROP || true'
+
+[Install]
+WantedBy=multi-user.target

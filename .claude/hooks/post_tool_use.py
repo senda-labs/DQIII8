@@ -100,7 +100,17 @@ if tool in ("Edit", "Write", "MultiEdit"):
     path = inp.get("file_path", inp.get("path", ""))
     if path and path.endswith(".py"):
         try:
-            subprocess.run(["black", "--quiet", path], capture_output=True, timeout=10)
+            # docs/plglobal/README.md finding #45: bare "black" resolves via PATH,
+            # which no real Claude Code session (root or either operator) carries
+            # .venv-core/bin on — black is only installed there, never system-wide
+            # or on any session's PATH. subprocess.run always raised
+            # FileNotFoundError here, silently swallowed by the except below, so
+            # this auto-format feature never actually ran for any session.
+            # Absolute path to the venv where black is actually installed, with a
+            # PATH-based fallback in case the venv is ever removed/rebuilt elsewhere.
+            _black_bin = _dqiii8_root_path / ".venv-core" / "bin" / "black"
+            _black_cmd = str(_black_bin) if _black_bin.exists() else "black"
+            subprocess.run([_black_cmd, "--quiet", path], capture_output=True, timeout=10)
         except Exception as e:
             _log.debug("black format skipped: %s", e)
 

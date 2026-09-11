@@ -21,11 +21,18 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-JARVIS = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
-DB_PATH = JARVIS / "database" / "dqiii8_knowledge.db"
-for _d in [
-    JARVIS / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]
-]:
+ROOT_DIR = Path(os.environ.get("DQIII8_ROOT", "/root/dqiii8"))
+CHAT_DB_PATH = ROOT_DIR / "database" / "dqiii8_knowledge.db"
+
+# REGLA NIM (CLAUDE.md § REGLA NIM, .claude/rules/00_core_behavior.md): user
+# directive since 2026-08-18, non-Anthropic providers are dormant, not
+# eliminated. Reactivation needs a human probe + explicit user confirmation —
+# an agent must never declare it live on its own, so this stays a manually
+# toggled constant rather than something a live network probe could flip.
+# Flip to False only when the user has explicitly lifted the directive.
+NON_ANTHROPIC_DORMANT = True
+
+for _d in [ROOT_DIR / "bin" / s for s in ["", "core", "agents", "monitoring", "tools", "ui"]]:
     if str(_d) not in sys.path:
         sys.path.insert(0, str(_d))
 
@@ -43,11 +50,18 @@ from db import get_db
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from bin.core.logging_config import get_logger as _get_logger
+import human_hours
+from model_map import DEFAULT_MODEL, resolve_model
+
 log = _get_logger(__name__)
 # ── Config ────────────────────────────────────────────────────────────────
 HOST = os.environ.get("DQIII8_DASHBOARD_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DQIII8_DASHBOARD_PORT", "8080"))
-REQUIRE_AUTH = HOST != "127.0.0.1"
+# Always require the token, even on loopback (RT-001, red-team 2026-09-07): a
+# shared multi-tenant box means "loopback-only" isn't a strong enough boundary
+# on its own — any other local process (root or otherwise) could read
+# operational telemetry from /api/health with zero defense-in-depth.
+REQUIRE_AUTH = True
 
 
 # ── Claude OAuth detection ────────────────────────────────────────────────
@@ -70,8 +84,7 @@ def detect_claude_oauth() -> dict:
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 if any(
-                    data.get(k)
-                    for k in ("token", "access_token", "sessionKey", "claudeApiKey")
+                    data.get(k) for k in ("token", "access_token", "sessionKey", "claudeApiKey")
                 ):
                     return {
                         "available": True,
@@ -83,9 +96,7 @@ def detect_claude_oauth() -> dict:
 
     # 2) Check CLI is installed
     try:
-        v = subprocess.run(
-            ["claude", "--version"], capture_output=True, text=True, timeout=5
-        )
+        v = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=5)
         if v.returncode != 0:
             return {"available": False, "method": None, "plan": None}
         version_str = v.stdout.strip().split("\n")[0]
@@ -141,7 +152,7 @@ def _mask_key(v: str) -> str:
 
 
 def _load_env_dict() -> dict:
-    env_file = JARVIS / ".env"
+    env_file = ROOT_DIR / ".env"
     result: dict = {}
     if env_file.exists():
         for line in env_file.read_text(encoding="utf-8").splitlines():
@@ -153,10 +164,8 @@ def _load_env_dict() -> dict:
 
 def _write_env_key(key: str, value: str) -> None:
     """Safely update or append a single key in .env."""
-    env_file = JARVIS / ".env"
-    lines = (
-        env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else []
-    )
+    env_file = ROOT_DIR / ".env"
+    lines = env_file.read_text(encoding="utf-8").splitlines() if env_file.exists() else []
     written = False
     output = []
     for line in lines:
@@ -220,8 +229,8 @@ _INTENT_SUBTASKS: dict[str, list[str]] = {
 DASHBOARD_HTML: str = ""
 LOGIN_HTML: str = ""
 
-DASHBOARD_HTML_PATH = JARVIS / "bin" / "ui" / "dashboard.html"
-LOGIN_HTML_PATH = JARVIS / "bin" / "ui" / "login.html"
+DASHBOARD_HTML_PATH = ROOT_DIR / "bin" / "ui" / "dashboard.html"
+LOGIN_HTML_PATH = ROOT_DIR / "bin" / "ui" / "login.html"
 
 _LOGIN_FALLBACK = """<!DOCTYPE html><html><body style="background:#0a0a0f;color:#fff;font-family:monospace;display:flex;align-items:center;justify-content:center;min-height:100vh">
 <form action="/" method="GET" style="text-align:center;gap:1rem;display:flex;flex-direction:column">
@@ -240,7 +249,7 @@ def _load_html(path: Path, fallback: str = "") -> str:
 
 
 # ── Upload directory ───────────────────────────────────────────────────────
-UPLOAD_DIR = JARVIS / "uploads" / "chat"
+UPLOAD_DIR = ROOT_DIR / "uploads" / "chat"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {
@@ -427,6 +436,82 @@ async def health(auth: bool = Depends(check_auth)):
     }
 
 
+@app.get("/api/health/detail")
+async def health_detail(metric: str, auth: bool = Depends(check_auth)):
+    """Per-metric breakdown for the Overview inner menu. metric = health|actions|success."""
+    if metric not in ("health", "actions", "success"):
+        raise HTTPException(
+            status_code=400, detail="metric must be one of: health, actions, success"
+        )
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    with get_db() as conn:
+        if metric == "health":
+            rows = conn.execute(
+                "SELECT overall_score, timestamp FROM audit_reports ORDER BY timestamp DESC LIMIT 10"
+            ).fetchall()
+            return {"recent_audits": [{"overall_score": r[0], "timestamp": r[1]} for r in rows]}
+
+        if metric == "actions":
+            by_day = conn.execute(
+                """
+                SELECT date(timestamp) as day, COUNT(*) as count
+                FROM agent_actions WHERE date(timestamp) >= ?
+                GROUP BY day ORDER BY day DESC
+                """,
+                (week_ago,),
+            ).fetchall()
+            by_agent = conn.execute(
+                """
+                SELECT agent_name, COUNT(*) as count
+                FROM agent_actions WHERE date(timestamp) >= ?
+                GROUP BY agent_name ORDER BY count DESC LIMIT 10
+                """,
+                (week_ago,),
+            ).fetchall()
+            return {
+                "by_day": [{"day": r[0], "count": r[1]} for r in by_day],
+                "by_agent": [{"agent": r[0] or "unknown", "count": r[1]} for r in by_agent],
+            }
+
+        by_tier = conn.execute(
+            """
+            SELECT tier, ROUND(AVG(success) * 100, 1) as success_rate, COUNT(*) as count
+            FROM agent_actions WHERE date(timestamp) >= ?
+            GROUP BY tier ORDER BY count DESC
+            """,
+            (week_ago,),
+        ).fetchall()
+        return {
+            "by_tier": [
+                {"tier": r[0] or "unknown", "success_rate": r[1] or 0, "count": r[2]}
+                for r in by_tier
+            ]
+        }
+
+
+@app.post("/api/human-hours/{action}")
+async def human_hours_action(action: str, request: Request, auth: bool = Depends(check_auth)):
+    """Start/stop a human_hours session for a project — dashboard-side alternative
+    to the Telegram /hora inicio|fin command, same underlying table/logic."""
+    if action not in ("inicio", "fin"):
+        raise HTTPException(status_code=404, detail="action must be inicio or fin")
+    body = await request.json()
+    project = str(body.get("project") or "").strip()
+    if not project:
+        raise HTTPException(status_code=400, detail="project is required")
+    if len(project) > 200:
+        raise HTTPException(status_code=400, detail="project must be <= 200 characters")
+    ok, msg = (
+        human_hours.hora_inicio(project, source="manual")
+        if action == "inicio"
+        else human_hours.hora_fin(project)
+    )
+    if not ok:
+        raise HTTPException(status_code=409, detail=msg)
+    return {"message": msg}
+
+
 @app.get("/api/sessions")
 async def recent_sessions(limit: int = 20, auth: bool = Depends(check_auth)):
     """Recent sessions with derived status and action count."""
@@ -443,10 +528,7 @@ async def recent_sessions(limit: int = 20, auth: bool = Depends(check_auth)):
             (limit,),
         ).fetchall()
 
-    return [
-        {"id": r[0], "start": r[1], "end": r[2], "status": r[3], "actions": r[4]}
-        for r in rows
-    ]
+    return [{"id": r[0], "start": r[1], "end": r[2], "status": r[3], "actions": r[4]} for r in rows]
 
 
 @app.get("/api/tasks/recent")
@@ -479,19 +561,142 @@ async def recent_tasks(limit: int = 50, auth: bool = Depends(check_auth)):
     ]
 
 
+def _heuristic_tasks(rows) -> list:
+    """Fallback grouping for agent_actions rows with no agent_id (top-level session
+    actions, or rows written before the Fase B migration): consecutive rows sharing
+    (session_id, agent_name) belong to the same task unless a gap of more than 90s
+    separates them. Approximate by design — see plan doc for why an exact FK isn't
+    always available."""
+    GAP_S = 90
+    tasks: list = []
+    cur: dict | None = None
+    prev_ts: datetime | None = None
+    for session_id, agent_name, tool_used, ts, success in rows:
+        try:
+            ts_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            continue
+        new_group = (
+            cur is None
+            or cur["session_id"] != session_id
+            or cur["skill"] != (agent_name or "unknown")
+            or prev_ts is None
+            or (ts_dt - prev_ts).total_seconds() > GAP_S
+        )
+        if new_group:
+            cur = {
+                "session_id": session_id,
+                "skill": agent_name or "unknown",
+                "model": resolve_model(agent_name),
+                "tools": set(),
+                "actions": 0,
+                "success": True,
+                "started_at": ts,
+                "ended_at": ts,
+                "exact": False,
+            }
+            tasks.append(cur)
+        cur["tools"].add(tool_used or "?")
+        cur["actions"] += 1
+        cur["success"] = cur["success"] and bool(success)
+        cur["ended_at"] = ts
+        prev_ts = ts_dt
+    return tasks
+
+
+@app.get("/api/tasks/grouped")
+async def grouped_tasks(limit: int = 20, auth: bool = Depends(check_auth)):
+    """Recent work grouped by task (skill/agent invocation), not raw tool calls.
+
+    Prefers an exact grouping via agent_registry (closed by SubagentStop, Fase B)
+    when the schema migration has landed; falls back to the Fase A heuristic
+    (session + 90s gap) for rows with no agent_id — top-level session actions, or
+    data written before the migration. See ~/.claude/plans/parsed-swinging-donut.md.
+    """
+    window_start = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+    tasks: list = []
+
+    with get_db() as conn:
+        try:
+            registry_rows = conn.execute(
+                """
+                SELECT agent_id, agent_type, start_time, end_time
+                FROM agent_registry
+                WHERE end_time IS NOT NULL AND end_time >= ?
+                """,
+                (window_start,),
+            ).fetchall()
+            # Single aggregated query instead of one SELECT per agent_registry row
+            # (was O(n) round-trips; measured ~2x slower than sibling endpoints at
+            # only 3 rows — would scale linearly with subagent volume otherwise).
+            action_rows = conn.execute(
+                """
+                SELECT agent_id, tool_used, success
+                FROM agent_actions
+                WHERE agent_id IN (SELECT agent_id FROM agent_registry WHERE end_time IS NOT NULL AND end_time >= ?)
+                """,
+                (window_start,),
+            ).fetchall()
+            actions_by_agent: dict = {}
+            for agent_id, tool_used, success in action_rows:
+                actions_by_agent.setdefault(agent_id, []).append((tool_used, success))
+
+            for agent_id, agent_type, start_time, end_time in registry_rows:
+                rows = actions_by_agent.get(agent_id, [])
+                tasks.append(
+                    {
+                        "skill": agent_type or "unknown",
+                        "model": resolve_model(agent_type),
+                        "tools": sorted({t or "?" for t, _ in rows}),
+                        "actions": len(rows),
+                        "success": all(bool(s) for _, s in rows) if rows else True,
+                        "started_at": start_time,
+                        "ended_at": end_time,
+                        "exact": True,
+                    }
+                )
+            unheuristic_rows = conn.execute(
+                """
+                SELECT session_id, agent_name, tool_used, timestamp, success
+                FROM agent_actions
+                WHERE timestamp >= ? AND agent_id IS NULL
+                ORDER BY session_id, timestamp
+                """,
+                (window_start,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            # Fase B migration not applied yet (no agent_registry.end_time /
+            # agent_actions.agent_id columns) — degrade to pure heuristic.
+            unheuristic_rows = conn.execute(
+                """
+                SELECT session_id, agent_name, tool_used, timestamp, success
+                FROM agent_actions
+                WHERE timestamp >= ?
+                ORDER BY session_id, timestamp
+                """,
+                (window_start,),
+            ).fetchall()
+
+    for t in _heuristic_tasks(unheuristic_rows):
+        t.pop("session_id", None)
+        tasks.append(t)
+
+    tasks.sort(key=lambda t: t["ended_at"], reverse=True)
+    return tasks[:limit]
+
+
 @app.get("/api/production")
 async def production_metrics(auth: bool = Depends(check_auth)):
     """Per-project agent-compute and human-hours metrics for the Produccion tab."""
-    _my_projects = JARVIS / "my-projects"
+    _my_projects = ROOT_DIR / "my-projects"
     known_projects = (
-        {p.name for p in _my_projects.iterdir() if p.is_dir()}
+        {p.name for p in _my_projects.iterdir() if p.is_dir() and not p.name.startswith(".")}
         if _my_projects.is_dir()
         else set()
     )
 
     with get_db() as conn:
-        agent_rows = conn.execute(
-            """
+        agent_rows = conn.execute("""
             SELECT project,
                    COUNT(*) as actions,
                    SUM(CASE WHEN duration_ms IS NOT NULL THEN 1 ELSE 0 END) as duration_covered,
@@ -500,17 +705,15 @@ async def production_metrics(auth: bool = Depends(check_auth)):
             FROM agent_actions
             WHERE project IS NOT NULL
             GROUP BY project
-            """
-        ).fetchall()
+            """).fetchall()
 
-        human_rows = conn.execute(
-            """
+        human_rows = conn.execute("""
             SELECT project,
-                   SUM((julianday(COALESCE(ended_at, 'now')) - julianday(started_at)) * 1440) as minutes
+                   SUM((julianday(COALESCE(ended_at, 'now')) - julianday(started_at)) * 1440) as minutes,
+                   MAX(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END) as is_open
             FROM human_hours
             GROUP BY project
-            """
-        ).fetchall()
+            """).fetchall()
 
     projects: dict = {}
     unrecognized_agent: list = []
@@ -533,12 +736,16 @@ async def production_metrics(auth: bool = Depends(check_auth)):
         name, minutes = row[0], row[1] or 0.0
         if name not in known_projects:
             unrecognized_human.append(name)
-        projects.setdefault(name, {})["human"] = {"minutes": round(minutes, 1)}
+        projects.setdefault(name, {})["human"] = {
+            "minutes": round(minutes, 1),
+            "open": bool(row[2]),
+        }
 
     return {
         "projects": projects,
         "unrecognized_human_projects": unrecognized_human,
         "unrecognized_agent_projects": unrecognized_agent,
+        "known_projects": sorted(known_projects),
     }
 
 
@@ -615,42 +822,54 @@ async def route_preview(request: Request, auth: bool = Depends(check_auth)):
 
 @app.post("/api/task/execute")
 async def execute_task(request: Request, auth: bool = Depends(check_auth)):
-    """Execute a prompt through the openrouter_wrapper pipeline."""
-    import re
-    import shlex
-
+    """Execute a prompt through claude -p (OAuth CLI) — same mechanism as
+    /api/chat's tier=claude branch, kept in sync with it."""
     body = await request.json()
     user_input = body.get("input", "")
 
     if not user_input:
         raise HTTPException(400, "input field required")
 
-    # Block shell metacharacters that could enable command injection
-    if re.search(r"[`$;|&><]", user_input):
-        raise HTTPException(400, "Input contains unsafe characters")
-
-    # shlex.quote ensures the input is treated as a single safe argument
-    sanitized = shlex.quote(user_input)
+    if not detect_claude_oauth()["available"]:
+        return {
+            "output": None,
+            "error": "Claude not available. Authenticate with Claude Code (claude /login).",
+            "exit_code": -1,
+        }
 
     try:
-        result = subprocess.run(
-            [
-                "python3",
-                str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
-                "run",
-                sanitized,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            env={**os.environ, "DQIII8_ROOT": str(JARVIS)},
+        # Two bugs fixed here (2026-09-04, both confirmed via a live
+        # stress-test call before the fix):
+        # 1. subprocess.run([...]) (a list, no shell=True) never goes through
+        #    a shell, so shlex.quote()-ing user_input was wrong — it produced
+        #    a literal-quote-wrapped string (shlex.quote builds a shell
+        #    command *line*, not an argv element already isolated by the list
+        #    form), which combined with a stray "run" positional that
+        #    openrouter_wrapper.py's CLI never accepted, failed every call
+        #    with "unrecognized arguments".
+        # 2. Even after fixing (1), calling openrouter_wrapper.py without
+        #    --force-provider anthropic walks its full multi-tier fallback
+        #    chain (groq/nim/pollinations/...) — all dormant under REGLA NIM
+        #    (00_core_behavior.md) — and fails outright with "all providers
+        #    failed" before ever reaching Anthropic. REGLA NIM also flatly
+        #    says not to invoke openrouter_wrapper.py outside an explicit
+        #    reactivation probe. Switched to claude -p directly: the same
+        #    mechanism /api/chat's tier=claude branch already uses.
+        proc = await asyncio.create_subprocess_exec(
+            "claude",
+            "-p",
+            user_input,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "DQIII8_ROOT": str(ROOT_DIR)},
         )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
         return {
-            "output": result.stdout,
-            "error": result.stderr if result.returncode != 0 else None,
-            "exit_code": result.returncode,
+            "output": stdout.decode("utf-8", errors="replace"),
+            "error": stderr.decode("utf-8", errors="replace") if proc.returncode != 0 else None,
+            "exit_code": proc.returncode,
         }
-    except subprocess.TimeoutExpired:
+    except asyncio.TimeoutError:
         return {"output": None, "error": "Task timed out (120s)", "exit_code": -1}
 
 
@@ -728,7 +947,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
         if file_ctx_parts:
             message = "\n\n".join(file_ctx_parts) + "\n\nUser question: " + message
 
-    env = {**os.environ, "DQIII8_ROOT": str(JARVIS)}
+    env = {**os.environ, "DQIII8_ROOT": str(ROOT_DIR)}
     # Merge .env values (so API keys are available even if not in process env)
     for k, v in _load_env_dict().items():
         env.setdefault(k, v)
@@ -737,25 +956,84 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
         t_start = time.time()
         tier_used = tier
         full_text = ""
+        claude_session_uuid: str | None = None
+        claude_session_is_new = False
         try:
             if tier == "claude":
                 # Priority 1: OAuth via claude -p CLI
                 oauth = detect_claude_oauth()
                 if oauth["available"]:
+                    # Real multi-turn memory: resume the same underlying
+                    # Claude Code session (--resume) instead of a stateless
+                    # one-shot call, exactly like a terminal session. Falls
+                    # back to a fresh session if the prior one was pruned/
+                    # not found, rather than failing the turn outright.
+                    claude_session_uuid = _get_claude_session_uuid(session_id)
+                    args = ["claude", "-p"]
+                    if claude_session_uuid:
+                        args += ["--resume", claude_session_uuid]
+                    else:
+                        claude_session_uuid = str(uuid.uuid4())
+                        claude_session_is_new = True
+                        args += ["--session-id", claude_session_uuid]
+                    args.append(message)
+
                     proc = await asyncio.create_subprocess_exec(
-                        "claude",
-                        "-p",
-                        message,
+                        *args,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                         env=env,
                     )
-                    tier_used = "claude_oauth"
+                    stdout_bytes, stderr_bytes = await proc.communicate()
+                    if proc.returncode != 0 and not claude_session_is_new:
+                        # Prior session no longer resumable (pruned, corrupted,
+                        # etc.) — retry once as a fresh session rather than
+                        # surfacing an opaque failure for a normal chat turn.
+                        claude_session_uuid = str(uuid.uuid4())
+                        claude_session_is_new = True
+                        proc = await asyncio.create_subprocess_exec(
+                            "claude",
+                            "-p",
+                            "--session-id",
+                            claude_session_uuid,
+                            message,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                            env=env,
+                        )
+                        stdout_bytes, stderr_bytes = await proc.communicate()
+
+                    full_text = stdout_bytes.decode("utf-8", errors="replace")
+                    if full_text:
+                        yield f"data: {json.dumps({'text': full_text})}\n\n"
+                    await proc.wait()
+
+                    if not full_text:
+                        err_hint = (
+                            stderr_bytes.decode("utf-8", errors="replace").strip()
+                            or "No response from AI backend. Check API keys in Settings."
+                        )
+                        yield f"data: {json.dumps({'error': err_hint})}\n\n"
+                        return
+
+                    if claude_session_is_new:
+                        _set_claude_session_uuid(session_id, claude_session_uuid)
+
+                    elapsed_ms = int((time.time() - t_start) * 1000)
+                    _persist_chat(session_id, message, full_text)
+                    done_payload = {
+                        "done": True,
+                        "session_id": session_id,
+                        "tier_used": "claude_oauth",
+                        "elapsed_ms": elapsed_ms,
+                    }
+                    yield f"data: {json.dumps(done_payload)}\n\n"
+                    return
                 elif env.get("ANTHROPIC_API_KEY"):
                     # Priority 2: ANTHROPIC_API_KEY via openrouter_wrapper
                     proc = await asyncio.create_subprocess_exec(
                         "python3",
-                        str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
+                        str(ROOT_DIR / "bin" / "core" / "openrouter_wrapper.py"),
                         "--agent",
                         "research-analyst",
                         "--force-provider",
@@ -775,7 +1053,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
             elif tier == "groq":
                 proc = await asyncio.create_subprocess_exec(
                     "python3",
-                    str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
+                    str(ROOT_DIR / "bin" / "core" / "openrouter_wrapper.py"),
                     "--agent",
                     "research-analyst",
                     message,
@@ -788,7 +1066,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
             elif tier == "local":
                 proc = await asyncio.create_subprocess_exec(
                     "python3",
-                    str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
+                    str(ROOT_DIR / "bin" / "core" / "openrouter_wrapper.py"),
                     "--agent",
                     "python-specialist",
                     message,
@@ -801,7 +1079,7 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
             else:  # auto
                 proc = await asyncio.create_subprocess_exec(
                     "python3",
-                    str(JARVIS / "bin" / "core" / "openrouter_wrapper.py"),
+                    str(ROOT_DIR / "bin" / "core" / "openrouter_wrapper.py"),
                     "--agent",
                     "research-analyst",
                     message,
@@ -836,9 +1114,70 @@ async def chat_stream(request: Request, auth: bool = Depends(check_auth)):
     return StreamingResponse(_generate(), media_type="text/event-stream")
 
 
+def _ensure_claude_session_column(conn: sqlite3.Connection) -> None:
+    """Idempotent: chat_sessions predates this column, so ADD COLUMN (no
+    IF NOT EXISTS support in SQLite) needs a try/except, not a migration —
+    this table is dashboard-owned, created ad-hoc, not part of schema_v2.sql.
+    """
+    try:
+        conn.execute("ALTER TABLE chat_sessions ADD COLUMN claude_session_id TEXT")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
+
+def _get_claude_session_uuid(session_id: str) -> str | None:
+    """Look up the real Claude Code session UUID bound to this dashboard
+    chat session, so replies can --resume it (true multi-turn memory,
+    same mechanism an interactive terminal session uses) instead of each
+    turn being a stateless one-shot call."""
+    db = CHAT_DB_PATH
+    if not db.exists():
+        return None
+    try:
+        conn = sqlite3.connect(str(db), timeout=3)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS chat_sessions "
+            "(session_id TEXT PRIMARY KEY, created_at TEXT)"
+        )
+        _ensure_claude_session_column(conn)
+        row = conn.execute(
+            "SELECT claude_session_id FROM chat_sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        conn.close()
+        return row[0] if row and row[0] else None
+    except Exception as exc:
+        log.warning("%s: %s", __name__, exc)
+        return None
+
+
+def _set_claude_session_uuid(session_id: str, claude_session_uuid: str) -> None:
+    db = CHAT_DB_PATH
+    if not db.exists():
+        return
+    try:
+        ts = datetime.now(timezone.utc).isoformat()
+        conn = sqlite3.connect(str(db), timeout=3)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS chat_sessions "
+            "(session_id TEXT PRIMARY KEY, created_at TEXT)"
+        )
+        _ensure_claude_session_column(conn)
+        conn.execute(
+            "INSERT INTO chat_sessions (session_id, created_at, claude_session_id) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(session_id) DO UPDATE SET claude_session_id = excluded.claude_session_id",
+            (session_id, ts, claude_session_uuid),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        log.warning("%s: %s", __name__, exc)
+
+
 def _persist_chat(session_id: str, user_msg: str, assistant_msg: str) -> None:
     """Write chat turn to DB. Creates tables if missing (graceful on older schemas)."""
-    db = DB_PATH
+    db = CHAT_DB_PATH
     if not db.exists():
         return
     try:
@@ -876,7 +1215,7 @@ def _persist_chat(session_id: str, user_msg: str, assistant_msg: str) -> None:
 @app.get("/api/chat/history")
 async def chat_history(limit: int = 10, auth: bool = Depends(check_auth)):
     """Return last N sessions with first user message as preview."""
-    db = DB_PATH
+    db = CHAT_DB_PATH
     if not db.exists():
         return []
     try:
@@ -896,9 +1235,7 @@ async def chat_history(limit: int = 10, auth: bool = Depends(check_auth)):
         conn.close()
     except Exception:
         rows = []
-    return [
-        {"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows
-    ]
+    return [{"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows]
 
 
 @app.post("/api/upload")
@@ -949,7 +1286,7 @@ async def search_chat(q: str = "", limit: int = 20, auth: bool = Depends(check_a
     """Search chat sessions by content. Returns sessions matching the query."""
     if not q.strip():
         return []
-    db = DB_PATH
+    db = CHAT_DB_PATH
     if not db.exists():
         return []
     try:
@@ -971,15 +1308,13 @@ async def search_chat(q: str = "", limit: int = 20, auth: bool = Depends(check_a
         conn.close()
     except Exception:
         rows = []
-    return [
-        {"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows
-    ]
+    return [{"id": r[0], "created_at": r[1], "preview": (r[2] or "")[:60]} for r in rows]
 
 
 @app.post("/api/chat/{session_id}/delete")
 async def delete_chat_session(session_id: str, auth: bool = Depends(check_auth)):
     """Delete a chat session and its messages."""
-    db = DB_PATH
+    db = CHAT_DB_PATH
     if not db.exists():
         return {"ok": False, "error": "DB not found"}
     try:
@@ -996,7 +1331,7 @@ async def delete_chat_session(session_id: str, auth: bool = Depends(check_auth))
 @app.get("/api/chat/{session_id}/messages")
 async def chat_session_messages(session_id: str, auth: bool = Depends(check_auth)):
     """Return all messages for a given session."""
-    db = DB_PATH
+    db = CHAT_DB_PATH
     if not db.exists():
         return []
     try:
@@ -1038,7 +1373,7 @@ async def text_to_speech(request: Request, auth: bool = Depends(check_auth)):
 
 # ── Tiers / Settings endpoints ────────────────────────────────────────────
 
-SETTINGS_HTML_PATH = JARVIS / "bin" / "settings.html"
+SETTINGS_HTML_PATH = ROOT_DIR / "bin" / "settings.html"
 
 _SETTINGS_FALLBACK = """<!DOCTYPE html><html><body style="background:#0a0a0f;color:#fff;font-family:monospace;padding:2rem">
 <h2>Settings</h2><p>settings.html not found.</p><a href="/" style="color:#60a5fa">Back</a></body></html>"""
@@ -1050,9 +1385,9 @@ async def get_tiers(auth: bool = Depends(check_auth)):
     env = _load_env_dict()
     oauth = detect_claude_oauth()
     has_groq = bool(env.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY"))
-    has_anthropic = bool(
-        env.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-    )
+    has_anthropic = bool(env.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+
+    _nim_setup = "Dormant (REGLA NIM): non-Anthropic providers off since 2026-08-18 — see CLAUDE.md"
 
     return {
         "tiers": [
@@ -1060,36 +1395,39 @@ async def get_tiers(auth: bool = Depends(check_auth)):
                 "id": "auto",
                 "label": "Auto",
                 "description": "DQ picks the best tier per message",
-                "available": True,
+                "available": not NON_ANTHROPIC_DORMANT,
                 "cost": "free",
                 "model": "llama-3.3-70b / qwen2.5-coder",
+                "setup": _nim_setup if NON_ANTHROPIC_DORMANT else None,
             },
             {
                 "id": "local",
                 "label": "Local",
                 "description": "Ollama — fully private, no internet",
-                "available": True,
+                "available": not NON_ANTHROPIC_DORMANT,
                 "cost": "free",
                 "model": "qwen2.5-coder:7b",
+                "setup": _nim_setup if NON_ANTHROPIC_DORMANT else None,
             },
             {
                 "id": "groq",
                 "label": "Groq",
                 "description": "Fast cloud inference, free tier",
-                "available": has_groq,
+                "available": has_groq and not NON_ANTHROPIC_DORMANT,
                 "cost": "free",
                 "model": "llama-3.3-70b-versatile",
-                "setup": None if has_groq else "Add GROQ_API_KEY in Settings",
+                "setup": (
+                    _nim_setup
+                    if NON_ANTHROPIC_DORMANT
+                    else (None if has_groq else "Add GROQ_API_KEY in Settings")
+                ),
             },
             {
                 "id": "claude",
                 "label": "Claude",
                 "description": "Claude Sonnet via OAuth or API key",
                 "available": oauth["available"] or has_anthropic,
-                "cost": oauth["available"]
-                and not has_anthropic
-                and "$0 (Pro plan)"
-                or "$3/Mtok",
+                "cost": oauth["available"] and not has_anthropic and "$0 (Pro plan)" or "$3/Mtok",
                 "model": "claude-sonnet-5",
                 "method": (
                     oauth["method"]
@@ -1123,9 +1461,7 @@ async def claude_status(auth: bool = Depends(check_auth)):
 async def settings_page(request: Request):
     """Settings UI page."""
     if REQUIRE_AUTH:
-        token = request.query_params.get("token", "") or request.cookies.get(
-            "dq_token", ""
-        )
+        token = request.query_params.get("token", "") or request.cookies.get("dq_token", "")
         if not token or not verify_token(token):
             return HTMLResponse(content=LOGIN_HTML, status_code=401)
     html = _load_html(SETTINGS_HTML_PATH, _SETTINGS_FALLBACK)
@@ -1140,9 +1476,7 @@ async def get_settings(auth: bool = Depends(check_auth)):
     return {
         "groq_key": _mask_key(env.get("GROQ_API_KEY", "")),
         "anthropic_key": _mask_key(env.get("ANTHROPIC_API_KEY", "")),
-        "default_tier": env.get(
-            "DQ_DEFAULT_TIER", os.environ.get("DQ_DEFAULT_TIER", "auto")
-        ),
+        "default_tier": env.get("DQ_DEFAULT_TIER", os.environ.get("DQ_DEFAULT_TIER", "auto")),
         "oauth": oauth,
         "tier_options": ["auto", "groq-only", "groq+ollama", "ollama-only"],
     }
@@ -1173,9 +1507,7 @@ async def update_settings(request: Request, auth: bool = Depends(check_auth)):
 async def dashboard_page(request: Request):
     """Main dashboard page."""
     if REQUIRE_AUTH:
-        token = request.query_params.get("token", "") or request.cookies.get(
-            "dq_token", ""
-        )
+        token = request.query_params.get("token", "") or request.cookies.get("dq_token", "")
         if not token or not verify_token(token):
             return HTMLResponse(content=LOGIN_HTML, status_code=401)
     return HTMLResponse(content=DASHBOARD_HTML)
@@ -1194,6 +1526,6 @@ if __name__ == "__main__":
     # Update module globals before uvicorn starts (lifespan reads them)
     HOST = args.host
     PORT = args.port
-    REQUIRE_AUTH = HOST != "127.0.0.1"
+    REQUIRE_AUTH = True
 
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")

@@ -66,7 +66,7 @@ repite, solo añade lo que ese no cubre.
 | Pipeline intl-reports | `my-projects/intl-reports/RULE` |
 
 ## System Map (contadores — validator-enforced, no mover de aquí)
-Hooks (15): `.claude/hooks/` | Skills (25): `.claude/skills/` | Agents (17): `.claude/agents/`
+Hooks (15): `.claude/hooks/` | Skills (26): `.claude/skills/` | Agents (17): `.claude/agents/`
 Contextual rules (12): `.claude/rules_db/` — 2 files minimum (`_ALWAYS`), 14 in the reachable ceiling case,
 drawn from both `.claude/rules_db/` and `.claude/rules/` (`.claude/rules/02_hooks_and_permissions.md`).
 Counts validator-enforced by `check_claude_md_counts()` in `bin/tools/validate_rules_registry.py`.

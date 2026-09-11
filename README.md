@@ -14,7 +14,7 @@
 Every request flows through a cost-first routing pipeline that always tries the cheapest
 capable model first — local → free cloud → paid frontier — escalating only when the task
 demands it. It is deeply integrated with [Claude Code](https://claude.com/claude-code)
-through 15 lifecycle hooks, 25 skills, and 17 specialist agents.
+through 15 lifecycle hooks, 26 skills, and 17 specialist agents.
 (Counts are validator-enforced against the live tree — `check_readme_counts()` in
 `bin/tools/validate_rules_registry.py`; `CLAUDE.md:16` is the canonical restatement.)
 
@@ -31,7 +31,7 @@ locally — see [Installation](#installation).
 - **Deterministic permissions** — every tool call is evaluated by `PermissionAnalyzer` (APPROVE / DENY / ESCALATE) inside a `pre_tool_use` hook before execution.
 - **State in SQLite** — instincts, agent actions, routing feedback and permission decisions live in a local SQLite database. No external state store. (There is no `model_performance` or `session_events` table — see the SQLite section below.)
 - **Knowledge injection (optional)** — domain knowledge retrieved via hybrid search (vector + FTS5) before the model sees the prompt. Off by default for a clean install.
-- **Composable agents** — 17 specialist agents + 15 hooks + 25 skills form a layered permission and routing system, all configurable.
+- **Composable agents** — 17 specialist agents + 15 hooks + 26 skills form a layered permission and routing system, all configurable.
 
 ---
 
@@ -72,7 +72,7 @@ Fallback chain is **sequential** (not round-robin): `ollama → groq → nim →
                                   ▼
          Claude Code  ←──dispatch.py──→  NIM / Groq / GitHub workers
               │
-    15 hooks · 25 skills · 17 agents · PermissionAnalyzer
+    15 hooks · 26 skills · 17 agents · PermissionAnalyzer
 ```
 
 ---
@@ -150,7 +150,7 @@ dqiii8/
 │   └── orchestrator.py   /cc and /loop command handling
 ├── .claude/
 │   ├── hooks/            15 lifecycle hooks
-│   ├── skills/           25 slash-command skills
+│   ├── skills/           26 slash-command skills
 │   ├── agents/           17 specialist agent definitions
 │   └── rules/            core behavior · tiering · database · hooks rules
 ├── config/               .env.example · domain_agent_map.json · claude_settings_template.json

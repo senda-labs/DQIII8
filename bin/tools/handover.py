@@ -2,6 +2,7 @@
 """Session handover — saves current session state to sessions/YYYY-MM-DD_session_N.md"""
 
 import os
+import pwd
 import subprocess
 import sys
 from datetime import date
@@ -11,15 +12,21 @@ DQIII8_ROOT = Path(__file__).resolve().parent.parent.parent
 SESSIONS_DIR = DQIII8_ROOT / "sessions"
 
 OPERATOR_MAP = {
-    "/root/.claude": "Iker",
-    "/home/plglobal-isabel/.claude": "Isabel Vinagre",
-    "/home/plglobal-mario/.claude": "Mario Cabeza",
+    "root": "Iker",
+    "plglobal-isabel": "Isabel Vinagre",
+    "plglobal-mario": "Mario Cabeza",
 }
 
 
 def current_operator() -> str:
-    config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "/root/.claude")
-    return OPERATOR_MAP.get(config_dir, config_dir)
+    # 2026-09-12 fix: was keyed on CLAUDE_CONFIG_DIR, an env var nothing in
+    # this deployment ever sets (checked live: absent from Mario's real tmux
+    # session env) — every /handover run by Isabel or Mario silently
+    # mislabeled the operator as "Iker". The real Linux user (pwd, not an
+    # env var — can't be unset) is the reliable signal each operator's
+    # process actually runs as.
+    username = pwd.getpwuid(os.getuid()).pw_name
+    return OPERATOR_MAP.get(username, username)
 
 
 def run(cmd: str) -> str:
@@ -44,8 +51,6 @@ def next_session_path() -> Path:
 
 
 def main():
-    git_log = run("git log --oneline -5")
-    git_status = run("git status --short")
     tests = run("python3 -m pytest tests/test_smoke.py -q 2>&1 | tail -3")
     services = run(
         "systemctl is-active dqiii8-bot dq-dashboard ollama 2>/dev/null || echo 'systemctl not available'"
@@ -57,12 +62,6 @@ def main():
 
 ## Operador
 {operator}
-
-## Last 5 commits
-{git_log}
-
-## Uncommitted changes
-{git_status if git_status else "(none)"}
 
 ## Tests
 {tests}

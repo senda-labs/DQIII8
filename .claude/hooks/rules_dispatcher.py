@@ -3,17 +3,27 @@ DQIII8 — Rules Dispatcher (RAG de Reglas Dinámico)
 Inyecta SÓLO las reglas relevantes al contexto del tool en curso.
 
 En lugar de cargar el corpus de reglas entero en cada turno, este módulo mapea
-tool + input → subconjunto mínimo de reglas (~828–6080 tokens, cl100k_base real).
+tool + input → subconjunto mínimo de reglas (~1211–9203 tokens, cl100k_base real).
 El número de archivos del registro no se cita aquí: el recuento vivo es
 `len(_REGISTRY)` y su parte de rules_db/ está fijada en CLAUDE.md
 ("Contextual rules (N)"), validada por check_claude_md_counts().
 
 RANGO CANÓNICO (medido con token_estimate(), cl100k_base real vía tiktoken):
-**suelo 828** (solo _ALWAYS = ops + core-behavior), **techo 6080**. Suelo de
-sesión 1683 (suelo + CLAUDE.md, el único fichero que Claude Code auto-inyecta en
-toda sesión) — re-medido 2026-09-10, confirmado sin drift desde 2026-09-07
-(plan foamy-sniffing-dongarra, panel-review, infra-red-team/blue-team
-reports); un intento anterior de repúblicar estos números el 2026-09-08
+**suelo 1211** (solo _ALWAYS = ops + core-behavior), **techo 9203**. Suelo de
+sesión 2591 (suelo + CLAUDE.md, el único fichero que Claude Code auto-inyecta en
+toda sesión) — re-medido 2026-09-11. Valores anteriores (828/6080/1683,
+publicados 2026-09-10) llevaban semanas desactualizados sin que
+validate_rules_registry.py lo detectara: su check de presupuesto de tokens
+dependía de `python3 -m pip show tiktoken` en el intérprete que de verdad
+ejecuta el hook (run.sh) y el pre-commit (`command -v python3`), y ese
+intérprete del sistema no tenía tiktoken instalado — el check caía al
+fallback de estimación por palabras, cuyo propio comentario advierte que
+"nunca debe ser la fuente de un número citado en docs", y pasaba en verde
+sin comparar nada real. Fix 2026-09-11: `pip install --break-system-packages
+tiktoken` en el intérprete de sistema (sin tocar run.sh ni
+.git/hooks/pre-commit, que ya resuelven a ese intérprete). Auditoría
+completa: docs/plglobal/README.md, ronda 2026-09-11c.
+Un intento anterior de repúblicar estos números el 2026-09-08
 invirtió los valores (publicó cifras más altas que no correspondían a
 ninguna medición real) — detectado por validate_rules_registry.py antes de
 comitear, revertido a los valores medidos correctamente.
@@ -178,13 +188,38 @@ def _state_file(session_id: str = "") -> Path | None:
     get_rules()); the CLAUDE_SESSION_ID env var is never populated by Claude
     Code itself (see precompact.py/postcompact.py) and is kept only as a
     fallback for direct/test invocation of this module.
+
+    2026-09-12 fix: sanitized via the shared core.paths.safe_session_id
+    (untrusted stdin value) instead of an inline regex — this module had
+    silently kept its own fourth copy of a pattern paths.py's docstring
+    already documented as consolidated from three ("precompact.py,
+    postcompact.py, user_prompt_submit.py"). No live traversal was
+    reproducible (a fixed ".txt" suffix always follows, so the path
+    component can never be exactly "." or ".."), but the inline version had
+    no length cap, unlike safe_session_id's max_len=128 default — an
+    oversized session_id (tested live at 500 chars) produced an
+    equally-long filename, risking ENAMETOOLONG on typical filesystems
+    (NAME_MAX=255). _injected_this_session()/_record_injected() already
+    catch OSError and fail open, so the blast radius was graceful
+    degradation, not a crash — fixed anyway for consistency with the other
+    three hooks and to close the length gap at the source.
     """
     if os.environ.get("DQIII8_RULES_DEDUP", "") == "0":
         return None  # explicit opt-out (tests): measure true per-call cost
     sid = (session_id or os.environ.get("CLAUDE_SESSION_ID", "")).strip()
     if not sid:
         return None  # no session identity to key state on
-    return _STATE_DIR / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', sid)}.txt"
+    # Imported lazily, not at module level: rules_registry_introspect.py's
+    # load_dispatcher() execs this module's source with a synthetic __file__
+    # ("<name>", no real path) for pre-commit staged-content introspection,
+    # documented as relying on the module having "no import-time side
+    # effects" — a module-level sys.path mutation off Path(__file__) would
+    # break under that synthetic __file__. This function is never called
+    # during that introspection, so the import is safe here.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "bin"))
+    from core.paths import safe_session_id  # noqa: PLC0415
+
+    return _STATE_DIR / f"{safe_session_id(sid)}.txt"
 
 
 def _injected_this_session(session_id: str = "") -> set[str]:
@@ -227,6 +262,23 @@ def get_rules(tool: str, tool_input: dict, session_id: str = "") -> str:
     """
     aliases: list[str] = list(_ALWAYS)  # start with always-injected set
 
+    # Nested (not module-level) so rules_registry_introspect.py's AST scan of
+    # get_rules() — the sole source of the "inline aliases" reachability
+    # signal — still finds these string constants; a module-level helper
+    # falls outside that scan and false-positives as an orphaned alias (hit
+    # live 2026-09-12 when this was first factored out to module scope).
+    def _path_rules(path: str) -> list[str]:
+        if not path:
+            return []
+        out: list[str] = list(_EXT_RULES.get(Path(path).suffix.lower(), []))
+        if ".claude/hooks" in path:
+            out.append("hooks-perms")
+        if "openrouter_wrapper" in path or "director.py" in path or "domain_agent" in path:
+            out.append("tiering")
+        if "database/" in path or path.endswith(".sql"):
+            out.append("db-mutations")
+        return out
+
     # ── Tool-specific rules ───────────────────────────────────────────────────
     base = _TOOL_RULES.get(tool, [])
     aliases.extend(base)
@@ -238,18 +290,35 @@ def get_rules(tool: str, tool_input: dict, session_id: str = "") -> str:
             if pattern.search(cmd):
                 aliases.extend(rule_list)
 
-    # ── Edit / Write: inspect the file path ──────────────────────────────────
-    elif tool in ("Edit", "Write"):
-        path = tool_input.get("file_path", "")
-        ext = Path(path).suffix.lower()
-        aliases.extend(_EXT_RULES.get(ext, []))
-        # Path-specific deterministic module injection
-        if ".claude/hooks" in path:
-            aliases.extend(["hooks-perms"])
-        if "openrouter_wrapper" in path or "director.py" in path or "domain_agent" in path:
-            aliases.extend(["tiering"])
-        if "database/" in path or path.endswith(".sql"):
-            aliases.extend(["db-mutations"])
+    # ── Edit / Write / MultiEdit: inspect the file path ───────────────────────
+    # 2026-09-12 fix: MultiEdit was missing here — a real, actively-used tool
+    # (permission_analyzer.py::_candidate_paths() and post_tool_use.py both
+    # already treat it identically to Edit/Write) that silently got only the
+    # _ALWAYS floor instead of extension/path rules. Confirmed live: a
+    # MultiEdit on .claude/hooks/pre_tool_use.py got no hooks-perms rule at
+    # all, while an Edit on the same file did.
+    elif tool in ("Edit", "Write", "MultiEdit"):
+        aliases.extend(_path_rules(tool_input.get("file_path", "")))
+
+    # ── mcp__filesystem__ write tools: same path-based rules as Edit/Write ────
+    # 2026-09-12 fix: mcp__filesystem__* is allow-listed in settings.json and
+    # permission_analyzer.py's _candidate_paths() already treats write_file/
+    # edit_file/move_file as write-capable for BLOCKED_PATHS/GOVERNANCE_PATHS
+    # enforcement (that security decision was never affected) — but this
+    # dispatcher never looked at these tools at all, so an edit to
+    # .claude/hooks/*.py made via mcp__filesystem__write_file/edit_file got no
+    # hooks-perms/python/quality context, unlike the identical edit made via
+    # Edit. Confirmed live: mcp__filesystem__write_file on
+    # .claude/hooks/pre_tool_use.py got only the _ALWAYS floor (4602 chars)
+    # vs Edit's 22380. Read-only filesystem tools (read_file, list_directory,
+    # ...) are deliberately not matched here — no write is happening, so no
+    # write-guidance rule is missing.
+    elif tool in ("mcp__filesystem__write_file", "mcp__filesystem__edit_file"):
+        aliases.extend(_path_rules(tool_input.get("path", "")))
+
+    elif tool == "mcp__filesystem__move_file":
+        aliases.extend(_path_rules(tool_input.get("source", "")))
+        aliases.extend(_path_rules(tool_input.get("destination", "")))
 
     # ── MCP dqiii8-db: same production-DB write surface as raw sqlite3 ───────
     elif tool.startswith("mcp__dqiii8-db"):

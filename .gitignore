@@ -67,11 +67,13 @@ database/legacy/*.sql
 
 # Config with real keys (example file IS committed, real file is NOT)
 config/.env
+config/.env.*
 
-# Root-level .env (all variants)
+# Root-level .env (all variants, incl. dated backups like .env.pre-p2-20260813)
 .env
 .env.local
 .env.*.local
+.env.*
 *.env
 
 # Auth & credentials — never commit
